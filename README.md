@@ -1,24 +1,20 @@
 # Secret Weapons of the Luftwaffe for the Amiga
 
-A port of Totally Games / Lucasfilm Games' 1991 DOS flight simulator Secret
-Weapons of the Luftwaffe to the Amiga. Work has not started yet; the porting
-approach is still being decided.
+A port of Totally Games / Lucasfilm Games' 1991 DOS flight simulator to the
+A1200 (68020, AGA). The original 16-bit x86 code is translated offline to
+68020 assembly by this repository's translator, on a dA JoRMaS framework
+platform layer. No x86 emulator, no generated C. See
+[docs/architecture.md](docs/architecture.md).
 
-No original game data, manual, ROM or OS component is in this repository.
-Reference work needs the original version 2.2 game installed under the
-ignored `ref/` directory.
-
-## Running the original
-
-```sh
-dosbox-staging -conf reference/dosbox-staging.conf
-```
-
-## Amiga toolchain
-
-The cross-toolchain and FS-UAE are the shared `~/.local` install used by the
-sibling ports (Slicks 'N' Slide, Rescue on Fractalus, Revs, Vette, Pokeri):
+No original game data, manual, generated code, ROM or OS component is in
+this repository. Reference work needs the original v2.2 under the ignored
+`ref/` and `SetPatch` at `tmp/SetPatch`.
 
 ```sh
-. amiga/env.sh
+make amiga        # amiga/out/Swotl.exe
+make smoke        # boot under FS-UAE + GDB, check the takeover runs
+amiga/run.sh      # interactive A1200 boot
+dosbox-staging -conf reference/dosbox-staging.conf   # the original
 ```
+
+Open work: [docs/open-work.md](docs/open-work.md).

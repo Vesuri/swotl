@@ -1,33 +1,44 @@
-# Secret Weapons of the Luftwaffe — DOS to Amiga port
+# SWOTL — DOS x86 to Amiga 68020 static translator
 
-Port Totally Games / Lucasfilm Games' 1991 VGA DOS flight simulator Secret
-Weapons of the Luftwaffe (version 2.2) to the Amiga. Fidelity comes before
-improvement, and the original game running under a PC emulator is the ground
-truth. The porting approach is still to be decided and deliberately differs
-from Slicks 'N' Slide's; do not assume that project's pipeline.
+Port Secret Weapons of the Luftwaffe 2.2 (Totally Games / Lucasfilm Games,
+1991, VGA DOS) to a PAL A1200 (68020, AGA, 2 MiB Chip) by translating its
+16-bit real-mode x86 code offline to 68020 assembly. The translator is the
+product. The original running under a PC emulator is the ground truth.
 
 ## Standing rules
 
-- Commit each coherent, verified piece of work before moving to the next.
-  Use the repository's Vesuri identity, disable hooks/signing, and omit
-  co-author trailers.
-- This file carries rules and pointers, never dated progress notes. Put
-  measured findings and history in `docs/`.
-- The original game files, the manual, archives, dumps, traces, screenshots
-  and other byte-derived game material live in the ignored `ref/` and `tmp/`
-  directories and must never be committed.
-- Ground-truth comparisons use the original game under the PC reference
-  loop, never a host approximation or the Amiga port compared with itself.
-- Reuse the established Amiga build, FS-UAE/GDB, measurement and documentation
-  practices from `~/Documents/Slicks`, `~/Documents/Rescue on Fractalus`,
-  `~/Documents/Revs`, `~/Documents/Vette` and `~/Documents/Pokeri`, and the
-  dA JoRMaS framework from `~/Documents/dA JoRMaS/Template/C++`; do not
-  re-derive target-side lessons without evidence.
+- One commit per coherent, verified whole; do not mix unrelated work. Vesuri
+  identity, no hooks, no signing, no co-author trailers.
+- Be concise. Docs hold rules, facts and pointers; no essays or prose.
+- Done items belong in git history, not in docs. `docs/open-work.md` is the
+  single, always current list of open work; update it in the same commit.
+- This file carries rules and pointers only.
+- `ref/`, `tmp/`, generated code (`build/gen/`), captures, traces and any
+  other byte-derived game material stay local and are never committed.
+- Guest code reaches the Amiga only as translator output. Never hand-port a
+  guest routine to C or asm, never edit generated files, never fix output by
+  hand: fix the translator or `annotations/` and regenerate.
+- Hand-written code is the runtime and platform layer only, named by surface
+  item, never by guest address. Native replacement of a guest routine needs
+  an HLE table entry with reason and oracle.
+- Phase gates in `docs/phases.md` are hard. A milestone counts only if its
+  pixels come from generated code.
+- Unknown control flow, code writes, ports and interrupts fail loudly.
+- Tests settle correctness: x86 semantics vs Unicorn, generated 68k on the
+  host 68k core, whole game in lockstep with DOSBox. Never compare the port
+  with itself.
+- Reuse the sibling ports (`~/Documents/Slicks`, `Revs`, `Vette`, `Pokeri`,
+  `Rescue on Fractalus`) and their lessons in `docs/`; do not re-derive.
 
-## Local layout
+## Pointers
 
-- `ref/`: the installed original game (v2.2, code wheel removed) and the
-  manual PDF. Run it with `dosbox-staging -conf reference/dosbox-staging.conf`.
-- `tmp/`: the source archives and scratch.
-- `amiga/env.sh`: puts the shared `~/.local` toolchain and FS-UAE on PATH.
-- `tools/ghidra`: symlink to the shared Ghidra install.
+- Method: `docs/architecture.md`, `docs/phases.md`,
+  `docs/translation-lessons.md`, `docs/x86-notes.md`
+- Process: `docs/method-lessons.md`, `docs/perf-method.md`
+- Amiga: `docs/amiga-arch.md`, `docs/amiga-lessons.md`,
+  `docs/m68k-optimisation.md`, `src/platform/amiga/framework/README.md`
+- Tools: `docs/toolchain.md`, `docs/headless-fsuae.md`,
+  `docs/pc-reference-loop.md`
+- Release: `docs/whdload.md`, `docs/release.md`
+- Build: `make amiga`, `make smoke`; original: `dosbox-staging -conf
+  reference/dosbox-staging.conf`; `SetPatch` expected at `tmp/SetPatch`.
