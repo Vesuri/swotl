@@ -33,6 +33,7 @@ product. The original running under a PC emulator is the ground truth.
 ## Pointers
 
 - Method: `docs/architecture.md`, `docs/phases.md`,
+  `docs/plan-reference-map.md`, `docs/translator-design.md`,
   `docs/translation-lessons.md`, `docs/x86-notes.md`
 - Process: `docs/method-lessons.md`, `docs/perf-method.md`
 - Amiga: `docs/amiga-arch.md`, `docs/amiga-lessons.md`,

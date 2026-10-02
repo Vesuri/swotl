@@ -47,7 +47,7 @@ root EXE + .OVL images (proved against DOSBox captures)
 7. Unresolved indirect control flow, writes to translated code and unknown
    ports/interrupts stop with a report. No interpreter fallback in release.
 
-## Target model [PROPOSED — settle in phases 3–4]
+## Target model [PROPOSED — decisions D1–D16 in translator-design.md]
 
 - Guest RAM: one contiguous block, byte-exact little-endian, linear address
   `seg*16+off` as in DOSBox, so RAM images diff directly against captures.
@@ -70,8 +70,8 @@ root EXE + .OVL images (proved against DOSBox captures)
 ## Oracles
 
 - x86 semantics: Unicorn x86-16 (C library, as in Slicks).
-- Generated 68020 code on host: a 68k core (Musashi, as Pokeri) runs the
-  same cases, so instruction/block differentials need no Amiga.
+- Generated 68020 code on host: Unicorn 68020 (as Slicks) runs the same
+  cases, so instruction/block differentials need no Amiga.
 - Whole game: lockstep against DOSBox with recorded input; compare guest RAM
   and the mode 13h framebuffer at frame boundaries
   ([pc-reference-loop.md](pc-reference-loop.md)).
