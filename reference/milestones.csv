@@ -1,0 +1,5 @@
+name,time_limit,keys,snapshot,resident,vga_mode
+m0-entry,20,,SWOTL.EXE+164f2,SWOTL.EXE,
+m1-mode13h,20,,RTSVGA.OVL+390d,RTSVGA.OVL,
+m2-choose-side,90,SWOTL.EXE+13ed3#3000=enter;SWOTL.EXE+44e2#300=enter,SWOTL.EXE+44e2#900,NOTCAMP.OVL,13
+m3-demo-flight,120,,REPLAY.OVL+31e6,REPLAY.OVL FLIGHT.OVL,13

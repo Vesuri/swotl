@@ -8,19 +8,21 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
 
 3. Launcher args 3 and 6/7 (`5`, `Y 64`): effect not yet observed
    (`source-inventory.md`); settle before relying on detail/timing.
-4. Check for a CPU probe or 386-only paths; choose primary/comparison CPU.
-5. Determinism beyond M1: BIOS ticks are pinned; find the RNG and check
-   that the `DEMO1.DEM` attract flight repeats byte-identically (candidate
-   deterministic flight input).
-6. Define reference milestones, each with a guest-state signal; find a
-   FRONTEND menu-poll site for guest-state key injection (M2+).
+5. Find the RNG; check that the `DEMO1.DEM` attract flight stays
+   byte-identical over many frames (candidate deterministic flight input).
+6. Milestones m4 (N flight frames, needs a per-frame trigger site:
+   `REPLAY.OVL+31E6` fires only per demo cycle, RTSVGA table entries never
+   ran) and m5 (player flight from the menu, film replay); M2 key triggers
+   use Nth-hit counts of generic polls, replace with menu-specific sites.
 6a. Image proof (gate 1): rebuild root + overlay images from the files
    (relocations at the load segment; `.OVL` header bytes before the code
    are the likely fixups) and `cmp` against snapshots.
 
 ## Phase 2 — static/live map
 
-7. Reverse the PLINK overlay manager: call path to non-resident overlays,
+6b. D16 evidence: classify the self-modifying writes in
+   `pc-reference-loop.md` (patched terminator in unrolled code vs data).
+7. Reverse the PLINK overlay manager (thunks: `source-inventory.md`): call path to non-resident overlays,
    return stack, fixups, which overlays coexist; confirm load areas from
    captures (CAMPAIGN/NOTCAMP appear to overlap FLIGHT's range).
 8. Recursive-descent sweep of root and overlays; settle int 21h/67h/33h and
