@@ -94,5 +94,38 @@ Trace outputs (`tmp/pc-runs/<name>/trace/`, written at exit):
 | `code-writes.csv` | CPU writes into paragraphs that have executed since their last load |
 | `residency.csv` | paragraph ranges → module at exit |
 
-Unattended (no input) the game shows the logo and runs the `DEMO1.DEM` flight
-demo: FRONTEND, then FLIGHT and REPLAY, without a key.
+Milestones: `reference/milestones.csv`, run by `make reference`
+(`tools/reference.py`): snapshot reached, modules resident, BIOS video mode,
+RAM/VRAM/DAC hashes equal to the previous run (`tmp/reference-hashes.csv`).
+Frames: `tools/snap_png.py tmp/pc-runs/<run>/trace/snap-<name>`.
+
+| Milestone | Signal | Input |
+|---|---|---|
+| m0-entry | `SWOTL.EXE+164F2` (MZ entry) | none |
+| m1-mode13h | `RTSVGA.OVL+390D`, after INT 10h AX=0013h | none |
+| m2-choose-side | "CHOOSE A SIDE" (FRONTEND + NOTCAMP), mouse poll `SWOTL.EXE+44E2` #900 | Enter at `kbhit` (`+13ED3`) #3000 skips the logo; Enter at mouse poll #300 leaves the demo |
+| m3-demo-flight | `REPLAY.OVL+31E6` #1: `DEMO1.DEM` attract flight | none |
+
+Facts from these runs:
+
+- Unattended: logo, then the `DEMO1.DEM` attract flight (FRONTEND, FLIGHT,
+  REPLAY). Esc on the logo asks "DO YOU WANT TO EXIT? (Y/N)". No code-wheel
+  screen on the path to m2.
+- During the demo the only input polled is INT 33h (`+44E2`/`+44FA`);
+  keyboard input there arrives without an observed poll (BIOS buffer read
+  likely).
+- Determinism: RAM/VRAM/DAC at m1 and m3 are identical across runs. The
+  instruction count at a milestone is not (interrupt arrival points vary
+  with host tick interleaving), so lockstep must sync on guest events.
+- CPU: executed code is 8086-only (no 186/286/386 opcodes outside the
+  self-modified block, no CPU probe). Primary `cputype=386`; 286 differs
+  only in interrupt arrival points and PUSHF's upper flag bits (PLINK saves
+  `7202h` vs `0202h`).
+- Video: chained mode 13h; mode and palette only via INT 10h (AX=0013h,
+  1012h, 1017h); no guest VGA port access, no page flipping; only RTSVGA
+  writes VGA memory. DOSBox-X stores chained byte `a` at
+  `vram[((a & ~3) << 2) | (a & 3)]`.
+- Self-modifying code: `SWOTL.EXE+4FF0/+4FFC` rewrite single bytes at 678
+  sites in the unrolled block `+6A4D..+899A` (+5132/+513D, +52CE/+52DA
+  likewise); `+8FD5/+9030/+908E` patch words in `+7C3F..+8998`. Writes
+  around `+E4E0` and `+49B0` look like code-segment variables.
