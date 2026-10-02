@@ -6,8 +6,6 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
 
 ## Phase 1 — PC reference loop
 
-1. Run the reference from a disposable copy (`tmp/pc-root`), not `ref/`: the
-   game writes saves and films. Update `reference/dosbox-staging.conf`.
 2. Choose and vendor the instrumented emulator (DOSBox-X as Slicks); record
    patch order. Hooks: MZ entry, `.OVL` load + segment, per-overlay traces,
    mode 13h framebuffer + palette capture.

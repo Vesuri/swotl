@@ -41,5 +41,6 @@ product. The original running under a PC emulator is the ground truth.
 - Tools: `docs/toolchain.md`, `docs/headless-fsuae.md`,
   `docs/pc-reference-loop.md`
 - Release: `docs/whdload.md`, `docs/release.md`
-- Build: `make amiga`, `make smoke`; original: `dosbox-staging -conf
-  reference/dosbox-staging.conf`; `SetPatch` expected at `tmp/SetPatch`.
+- Build: `make amiga`, `make smoke`; original: `make reference-staging`;
+  ref facts: `make inspect`, `make hash`/`check-ref`; `SetPatch` expected
+  at `tmp/SetPatch`. Facts: `docs/source-inventory.md`.

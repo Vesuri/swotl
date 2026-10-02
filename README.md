@@ -14,7 +14,7 @@ this repository. Reference work needs the original v2.2 under the ignored
 make amiga        # amiga/out/Swotl.exe
 make smoke        # boot under FS-UAE + GDB, check the takeover runs
 amiga/run.sh      # interactive A1200 boot
-dosbox-staging -conf reference/dosbox-staging.conf   # the original
+make reference-staging   # the original, from a disposable copy
 ```
 
 Open work: [docs/open-work.md](docs/open-work.md).
