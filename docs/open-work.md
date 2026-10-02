@@ -6,8 +6,8 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
 
 ## Phase 1 — PC reference loop
 
-3. Decode the `sw.bat` arguments (`V S 5 N Y Y 64`) from the EXE's parser;
-   fix one set for reference runs.
+3. Launcher args 3 and 6/7 (`5`, `Y 64`): effect not yet observed
+   (`source-inventory.md`); settle before relying on detail/timing.
 4. Check for a CPU probe or 386-only paths; choose primary/comparison CPU.
 5. Determinism beyond M1: BIOS ticks are pinned; find the RNG and check
    that the `DEMO1.DEM` attract flight repeats byte-identically (candidate

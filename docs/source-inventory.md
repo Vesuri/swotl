@@ -62,7 +62,22 @@ touches VGA memory and ports.
 
 ## Launcher
 
-`sw.bat`: `swotl V S 5 N Y Y 64` (arguments decoded in 1.8).
+`sw.bat`: `swotl V S 5 N Y Y 64`, pinned for reference runs. Parsed in
+`main` (`SWOTL.EXE+0000`, argc at `[bp+6]`, argv at `[bp+8]`); no
+arguments prints "Run INSTALL".
+
+| # | Value | Effect | Evidence |
+|---|---|---|---|
+| 1 | `V` | graphics driver: `V/v` VGA (3, RTSVGA), `E/e` EGA (0), `T/t` Tandy (2); other: interactive prompt | `+3BB6` switch → `[9936]` |
+| 2 | `S` | sound: `S`/`A` AdLib FM (SPAZ + `ADLIB.SFX`, port `388h`; no SB DSP access seen); `I`/`N` PC speaker (SFXA + `SFX.SFX`, ports `42h/61h`); default `I` | `+0122` → PLINK thunk, overlay 9; runs with each value |
+| 3 | `5` | `atoi−1` (4) → `[9DB0]`; with VGA indexes byte table `[078C+n]` → `[233E]` | `+3C36`; meaning open |
+| 4 | `N` | joystick: `N/n` clears `[A6C6]` (joystick present) after the port `201h` probe | `+3560`, probe `+42B0` |
+| 5 | `Y` | mouse: `N/n` → `[A71A]=0`, else 1, after INT 33h vector check | `+3545`, `+44C0` |
+| 6 | `Y` | `N/n` → `[612A]=0`, else 1 | `+0152` |
+| 7 | `64` | if arg 6 ≠ N: `[61E6]=max(atol,16)` (dword), else `3FFh`; passed to `1B8B:010E` with 7 | `+01C2`; meaning open |
+
+PLINK thunks (root `+16B66` onwards, 12 bytes each): `call far 1E39:034C`
+(overlay manager), `dw` overlay id, `jmp far` target.
 
 ## Their Finest Hour (Amiga) — cross-reference only
 
