@@ -23,7 +23,11 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
    captures (CAMPAIGN/NOTCAMP appear to overlap FLIGHT's range).
 8. Recursive-descent sweep of root and overlays; settle int 21h/67h/33h and
    port inventories (`SFXA`/`SPAZ` contain `CD 21` byte pairs).
-9. Identify the compiler runtime and calling convention.
+9. Identify the compiler runtime (Microsoft C 5.x per strings) and calling
+   convention; check whether the MS C floating-point emulator is linked
+   (INT 34h–3Dh fixups) and used.
+9a. Cross-reference TFH Amiga `BOB` (Aztec C, same source family) in Ghidra
+   for routine naming and `.PAC`/`.GOB` formats; evidence only.
 10. Measure whether RTSVGA uses chained mode 13h or unchained VGA, and
     whether it page-flips (decides Amiga single vs double buffering).
 

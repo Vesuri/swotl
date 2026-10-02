@@ -13,6 +13,7 @@ SHA-256 of every `ref/` file in `tmp/ref.sha256` (`make hash`, local only).
 | Entry / stack | `1617:0382` / `4A9E:0800` |
 | Alloc min / max | `33AEh` / `FFFFh` paragraphs |
 | Relocations | 1,006 |
+| Compiler runtime | Microsoft C ("MS Run-Time Library - Copyright (c) 1987"; R6000–R6009 messages incl. "floating point not loaded") |
 | Linker | Phoenix PLINK (copyright 1984–86 string; "Ovl stack underflow/overflow", "No mem for ovl stack") |
 | Overlay names | in the root: SPAZ SFXA RTSVGA RTSTANDY RTSEGA FRONTEND CAMPAIGN NOTCAMP FLIGHT REPLAY PANEL DATA |
 
@@ -46,3 +47,18 @@ the CAMPAIGN/NOTCAMP and REPLAY/PANEL areas.
 ## Launcher
 
 `sw.bat`: `swotl V S 5 N Y Y 64` (arguments decoded in 1.8).
+
+## Their Finest Hour (Amiga) — cross-reference only
+
+`tmp/TheirFinestHour&Missions_v1.1_0037&1369.lha` (WHDLoad install,
+extracted to `tmp/tfh/`). Evidence for naming and structure in phase 2;
+never a source of port code (guest code reaches the Amiga only as
+translator output).
+
+| Fact | Value |
+|---|---|
+| Version | TFH 1.0, 28 Apr 1990 (`data/read.me`) |
+| Executables | `data/BOB` (game, hunks code 204,352 / data 64,020 / bss 4 B), `data/MB` (mission builder) |
+| Compiler | Manx Aztec C (`MANX` marker; `LINK A5`/`UNLK A5` frames); no symbol or debug hunks |
+| Shared with SWOTL | UI strings ("Insert Your Campaign Disk", "Do you want to fly the same mission again?") present in SWOTL's root/overlays: common C source |
+| Data formats | `.PAC` and `.GOB` in both; `.PAC` opcode bytes (`FD`/`FE`/`FB`) look like the same RLE family |
