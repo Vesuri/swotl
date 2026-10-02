@@ -67,27 +67,32 @@ adaptations that do not exist yet. Tool versions are in [toolchain.md](toolchain
 - The pointer cursor can be **in the pixels**. Park it outside the crop before a capture. [Vette]
 - Emulator speed flags (`-nothrottle`, cycles) change host speed, not emulated-time quantities. [Vette]
 
-## SWOTL adaptation [PLAN]
+## SWOTL loop
 
-Facts (verified 2026-10-02):
+Facts about the originals: [source-inventory.md](source-inventory.md).
 
-| Item | Value |
+| Piece | How |
 |---|---|
-| Launcher | `ref/sw.bat` = `swotl V S 5 N Y Y 64` (no trailing newline). Per the manual, written by INSTALL option 2. Argument meanings not decoded |
-| `SWOTL.EXE` | 100,112 B, SHA-256 `0223a4e3fc063a591d17cf789b8e9b3ec03eac925c935688ab78a98f05444915`. MZ: 1,006 relocs, 256-paragraph header, CS:IP `1617:0382`, SS:SP `4A9E:0800`. String "Copyright (C) 1984, 1985, 1986 by Phoenix Software Associates Ltd." |
-| Overlays | `FRONTEND`, `CAMPAIGN`, `NOTCAMP`, `FLIGHT`, `PANEL`, `REPLAY`, `DATA`, `SFXA`, `SPAZ`, `RTSVGA`, `RTSEGA`, `RTSTANDY` `.OVL` (4–103 KB) |
-| Demo/film data | `DEMO1.DEM`, `DEMO2.DEM` (915 B), `514.DEM` (7 B). The manual's Film Viewing Room replays recorded film. Format unknown |
-| Memory | READ.ME: ≥592,000 B free, or 550,000 B with EMS |
-| Current config | `reference/dosbox-staging.conf`: `memsize=4`, `cpu_cycles=12000`, `core/cputype=auto`, SB16 220/7/1, autoexec `mount c "ref"` → `call sw.bat` → `exit` |
+| Emulator | DOSBox-X `dosbox-x-v2026.08.31` + `tools/patches/` in `ORDER`; `make reference-emulator` (tree in `~/.local/src/swotl-dosbox-x`, linked from `tools/vendor/dosbox-x`: autoconf fails on the repo path's spaces) |
+| Config | `reference/dosbox-x.conf`: `svga_s3`, 4 MB, `core=normal`, `cputype=386`, `cycles=fixed 12000`, `nosound`, SB16 220/7/1 |
+| Run | `make reference-run RUN=name RUN_ARGS=...` → `tools/pc_run.py`: fresh `tmp/pc-runs/<name>/root/` copy of `ref/`, headless, `swotl V S 5 N Y Y 64`. Exit 0 = `SWOTL_EXIT_AFTER` snapshot reached, 2 = time limit, 3 = guest fault (INT 0/6), 4 = no trace output |
+| Arming | first instruction at `PSP+10h+1617h:0382h`; off unless `SWOTL_TRACE` |
+| Addresses | `(module, offset)`: root = image offset; overlay = `.OVL` file offset of the bytes the last DOS read put at that paragraph; `-` = unowned linear address |
+| Determinism | BIOS tick count set to `SWOTL_BIOS_TICKS` (0) at arming; DOS time and INT 1Ah derive from it. Two runs to M1 give identical RAM |
+| Input | `SWOTL_KEYS=MODULE+HEX[#N]=key,...`: press when the guest reaches that instruction (Nth time since the previous key's release), release after `SWOTL_KEY_HOLD` instructions |
+| Snapshot | `SWOTL_SNAPSHOTS=name@MODULE+HEX[#N]`: `snap-<name>/` with `ram.bin` (1 MiB), `vram.bin`, `dac.bin`, `regs.txt`, `residency.csv` |
+| Summary | `make trace-summary RUN=name` |
 
-Plan, adapted from Slicks:
+Trace outputs (`tmp/pc-runs/<name>/trace/`, written at exit):
 
-- **[PLAN]** Run from a disposable `tmp/pc-root` copy, not `ref/`. The current conf mounts `ref` directly, and the game saves pilots, missions and films.
-- **[PLAN]** No Compack, so arm tracing on the MZ entry (`1617:0382` relative to the load segment). Log every INT 21h open/read of `*.OVL` with its destination segment. Normalise addresses as **(module, offset)**, where module = EXE or overlay name. One overlay buffer can hold different code over time (the Vette segment lesson).
-- **[PLAN]** Overlay residency: the executed-bitmap and edge traces must be keyed per resident overlay. Writes into the overlay area are expected at load and must be told apart from self-modifying code.
-- **[PLAN]** Decode the `sw.bat` arguments, likely video/sound/control/memory choices (`RTSVGA/RTSEGA/RTSTANDY`, `ADLIB.SFX`/`SFX.SFX`), from the EXE's argv parsing before relying on them. Pin one argument set for the reference.
-- **[PLAN]** CPU personality: check SWOTL for a CPU probe or 386 paths before choosing 286 vs 386. Keep one primary plus one independent comparison, as Slicks did.
-- **[PLAN]** Video is mode 13h. Capture the 64,000-byte `A0000` framebuffer and the DAC palette at a named guest PC (an emulator hook), not only from AVI, so the Amiga side can compare chunky bytes directly (Slicks `verify_amiga_frame.py` pattern).
-- **[PLAN]** Input: keyboard via `autotype` for menus, triggered on guest state (menu-poll routine) rather than pace. Joystick and mouse via an env-armed emulator patch like Slicks' mouse patch. Evaluate `DEMO*.DEM` and film replay as deterministic flight-input sources.
-- **[PLAN]** Determinism: find the RNG and timer sources (PIT, BIOS tick) and seed or pin them. Manual time acceleration (2/4/8/16×) affects frame/tick relations, so record it as part of milestone state.
-- **[PLAN]** Milestones, each with a positive guest signal: entry reached → mode 13h set → each overlay loaded → front-end menu → mission start → N flight frames advancing.
+| File | Content |
+|---|---|
+| `events.csv` | ordered: arm, DOS open/read/seek/close (name, linear buffer, file pos), INT 10h/33h/67h and selected INT 21h with registers, faults, keys, snapshots |
+| `modules.csv`, `executed-<module>.bin` | per-module instruction-start bitmap |
+| `edges.csv` | unique consecutive-instruction pairs |
+| `interrupts.csv`, `ports.csv`, `vga.csv` | aggregates by source site (AX for software INTs; port value; 256-byte VGA page) |
+| `code-writes.csv` | CPU writes into paragraphs that have executed since their last load |
+| `residency.csv` | paragraph ranges → module at exit |
+
+Unattended (no input) the game shows the logo and runs the `DEMO1.DEM` flight
+demo: FRONTEND, then FLIGHT and REPLAY, without a key.

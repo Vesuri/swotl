@@ -6,15 +6,17 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
 
 ## Phase 1 — PC reference loop
 
-2. Choose and vendor the instrumented emulator (DOSBox-X as Slicks); record
-   patch order. Hooks: MZ entry, `.OVL` load + segment, per-overlay traces,
-   mode 13h framebuffer + palette capture.
 3. Decode the `sw.bat` arguments (`V S 5 N Y Y 64`) from the EXE's parser;
    fix one set for reference runs.
 4. Check for a CPU probe or 386-only paths; choose primary/comparison CPU.
-5. Find RNG and timer sources and pin them; check whether `DEMO*.DEM` or
-   film replay can provide deterministic flight input.
-6. Define reference milestones, each with a guest-state signal.
+5. Determinism beyond M1: BIOS ticks are pinned; find the RNG and check
+   that the `DEMO1.DEM` attract flight repeats byte-identically (candidate
+   deterministic flight input).
+6. Define reference milestones, each with a guest-state signal; find a
+   FRONTEND menu-poll site for guest-state key injection (M2+).
+6a. Image proof (gate 1): rebuild root + overlay images from the files
+   (relocations at the load segment; `.OVL` header bytes before the code
+   are the likely fixups) and `cmp` against snapshots.
 
 ## Phase 2 — static/live map
 

@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging amiga smoke clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run trace-summary amiga smoke clean
 
 PYTHON ?= python3
 REFERENCE_ROOT ?= tmp/pc-root
@@ -17,6 +17,9 @@ help:
 	@echo "  make check-ref          verify ref/ against $(REF_HASHES)"
 	@echo "  make prepare-reference  copy ref/ to disposable $(REFERENCE_ROOT)"
 	@echo "  make reference-staging  play the disposable copy in DOSBox Staging"
+	@echo "  make reference-emulator build instrumented DOSBox-X (tools/patches/ORDER)"
+	@echo "  make reference-run RUN=name [RUN_ARGS=...]  headless traced run -> tmp/pc-runs/name"
+	@echo "  make trace-summary RUN=name                 summarise that run's trace"
 	@echo "  make amiga   build amiga/out/Swotl.exe"
 	@echo "  make smoke   boot it under FS-UAE + GDB and check the takeover runs"
 	@echo "  make clean   remove Amiga build output"
@@ -40,6 +43,18 @@ prepare-reference: check-ref
 reference-staging: prepare-reference
 	dosbox-staging --noprimaryconf --nolocalconf -conf reference/dosbox-staging.conf
 	$(MAKE) check-ref
+
+reference-emulator:
+	tools/build_dosbox_x.sh
+
+RUN ?= unattended
+RUN_ARGS ?= --time-limit 60
+
+reference-run: check-ref
+	$(PYTHON) tools/pc_run.py $(RUN) $(RUN_ARGS)
+
+trace-summary:
+	$(PYTHON) tools/trace_summary.py tmp/pc-runs/$(RUN)/trace
 
 amiga:
 	. amiga/env.sh && $(MAKE) -C amiga

@@ -40,9 +40,25 @@ overrun into code (PANEL).
 | PANEL | 13,664 | 854 | `36D6` | REPLAY |
 | DATA | 64,896 | 4,056 | `4133` (most entries `3BAF`) | |
 
-Static reading, to be proved by load captures (1.4): one sound area, one
-graphics-driver area, then a FRONTEND/FLIGHT area that FLIGHT extends over
-the CAMPAIGN/NOTCAMP and REPLAY/PANEL areas.
+Live loads (unattended run, load segment `0822`): the PLINK loader reads at
+`SWOTL.EXE+16328`; code lands at load segment + link segment; the bytes
+before the code (file `0..pos`) are read separately and are not code
+(fixup/entry tables, format open).
+
+| Overlay | Code from file pos | Segment (relative) | Reads |
+|---|---|---|---|
+| SPAZ | `240` | `+1770` | 1 |
+| RTSVGA | `020` | `+18E4` | 1 |
+| FRONTEND | `1300` | `+1E7C` | 65,520 + 11,696 B |
+| FLIGHT | `0E90` | `+1E7C` | 65,520 + 34,224 B |
+| REPLAY | `3C0` | `+36D6` | 1 |
+| DATA | `8D0` | `+3B53` | 1 (no code executed) |
+
+Other first-run facts: PIT reprogrammed (~250 Hz INT 8); AdLib music
+(`388h/389h`); joystick probe on `201h`; mouse via INT 33h; EMS 4.0 used
+for paging data (INT 67h AH=40–44); keyboard via C runtime `kbhit`
+(INT 21h AH=0Bh at `SWOTL.EXE+13ED3`) and INT 16h AH=02h; only RTSVGA
+touches VGA memory and ports.
 
 ## Launcher
 

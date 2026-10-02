@@ -1,0 +1,840 @@
+diff --git a/include/paging.h b/include/paging.h
+index e7e6974..03e6052 100644
+--- a/include/paging.h
++++ b/include/paging.h
+@@ -436,15 +436,19 @@ static INLINE PhysPt64 PAGING_GetPhysicalAddress64(const LinearPt linAddr) {
+ 	return ((PhysPt64)(paging.tlb.phys_page[linAddr>>12]&PHYSPAGE_ADDR)<<(PhysPt64)12)|(linAddr&0xfff);
+ }
+ 
++#include "swotl_trace.h"
++
+ /* Special inlined memory reading/writing */
+ 
+ static INLINE uint8_t mem_readb_inline(const LinearPt address) {
++	if (swotl_active && address >= 0xa0000u && address < 0xc0000u) SWOTL_MemoryAccess(false, address, 1);
+ 	const HostPt tlb_addr=get_tlb_read(address);
+ 	if (tlb_addr) return host_readb(tlb_addr+address);
+ 	else return (uint8_t)(get_tlb_readhandler(address))->readb(address);
+ }
+ 
+ static INLINE uint16_t mem_readw_inline(const LinearPt address) {
++	if (swotl_active && address >= 0xa0000u && address < 0xc0000u) SWOTL_MemoryAccess(false, address, 2);
+ 	if ((address & 0xfff)<0xfff) {
+ 		const HostPt tlb_addr=get_tlb_read(address);
+ 		if (tlb_addr) return host_readw(tlb_addr+address);
+@@ -453,6 +457,7 @@ static INLINE uint16_t mem_readw_inline(const LinearPt address) {
+ }
+ 
+ static INLINE uint32_t mem_readd_inline(const LinearPt address) {
++	if (swotl_active && address >= 0xa0000u && address < 0xc0000u) SWOTL_MemoryAccess(false, address, 4);
+ 	if ((address & 0xfff)<0xffd) {
+ 		const HostPt tlb_addr=get_tlb_read(address);
+ 		if (tlb_addr) return host_readd(tlb_addr+address);
+@@ -461,12 +466,14 @@ static INLINE uint32_t mem_readd_inline(const LinearPt address) {
+ }
+ 
+ static INLINE void mem_writeb_inline(const LinearPt address,const uint8_t val) {
++	if (swotl_active && SWOTL_WatchedAddress(address)) SWOTL_MemoryAccess(true, address, 1);
+ 	const HostPt tlb_addr=get_tlb_write(address);
+ 	if (tlb_addr) host_writeb(tlb_addr+address,val);
+ 	else (get_tlb_writehandler(address))->writeb(address,val);
+ }
+ 
+ static INLINE void mem_writew_inline(const LinearPt address,const uint16_t val) {
++	if (swotl_active && SWOTL_WatchedAddress(address)) SWOTL_MemoryAccess(true, address, 2);
+ 	if ((address & 0xfffu)<0xfffu) {
+ 		const HostPt tlb_addr=get_tlb_write(address);
+ 		if (tlb_addr) host_writew(tlb_addr+address,val);
+@@ -475,6 +482,7 @@ static INLINE void mem_writew_inline(const LinearPt address,const uint16_t val)
+ }
+ 
+ static INLINE void mem_writed_inline(const LinearPt address,const uint32_t val) {
++	if (swotl_active && SWOTL_WatchedAddress(address)) SWOTL_MemoryAccess(true, address, 4);
+ 	if ((address & 0xfffu)<0xffdu) {
+ 		const HostPt tlb_addr=get_tlb_write(address);
+ 		if (tlb_addr) host_writed(tlb_addr+address,val);
+diff --git a/include/swotl_trace.h b/include/swotl_trace.h
+new file mode 100644
+index 0000000..c6b3991
+--- /dev/null
++++ b/include/swotl_trace.h
+@@ -0,0 +1,25 @@
++/* SWOTL reference instrumentation (Secret Weapons of Luftwaffe port).
++ * Off unless SWOTL_TRACE is set; armed at the SWOTL.EXE MZ entry. */
++#ifndef DOSBOX_SWOTL_TRACE_H
++#define DOSBOX_SWOTL_TRACE_H
++
++#include <stdint.h>
++
++extern bool swotl_active;
++
++void SWOTL_Instruction(uint32_t linear);
++void SWOTL_MemoryAccess(bool write, uint32_t address, uint8_t width);
++void SWOTL_Interrupt(unsigned num, unsigned type, uint32_t oldeip);
++void SWOTL_Port(bool write, uint8_t width, unsigned port, uint32_t value);
++void SWOTL_DosOpen(const char *name, bool ok, uint16_t handle, uint8_t mode);
++void SWOTL_DosClose(uint16_t handle);
++void SWOTL_DosRead(uint16_t handle, uint32_t buffer, uint32_t file_pos,
++                   uint16_t requested, uint16_t actual);
++void SWOTL_DosSeek(uint16_t handle, uint8_t mode, uint32_t result);
++void SWOTL_DosExecOverlay(const char *name, uint16_t load_seg, uint16_t reloc);
++
++static inline bool SWOTL_WatchedAddress(const uint32_t address) {
++	return address < 0xc0000u;
++}
++
++#endif
+diff --git a/src/cpu/core_normal.cpp b/src/cpu/core_normal.cpp
+index 26d9f49..2a193a6 100644
+--- a/src/cpu/core_normal.cpp
++++ b/src/cpu/core_normal.cpp
+@@ -22,6 +22,7 @@
+ #include "pic.h"
+ #include "fpu.h"
+ #include "paging.h"
++#include "swotl_trace.h"
+ #include "mmx.h"
+ 
+ extern bool do_lds_wraparound;
+@@ -163,6 +164,7 @@ Bits CPU_Core_Normal_Run(void) {
+ 
+ 	while (CPU_Cycles-->0) {
+ 		LOADIP;
++		SWOTL_Instruction(core.cseip);
+ 		last_prefix=MP_NONE;
+ 		core.opcode_index=cpu.code.big*(Bitu)0x200u;
+ 		core.prefixes=cpu.code.big;
+diff --git a/src/cpu/core_normal_286.cpp b/src/cpu/core_normal_286.cpp
+index 3dad080..d2c0825 100644
+--- a/src/cpu/core_normal_286.cpp
++++ b/src/cpu/core_normal_286.cpp
+@@ -22,6 +22,7 @@
+ #include "lazyflags.h"
+ #include "callback.h"
+ #include "paging.h"
++#include "swotl_trace.h"
+ #include "pic.h"
+ #include "fpu.h"
+ 
+@@ -181,6 +182,7 @@ Bits CPU_Core286_Normal_Run(void) {
+ 
+ 	while (CPU_Cycles-->0) {
+ 		LOADIP;
++		SWOTL_Instruction(core.cseip);
+ 		core.prefixes=0;
+ 		core.opcode_index=0;
+ 		last_ea86_offset=0;
+diff --git a/src/cpu/cpu.cpp b/src/cpu/cpu.cpp
+index 84b0e9a..2f68092 100644
+--- a/src/cpu/cpu.cpp
++++ b/src/cpu/cpu.cpp
+@@ -22,6 +22,7 @@
+ #include <stddef.h>
+ 
+ #include "cpu.h"
++#include "swotl_trace.h"
+ #include "debug.h"
+ #include "mapper.h"
+ #include "paging.h"
+@@ -1203,6 +1204,7 @@ void CPU_Interrupt(Bitu num,Bitu type,uint32_t oldeip) {
+       return;
+     }
+ 	lastint=(uint8_t)num;
++	SWOTL_Interrupt((unsigned)num, (unsigned)type, oldeip);
+ 	FillFlags();
+ #if C_DEBUG
+ # if C_HEAVY_DEBUG
+diff --git a/src/dos/dos.cpp b/src/dos/dos.cpp
+index 7b98322..fc87cc7 100644
+--- a/src/dos/dos.cpp
++++ b/src/dos/dos.cpp
+@@ -29,6 +29,7 @@
+ 
+ #include "control.h"
+ #include "dosbox.h"
++#include "swotl_trace.h"
+ #include "dos_inc.h"
+ #include "bios_disk.h"
+ #include "bios.h"
+@@ -1983,6 +1984,7 @@ static Bitu DOS_21Handler(void) {
+ 			uint8_t oldal=reg_al;
+ 			force_sfn = true;
+             if (DOS_OpenFile(name1,reg_al,&reg_ax)) {
++                SWOTL_DosOpen(name1, true, reg_ax, oldal);
+ #if defined(USE_TTF)
+                 if (ttf.inUse&&wpType==1) {
+                     int len = (int)strlen(name1);
+@@ -2000,6 +2002,7 @@ static Bitu DOS_21Handler(void) {
+ 					CALLBACK_SCF(false);
+ 				} else {
+                     reg_ax=dos.errorcode;
++                    SWOTL_DosOpen(name1, false, 0, oldal);
+                     CALLBACK_SCF(true);
+                 }
+             }
+@@ -2028,6 +2031,7 @@ static Bitu DOS_21Handler(void) {
+             uint8_t handle = RealHandle(reg_bx);
+             uint8_t drive = (handle != 0xff && Files[handle]) ? Files[handle]->GetDrive() : DOS_DRIVES;
+             unmask_irq0 |= disk_io_unmask_irq0;
++            SWOTL_DosClose(reg_bx);
+             if (DOS_CloseFile(reg_bx, false, &reg_al)) {
+ #if defined(USE_TTF)
+                 if (ttf.inUse&&reg_bx == WPvga512CHMhandle)
+@@ -2082,8 +2086,12 @@ static Bitu DOS_21Handler(void) {
+                 }
+                 else
+                 {
++                    uint32_t swotl_pos = 0;
++                    if (swotl_active) DOS_SeekFile(reg_bx, &swotl_pos, DOS_SEEK_CUR);
++                    const uint16_t swotl_requested = toread;
+                     if((fRead = DOS_ReadFile(reg_bx, dos_copybuf, &toread))) {
+                         MEM_BlockWrite(SegPhys(ds) + reg_dx, dos_copybuf, toread);
++                        SWOTL_DosRead(reg_bx, SegPhys(ds) + reg_dx, swotl_pos, swotl_requested, toread);
+                         diskio_delay_handle(reg_bx, toread);
+                     }
+                 }
+@@ -2198,6 +2206,7 @@ static Bitu DOS_21Handler(void) {
+             {
+                 uint32_t pos=((uint32_t)reg_cx << 16u) + reg_dx;
+                 if (DOS_SeekFile(reg_bx,&pos,reg_al)) {
++                    SWOTL_DosSeek(reg_bx, reg_al, pos);
+                     reg_dx=(uint16_t)((unsigned int)pos >> 16u);
+                     reg_ax=(uint16_t)(pos & 0xFFFF);
+                     diskio_delay_handle(reg_bx, 32);
+diff --git a/src/dos/dos_execute.cpp b/src/dos/dos_execute.cpp
+index ef7d196..5094de3 100644
+--- a/src/dos/dos_execute.cpp
++++ b/src/dos/dos_execute.cpp
+@@ -24,6 +24,7 @@
+ #include <string>
+ 
+ #include "dosbox.h"
++#include "swotl_trace.h"
+ #include "logging.h"
+ #include "mem.h"
+ #include "dos_inc.h"
+@@ -828,6 +829,7 @@ bool DOS_Execute(const char* name, PhysPt block_pt, uint16_t flags) {
+ 	}
+ 	CALLBACK_SCF(false);		/* Carry flag cleared for caller if successful */
+ 	if(flags == OVERLAY) {
++		SWOTL_DosExecOverlay(name, loadseg, block.overlay.relocation);
+ 		reg_ax = 0;             // Testing with MS-DOS (6.22) shows that if INT 21 AX=4B is called with the overlay flag (AL==3), then AX and DX are 0 on return.
+ 		reg_dx = 0;
+ 		return true;			/* Everything done for overlays */
+diff --git a/src/hardware/iohandler.cpp b/src/hardware/iohandler.cpp
+index 34222c4..5d33121 100644
+--- a/src/hardware/iohandler.cpp
++++ b/src/hardware/iohandler.cpp
+@@ -20,6 +20,7 @@
+ #include <string.h>
+ #include "control.h"
+ #include "dosbox.h"
++#include "swotl_trace.h"
+ #include "inout.h"
+ #include "logging.h"
+ #include "setup.h"
+@@ -492,6 +493,7 @@ void log_io(Bitu width, bool write, Bitu port, Bitu val) {
+ 
+ void IO_WriteB(Bitu port,uint8_t val) {
+ 	log_io(0, true, port, val);
++	SWOTL_Port(true, 1, (unsigned)port, val);
+ 	if (GCC_UNLIKELY(GETFLAG(VM) && (CPU_IO_Exception(port,1)))) {
+ 		CPU_ForceV86FakeIO_Out(port,val,1);
+ 	}
+@@ -503,6 +505,7 @@ void IO_WriteB(Bitu port,uint8_t val) {
+ 
+ void IO_WriteW(Bitu port,uint16_t val) {
+ 	log_io(1, true, port, val);
++	SWOTL_Port(true, 2, (unsigned)port, val);
+ 	if (GCC_UNLIKELY(GETFLAG(VM) && (CPU_IO_Exception(port,2)))) {
+ 		CPU_ForceV86FakeIO_Out(port,val,2);
+ 	}
+@@ -514,6 +517,7 @@ void IO_WriteW(Bitu port,uint16_t val) {
+ 
+ void IO_WriteD(Bitu port,uint32_t val) {
+ 	log_io(2, true, port, val);
++	SWOTL_Port(true, 4, (unsigned)port, val);
+ 	if (GCC_UNLIKELY(GETFLAG(VM) && (CPU_IO_Exception(port,4)))) {
+ 		CPU_ForceV86FakeIO_Out(port,val,4);
+ 	}
+@@ -533,6 +537,7 @@ uint8_t IO_ReadB(Bitu port) {
+ 		retval = (uint8_t)io_readhandlers[0][port](port,1);
+ 	}
+ 	log_io(0, false, port, retval);
++	SWOTL_Port(false, 1, (unsigned)port, retval);
+ 	return retval;
+ }
+ 
+@@ -546,6 +551,7 @@ uint16_t IO_ReadW(Bitu port) {
+ 		retval = (uint16_t)io_readhandlers[1][port](port,2);
+ 	}
+ 	log_io(1, false, port, retval);
++	SWOTL_Port(false, 2, (unsigned)port, retval);
+ 	return retval;
+ }
+ 
+@@ -559,6 +565,7 @@ uint32_t IO_ReadD(Bitu port) {
+ 		retval = (uint32_t)io_readhandlers[2][port](port,4);
+ 	}
+ 	log_io(2, false, port, retval);
++	SWOTL_Port(false, 4, (unsigned)port, retval);
+ 	return retval;
+ }
+ 
+diff --git a/src/misc/Makefile.am b/src/misc/Makefile.am
+index e31e63f..fab8958 100644
+--- a/src/misc/Makefile.am
++++ b/src/misc/Makefile.am
+@@ -1,6 +1,6 @@
+-AM_CPPFLAGS = -I$(top_srcdir)/include -I$(top_srcdir)/src "-DRESDIR=\"$(resdir)\""
+-
+-resdir = $(datarootdir)/dosbox-x
+-
+-noinst_LIBRARIES = libmisc.a
+-libmisc_a_SOURCES = clipboard.cpp cross.cpp ethernet.cpp ethernet_pcap.cpp ethernet_slirp.cpp ethernet_ethnet.cpp ethernet_nothing.cpp messages.cpp programs.cpp setup.cpp support.cpp regionalloctracking.cpp savestates.cpp shiftjis.cpp iconvpp.cpp mkdir_p.cpp
++AM_CPPFLAGS = -I$(top_srcdir)/include -I$(top_srcdir)/src "-DRESDIR=\"$(resdir)\""
++
++resdir = $(datarootdir)/dosbox-x
++
++noinst_LIBRARIES = libmisc.a
++libmisc_a_SOURCES = clipboard.cpp cross.cpp ethernet.cpp ethernet_pcap.cpp ethernet_slirp.cpp ethernet_ethnet.cpp ethernet_nothing.cpp messages.cpp programs.cpp setup.cpp support.cpp regionalloctracking.cpp savestates.cpp shiftjis.cpp iconvpp.cpp mkdir_p.cpp swotl_trace.cpp
+diff --git a/src/misc/swotl_trace.cpp b/src/misc/swotl_trace.cpp
+new file mode 100644
+index 0000000..2f185fb
+--- /dev/null
++++ b/src/misc/swotl_trace.cpp
+@@ -0,0 +1,534 @@
++/* SWOTL reference instrumentation (Secret Weapons of Luftwaffe port).
++ *
++ * Enabled by SWOTL_TRACE=1; armed at the first instruction of SWOTL.EXE
++ * (CS:IP = PSP+10h+1617h:0382h). Every guest address is recorded as
++ * (module, offset): the root image, or the .OVL/.EXE file whose bytes the
++ * last DOS read put at that paragraph. Outputs go to SWOTL_TRACE_DIR (".").
++ *
++ * SWOTL_SNAPSHOTS=name@MODULE+HEX[#N],...  dump state on the Nth execution
++ * SWOTL_EXIT_AFTER=name                    exit(0) after that snapshot
++ * SWOTL_KEYS=MODULE+HEX[#N]=key,...        press key when reached (in order)
++ * SWOTL_KEY_HOLD=instructions              release delay (default 600000)
++ * SWOTL_BIOS_TICKS=n                       BIOS tick count set at arming
++ *                                          (default 0; DOS time and INT 1Ah
++ *                                          derive from it, host time does not
++ *                                          leak in)
++ */
++
++#include "dosbox.h"
++#include "cpu.h"
++#include "regs.h"
++#include "mem.h"
++#include "paging.h"
++#include "dos_inc.h"
++#include "vga.h"
++#include "keyboard.h"
++#include "logging.h"
++#include "swotl_trace.h"
++
++#include <algorithm>
++#include <cctype>
++#include <cstdarg>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <map>
++#include <string>
++#include <sys/stat.h>
++#include <tuple>
++#include <unordered_set>
++#include <vector>
++
++bool swotl_active = false;
++
++extern HostPt MemBase;
++
++namespace {
++
++constexpr uint16_t ROOT_ENTRY_CS = 0x1617;
++constexpr uint16_t ROOT_ENTRY_IP = 0x0382;
++constexpr uint32_t ROOT_IMAGE_BYTES = 96000;
++constexpr uint32_t PARAGRAPHS = 0x10000 + 0x1000;
++
++struct Module {
++	std::string name;
++	std::vector<uint8_t> executed;
++	uint32_t loads = 0;
++};
++
++struct Location {
++	uint16_t module; /* 0 = none: offset is the linear address */
++	uint32_t offset;
++	bool operator<(const Location &o) const {
++		return std::tie(module, offset) < std::tie(o.module, o.offset);
++	}
++};
++
++struct Trigger {
++	std::string name;
++	uint16_t module = 0;
++	std::string module_name;
++	uint32_t offset = 0;
++	uint32_t count = 1;
++	uint32_t hits = 0;
++	KBD_KEYS key = KBD_NONE;
++	bool done = false;
++};
++
++struct OpenFile {
++	std::string name;
++	uint32_t pos = 0;
++};
++
++bool configured = false;
++bool enabled = false;
++std::string out_dir = ".";
++uint16_t load_seg = 0;
++uint64_t icount = 0;
++
++std::vector<Module> modules(1, Module{"-", {}, 0});
++std::vector<uint16_t> para_module(PARAGRAPHS, 0);
++std::vector<int32_t> para_offset(PARAGRAPHS, 0);
++std::vector<uint8_t> para_executed(PARAGRAPHS, 0);
++
++bool prev_valid = false;
++uint64_t prev_packed = 0;
++std::unordered_set<uint64_t> edges;
++bool in_interrupt_hook = false;
++Location last_int_source{0, 0};
++
++std::map<std::tuple<uint8_t, uint8_t, uint16_t, Location, Location>, uint64_t> interrupts;
++std::map<std::tuple<bool, uint8_t, uint16_t, uint32_t, Location>, uint64_t> ports;
++std::map<std::tuple<bool, uint8_t, Location, uint32_t>, uint64_t> vga_accesses;
++std::map<std::tuple<Location, uint32_t, uint8_t>, uint64_t> code_writes;
++std::map<uint16_t, OpenFile> files;
++FILE *events = nullptr;
++
++std::vector<Trigger> snapshots;
++std::vector<Trigger> keys;
++size_t key_index = 0;
++uint64_t key_release_at = 0;
++KBD_KEYS key_held = KBD_NONE;
++uint64_t key_hold = 600000;
++std::string exit_after;
++
++std::string Path(const std::string &file) { return out_dir + "/" + file; }
++
++std::string BaseName(const char *path) {
++	std::string s(path);
++	const auto cut = s.find_last_of("\\/:");
++	if (cut != std::string::npos) s = s.substr(cut + 1);
++	for (auto &c : s) c = (char)toupper((unsigned char)c);
++	return s;
++}
++
++bool IsCodeFile(const std::string &name) {
++	const auto dot = name.rfind('.');
++	if (dot == std::string::npos) return false;
++	const auto ext = name.substr(dot);
++	return ext == ".OVL" || ext == ".EXE";
++}
++
++uint16_t ModuleId(const std::string &name) {
++	for (size_t i = 1; i < modules.size(); ++i)
++		if (modules[i].name == name) return (uint16_t)i;
++	modules.push_back(Module{name, {}, 0});
++	return (uint16_t)(modules.size() - 1);
++}
++
++Location Locate(const uint32_t linear) {
++	const uint32_t para = linear >> 4;
++	if (para >= PARAGRAPHS || para_module[para] == 0) return {0, linear};
++	return {para_module[para], (uint32_t)(para_offset[para] + (int32_t)(linear & 15))};
++}
++
++uint64_t Pack(const Location &l) { return ((uint64_t)l.module << 24) | (l.offset & 0xffffff); }
++
++Location CurrentLocation() { return Locate(SegPhys(cs) + (uint16_t)reg_eip); }
++
++/* DOS services run in DOSBox callbacks: attribute them to the guest INT. */
++Location EventLocation() {
++	const auto here = CurrentLocation();
++	return here.module == 0 && here.offset >= 0xf0000u ? last_int_source : here;
++}
++
++void Event(const char *kind, const char *fmt, ...) {
++	if (!events) return;
++	const auto where = EventLocation();
++	fprintf(events, "%llu,%s,%s,0x%05x,", (unsigned long long)icount, kind,
++	        modules[where.module].name.c_str(), where.offset);
++	va_list args;
++	va_start(args, fmt);
++	vfprintf(events, fmt, args);
++	va_end(args);
++	fputc('\n', events);
++}
++
++void MapRange(const uint32_t linear, const uint32_t length, const uint16_t module,
++              const int32_t module_offset) {
++	/* Only paragraphs the read covers completely change owner. */
++	const uint32_t first = (linear + 15) >> 4, end = (linear + length) >> 4;
++	for (uint32_t para = first; para < end && para < PARAGRAPHS; ++para) {
++		para_module[para] = module;
++		para_offset[para] = module_offset + (int32_t)(para * 16) - (int32_t)linear;
++		para_executed[para] = 0;
++	}
++}
++
++void WriteFile(const std::string &file, const void *data, size_t size) {
++	if (auto *f = fopen(Path(file).c_str(), "wb")) {
++		fwrite(data, 1, size, f);
++		fclose(f);
++	}
++}
++
++void WriteLocation(FILE *f, const Location &l) {
++	fprintf(f, "%s,0x%05x", modules[l.module].name.c_str(), l.offset);
++}
++
++void WriteModuleMap(FILE *f) {
++	fputs("first_para,last_para,module,module_offset\n", f);
++	uint32_t start = 0;
++	for (uint32_t para = 1; para <= PARAGRAPHS; ++para) {
++		const bool split = para == PARAGRAPHS || para_module[para] != para_module[start] ||
++		                   para_offset[para] != para_offset[start] + (int32_t)(para - start) * 16;
++		if (!split) continue;
++		if (para_module[start])
++			fprintf(f, "0x%05x,0x%05x,%s,0x%05x\n", start, para - 1,
++			        modules[para_module[start]].name.c_str(), para_offset[start]);
++		start = para;
++	}
++}
++
++void WriteOutputs() {
++	if (!enabled) return;
++	if (events) fflush(events);
++	if (auto *f = fopen(Path("modules.csv").c_str(), "w")) {
++		fputs("module,loads,executed_bytes,size\n", f);
++		for (size_t i = 1; i < modules.size(); ++i) {
++			auto &m = modules[i];
++			const auto n = std::count(m.executed.begin(), m.executed.end(), 1);
++			fprintf(f, "%s,%u,%ld,%zu\n", m.name.c_str(), m.loads, (long)n, m.executed.size());
++			WriteFile("executed-" + m.name + ".bin", m.executed.data(), m.executed.size());
++		}
++		fclose(f);
++	}
++	if (auto *f = fopen(Path("residency.csv").c_str(), "w")) {
++		WriteModuleMap(f);
++		fclose(f);
++	}
++	if (auto *f = fopen(Path("edges.csv").c_str(), "w")) {
++		std::vector<uint64_t> sorted(edges.begin(), edges.end());
++		std::sort(sorted.begin(), sorted.end());
++		fputs("from_module,from_offset,to_module,to_offset\n", f);
++		for (const auto e : sorted) {
++			const Location from{(uint16_t)(e >> 56), (uint32_t)(e >> 32) & 0xffffff};
++			const Location to{(uint16_t)((e >> 24) & 0xff), (uint32_t)e & 0xffffff};
++			WriteLocation(f, from);
++			fputc(',', f);
++			WriteLocation(f, to);
++			fputc('\n', f);
++		}
++		fclose(f);
++	}
++	if (auto *f = fopen(Path("interrupts.csv").c_str(), "w")) {
++		fputs("vector,type,ax,source_module,source_offset,target_module,target_offset,count\n", f);
++		for (const auto &item : interrupts) {
++			fprintf(f, "0x%02x,%u,0x%04x,", std::get<0>(item.first), std::get<1>(item.first),
++			        std::get<2>(item.first));
++			WriteLocation(f, std::get<3>(item.first));
++			fputc(',', f);
++			WriteLocation(f, std::get<4>(item.first));
++			fprintf(f, ",%llu\n", (unsigned long long)item.second);
++		}
++		fclose(f);
++	}
++	if (auto *f = fopen(Path("ports.csv").c_str(), "w")) {
++		fputs("direction,width,port,value,source_module,source_offset,count\n", f);
++		for (const auto &item : ports) {
++			fprintf(f, "%s,%u,0x%04x,0x%04x,", std::get<0>(item.first) ? "out" : "in",
++			        std::get<1>(item.first), std::get<2>(item.first), std::get<3>(item.first));
++			WriteLocation(f, std::get<4>(item.first));
++			fprintf(f, ",%llu\n", (unsigned long long)item.second);
++		}
++		fclose(f);
++	}
++	if (auto *f = fopen(Path("vga.csv").c_str(), "w")) {
++		fputs("direction,width,source_module,source_offset,page,count\n", f);
++		for (const auto &item : vga_accesses) {
++			fprintf(f, "%s,%u,", std::get<0>(item.first) ? "write" : "read", std::get<1>(item.first));
++			WriteLocation(f, std::get<2>(item.first));
++			fprintf(f, ",0x%05x,%llu\n", std::get<3>(item.first), (unsigned long long)item.second);
++		}
++		fclose(f);
++	}
++	if (auto *f = fopen(Path("code-writes.csv").c_str(), "w")) {
++		fputs("writer_module,writer_offset,target_linear,width,count\n", f);
++		for (const auto &item : code_writes) {
++			WriteLocation(f, std::get<0>(item.first));
++			fprintf(f, ",0x%05x,%u,%llu\n", std::get<1>(item.first), std::get<2>(item.first),
++			        (unsigned long long)item.second);
++		}
++		fclose(f);
++	}
++	if (auto *f = fopen(Path("summary.txt").c_str(), "w")) {
++		fprintf(f, "load_seg=0x%04x\ninstructions=%llu\nedges=%zu\n", load_seg,
++		        (unsigned long long)icount, edges.size());
++		fclose(f);
++	}
++	if (events) fclose(events);
++	events = nullptr;
++	LOG_MSG("SWOTL: wrote trace to %s (%llu instructions)", out_dir.c_str(),
++	        (unsigned long long)icount);
++}
++
++bool ParseTarget(const std::string &spec, Trigger &t) {
++	const auto plus = spec.find('+');
++	if (plus == std::string::npos) return false;
++	t.module_name = spec.substr(0, plus);
++	for (auto &c : t.module_name) c = (char)toupper((unsigned char)c);
++	const auto hash = spec.find('#', plus);
++	t.offset = (uint32_t)strtoul(spec.substr(plus + 1, hash - plus - 1).c_str(), nullptr, 16);
++	if (hash != std::string::npos) t.count = (uint32_t)strtoul(spec.c_str() + hash + 1, nullptr, 10);
++	t.module = ModuleId(t.module_name);
++	return true;
++}
++
++std::vector<std::string> Split(const char *s, const char sep) {
++	std::vector<std::string> out;
++	if (!s) return out;
++	std::string cur;
++	for (; *s; ++s) {
++		if (*s == sep) { if (!cur.empty()) out.push_back(cur); cur.clear(); }
++		else cur += *s;
++	}
++	if (!cur.empty()) out.push_back(cur);
++	return out;
++}
++
++KBD_KEYS KeyByName(const std::string &n) {
++	static const std::map<std::string, KBD_KEYS> named = {
++	        {"enter", KBD_enter}, {"esc", KBD_esc}, {"space", KBD_space}, {"tab", KBD_tab},
++	        {"up", KBD_up}, {"down", KBD_down}, {"left", KBD_left}, {"right", KBD_right},
++	        {"backspace", KBD_backspace}, {"f1", KBD_f1}, {"f2", KBD_f2}, {"f3", KBD_f3},
++	        {"f4", KBD_f4}, {"f5", KBD_f5}, {"f6", KBD_f6}, {"f7", KBD_f7}, {"f8", KBD_f8},
++	        {"f9", KBD_f9}, {"f10", KBD_f10}};
++	const auto it = named.find(n);
++	if (it != named.end()) return it->second;
++	static const char *letters = "qwertyuiopasdfghjklzxcvbnm";
++	static const KBD_KEYS letter_keys[] = {
++	        KBD_q, KBD_w, KBD_e, KBD_r, KBD_t, KBD_y, KBD_u, KBD_i, KBD_o, KBD_p, KBD_a, KBD_s, KBD_d,
++	        KBD_f, KBD_g, KBD_h, KBD_j, KBD_k, KBD_l, KBD_z, KBD_x, KBD_c, KBD_v, KBD_b, KBD_n, KBD_m};
++	if (n.size() == 1 && strchr(letters, n[0])) return letter_keys[strchr(letters, n[0]) - letters];
++	if (n.size() == 1 && n[0] >= '1' && n[0] <= '9') return (KBD_KEYS)(KBD_1 + (n[0] - '1'));
++	if (n == "0") return KBD_0;
++	return KBD_NONE;
++}
++
++void Configure() {
++	configured = true;
++	const char *trace = getenv("SWOTL_TRACE");
++	enabled = trace && *trace && strcmp(trace, "0") != 0;
++	if (!enabled) return;
++	if (const char *dir = getenv("SWOTL_TRACE_DIR")) out_dir = dir;
++	mkdir(out_dir.c_str(), 0755);
++	if (const char *hold = getenv("SWOTL_KEY_HOLD")) key_hold = strtoull(hold, nullptr, 10);
++	if (const char *e = getenv("SWOTL_EXIT_AFTER")) exit_after = e;
++	for (const auto &spec : Split(getenv("SWOTL_SNAPSHOTS"), ',')) {
++		Trigger t;
++		const auto at = spec.find('@');
++		if (at == std::string::npos || !ParseTarget(spec.substr(at + 1), t))
++			E_Exit("SWOTL: bad snapshot spec '%s'", spec.c_str());
++		t.name = spec.substr(0, at);
++		snapshots.push_back(t);
++	}
++	for (const auto &spec : Split(getenv("SWOTL_KEYS"), ',')) {
++		Trigger t;
++		const auto eq = spec.rfind('=');
++		if (eq == std::string::npos || !ParseTarget(spec.substr(0, eq), t))
++			E_Exit("SWOTL: bad key spec '%s'", spec.c_str());
++		t.name = spec.substr(eq + 1);
++		t.key = KeyByName(t.name);
++		if (t.key == KBD_NONE) E_Exit("SWOTL: unknown key '%s'", t.name.c_str());
++		keys.push_back(t);
++	}
++	events = fopen(Path("events.csv").c_str(), "w");
++	if (events) fputs("icount,kind,module,offset,detail\n", events);
++	std::atexit(WriteOutputs);
++}
++
++void Snapshot(const Trigger &t) {
++	const std::string dir = Path("snap-" + t.name);
++	mkdir(dir.c_str(), 0755);
++	const std::string prefix = "snap-" + t.name + "/";
++	WriteFile(prefix + "ram.bin", MemBase, 0x100000);
++	if (vga.mem.linear) WriteFile(prefix + "vram.bin", vga.mem.linear, vga.mem.memsize);
++	uint8_t dac[768];
++	for (int i = 0; i < 256; ++i) {
++		dac[i * 3] = vga.dac.rgb[i].red;
++		dac[i * 3 + 1] = vga.dac.rgb[i].green;
++		dac[i * 3 + 2] = vga.dac.rgb[i].blue;
++	}
++	WriteFile(prefix + "dac.bin", dac, sizeof dac);
++	if (auto *f = fopen(Path(prefix + "regs.txt").c_str(), "w")) {
++		fprintf(f, "icount=%llu\nhits=%u\n", (unsigned long long)icount, t.hits);
++		fprintf(f, "ax=%04x bx=%04x cx=%04x dx=%04x si=%04x di=%04x bp=%04x sp=%04x\n",
++		        reg_ax, reg_bx, reg_cx, reg_dx, reg_si, reg_di, reg_bp, reg_sp);
++		fprintf(f, "cs=%04x ip=%04x ds=%04x es=%04x ss=%04x flags=%04x\n", SegValue(cs),
++		        (uint16_t)reg_eip, SegValue(ds), SegValue(es), SegValue(ss),
++		        (uint16_t)reg_flags);
++		fprintf(f, "load_seg=%04x vga_mode=%02x\n", load_seg, mem_readb(0x449));
++		fclose(f);
++	}
++	if (auto *f = fopen(Path(prefix + "residency.csv").c_str(), "w")) {
++		WriteModuleMap(f);
++		fclose(f);
++	}
++	Event("snapshot", "%s", t.name.c_str());
++	LOG_MSG("SWOTL: snapshot %s at icount %llu", t.name.c_str(), (unsigned long long)icount);
++	if (t.name == exit_after) {
++		if (auto *f = fopen(Path("exit.txt").c_str(), "w")) {
++			fprintf(f, "snapshot %s\n", t.name.c_str());
++			fclose(f);
++		}
++		std::exit(0);
++	}
++}
++
++bool Hit(Trigger &t, const Location &here) {
++	return !t.done && t.module == here.module && t.offset == here.offset && ++t.hits >= t.count;
++}
++
++void Arm() {
++	load_seg = (uint16_t)(SegValue(cs) - ROOT_ENTRY_CS);
++	const uint16_t root = ModuleId("SWOTL.EXE");
++	modules[root].loads++;
++	const char *ticks = getenv("SWOTL_BIOS_TICKS");
++	mem_writed(0x46c, ticks ? (uint32_t)strtoul(ticks, nullptr, 0) : 0);
++	mem_writeb(0x470, 0);
++	MapRange((uint32_t)load_seg << 4, ROOT_IMAGE_BYTES, root, 0);
++	swotl_active = true;
++	Event("arm", "load_seg=0x%04x psp=0x%04x bios_ticks=0x%08x", load_seg, dos.psp(),
++	      mem_readd(0x46c));
++	LOG_MSG("SWOTL: armed, root load segment %04x", load_seg);
++}
++
++} // namespace
++
++void SWOTL_Instruction(const uint32_t linear) {
++	if (!swotl_active) {
++		if ((uint16_t)reg_eip != ROOT_ENTRY_IP) return;
++		if (!configured) Configure();
++		if (!enabled || cpu.pmode || SegValue(cs) != (uint16_t)(dos.psp() + 0x10 + ROOT_ENTRY_CS))
++			return;
++		Arm();
++	}
++	++icount;
++	const Location here = Locate(linear);
++	if (here.module) {
++		auto &exec = modules[here.module].executed;
++		if (here.offset >= exec.size()) exec.resize(here.offset + 16, 0);
++		exec[here.offset] = 1;
++	}
++	if ((linear >> 4) < PARAGRAPHS) para_executed[linear >> 4] = 1;
++	const uint64_t packed = Pack(here);
++	if (prev_valid) edges.insert((prev_packed << 32) | packed);
++	prev_packed = packed;
++	prev_valid = true;
++
++	for (auto &t : snapshots)
++		if (Hit(t, here)) { t.done = true; Snapshot(t); }
++	if (key_held != KBD_NONE && icount >= key_release_at) {
++		KEYBOARD_AddKey(key_held, false);
++		Event("key_up", "%s", keys[key_index - 1].name.c_str());
++		key_held = KBD_NONE;
++		if (key_index < keys.size()) keys[key_index].hits = 0;
++	}
++	if (key_held == KBD_NONE && key_index < keys.size() && Hit(keys[key_index], here)) {
++		auto &t = keys[key_index++];
++		t.done = true;
++		KEYBOARD_AddKey(t.key, true);
++		key_held = t.key;
++		key_release_at = icount + key_hold;
++		Event("key_down", "%s", t.name.c_str());
++	}
++}
++
++void SWOTL_MemoryAccess(const bool write, const uint32_t address, const uint8_t width) {
++	if (in_interrupt_hook) return;
++	const bool is_vga = address >= 0xa0000u && address < 0xc0000u;
++	const uint32_t para = address >> 4;
++	const bool code = write && para < PARAGRAPHS && para_executed[para];
++	if (!is_vga && !code) return;
++	const auto source = CurrentLocation();
++	if (is_vga) ++vga_accesses[std::make_tuple(write, width, source, (address - 0xa0000u) & ~0xffu)];
++	if (code) ++code_writes[std::make_tuple(source, address, width)];
++}
++
++void SWOTL_Interrupt(const unsigned num, const unsigned type, const uint32_t oldeip) {
++	if (!swotl_active || cpu.pmode) return;
++	in_interrupt_hook = true;
++	const auto vector = (uint32_t)num << 2;
++	const uint32_t target = ((uint32_t)mem_readw(vector + 2) << 4) + mem_readw(vector);
++	const auto source = Locate(SegPhys(cs) + (uint16_t)oldeip);
++	const bool software = (type & CPU_INT_SOFTWARE) != 0;
++	if (software) last_int_source = source;
++	const uint16_t ax = software ? (uint16_t)reg_ax : 0;
++	++interrupts[std::make_tuple((uint8_t)num, (uint8_t)type, ax, source, Locate(target))];
++	if (software && (num == 0x10 || num == 0x67 || num == 0x33 ||
++	                 (num == 0x21 && (reg_ah == 0x25 || reg_ah == 0x35 || reg_ah == 0x48 ||
++	                                  reg_ah == 0x49 || reg_ah == 0x4a || reg_ah == 0x4b ||
++	                                  reg_ah == 0x4c || reg_ah == 0x44))))
++		Event("int", "%02x ax=%04x bx=%04x cx=%04x dx=%04x ds=%04x es=%04x", num, reg_ax, reg_bx,
++		      reg_cx, reg_dx, SegValue(ds), SegValue(es));
++	if (!software && (num == 0x00 || num == 0x06))
++		Event("fault", "%02x", num);
++	in_interrupt_hook = false;
++}
++
++void SWOTL_Port(const bool write, const uint8_t width, const unsigned port, const uint32_t value) {
++	if (!swotl_active) return;
++	++ports[std::make_tuple(write, width, (uint16_t)port, value, CurrentLocation())];
++}
++
++void SWOTL_DosOpen(const char *name, const bool ok, const uint16_t handle, const uint8_t mode) {
++	if (!swotl_active) return;
++	const auto base = BaseName(name);
++	if (ok) files[handle] = OpenFile{base, 0};
++	Event("open", "%s ok=%d handle=%u mode=%02x", base.c_str(), ok, handle, mode);
++}
++
++void SWOTL_DosClose(const uint16_t handle) {
++	if (!swotl_active) return;
++	const auto it = files.find(handle);
++	Event("close", "%s handle=%u", it == files.end() ? "?" : it->second.name.c_str(), handle);
++	if (it != files.end()) files.erase(it);
++}
++
++void SWOTL_DosRead(const uint16_t handle, const uint32_t buffer, const uint32_t file_pos,
++                   const uint16_t requested, const uint16_t actual) {
++	if (!swotl_active) return;
++	const auto it = files.find(handle);
++	const std::string name = it == files.end() ? "?" : it->second.name;
++	if (IsCodeFile(name)) {
++		const uint16_t id = ModuleId(name);
++		if (file_pos == 0) modules[id].loads++;
++		MapRange(buffer, actual, id, (int32_t)file_pos);
++	} else {
++		MapRange(buffer, actual, 0, 0);
++	}
++	Event("read", "%s handle=%u linear=0x%05x pos=0x%05x req=%u got=%u", name.c_str(), handle,
++	      buffer, file_pos, requested, actual);
++}
++
++void SWOTL_DosSeek(const uint16_t handle, const uint8_t mode, const uint32_t result) {
++	if (!swotl_active) return;
++	const auto it = files.find(handle);
++	Event("seek", "%s handle=%u mode=%u pos=0x%05x", it == files.end() ? "?" : it->second.name.c_str(),
++	      handle, mode, result);
++}
++
++void SWOTL_DosExecOverlay(const char *name, const uint16_t seg, const uint16_t reloc) {
++	if (!swotl_active) return;
++	Event("exec_overlay", "%s seg=0x%04x reloc=0x%04x", BaseName(name).c_str(), seg, reloc);
++}
