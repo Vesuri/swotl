@@ -1,0 +1,97 @@
+# SWOTL — Amiga cross-build (m68k-amiga-elf-gcc), A1200 68020/AGA.
+#
+#   . ./env.sh && make   — build out/Swotl.exe
+#   make clean           — remove obj/ and out/
+#   ./run.sh             — boot in FS-UAE (A1200, Kickstart 3.1; left mouse button quits)
+#   ./debug.sh [ROM] [fixture.gdb] — source-level debug via the FS-UAE GDB stub
+#
+# Code lives under $(REPO)/src; this directory holds only build infrastructure.
+
+OUT      = out/Swotl
+CC       = m68k-amiga-elf-gcc
+AS       = m68k-amiga-elf-as
+VASM     = vasmm68k_mot
+OBJDUMP  = m68k-amiga-elf-objdump
+PYTHON   = python3
+SDKDIR   = $(abspath $(dir $(shell which $(CC)))../m68k-amiga-elf/sys-include)
+SUPPORT  = $(abspath $(dir $(shell which $(CC)))../../support)
+REPO      = ..
+AMIGA_SRC = $(REPO)/src/platform/amiga
+FRAMEWORK = $(AMIGA_SRC)/framework
+
+CCFLAGS  = -g -MP -MMD -m68020 -msoft-float -O2 -nostdlib \
+	-fomit-frame-pointer -fno-tree-loop-distribution \
+	-ffunction-sections -fdata-sections -Wall -Wextra -Werror \
+	-Wno-volatile-register-var
+CPPFLAGS = $(CCFLAGS) -fno-rtti -fno-exceptions -fno-use-cxa-atexit -fcheck-new \
+	-std=gnu++17 -fpermissive -Wno-write-strings -Wno-pointer-arith \
+	-Wno-ignored-qualifiers -Wno-sign-compare \
+	-Wno-parentheses -Wno-unused-parameter \
+	-include "$(FRAMEWORK)/SASCCompat.h" \
+	-I"$(FRAMEWORK)" -I"$(AMIGA_SRC)"
+ASFLAGS  = -mcpu=68020 -g --register-prefix-optional -I"$(SDKDIR)"
+VASMFLAGS = -m68020 -Felf -quiet -x -no-opt -nowarn=62 -I"$(SDKDIR)" -Iobj
+LDFLAGS  = -Wl,--emit-relocs,--gc-sections,-Ttext=0,-Map=$(OUT).map
+
+OBJECTS = obj/main.o obj/Swotl.o obj/GCCRuntime.o \
+	obj/framework_amiga_hardware.o obj/framework_bitmap.o \
+	obj/framework_copper_list.o obj/framework_palette24.o \
+	obj/gcc8_c_support.o obj/gcc8_a_support.o obj/memory.o obj/version.o
+
+.PHONY: all clean verify-runtime
+# Never leave a truncated executable that looks up to date after elf2hunk fails.
+.DELETE_ON_ERROR:
+
+all: $(OUT).exe
+
+obj out:
+	mkdir -p $@
+
+verify-runtime: obj/gcc8_c_support.o
+	$(PYTHON) $(REPO)/tools/verify_amiga_runtime.py $(OBJDUMP) $<
+
+obj/main.o: $(REPO)/src/main.cpp | obj
+	$(CC) $(CPPFLAGS) -c -o $@ $<
+
+obj/Swotl.o: $(AMIGA_SRC)/Swotl.cpp | obj
+	$(CC) $(CPPFLAGS) -c -o $@ $<
+
+obj/GCCRuntime.o: $(AMIGA_SRC)/GCCRuntime.cpp | obj
+	$(CC) $(CPPFLAGS) -c -o $@ $<
+
+obj/framework_amiga_hardware.o: $(FRAMEWORK)/AmigaHardware.cpp | obj
+	$(CC) $(CPPFLAGS) -c -o $@ $<
+
+obj/framework_bitmap.o: $(FRAMEWORK)/Bitmap.cpp | obj
+	$(CC) $(CPPFLAGS) -c -o $@ $<
+
+obj/framework_copper_list.o: $(FRAMEWORK)/CopperList.cpp | obj
+	$(CC) $(CPPFLAGS) -c -o $@ $<
+
+obj/framework_palette24.o: $(FRAMEWORK)/Palette24Bit.cpp | obj
+	$(CC) $(CPPFLAGS) -c -o $@ $<
+
+obj/gcc8_c_support.o: $(SUPPORT)/gcc8_c_support.c Makefile | obj
+	# Runtime implementations must not be folded into calls to themselves.
+	$(CC) $(CCFLAGS) -fno-builtin -Dmemcpy=swotl_support_memcpy -Dmemset=swotl_support_memset -c -o $@ $<
+
+obj/gcc8_a_support.o: $(SUPPORT)/gcc8_a_support.s | obj
+	$(AS) $(ASFLAGS) -o $@ $<
+
+obj/memory.o: $(AMIGA_SRC)/memory.s | obj
+	$(VASM) $(VASMFLAGS) -o $@ $<
+
+obj/version.o: $(AMIGA_SRC)/version.s | obj
+	$(AS) $(ASFLAGS) -o $@ $<
+
+$(OUT).elf: $(OBJECTS) | out verify-runtime
+	$(CC) $(CCFLAGS) $(LDFLAGS) $(OBJECTS) -o $@
+	$(OBJDUMP) --disassemble --no-show-raw-ins -S $@ > $(OUT).s 2>/dev/null || true
+
+$(OUT).exe: $(OUT).elf
+	elf2hunk $< $@
+
+clean:
+	$(RM) -r obj out
+
+-include obj/*.d
