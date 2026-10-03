@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage coverage map trace-summary amiga smoke clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage map trace-summary ghidra amiga smoke clean
 
 PYTHON ?= python3
 REFERENCE_ROOT ?= tmp/pc-root
@@ -21,9 +21,9 @@ help:
 	@echo "  make reference-run RUN=name [RUN_ARGS=...]  headless traced run -> tmp/pc-runs/name"
 	@echo "  make reference          run all milestones (reference/milestones.csv): signals, determinism, image proof"
 	@echo "  make coverage           run the coverage scripts (reference/coverage.csv)"
-	@echo "  make coverage           run the coverage scripts (reference/coverage.csv)"
 	@echo "  make map                sweep + PLINK check + code-write audit + surface over tmp/pc-runs/ref-*"
 	@echo "  make trace-summary RUN=name                 summarise that run's trace"
+	@echo "  make ghidra             sweep + headless Ghidra project per module -> tmp/ghidra/*.txt"
 	@echo "  make amiga   build amiga/out/Swotl.exe"
 	@echo "  make smoke   boot it under FS-UAE + GDB and check the takeover runs"
 	@echo "  make clean   remove Amiga build output"
@@ -63,9 +63,6 @@ reference: check-ref
 coverage: check-ref
 	$(PYTHON) tools/reference.py --table reference/coverage.csv
 
-coverage: check-ref
-	$(PYTHON) tools/reference.py --table reference/coverage.csv
-
 map:
 	$(PYTHON) tools/sweep.py --annotations
 	$(PYTHON) tools/plink_check.py
@@ -74,6 +71,9 @@ map:
 
 trace-summary:
 	$(PYTHON) tools/trace_summary.py tmp/pc-runs/$(RUN)/trace
+
+ghidra:
+	$(PYTHON) tools/ghidra_import.py
 
 amiga:
 	. amiga/env.sh && $(MAKE) -C amiga

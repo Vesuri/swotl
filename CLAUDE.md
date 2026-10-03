@@ -42,7 +42,10 @@ audio the game has; RTSEGA, RTSTANDY and SFXA (PC speaker) are out.
   `docs/m68k-optimisation.md`, `src/platform/amiga/framework/README.md`
 - Tools: `docs/toolchain.md`, `docs/headless-fsuae.md`,
   `docs/pc-reference-loop.md`
+- Guest map: `docs/plink.md`, `docs/external-surface.md`,
+  `docs/source-inventory.md`, `annotations/`
 - Release: `docs/whdload.md`, `docs/release.md`
 - Build: `make amiga`, `make smoke`; original: `make reference-staging`;
-  ref facts: `make inspect`, `make hash`/`check-ref`; `SetPatch` expected
+  ref facts: `make inspect`, `make hash`/`check-ref`; milestones `make
+  reference`, `make coverage`; map `make map`, `make ghidra`; `SetPatch` expected
   at `tmp/SetPatch`. Facts: `docs/source-inventory.md`.

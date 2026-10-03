@@ -57,6 +57,7 @@ provenance is in brackets.
   ```
   Slicks also imported its relocation-normalised MZ (`runtime.exe`) with the default loader. It kept separate projects per input (`ghidra-proj`, `-normalized-proj`, `-live-proj`, `-live-normalized-proj`, `-gameplay-proj`). [Slicks `Makefile`]
 - Slicks scripts: `MarkEntries.java`, `ExportListing.java`, `SeedLiveMap.java` (live entry points and VGA sites from reference traces), plus `entrypoints.csv` and `vga-symbols.csv`. Earlier ports add `ApplyNames.java` (`disasm/symbols.csv` → project), `DumpHwAccesses`, `DumpCallGraph`, `DumpZeroPage`. [Slicks `ghidra_scripts/`, RoF, Revs]
+- SWOTL: `make ghidra` (`tools/ghidra_import.py`): one program per in-scope module at its link address, entries from the sweep (`ghidra_scripts/MarkEntries.java`), listings `tmp/ghidra/<module>.txt`. Ghidra's auto-analysis decodes more than the sweep proves; the sweep is the classification of record.
 - Track only curated `disasm/symbols.csv`. Listings and images are regenerable and ignored (SWOTL `.gitignore` already does this). [RoF]
 
 ## PC reference emulators
