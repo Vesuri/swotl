@@ -43,7 +43,7 @@ def run(m: dict) -> tuple[list[str], dict]:
     cmd = [sys.executable, str(REPO / "tools/pc_run.py"), f"ref-{name}",
            "--time-limit", m["time_limit"],
            "--snapshots", ",".join(f"{n}@{t}" for n, t in zip(names, triggers)),
-           "--exit-after", names[-1], "--keys", m["keys"].replace(";", ",")]
+           "--exit-after", names[-1], "--keys", m["keys"].replace(";", ","), "--services"]
     if m["launch"]:
         cmd += ["--launch", m["launch"]]
     row = {"name": name, "icount": "", "ram": "", "vram": "", "dac": ""}

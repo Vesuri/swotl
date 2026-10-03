@@ -60,6 +60,8 @@ def main() -> int:
     parser.add_argument("--keys", default="", help="MODULE+HEX[#N]=key,...")
     parser.add_argument("--key-hold", type=int, default=None)
     parser.add_argument("--launch", default=LAUNCH)
+    parser.add_argument("--services", action="store_true",
+                        help="log every software INT from module code with entry/return registers")
     args = parser.parse_args()
 
     run = REPO / "tmp/pc-runs" / args.name
@@ -68,6 +70,8 @@ def main() -> int:
                SWOTL_TRACE="1", SWOTL_TRACE_DIR=str(run / "trace"),
                SWOTL_SNAPSHOTS=args.snapshots, SWOTL_EXIT_AFTER=args.exit_after,
                SWOTL_KEYS=args.keys)
+    if args.services:
+        env["SWOTL_SERVICES"] = "1"
     if args.key_hold is not None:
         env["SWOTL_KEY_HOLD"] = str(args.key_hold)
     command = [str(DOSBOX), "-conf", str(CONF), "-nogui", "-nomenu", "-silent", "-fastlaunch",

@@ -88,7 +88,7 @@ Trace outputs (`tmp/pc-runs/<name>/trace/`, written at exit):
 
 | File | Content |
 |---|---|
-| `events.csv` | ordered: arm, DOS open/read/seek/close (name, linear buffer, file pos), INT 10h/33h/67h and selected INT 21h with registers, faults, keys, snapshots |
+| `events.csv` | ordered: arm, DOS open/read/seek/close (name, linear buffer, file pos), INT 10h/33h/67h and selected INT 21h with registers, faults, keys, snapshots; with `--services` (`SWOTL_SERVICES`, on in `make reference`) `svc`/`svc_ret`: every software INT raised by module code with all registers and FLAGS at entry and when execution is back at its return address with the entry SP (the runtime's service oracle) |
 | `modules.csv`, `executed-<module>.bin` | per-module instruction-start bitmap |
 | `edges.csv` | unique consecutive-instruction pairs |
 | `interrupts.csv`, `ports.csv`, `vga.csv` | aggregates by source site (AX for software INTs; port value; 256-byte VGA page) |
