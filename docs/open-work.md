@@ -14,17 +14,16 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
    `REPLAY.OVL+31E6` fires only per demo cycle, RTSVGA table entries never
    ran) and m5 (player flight from the menu, film replay); M2 key triggers
    use Nth-hit counts of generic polls, replace with menu-specific sites.
-6a. Image proof (gate 1): rebuild root + overlay images from the files
-   (relocations at the load segment; `.OVL` header bytes before the code
-   are the likely fixups) and `cmp` against snapshots.
 
 ## Phase 2 — static/live map
 
-6b. D16 evidence: classify the self-modifying writes in
-   `pc-reference-loop.md` (patched terminator in unrolled code vs data).
-7. Reverse the PLINK overlay manager (thunks: `source-inventory.md`): call path to non-resident overlays,
-   return stack, fixups, which overlays coexist; confirm load areas from
-   captures (CAMPAIGN/NOTCAMP appear to overlap FLIGHT's range).
+6b. D16 evidence: classify the self-modified executed bytes that
+   `tools/load_image.py` lists by writer (root `+4FFC`, `+52DA`, `+8FD5`,
+   `+9030`, `+E5FD..+E626`): patched code vs code-segment variables.
+7. Reverse the PLINK overlay manager (thunks and table:
+   `source-inventory.md`): call path to non-resident overlays, return
+   stack, residency rules, the table's last word; which overlays coexist
+   (FLIGHT's range covers CAMPAIGN/NOTCAMP and REPLAY/PANEL).
 8. Recursive-descent sweep of root and overlays; settle int 21h/67h/33h and
    port inventories (`SFXA`/`SPAZ` contain `CD 21` byte pairs).
 9. Identify the compiler runtime (Microsoft C 5.x per strings) and calling

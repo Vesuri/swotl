@@ -80,8 +80,9 @@ Facts about the originals: [source-inventory.md](source-inventory.md).
 | Addresses | `(module, offset)`: root = image offset; overlay = `.OVL` file offset of the bytes the last DOS read put at that paragraph; `-` = unowned linear address |
 | Determinism | BIOS tick count set to `SWOTL_BIOS_TICKS` (0) at arming; DOS time and INT 1Ah derive from it. Two runs to M1 give identical RAM |
 | Input | `SWOTL_KEYS=MODULE+HEX[#N]=key,...`: press when the guest reaches that instruction (Nth time since the previous key's release), release after `SWOTL_KEY_HOLD` instructions |
-| Snapshot | `SWOTL_SNAPSHOTS=name@MODULE+HEX[#N]`: `snap-<name>/` with `ram.bin` (1 MiB), `vram.bin`, `dac.bin`, `regs.txt`, `residency.csv` |
+| Snapshot | `SWOTL_SNAPSHOTS=name@MODULE+HEX[#N],...`: counted after the key script, each after the previous; `snap-<name>/` with `ram.bin` (1 MiB), `vram.bin`, `dac.bin`, `regs.txt`, `residency.csv`, `writes.csv` (last CPU writer per byte of module-owned paragraphs since load) |
 | Summary | `make trace-summary RUN=name` |
+| Image proof | `tools/load_image.py <snap>` (gate 1): rebuilds root + overlays from `ref/` with the loader model ([source-inventory.md](source-inventory.md)); every byte of every resident row equals the rebuilt byte, the last traced DOS read, or has a CPU writer. Lists self-modified executed bytes by writer |
 
 Trace outputs (`tmp/pc-runs/<name>/trace/`, written at exit):
 

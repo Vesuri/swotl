@@ -300,10 +300,10 @@ index e31e63f..fab8958 100644
 +libmisc_a_SOURCES = clipboard.cpp cross.cpp ethernet.cpp ethernet_pcap.cpp ethernet_slirp.cpp ethernet_ethnet.cpp ethernet_nothing.cpp messages.cpp programs.cpp setup.cpp support.cpp regionalloctracking.cpp savestates.cpp shiftjis.cpp iconvpp.cpp mkdir_p.cpp swotl_trace.cpp
 diff --git a/src/misc/swotl_trace.cpp b/src/misc/swotl_trace.cpp
 new file mode 100644
-index 0000000..2f185fb
+index 0000000..c988d37
 --- /dev/null
 +++ b/src/misc/swotl_trace.cpp
-@@ -0,0 +1,534 @@
+@@ -0,0 +1,569 @@
 +/* SWOTL reference instrumentation (Secret Weapons of Luftwaffe port).
 + *
 + * Enabled by SWOTL_TRACE=1; armed at the first instruction of SWOTL.EXE
@@ -396,6 +396,9 @@ index 0000000..2f185fb
 +std::vector<uint16_t> para_module(PARAGRAPHS, 0);
 +std::vector<int32_t> para_offset(PARAGRAPHS, 0);
 +std::vector<uint8_t> para_executed(PARAGRAPHS, 0);
++/* Last CPU writer per byte since the byte was last loaded from a file. */
++constexpr uint64_t WRITTEN = 1ull << 63;
++std::vector<uint64_t> last_writer(PARAGRAPHS * 16, 0);
 +
 +bool prev_valid = false;
 +uint64_t prev_packed = 0;
@@ -478,6 +481,25 @@ index 0000000..2f185fb
 +		para_module[para] = module;
 +		para_offset[para] = module_offset + (int32_t)(para * 16) - (int32_t)linear;
 +		para_executed[para] = 0;
++	}
++	for (uint32_t a = linear; a < linear + length && a < PARAGRAPHS * 16; ++a) last_writer[a] = 0;
++}
++
++/* Runs of bytes in module-owned paragraphs with the same last CPU writer. */
++void WriteWriters(FILE *f) {
++	fputs("first_linear,last_linear,writer_module,writer_offset\n", f);
++	uint32_t start = 0;
++	for (uint32_t a = 1; a <= PARAGRAPHS * 16; ++a) {
++		if (a < PARAGRAPHS * 16 && last_writer[a] == last_writer[start] &&
++		    para_module[a >> 4] == para_module[start >> 4])
++			continue;
++		const uint64_t w = last_writer[start];
++		if (w && para_module[start >> 4]) {
++			const uint16_t m = (uint16_t)((w & ~WRITTEN) >> 24);
++			fprintf(f, "0x%05x,0x%05x,%s,0x%05x\n", start, a - 1, modules[m].name.c_str(),
++			        (uint32_t)(w & 0xffffff));
++		}
++		start = a;
 +	}
 +}
 +
@@ -690,6 +712,10 @@ index 0000000..2f185fb
 +		WriteModuleMap(f);
 +		fclose(f);
 +	}
++	if (auto *f = fopen(Path(prefix + "writes.csv").c_str(), "w")) {
++		WriteWriters(f);
++		fclose(f);
++	}
 +	Event("snapshot", "%s", t.name.c_str());
 +	LOG_MSG("SWOTL: snapshot %s at icount %llu", t.name.c_str(), (unsigned long long)icount);
 +	if (t.name == exit_after) {
@@ -742,8 +768,13 @@ index 0000000..2f185fb
 +	prev_packed = packed;
 +	prev_valid = true;
 +
-+	for (auto &t : snapshots)
-+		if (Hit(t, here)) { t.done = true; Snapshot(t); }
++	/* Snapshots count after the key script, each after the previous one. */
++	if (key_index == keys.size() && key_held == KBD_NONE)
++		for (auto &t : snapshots) {
++			if (t.done) continue;
++			if (Hit(t, here)) { t.done = true; Snapshot(t); }
++			break;
++		}
 +	if (key_held != KBD_NONE && icount >= key_release_at) {
 +		KEYBOARD_AddKey(key_held, false);
 +		Event("key_up", "%s", keys[key_index - 1].name.c_str());
@@ -765,6 +796,10 @@ index 0000000..2f185fb
 +	const bool is_vga = address >= 0xa0000u && address < 0xc0000u;
 +	const uint32_t para = address >> 4;
 +	const bool code = write && para < PARAGRAPHS && para_executed[para];
++	if (write && para < PARAGRAPHS && para_module[para]) {
++		const uint64_t w = WRITTEN | Pack(CurrentLocation());
++		for (uint32_t a = address; a < address + width && a < PARAGRAPHS * 16; ++a) last_writer[a] = w;
++	}
 +	if (!is_vga && !code) return;
 +	const auto source = CurrentLocation();
 +	if (is_vga) ++vga_accesses[std::make_tuple(write, width, source, (address - 0xa0000u) & ~0xffu)];

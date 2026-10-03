@@ -19,40 +19,32 @@ SHA-256 of every `ref/` file in `tmp/ref.sha256` (`make hash`, local only).
 
 ## Overlays
 
-`.OVL` files are raw images (no header) that start with a far-pointer table.
-Pointer segments are link-time segments in the root's numbering, i.e. the
-overlay's link address; relocation by the load segment is still open (2.2).
-`tools/ovl_info.py` stops the table at the first zero segment and may
-overrun into code (PANEL).
+PLINK overlay table: 12 records of 16 bytes at root `+169E8` (in
+`.OVL` name order; name offsets relative to `+169E0`). The `.OVL` file is
+the fixup list (`nfix` far pointers `off, link seg`, padded to a
+paragraph), then `paras` paragraphs of code. Load (proved by
+`tools/load_image.py`, gate 1): code at load seg + link seg; each fixup
+word += load seg. The loader reads code at `SWOTL.EXE+16328`, then the
+fixup list in 128-byte chunks into a buffer at root `+160D4`.
 
-| Overlay | Bytes | Paras | Link seg (first entry) | Shares link seg with |
-|---|---|---|---|---|
-| SFXA | 4,288 | 268 | `1770` | SPAZ (= end of root image) |
-| SPAZ | 6,528 | 408 | `1770` | SFXA |
-| RTSVGA | 18,304 | 1,144 | `18E4` | RTSEGA, RTSTANDY; 5-entry table |
-| RTSEGA | 22,944 | 1,434 | `18E4` | |
-| RTSTANDY | 19,024 | 1,189 | `18E4` | |
-| FRONTEND | 82,080 | 5,130 | `1E7C` | FLIGHT |
-| FLIGHT | 103,472 | 6,467 | `1E7C` | FRONTEND; extends to `37BF`, over `3156` and `36D6` |
-| CAMPAIGN | 43,776 | 2,736 | `3156` | NOTCAMP |
-| NOTCAMP | 42,688 | 2,668 | `3156` | CAMPAIGN |
-| REPLAY | 16,048 | 1,003 | `36D6` | PANEL |
-| PANEL | 13,664 | 854 | `36D6` | REPLAY |
-| DATA | 64,896 | 4,056 | `4133` (most entries `3BAF`) | |
+| # | Overlay | nfix | Link seg | End seg | Paras | Last word |
+|---|---|---|---|---|---|---|
+| 0 | SPAZ | `8D` | `1770` | `18E4` | `174` | 0 |
+| 1 | SFXA | `08` | `1770` | `187A` | `10A` | 0 |
+| 2 | RTSVGA | `05` | `18E4` | `1D5A` | `476` | 0 |
+| 3 | RTSTANDY | `05` | `18E4` | `1D87` | `4A3` | 0 |
+| 4 | RTSEGA | `05` | `18E4` | `1E7C` | `598` | 0 |
+| 5 | FRONTEND | `4C0` | `1E7C` | `3156` | `12DA` | 6 |
+| 6 | CAMPAIGN | `2CB` | `3156` | `3B53` | `9FD` | 6 |
+| 7 | NOTCAMP | `371` | `3156` | `3AE5` | `98F` | 0 |
+| 8 | FLIGHT | `3A3` | `1E7C` | `36D6` | `185A` | 9 |
+| 9 | REPLAY | `ED` | `36D6` | `3A85` | `3AF` | 9 |
+| 10 | PANEL | `60` | `36D6` | `3A14` | `33E` | `6000` |
+| 11 | DATA | `234` | `3B53` | `4B1E` | `F4B` | `FFFF` |
 
-Live loads (unattended run, load segment `0822`): the PLINK loader reads at
-`SWOTL.EXE+16328`; code lands at load segment + link segment; the bytes
-before the code (file `0..pos`) are read separately and are not code
-(fixup/entry tables, format open).
-
-| Overlay | Code from file pos | Segment (relative) | Reads |
-|---|---|---|---|
-| SPAZ | `240` | `+1770` | 1 |
-| RTSVGA | `020` | `+18E4` | 1 |
-| FRONTEND | `1300` | `+1E7C` | 65,520 + 11,696 B |
-| FLIGHT | `0E90` | `+1E7C` | 65,520 + 34,224 B |
-| REPLAY | `3C0` | `+36D6` | 1 |
-| DATA | `8D0` | `+3B53` | 1 (no code executed) |
+Record words 4–5 are zero in the file (runtime state); the last word is
+open (2.2). DATA is the C data segment: DS = load seg + `3BAB`. Load
+segment in all runs: `0822`.
 
 Other first-run facts: PIT reprogrammed (~250 Hz INT 8); AdLib music
 (`388h/389h`); joystick probe on `201h`; mouse via INT 33h; EMS 4.0 used
