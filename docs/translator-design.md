@@ -137,13 +137,16 @@ diffs directly); relocated words in instructions are emitted as
   dos.library.
 - Interrupts (D8): poll points at loop heads (targets of backward branches,
   all block leaders, so live flags are in the state block): `tst.b G_IRQ(a6)`
-  then `rt_irq` (d6 = CS << 16, d7 = IP). With guest IF set the runtime stores
-  new keys (BIOS INT 09h) and takes one due PIT tick: the guest INT 08h
-  handler (`annotations/entries.csv`) on a pushed frame, else the BIOS tick;
+  then `rt_irq` (d6 = CS << 16, d7 = IP). With guest IF set posted interrupts
+  run in order: a guest handler (`annotations/entries.csv`) on a pushed
+  frame, else the BIOS one (INT 09h stores a key, INT 08h ticks);
   a guest handler's `jmp far` to F000:FEA5 is the BIOS tick plus IRET
-  (`rt_bios_int08`). Clock: the platform adds PIT clocks to `rt_pit_clocks`
-  (Amiga: CIA-B timer per PIT period, `plat_timer_rate`; host harness: per
-  Unicorn slice, nominal 12000 x86 instructions/ms at 5 68k each).
+  (`rt_bios_int08`). The platform posts vectors to `rt_irq_ring` (08h tick,
+  09h/89h key make/break): Amiga a CIA-B timer per PIT period
+  (`plat_timer_rate`); host run the reference's `irq` events, replayed at the
+  same visit of the same poll point after the same service event (the
+  reference takes interrupts only at poll points, `build/gen/poll-points.csv`;
+  references are re-recorded when poll points change).
 - Audits (`make gen`): spills, full-flag materializations, PF/AF stores,
   dispatcher exits, `stop_unknown` sites against `tests/audit.csv` (above
   expected fails), plus flag stores/merges/loads and return checks; HLE count.

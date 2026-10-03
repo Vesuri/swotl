@@ -25,6 +25,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 HASHES = REPO / "tmp/reference-hashes.csv"
+POLLS = REPO / "build/gen/poll-points.csv"  # make gen
 
 
 def digest(path: Path) -> str:
@@ -43,7 +44,8 @@ def run(m: dict) -> tuple[list[str], dict]:
     cmd = [sys.executable, str(REPO / "tools/pc_run.py"), f"ref-{name}",
            "--time-limit", m["time_limit"],
            "--snapshots", ",".join(f"{n}@{t}" for n, t in zip(names, triggers)),
-           "--exit-after", names[-1], "--keys", m["keys"].replace(";", ","), "--services"]
+           "--exit-after", names[-1], "--keys", m["keys"].replace(";", ","), "--services",
+           "--polls", str(POLLS)]
     if m["launch"]:
         cmd += ["--launch", m["launch"]]
     row = {"name": name, "icount": "", "ram": "", "vram": "", "dac": ""}

@@ -55,10 +55,10 @@ index e7e6974..03e6052 100644
  		if (tlb_addr) host_writed(tlb_addr+address,val);
 diff --git a/include/swotl_trace.h b/include/swotl_trace.h
 new file mode 100644
-index 0000000..c6b3991
+index 0000000..78eb64d
 --- /dev/null
 +++ b/include/swotl_trace.h
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,29 @@
 +/* SWOTL reference instrumentation (Secret Weapons of Luftwaffe port).
 + * Off unless SWOTL_TRACE is set; armed at the SWOTL.EXE MZ entry. */
 +#ifndef DOSBOX_SWOTL_TRACE_H
@@ -67,6 +67,10 @@ index 0000000..c6b3991
 +#include <stdint.h>
 +
 +extern bool swotl_active;
++/* SWOTL_POLLS: hardware interrupts only through SWOTL_IrqPoint (pic.cpp gate). */
++extern bool swotl_irq_gate, swotl_irq_open;
++/* Before an instruction: true if a hardware interrupt was taken instead. */
++bool SWOTL_IrqPoint(uint32_t linear);
 +
 +void SWOTL_Instruction(uint32_t linear);
 +void SWOTL_MemoryAccess(bool write, uint32_t address, uint8_t width);
@@ -85,7 +89,7 @@ index 0000000..c6b3991
 +
 +#endif
 diff --git a/src/cpu/core_normal.cpp b/src/cpu/core_normal.cpp
-index 26d9f49..2a193a6 100644
+index 26d9f49..8e6ad18 100644
 --- a/src/cpu/core_normal.cpp
 +++ b/src/cpu/core_normal.cpp
 @@ -22,6 +22,7 @@
@@ -96,16 +100,20 @@ index 26d9f49..2a193a6 100644
  #include "mmx.h"
  
  extern bool do_lds_wraparound;
-@@ -163,6 +164,7 @@ Bits CPU_Core_Normal_Run(void) {
+@@ -163,6 +164,11 @@ Bits CPU_Core_Normal_Run(void) {
  
  	while (CPU_Cycles-->0) {
  		LOADIP;
++		if (swotl_irq_gate && SWOTL_IrqPoint(core.cseip)) {
++			++CPU_Cycles;
++			return CBRET_NONE;
++		}
 +		SWOTL_Instruction(core.cseip);
  		last_prefix=MP_NONE;
  		core.opcode_index=cpu.code.big*(Bitu)0x200u;
  		core.prefixes=cpu.code.big;
 diff --git a/src/cpu/core_normal_286.cpp b/src/cpu/core_normal_286.cpp
-index 3dad080..d2c0825 100644
+index 3dad080..ee5d212 100644
 --- a/src/cpu/core_normal_286.cpp
 +++ b/src/cpu/core_normal_286.cpp
 @@ -22,6 +22,7 @@
@@ -116,10 +124,14 @@ index 3dad080..d2c0825 100644
  #include "pic.h"
  #include "fpu.h"
  
-@@ -181,6 +182,7 @@ Bits CPU_Core286_Normal_Run(void) {
+@@ -181,6 +182,11 @@ Bits CPU_Core286_Normal_Run(void) {
  
  	while (CPU_Cycles-->0) {
  		LOADIP;
++		if (swotl_irq_gate && SWOTL_IrqPoint(core.cseip)) {
++			++CPU_Cycles;
++			return CBRET_NONE;
++		}
 +		SWOTL_Instruction(core.cseip);
  		core.prefixes=0;
  		core.opcode_index=0;
@@ -281,6 +293,26 @@ index 34222c4..5d33121 100644
  	return retval;
  }
  
+diff --git a/src/hardware/pic.cpp b/src/hardware/pic.cpp
+index dc7d787..cea5d36 100644
+--- a/src/hardware/pic.cpp
++++ b/src/hardware/pic.cpp
+@@ -24,6 +24,7 @@
+ #include "callback.h"
+ #include "logging.h"
+ #include "pic.h"
++#include "swotl_trace.h"
+ #include "timer.h"
+ #include "setup.h"
+ #include "control.h"
+@@ -539,6 +540,7 @@ static void inline master_startIRQ(Bitu i){
+ }
+ 
+ void PIC_runIRQs(void) {
++    if (swotl_irq_gate && !swotl_irq_open) return; /* SWOTL_POLLS: poll points only */
+     if (!GETFLAG(IF)) return;
+     if (GCC_UNLIKELY(!PIC_IRQCheck)) return;
+     if (GCC_UNLIKELY(cpudecoder==CPU_Core_Normal_Trap_Run)) return; // FIXME: Why?
 diff --git a/src/misc/Makefile.am b/src/misc/Makefile.am
 index e31e63f..fab8958 100644
 --- a/src/misc/Makefile.am
@@ -300,10 +332,10 @@ index e31e63f..fab8958 100644
 +libmisc_a_SOURCES = clipboard.cpp cross.cpp ethernet.cpp ethernet_pcap.cpp ethernet_slirp.cpp ethernet_ethnet.cpp ethernet_nothing.cpp messages.cpp programs.cpp setup.cpp support.cpp regionalloctracking.cpp savestates.cpp shiftjis.cpp iconvpp.cpp mkdir_p.cpp swotl_trace.cpp
 diff --git a/src/misc/swotl_trace.cpp b/src/misc/swotl_trace.cpp
 new file mode 100644
-index 0000000..b4222b8
+index 0000000..3a0858c
 --- /dev/null
 +++ b/src/misc/swotl_trace.cpp
-@@ -0,0 +1,673 @@
+@@ -0,0 +1,737 @@
 +/* SWOTL reference instrumentation (Secret Weapons of Luftwaffe port).
 + *
 + * Enabled by SWOTL_TRACE=1; armed at the first instruction of SWOTL.EXE
@@ -332,6 +364,7 @@ index 0000000..b4222b8
 +#include "logging.h"
 +#include "swotl_trace.h"
 +#include "../cpu/lazyflags.h"
++#include "pic.h"
 +
 +#include <algorithm>
 +#include <cctype>
@@ -347,6 +380,7 @@ index 0000000..b4222b8
 +#include <vector>
 +
 +bool swotl_active = false;
++bool swotl_irq_gate = false, swotl_irq_open = false;
 +
 +extern HostPt MemBase;
 +
@@ -425,6 +459,17 @@ index 0000000..b4222b8
 + * full registers at entry ("svc") and when execution is back at its return
 + * address with the entry SP ("svc_ret"). */
 +bool log_services = false;
++uint64_t service_events = 0;
++/* Interrupt sync (SWOTL_POLLS=file of "MODULE,0xOFFSET" lines, the translator's
++ * poll points): hardware interrupts are taken only before a poll-point
++ * instruction, and each is logged as "irq" with the number of service events
++ * so far and the poll point's executions since the last service event. */
++bool poll_gate = false;
++std::map<std::string, std::vector<uint8_t>> poll_bits;
++std::vector<const std::vector<uint8_t> *> poll_cache;
++std::map<Location, uint32_t> poll_hits;
++int irq_vector = -1;
++uint64_t poll_digest = 0xcbf29ce484222325ull;  /* FNV-1a of the poll file */
 +struct PendingService { uint32_t ret_linear; uint16_t ss, sp; uint8_t vector; };
 +std::vector<PendingService> services;
 +
@@ -496,6 +541,8 @@ index 0000000..b4222b8
 +}
 +
 +void ServiceEvent(const char *kind, const unsigned num) {
++	++service_events;
++	poll_hits.clear();
 +	FillFlags();
 +	Event(kind, "%02x ax=%04x bx=%04x cx=%04x dx=%04x si=%04x di=%04x bp=%04x sp=%04x ds=%04x es=%04x "
 +	      "ss=%04x flags=%04x", num, (uint16_t)reg_ax, (uint16_t)reg_bx, (uint16_t)reg_cx,
@@ -641,6 +688,7 @@ index 0000000..b4222b8
 +	if (auto *f = fopen(Path("summary.txt").c_str(), "w")) {
 +		fprintf(f, "load_seg=0x%04x\ninstructions=%llu\nedges=%zu\n", load_seg,
 +		        (unsigned long long)icount, edges.size());
++		if (poll_gate) fprintf(f, "polls=%016llx\n", (unsigned long long)poll_digest);
 +		fclose(f);
 +	}
 +	if (events) fclose(events);
@@ -719,6 +767,23 @@ index 0000000..b4222b8
 +		t.key = KeyByName(t.name);
 +		if (t.key == KBD_NONE) E_Exit("SWOTL: unknown key '%s'", t.name.c_str());
 +		keys.push_back(t);
++	}
++	if (const char *polls = getenv("SWOTL_POLLS")) {
++		FILE *f = fopen(polls, "r");
++		if (!f) E_Exit("SWOTL: cannot read SWOTL_POLLS '%s'", polls);
++		char line[128];
++		while (fgets(line, sizeof line, f)) {
++			for (const char *c = line; *c; ++c) poll_digest = (poll_digest ^ (uint8_t)*c) * 0x100000001b3ull;
++			char *comma = strchr(line, ',');
++			if (!comma || !strncmp(line, "module,", 7)) continue;
++			*comma = 0;
++			const uint32_t off = (uint32_t)strtoul(comma + 1, nullptr, 16);
++			auto &bits = poll_bits[line];
++			if (bits.size() <= off) bits.resize(off + 1, 0);
++			bits[off] = 1;
++		}
++		fclose(f);
++		poll_gate = swotl_irq_gate = true;
 +	}
 +	events = fopen(Path("events.csv").c_str(), "w");
 +	if (events) fputs("icount,kind,module,offset,detail\n", events);
@@ -833,6 +898,18 @@ index 0000000..b4222b8
 +	plink.reads = overlay_reads;
 +}
 +
++bool IsPoll(const Location &here) {
++	if (!here.module) return false;
++	if (poll_cache.size() <= here.module) poll_cache.resize(modules.size(), nullptr);
++	if (!poll_cache[here.module]) {
++		static const std::vector<uint8_t> none;
++		const auto it = poll_bits.find(modules[here.module].name);
++		poll_cache[here.module] = it == poll_bits.end() ? &none : &it->second;
++	}
++	const auto &bits = *poll_cache[here.module];
++	return here.offset < bits.size() && bits[here.offset];
++}
++
 +void ServiceReturn(const uint32_t linear) {
 +	if (services.empty()) return;
 +	const auto &p = services.back();
@@ -865,6 +942,7 @@ index 0000000..b4222b8
 +	prev_valid = true;
 +	PlinkProbe(linear, here);
 +	ServiceReturn(linear);
++	if (poll_gate && IsPoll(here)) ++poll_hits[here];
 +
 +	/* Snapshots count after the key script, each after the previous one. */
 +	if (key_index == keys.size() && key_held == KBD_NONE)
@@ -904,8 +982,26 @@ index 0000000..b4222b8
 +	if (code) ++code_writes[std::make_tuple(source, address, width)];
 +}
 +
++bool SWOTL_IrqPoint(const uint32_t linear) {
++	if (!swotl_active || !GETFLAG(IF) || !PIC_IRQCheck) return false;
++	const Location here = Locate(linear);
++	if (!IsPoll(here)) return false;
++	irq_vector = -1;
++	swotl_irq_open = true;
++	PIC_runIRQs();
++	swotl_irq_open = false;
++	if (irq_vector < 0) return false;
++	const auto it = poll_hits.find(here);
++	if (events)
++		fprintf(events, "%llu,irq,%s,0x%05x,%02x svc=%llu hits=%u\n", (unsigned long long)icount,
++		        modules[here.module].name.c_str(), here.offset, irq_vector,
++		        (unsigned long long)service_events, it == poll_hits.end() ? 0u : it->second);
++	return true;
++}
++
 +void SWOTL_Interrupt(const unsigned num, const unsigned type, const uint32_t oldeip) {
 +	if (!swotl_active || cpu.pmode) return;
++	if (swotl_irq_open && (type & CPU_INT_SOFTWARE) == 0) irq_vector = (int)num;
 +	in_interrupt_hook = true;
 +	const auto vector = (uint32_t)num << 2;
 +	const uint32_t target = ((uint32_t)mem_readw(vector + 2) << 4) + mem_readw(vector);

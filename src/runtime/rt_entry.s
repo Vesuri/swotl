@@ -3,12 +3,15 @@
 ; d6/d7/a0 scratch. C (gcc, 68020 ABI) clobbers d0/d1/a0/a1 only.
 
 ; State block offsets (translator/lower.py STATE_EQU)
+G_IRQ	equ	-8
 G_ES	equ	-12
 G_SS	equ	-14
 G_DS	equ	-16
 
 	xdef	rt_int
 	xdef	rt_irq
+	xdef	rt_exit
+	xdef	rt_exit_guest
 	xdef	rt_bios_int08
 	xdef	rt_fault
 	xdef	rt_halt
@@ -103,9 +106,10 @@ deliver_or_return:
 	move.l	d0,-(a7)
 	bsr	load_regs
 	move.l	(a7)+,d7
-	bne.s	.guest
+	bne.s	deliver_guest
+rt_exit:	; back to generated code (tests/host_run.py: service returns)
 	rts
-.guest:	; d7 = CS << 16 | IP of the pushed frame; the handler's IRET pops it
+deliver_guest:	; d7 = CS << 16 | IP of the pushed frame; the handler's IRET pops it
 	move.l	d7,-(a7)
 	moveq	#0,d6
 	move.w	rt_deliver_cs,d6
@@ -117,18 +121,26 @@ deliver_or_return:
 	cmp.w	(a7),d6
 	bne	rt_ret_mismatch
 	addq.l	#4,a7
+rt_exit_guest:
 	rts
 
 ; Poll point with G_IRQ set (D8): d6 = CS << 16, d7 = IP of the loop head.
-; A pending timer tick runs the guest INT 08h handler on the frame C pushed,
-; or the machine's BIOS tick.
+; Posted interrupts run in order: a guest handler on the frame C pushed, then
+; the next; BIOS handlers in C.
 rt_irq:
 	bsr	save_regs
 	move.l	d7,-(a7)
 	move.l	d6,-(a7)
 	jsr	rt_irq_c
 	addq.l	#8,a7
-	bra.s	deliver_or_return
+	tst.l	d0
+	beq	deliver_or_return
+	movem.l	d6-d7,-(a7)
+	bsr	deliver_or_return	; the guest handler, IRET checked
+	movem.l	(a7)+,d6-d7
+	tst.b	G_IRQ(a6)
+	bne.s	rt_irq			; more posted at this poll point
+	rts
 
 ; The BIOS INT 08h handler, reached by a guest handler chaining to the vector
 ; it replaced (jmp far): the tick, then IRET; d7/d6 = popped IP/CS for the
@@ -153,7 +165,7 @@ rt_fault:
 	move.l	d6,-(a7)
 	jsr	rt_fault_c
 	addq.l	#8,a7
-	bra.s	deliver_or_return
+	bra	deliver_or_return
 
 rt_halt:
 	bsr	save_regs

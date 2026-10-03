@@ -120,7 +120,7 @@ void plat_present(const uint8_t *frame, const uint8_t *dac)
 
 /* PIT channel 0 on a CIA-B timer (D8): one CIA period per PIT period, the
  * latch scaled from the PIT clock (1193182 Hz) to the PAL E-clock (709379 Hz,
- * 35469/59659 within 1e-5); the interrupt only posts the clocks, the guest
+ * 35469/59659 within 1e-5); the interrupt only posts vector 08h, the guest
  * handler runs at the next poll point. */
 #define CIAB ((volatile struct CIA *)0xbfd000)
 static struct Library *cia_base = 0;
@@ -129,7 +129,8 @@ static WORD cia_bit = -1;
 
 static ULONG cia_tick(void)
 {
-    rt_pit_clocks += rt_pit_divisor;
+    rt_irq_ring[rt_irq_tail % RT_IRQ_RING] = 8;
+    ++rt_irq_tail;
     G_IRQ = 1;
     return 0;
 }

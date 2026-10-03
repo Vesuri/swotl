@@ -236,10 +236,11 @@ uint32_t rt_int_c(uint32_t d6, uint32_t ip)
 
 /* -- timer (D8) ------------------------------------------------------------ */
 
-/* PIT input clocks elapsed (the platform adds them and sets G_IRQ); channel 0
- * fires every rt_pit_divisor clocks. */
-volatile uint32_t rt_pit_clocks;
-static uint32_t pit_taken;
+/* Hardware interrupts posted by the platform (vector 08h tick, 09h key make,
+ * 89h key break), taken in order at poll points while the guest has IF set. */
+volatile uint8_t rt_irq_ring[RT_IRQ_RING];
+volatile uint8_t rt_irq_tail;
+static uint8_t irq_head;
 
 #define BIOS_TICKS 0x46c
 #define BIOS_MIDNIGHT 0x470
@@ -259,35 +260,30 @@ static void bios_tick(void)
     wr16(BIOS_TICKS + 2, (uint16_t)(t >> 16));
 }
 
-static int tick_due(void)
-{
-    return rt_pit_clocks - pit_taken >= rt_pit_divisor;
-}
-
-/* With guest interrupts enabled: new keys (BIOS INT 09h), then one due tick;
- * returns as rt_int_c does. G_IRQ stays set while ticks remain due. */
+/* Posted interrupts in order until one runs a guest handler (returned as
+ * rt_int_c does; the glue then polls again) or none is left. */
 uint32_t rt_irq_c(uint32_t d6, uint32_t ip)
 {
     uint16_t cs = (uint16_t)(d6 >> 16);
-    if (!G_IF) {
-        return 0;
+    while (G_IF && irq_head != rt_irq_tail) {
+        uint8_t irq = rt_irq_ring[irq_head++ % RT_IRQ_RING];
+        uint8_t vector = irq & 0x7f;
+        if (guest_vector(vector)) {
+            return deliver(vector, cs, (uint16_t)ip);
+        }
+        if (vector == 9) {
+            if (irq == 9) {
+                rt_keyboard_irq();  /* BIOS INT 09h: the make code's key */
+            }
+            continue;
+        }
+        if (vector != 8 || rd16(8 * 4) != BIOS_INT08_OFF || rd16(8 * 4 + 2) != BIOS_INT08_SEG) {
+            rt_unsupported("hardware interrupt vector outside the program and the BIOS",
+                           vector, cs, (uint16_t)ip);
+        }
+        bios_tick();
     }
-    if (rt_key_pending()) {
-        rt_keyboard_irq();
-    }
-    if (!tick_due()) {
-        G_IRQ = 0;
-        return 0;
-    }
-    pit_taken += rt_pit_divisor;
-    G_IRQ = (uint8_t)tick_due();
-    if (guest_vector(8)) {
-        return deliver(8, cs, (uint16_t)ip);
-    }
-    if (rd16(8 * 4) != BIOS_INT08_OFF || rd16(8 * 4 + 2) != BIOS_INT08_SEG) {
-        rt_unsupported("INT 08h vector outside the program and the BIOS", 8, cs, (uint16_t)ip);
-    }
-    bios_tick();
+    G_IRQ = irq_head != rt_irq_tail;
     return 0;
 }
 

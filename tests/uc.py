@@ -14,7 +14,7 @@ uc = C.CDLL(LIB)
 
 ARCH_X86, MODE_16 = 4, 2
 ARCH_M68K, MODE_BIG_ENDIAN, CPU_M68K_M68020 = 7, 1 << 30, 2
-CTL_CPU_MODEL, CTL_TB_FLUSH = 7, 10
+CTL_CPU_MODEL, CTL_TB_REMOVE_CACHE, CTL_TB_FLUSH = 7, 9, 10
 PROT_ALL = 7
 HOOK_INTR, HOOK_INSN, HOOK_CODE, HOOK_MEM_READ, HOOK_MEM_WRITE = 1, 2, 4, 1 << 10, 1 << 11
 X86_INS_IN, X86_INS_OUT = 218, 500
@@ -114,6 +114,12 @@ class Engine:
     def flush(self) -> None:
         """Drop translated blocks; uc_mem_write does not invalidate them."""
         check(uc.uc_ctl(self.h, CTL_TB_FLUSH | (1 << 30)), "uc_ctl tb flush")
+
+    def drop_blocks(self, begin: int, end: int) -> None:
+        """Drop translated blocks covering [begin, end) (a new code hook there
+        applies only to blocks translated after it)."""
+        check(uc.uc_ctl(self.h, CTL_TB_REMOVE_CACHE | (2 << 26) | (1 << 30),
+                        C.c_uint64(begin), C.c_uint64(end)), "uc_ctl tb remove cache")
 
     def start(self, begin: int, until: int, count: int = 0) -> int:
         return uc.uc_emu_start(self.h, begin, until, 0, count)

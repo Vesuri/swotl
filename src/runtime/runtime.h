@@ -82,16 +82,19 @@ void rt_int67(void);
 void rt_dos_init(void);
 uint16_t rt_psp(void);
 
-/* timer (machine.c): the platform adds PIT input clocks and sets G_IRQ */
-extern volatile uint32_t rt_pit_clocks;
+/* hardware interrupts (machine.c): the platform appends a vector (08h tick,
+ * 09h key make, 89h key break) at rt_irq_tail and sets G_IRQ */
+#define RT_IRQ_RING 32
+extern volatile uint8_t rt_irq_ring[RT_IRQ_RING];
+extern volatile uint8_t rt_irq_tail;
 void rt_bios_int08(void);
 
-/* input.c: the platform appends keys (scan << 8 | ASCII) and sets G_IRQ */
+/* input.c: the platform appends keys (scan << 8 | ASCII); each 09h make
+ * interrupt stores one into the BIOS buffer */
 #define RT_KEY_RING 16
 extern volatile uint16_t rt_key_ring[RT_KEY_RING];
 extern volatile uint8_t rt_key_tail;
 void rt_input_init(void);
-int rt_key_pending(void);
 void rt_keyboard_irq(void);
 int rt_key_available(void);
 uint16_t rt_key_take(void);

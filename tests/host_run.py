@@ -60,13 +60,7 @@ COMPARE = [(0x07C90, 0xA0000)]
 FRAME = (0xA0000, 0xB0000)
 REGS = ("ax", "cx", "dx", "bx", "sp", "bp", "si", "di")
 DEAD_STACK = 0x60
-# Host clock (D8): Unicorn runs SLICE 68k instructions at a time; each slice
-# adds PIT_PER_SLICE input clocks to rt_pit_clocks and sets G_IRQ. Nominal:
-# the reference runs 12000 x86 instructions/ms, RATIO 68k per x86 instruction;
-# the clock starts at the guest entry.
-SLICE = 20_000
-RATIO = 5  # measured to m1b-logo: 8.3M 68k for 1.5M x86 instructions
-PIT_PER_SLICE = SLICE * 1193182 // (12_000_000 * RATIO)
+POLLS = REPO / "build/gen/poll-points.csv"
 
 
 def elf_load(path: Path):
@@ -102,6 +96,32 @@ def reference_services(trace: Path) -> list[tuple[str, dict]]:
                 regs["vector"] = int(vec, 16)
                 out.append((r["kind"], regs))
     return out
+
+
+def reference_inputs(trace: Path) -> tuple[list, list[int]]:
+    """The reference's hardware interrupts as (service events so far, poll
+    point label, its executions since the last service event, vector), and
+    the service-event count at each key release."""
+    irqs, releases, n = [], [], 0
+    with (trace / "events.csv").open() as f:
+        for r in csv.DictReader(f):
+            if r["kind"] in ("svc", "svc_ret"):
+                n += 1
+            elif r["kind"] == "irq":
+                vec, svc, hits = r["detail"].split()
+                assert int(svc[4:]) == n, r
+                irqs.append((n, emit.label(r["module"], int(r["offset"], 16)),
+                             int(hits[5:]), int(vec, 16)))
+            elif r["kind"] == "key_up":
+                releases.append(n)
+    return irqs, releases
+
+
+def fnv(data: bytes) -> int:
+    h = 0xCBF29CE484222325
+    for b in data:
+        h = ((h ^ b) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return h
 
 
 SABOTAGE = {
@@ -141,18 +161,20 @@ class Host:
 
         e.hook_range(U.HOOK_CODE, stub, self.syms["host_stubs"], self.syms["host_stubs_end"])
 
-        self.ret_hooks: list[int] = []
-
+        # a service returns when the runtime glue's rts goes back to the
+        # address after its jsr rt_int (static hooks: Unicorn retranslates
+        # on every hook change)
         @U.CODE_CB
         def ret_hit(h, addr, size, user):
-            if self.pending and addr == self.pending[-1][0]:
-                _, hh = self.pending.pop()
+            if self.pending and self.u32(self.r("a7")) == self.pending[-1]:
+                self.pending.pop()
                 if self.sabotage == "ax" and len(self.services) == 19:
                     self.e.reg_write(U.M68K["d0"], (self.r("d0") + 1) & 0xFFFF)
                 self.services.append(("svc_ret", self.guest_regs(self.pending_vec.pop())))
                 self.in_service = bool(self.pending)
 
-        self.ret_cb = ret_hit
+        for n in ("rt_exit", "rt_exit_guest"):
+            e.hook_range(U.HOOK_CODE, ret_hit, self.syms[n], self.syms[n])
         self.pending: list = []
         self.pending_vec: list = []
 
@@ -164,9 +186,7 @@ class Host:
             self.in_service = True
             top = regs["ss"] * 16 + regs["sp"]
             self.masked.update(range(top - DEAD_STACK, top))
-            ret = struct.unpack(">I", self.e.read(self.r("a7"), 4))[0]
-            hh = self.e.hook_range(U.HOOK_CODE, self.ret_cb, ret, ret)
-            self.pending.append((ret, hh))
+            self.pending.append(self.u32(self.r("a7")))
             self.pending_vec.append(d6 & 0xFF)
 
         a = self.syms["rt_int"]
@@ -293,21 +313,35 @@ class Host:
             self.e.stop()
         self.e.reg_write(U.M68K["d0"], res & 0xFFFFFFFF)
 
+    def post(self, vector: int) -> None:
+        tail = self.mem(self.syms["rt_irq_tail"], 1)[0]
+        self.e.write(self.syms["rt_irq_ring"] + tail % 32, bytes([vector]))
+        self.e.write(self.syms["rt_irq_tail"], bytes([(tail + 1) & 0xFF]))
+        self.e.write(GUEST - 8, b"\1")
+
     def press(self, key: int) -> None:
         tail = self.mem(self.syms["rt_key_tail"], 1)[0]
         self.e.write(self.syms["rt_key_ring"] + 2 * (tail % 16), struct.pack(">H", key))
         self.e.write(self.syms["rt_key_tail"], bytes([(tail + 1) & 0xFF]))
-        self.e.write(GUEST - 8, b"\1")
 
     def run(self, script: dict | None, limit: int) -> None:
-        """Run to the script's last snapshot trigger (None: until a stop)."""
+        """Run to the script's last snapshot trigger (None: until a stop).
+        Hardware interrupts replay the reference's (script["irqs"]): posted at
+        the same visit of the same poll point after the same service event;
+        a key's release is at the service event the reference released it."""
         steps = [(t, k) for t, k in script["keys"]] + [(t, None) for t in script["snapshots"]] \
             if script else []
+        releases = list(script["releases"]) if script else []
+        self.irqs = list(script["irqs"]) if script else []
         self.step, self.hits, self.release = 0, 0, None
-        hold = KEY_HOLD * RATIO // SLICE
+        self.irq_i, self.visits, self.visit_svc, self.irq_hook = 0, 0, None, None
+        self.irq_lost: str | None = None
+        makes = 0
 
         @U.CODE_CB
         def hit(h, addr, size, user):
+            if self.release is not None and len(self.services) >= self.release:
+                self.release = None  # key up: the next trigger counts from here
             if self.step == len(steps) or self.release is not None:
                 return
             (lab, _, n), key = steps[self.step]
@@ -319,34 +353,57 @@ class Host:
             self.step, self.hits = self.step + 1, 0
             if key is not None:
                 self.press(key)
-                self.release = self.slices + hold
+                self.release = releases.pop(0)
             elif self.step == len(steps):
-                self.ret_cb(h, addr, size, user)  # a service returning to the label
                 self.stopped_at = lab
                 self.halted = True
                 self.e.stop()
 
+        @U.CODE_CB
+        def poll(h, addr, size, user):
+            try:
+                replay(addr)
+            except Exception as e:  # ctypes drops exceptions raised in hooks
+                self.irq_lost = f"interrupt replay: {e!r}"
+                self.halted = True
+                self.e.stop()
+
+        def replay(addr):
+            nonlocal makes
+            if self.irq_i == len(self.irqs):
+                return
+            n = len(self.services)
+            svc, lab, hits, _ = self.irqs[self.irq_i]
+            if self.syms[lab] != addr:
+                return
+            if (n, lab) != self.visit_svc:  # executions of this poll point since the service
+                self.visit_svc, self.visits = (n, lab), 0
+            self.visits += 1
+            if n > svc and not self.irq_lost:
+                self.irq_lost = f"reference irq #{self.irq_i} at {lab} svc={svc} hits={hits} " \
+                                f"not reached (service events {n})"
+            if n != svc or self.visits != hits + 1 or self.syms[lab] != addr:
+                return
+            while self.irq_i < len(self.irqs) and self.irqs[self.irq_i][:3] == (svc, lab, hits):
+                vector = self.irqs[self.irq_i][3]
+                if vector == 9:
+                    makes += 1
+                    vector = 9 if makes % 2 else 0x89  # make, then the key's break
+                self.post(vector)
+                self.irq_i += 1
+
+        # static hooks (Unicorn retranslates on every hook change)
         for a in {self.syms[t[0]] for t, _ in steps}:
             self.e.hook_range(U.HOOK_CODE, hit, a, a)
+        for a in {self.syms[lab] for _, lab, _, _ in self.irqs}:
+            self.e.hook_range(U.HOOK_CODE, poll, a, a)
         self.e.reg_write(U.M68K["sr"], 0x2700)
         self.e.reg_write(U.M68K["a7"], STACK_TOP)
-        clocks, irq = self.syms["rt_pit_clocks"], GUEST - 8
-        pc, self.slices = self.entry, 0
-        while self.slices * SLICE < limit:
-            self.halted = False
-            err = self.e.start(pc, 0xFFFFFFFF, SLICE)
-            self.slices += 1
-            if err:
-                print(f"unicorn error {U.uc.uc_strerror(err).decode()} pc={self.r('pc'):x}")
-                self.exit = -1
-            if err or self.halted:
-                return
-            pc = self.r("pc")
-            if self.release is not None and self.slices >= self.release:
-                self.release = None  # key up: the next trigger counts from here
-            if self.watching:  # the clock starts at the guest entry
-                self.e.write(clocks, struct.pack(">I", (self.u32(clocks) + PIT_PER_SLICE) & 0xFFFFFFFF))
-                self.e.write(irq, b"\1")
+        self.halted = False
+        err = self.e.start(self.entry, 0xFFFFFFFF, limit)
+        if err:
+            print(f"unicorn error {U.uc.uc_strerror(err).decode()} pc={self.r('pc'):x}")
+            self.exit = -1
 
 
 def trigger(spec: str) -> tuple[str, int, int]:
@@ -534,8 +591,15 @@ def check(milestone: str, limit: int, amiga: Path | None, sabotage: str | None) 
     snap = trace / f"snap-{args.milestone}-0"
     h = Host(image.M.REF, sabotage)
     label = script["snapshots"][-1][0]
-    h.run(script, args.limit)
+    script["irqs"], script["releases"] = reference_inputs(trace)
+    summary = dict(kv.split("=", 1) for kv in (trace / "summary.txt").read_text().split())
     problems = []
+    if int(summary.get("polls", "0"), 16) != fnv(POLLS.read_bytes()):
+        problems.append("reference recorded with other poll points: rerun make reference")
+    h.run(script, args.limit)
+    if h.irq_lost:
+        problems.append(h.irq_lost)
+    print(f"hardware interrupts: {h.irq_i} replayed, {len(script['irqs'])} in the reference")
     if h.stopped_at != label:
         problems.append(f"milestone label {label} not reached (exit {h.exit}, pc={h.r('pc'):x})")
     want = reference_services(trace)

@@ -65,7 +65,7 @@ RUN_ARGS ?= --time-limit 60
 reference-run: check-ref
 	$(PYTHON) tools/pc_run.py $(RUN) $(RUN_ARGS)
 
-reference: check-ref
+reference: check-ref gen
 	$(PYTHON) tools/reference.py
 
 coverage: check-ref

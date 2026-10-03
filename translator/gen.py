@@ -29,6 +29,7 @@ from .sem import lift
 VERSION = "swotl-gen 2 (ir, 68020)"
 AUDIT = image.REPO / "tests/audit.csv"
 SUPPORT = "support"
+POLLS = "poll-points.csv"
 PROGRAM = "program"  # assembly root: equates, runtime xrefs, includes, dispatch table
 OUT = image.REPO / "build/gen"
 M = image.M
@@ -87,6 +88,10 @@ def generate(out: Path) -> tuple[dict[str, cfg.Unit], Counter, dict[str, Counter
     write(out, "support.s", SUPPORT, support.HELPERS.encode())
     files.append("support.s")
     write(out, "program.s", PROGRAM, (support.equates() + prog.program_text(files)).encode())
+    # D8 poll points for the reference tracer (SWOTL_POLLS): DOSBox-X takes
+    # hardware interrupts only there, so the host can replay them exactly
+    (out / POLLS).write_text("module,offset\n" + "".join(
+        f"{m},0x{o:05x}\n" for m, o in sorted(prog.loop_heads)))
     return units, total, per
 
 

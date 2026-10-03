@@ -13,7 +13,7 @@ int32_t plat_read(int32_t handle, void *buffer, uint32_t length);
 int32_t plat_seek(int32_t handle, int32_t offset, int32_t whence);
 void plat_close(int32_t handle);
 /* PIT channel 0 now fires every `divisor` input clocks (1..65536, 1193182 Hz):
- * per period the platform adds `divisor` to rt_pit_clocks and sets G_IRQ. */
+ * per period the platform posts vector 08h (runtime.h rt_irq_ring). */
 void plat_timer_rate(uint32_t divisor);
 /* Show the 320x200 chunky frame with its DAC (256 x 6-bit R, G, B). */
 void plat_present(const uint8_t *frame, const uint8_t *dac);

@@ -24,14 +24,11 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
 ## Translator
 
 13. D16: lower the self-modified block (after 9d); its 528 entries stop now.
-14. Path past m1b-logo: the host run to m2-choose-side matches 13,249 of
-    21,852 service events, then diverges on input timing (the reference
-    sees the key 11 polls after the press: DOSBox-X's IRQ 1 latency; the
-    runtime stores it at the next poll point). Ticks land at arbitrary
-    instructions in the reference and at loop heads here. Decide how
-    lockstep syncs hardware interrupts (IRQ 0/1) with the reference.
-    Then: D16 for menus and flight, mouse input, Amiga keyboard input.
-    The run also stops at `209D:0CBD` (untranslated) after the divergence.
+14. Path past m1b-logo: the host run to m2-choose-side matches all 14,360
+    service events and 50 hardware interrupts (replayed at the reference's
+    poll points) up to the first entry into the self-modified block
+    (`SWOTL+6A4D`, D16, item 13). Then: mouse input, Amiga keyboard input,
+    m2 into `make test-host` once it passes (host run ~5 min).
 14a. Display presents only at mode/DAC sets (`plat_present`, Intuition
     screen while the OS serves dos.library); frames drawn without a DAC
     change need a periodic present, and D9's framework (copper) display

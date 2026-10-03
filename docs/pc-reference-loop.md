@@ -88,7 +88,7 @@ Trace outputs (`tmp/pc-runs/<name>/trace/`, written at exit):
 
 | File | Content |
 |---|---|
-| `events.csv` | ordered: arm, DOS open/read/seek/close (name, linear buffer, file pos), INT 10h/33h/67h and selected INT 21h with registers, faults, keys, snapshots; with `--services` (`SWOTL_SERVICES`, on in `make reference`) `svc`/`svc_ret`: every software INT raised by module code with all registers and FLAGS at entry and when execution is back at its return address with the entry SP (the runtime's service oracle) |
+| `events.csv` | ordered: arm, DOS open/read/seek/close (name, linear buffer, file pos), INT 10h/33h/67h and selected INT 21h with registers, faults, keys, snapshots; with `--services` (`SWOTL_SERVICES`, on in `make reference`) `svc`/`svc_ret`: every software INT raised by module code with all registers and FLAGS at entry and when execution is back at its return address with the entry SP (the runtime's service oracle); with `--polls` (`SWOTL_POLLS` = `build/gen/poll-points.csv`, on in `make reference`) hardware interrupts are taken only before a translator poll point (D8) and logged as `irq`: vector, service events so far, the poll point's executions since the last one; `summary.txt` `polls=` is the FNV-1a of that file |
 | `modules.csv`, `executed-<module>.bin` | per-module instruction-start bitmap |
 | `edges.csv` | unique consecutive-instruction pairs |
 | `interrupts.csv`, `ports.csv`, `vga.csv` | aggregates by source site (AX for software INTs; port value; 256-byte VGA page) |
@@ -142,8 +142,10 @@ Facts from these runs:
   keyboard input there arrives without an observed poll (BIOS buffer read
   likely).
 - Determinism: RAM/VRAM/DAC at every milestone are identical across runs.
-  The instruction count at a milestone can differ (interrupt arrival points
-  vary with host tick interleaving), so lockstep must sync on guest events.
+  Without `--polls` the instruction count at a milestone can differ
+  (interrupt arrival points vary with host tick interleaving); with it,
+  interrupts wait for a poll point and the run repeats exactly, instruction
+  count included.
 - RNG: root `+DC91`, 16 rounds of shift/XOR over `[255E..255F]` with carry
   into `[255C]` (returned); seeded at `+DCB1` from INT 21h AH=2Ch DX (DOS
   time, fixed by the pinned tick count). Not the MS C `rand`.

@@ -4,7 +4,7 @@
 #include "runtime.h"
 
 /* Keys from the platform: scan code << 8 | ASCII, appended at rt_key_tail;
- * the platform sets G_IRQ and the next poll point stores them as INT 09h. */
+ * the platform's 09h make interrupt stores the next one as INT 09h. */
 volatile uint16_t rt_key_ring[RT_KEY_RING];
 volatile uint8_t rt_key_tail;
 static uint8_t key_head;
@@ -26,15 +26,11 @@ void rt_input_init(void)
     wr16(BDA_END, BUFFER_END);
 }
 
-int rt_key_pending(void)
-{
-    return key_head != rt_key_tail;
-}
-
-/* BIOS INT 09h: each new key into the buffer (dropped when full). */
+/* BIOS INT 09h for a make code: the next key into the buffer (dropped when
+ * full). */
 void rt_keyboard_irq(void)
 {
-    while (key_head != rt_key_tail) {
+    if (key_head != rt_key_tail) {
         uint16_t key = rt_key_ring[key_head++ % RT_KEY_RING];
         uint16_t tail = rd16(BDA_TAIL), next = tail + 2;
         if (next == rd16(BDA_END)) {
