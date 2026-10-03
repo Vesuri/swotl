@@ -47,5 +47,7 @@ audio the game has; RTSEGA, RTSTANDY and SFXA (PC speaker) are out.
 - Release: `docs/whdload.md`, `docs/release.md`
 - Build: `make amiga`, `make smoke`; original: `make reference-staging`;
   ref facts: `make inspect`, `make hash`/`check-ref`; milestones `make
-  reference`, `make coverage`; map `make map`, `make ghidra`; `SetPatch` expected
+  reference`, `make coverage`; map `make map`, `make ghidra`;
+  translator `make gen`, `make test` (G2 lint, decoder, x86 differential, G1),
+  `make test-sabotage`; `SetPatch` expected
   at `tmp/SetPatch`. Facts: `docs/source-inventory.md`.

@@ -1,6 +1,6 @@
 # Translator design
 
-Skeleton for phases 3–5. Fixed parts are decided; decision points D1–D16
+Skeleton for phases 4–5 (phase 3 done: decoder, IR, x86 differential). Fixed parts are decided; decision points D1–D16
 list options, the evidence that settles them (from
 [plan-reference-map.md](plan-reference-map.md)) and the default if evidence
 does not object. Replace each decision with its outcome when settled.
@@ -12,28 +12,30 @@ Overview and guardrails: [architecture.md](architecture.md).
 
 | Module | Role |
 |---|---|
-| `translator/image.py` | load proved root/overlay images, relocations, module map |
-| `translator/decode.py` | own table-driven 8086/186/286 decoder; Capstone cross-check in tests |
-| `translator/ir.py` | per-instruction semantic ops (below) |
-| `translator/cfg.py` | blocks, functions, overlay modules from `annotations/` + decoded edges |
-| `translator/flags.py`, `live.py` | flag demand, register liveness |
-| `translator/lower.py` | IR -> 68020 instruction selection under the register contract |
-| `translator/emit.py` | Motorola `.s` per module with hash header |
-| `translator/coverage.py` | executed bytes (trace) vs translated / HLE / unclassified |
-| `tests/` | instruction + block differentials, lint, hash check |
+| `translator/image.py` | proved root/overlay images (`tools/swotl_model.py`), annotations, run-time bytes of self-modified regions |
+| `translator/decode.py` | own table-driven 8086 decoder; 186+/FPU opcodes raise (none in SWOTL) |
+| `translator/cfg.py` | recursive descent from `annotations/` seeds; CS along flow; PLINK manager calls and parent chain; self-modified regions recorded, not decoded |
+| `translator/ir.py`, `sem.py` | IR ops; lifting of every decoded instruction |
+| `translator/interp.py` | host IR interpreter (the semantics under test) |
+| `translator/gen.py` | `make gen`: `build/gen/<module>.ir` with hash header; coverage report (G6) |
+| `translator/check.py` | G1 header/digest/regeneration check, G2 lint |
+| `translator/flags.py`, `live.py`, `lower.py`, `emit.py` (phase 4) | flag demand, liveness, IR -> 68020 under the register contract, Motorola `.s` |
+| `tests/` | `test_decode.py` (Capstone), `x86_diff.py` + `x86_sabotage.py` (Unicorn x86-16), `test_guards.py` (G1/G2 plants), `uc.py` (ctypes binding) |
 
 Language: Python 3.11 (sibling tooling, Capstone binding present). Offline,
 so translator speed is irrelevant.
 
 ### IR
 
-- Values: 8/16/32-bit temporaries; guest registers as 16-bit with explicit
-  8-bit halves; segment registers separate.
-- Ops: `get/put reg`, `load/store(seg, offset_expr, width)`, arithmetic and
-  logic with explicit flag outputs, `flags_def/flags_use` sets per op,
-  `branch/call/ret/jmp_indirect/int/in/out/hlt`, `rep` loops expanded to IR
-  loops with DF.
-- Every op carries its guest `(module, offset)` for diagnostics and coverage.
+Specification in `translator/ir.py`. Per instruction: an op list over
+width-typed temporaries with local labels (REP loops, CL-count guards,
+divide checks), explicit stack traffic, and one exit (`jump`, `call`,
+`ret`, far forms, `int`, `fault`) or fall-through. Flags: `flags kind w a b
+r` defines the status flags of `kind` and marks the undefined ones
+(`FLAG_KINDS`; count-dependent for shifts/rotates); reading an undefined
+flag is an error, never a value. Guest registers 16-bit with explicit
+8-bit halves; segment registers separate; FLAGS bits 12–15 as `flagsx`.
+Listings in `build/gen` carry `(module, offset, CS:IP)` per instruction.
 
 ### Generated code contract
 
@@ -75,19 +77,14 @@ so translator speed is irrelevant.
 | D9 | Graphics drivers | (a) HLE at RTSVGA's call table on the dA JoRMaS layer; (b) translate driver + emulate VGA ports/memory | chained mode 13h via INT 10h, no VGA ports, no page flip; entries = PLINK thunks with id 3 | (a), with RTSVGA itself as oracle |
 | D10 | Sound | SPAZ HLE at its table; AdLib music method open (OPL -> Paula) | 2.5; open-work AdLib item | HLE |
 | D11 | String ops | IR loops; `rep movs/stos` fast paths when DF and overlap provable | corpus + profile | as stated |
-| D12 | Translator language | Python vs C++ | none | Python |
-| D13 | Decoder | own vs Capstone | none | own, Capstone cross-check |
 | D14 | 68k oracle | Unicorn 68020 (Slicks) vs Musashi | none | Unicorn |
 | D15 | Memory target | (a) 2 MiB Chip only (Slicks); (b) require Fast RAM | guest RAM need + generated code size (x86 code ~0.4 MB, 68k output unmeasured): 1.4, 2.2, first `make gen` | measure; (b) likely if D2(a) |
-| D16 | Self-modifying code | (a) runtime stop; (b) annotate as data + regenerate per variant; (c) translate the block with patched operands read from guest bytes at run time and the patched RET as a computed exit | root unrolled block `+6A4D..+89FD` only (`annotations/self-modifying.csv`): RET written at an instruction start around `call dx`, word operands patched at stride 4 per call and at setup; executed in menus and in flight (m2–m5) | (c); (a) is not viable |
+| D16 | Self-modifying code | (a) runtime stop; (b) annotate as data + regenerate per variant; (c) translate the block with patched operands read from guest bytes at run time and the patched RET as a computed exit | root unrolled block `+6A4D..+89FD` only (`annotations/self-modifying.csv`): RET written at an instruction start around `call dx`, word operands patched at stride 4 per call and at setup; executed in menus and in flight (m2–m5). Run-time bytes differ from the file at every byte phase (opcodes too: file `and/or [bx+2710h]` template, run time `mov [bx+disp],al` runs then template); file = m0/m1, 5 further variants over 16 snapshots; the file template continues to `+8E2C` past the region | (c); (a) is not viable |
 
-## Phases 3–5 steps
+## Phases 4–5 steps
 
 | Step | Deliverable | Done when |
 |---|---|---|
-| 3.1 | `translator/` skeleton, `make gen`, G1 hash check, G2 lint | lint and hash check fail on a planted violation |
-| 3.2 | Decoder for every opcode in the classified code | decodes all executed bytes; Capstone agrees |
-| 3.3 | IR semantics + instruction corpus (flags, shifts, rotates, mul/div, segment wrap, string ops, DF) | differential clean vs Unicorn x86-16 (IR interpreted on host) — **gate 3** |
 | 4.1 | Lowering for straight-line blocks under D4/D5/D6 | instruction corpus clean in Unicorn 68020 |
 | 4.2 | Control flow: direct branches/calls, D1, D7 | block differential clean on traced blocks |
 | 4.3 | Audits in `make gen` | **gate 4** |

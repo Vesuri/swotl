@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage map trace-summary ghidra amiga smoke clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-sabotage test-guards amiga smoke clean
 
 PYTHON ?= python3
 REFERENCE_ROOT ?= tmp/pc-root
@@ -24,6 +24,11 @@ help:
 	@echo "  make map                sweep + PLINK check + code-write audit + surface over tmp/pc-runs/ref-*"
 	@echo "  make trace-summary RUN=name                 summarise that run's trace"
 	@echo "  make ghidra             sweep + headless Ghidra project per module -> tmp/ghidra/*.txt"
+	@echo "  make gen                translate the in-scope modules -> build/gen/*.ir + coverage report"
+	@echo "  make gen-check          G1: headers, digests and byte-identical regeneration of build/gen"
+	@echo "  make lint               G2: no guest-address names in hand-written code"
+	@echo "  make test               decoder vs Capstone, x86 differential vs Unicorn, guards"
+	@echo "  make test-sabotage      planted IR/decoder faults must fail the x86 differential"
 	@echo "  make amiga   build amiga/out/Swotl.exe"
 	@echo "  make smoke   boot it under FS-UAE + GDB and check the takeover runs"
 	@echo "  make clean   remove Amiga build output"
@@ -74,6 +79,29 @@ trace-summary:
 
 ghidra:
 	$(PYTHON) tools/ghidra_import.py
+
+gen:
+	$(PYTHON) -m translator.gen
+
+gen-check:
+	$(PYTHON) -m translator.check gen --regen
+
+lint:
+	$(PYTHON) -m translator.check lint
+
+test-decode:
+	$(PYTHON) tests/test_decode.py
+
+test-x86:
+	$(PYTHON) tests/x86_diff.py
+
+test-sabotage:
+	$(PYTHON) tests/x86_sabotage.py
+
+test-guards: gen
+	$(PYTHON) tests/test_guards.py
+
+test: lint test-decode test-x86 test-guards gen-check
 
 amiga:
 	. amiga/env.sh && $(MAKE) -C amiga

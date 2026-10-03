@@ -2,7 +2,7 @@
 
 The single list of open work. Remove items when done; history is in git.
 Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
-[translator-design.md](translator-design.md) (phases 3–5, decisions D1–D16).
+[translator-design.md](translator-design.md) (phases 4–5, decisions D1–D16).
 
 ## Guest map follow-ups
 
@@ -13,13 +13,13 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
    pointers (221). Add coverage scripts (campaign play, other aircraft,
    film load/save) where a generated path needs them.
 9c. PLINK flag bit 13 (set on DATA only): meaning unknown; no effect seen.
+9d. Characterise the self-modified block's setup writers before D16 is
+   lowered: which bytes each writer produces (opcodes, not only operands)
+   and what selects the 5 run-time variants; extend
+   `annotations/self-modifying.csv` accordingly.
 
-## Phases 3–4 — translator
+## Phase 4 — translator
 
-11. Pick translator language and layout (`translator/`, `annotations/`);
-    add the G1 hash check and G2 lint before any generated code exists.
-12. Build the x86 flag/shift/segment-wrap differential corpus on Unicorn
-    (Python binding missing; Slicks used the C library).
 13. Set up the host 68k oracle (Unicorn 68020, as Slicks).
 14. Decide RET mapping: guest return addresses on the byte-exact guest stack
     vs native return.

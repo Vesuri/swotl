@@ -69,7 +69,8 @@ root EXE + .OVL images (proved against DOSBox captures)
 
 ## Oracles
 
-- x86 semantics: Unicorn x86-16 (C library, as in Slicks).
+- x86 semantics: Unicorn x86-16 (C library, as in Slicks, via ctypes `tests/uc.py`):
+  `make test` (gate 3); its known deviations: [x86-notes.md](x86-notes.md).
 - Generated 68020 code on host: Unicorn 68020 (as Slicks) runs the same
   cases, so instruction/block differentials need no Amiga.
 - Whole game: lockstep against DOSBox with recorded input; compare guest RAM
