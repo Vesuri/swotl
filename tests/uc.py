@@ -18,6 +18,8 @@ CTL_CPU_MODEL, CTL_TB_FLUSH = 7, 10
 PROT_ALL = 7
 HOOK_INTR, HOOK_INSN, HOOK_CODE, HOOK_MEM_READ, HOOK_MEM_WRITE = 1, 2, 4, 1 << 10, 1 << 11
 X86_INS_IN, X86_INS_OUT = 218, 500
+M68K = {**{f"a{k}": 1 + k for k in range(8)}, **{f"d{k}": 9 + k for k in range(8)},
+        "sr": 17, "pc": 18}
 X86 = {"ax": 3, "bx": 8, "cx": 12, "dx": 18, "sp": 47, "bp": 6, "si": 45, "di": 14,
        "es": 28, "cs": 11, "ss": 49, "ds": 17, "ip": 34, "flags": 252}
 

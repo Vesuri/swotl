@@ -380,7 +380,7 @@ def boundary(h: Harness) -> None:
                            overrides={"regs": {"cx": cx}, "flags": {"ZF": zf, "OF": of}})
 
 
-def run(argv: list[str] | None = None, quiet: bool = False) -> Harness:
+def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--states", type=int, default=24, help="random states per form sample")
@@ -389,7 +389,7 @@ def run(argv: list[str] | None = None, quiet: bool = False) -> Harness:
     ap.add_argument("--only", default="", help="comma list of corpora: forms,space,boundary,blocks")
     args = ap.parse_args(argv)
     only = set(args.only.split(",")) if args.only else {"forms", "space", "boundary", "blocks"}
-    h = Harness(args.seed)
+    h = (harness or Harness)(args.seed)
     mods = image.load()
     units = cfg.build(mods)
     if "forms" in only:
