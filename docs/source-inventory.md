@@ -55,7 +55,8 @@ PLINK thunks (root `+16B66` onwards, 12 bytes each): `call far 1E39:034C`
 
 `make map` over `tmp/pc-runs/ref-*` (milestones m0–m7 + coverage scripts
 c1–c6). Bytes of each module's code part. Static = reached by the sweep
-(traced starts, direct flow, PLINK thunks, switch tables); executed = bytes
+(traced starts, direct flow incl. `loop`/`jcxz`, PLINK thunks and the manager,
+child-to-parent far calls, switch tables); executed = bytes
 of traced instructions (m0–m7 alone in brackets). Residue = never decoded:
 zero fill, text, code-like (MS C prologue or fixup-anchored far call: code
 reached only through untraced pointers), other (tables, data in code
@@ -65,10 +66,10 @@ by `annotations/self-modifying.csv`. Executed bytes outside sweep code: 0.
 
 | Module | Code part | Static | Executed (m0–m7) | Switch tables | Residue: zero / text / code-like / other |
 |---|---|---|---|---|---|
-| SWOTL | 96,000 | 79,968 | 45,727 (39,886) | 110 | 137 / 66 / 1,840 / 13,879 |
+| SWOTL | 96,000 | 80,055 | 45,727 (39,886) | 110 | 138 / 66 / 1,796 / 13,835 |
 | SPAZ | 5,952 | 4,324 | 3,308 (3,308) | 0 | 1,458 / 0 / 133 / 37 |
 | RTSVGA | 18,272 | 3,694 | 2,326 (2,278) | 0 | 14,550 / 0 / 0 / 28 |
-| FRONTEND | 77,216 | 49,108 | 8,533 (7,858) | 172 | 1 / 0 / 6,699 / 21,236 |
+| FRONTEND | 77,216 | 55,463 | 8,533 (7,858) | 308 | 1 / 0 / 171 / 21,273 |
 | CAMPAIGN | 40,912 | 35,733 | 3,856 (2,237) | 78 | 0 / 0 / 0 / 5,101 |
 | NOTCAMP | 39,152 | 36,088 | 6,983 (5,350) | 80 | 0 / 0 / 0 / 2,984 |
 | FLIGHT | 99,744 | 93,879 | 38,736 (30,242) | 642 | 0 / 4,728 / 83 / 412 |

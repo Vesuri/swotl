@@ -5,8 +5,9 @@ Seeds: MZ entry, PLINK thunk targets, every traced instruction start
 (union of tmp/pc-runs/ref-*), traced indirect targets. Follows fall-through,
 near/far direct jumps and calls; stops at returns and indirect jumps; never
 sweeps linearly. Far targets resolve through the link layout: own module,
-root, else the single in-scope overlay owning the link address (ambiguous
-targets are listed, not followed).
+root, else the single in-scope overlay owning the link address, else the
+caller's PLINK parent chain (other ambiguous targets are listed, not
+followed). CS is kept along a flow and passed to near and far targets.
 
 Outputs in tmp/sweep/: <module>.cls (byte per module offset: 0 unknown,
 1 instruction start, 2 instruction body, 3 executed start, 4 executed body),
@@ -52,7 +53,7 @@ class Sweep:
         self.md.detail = True
         self.cls = {n: bytearray(len(mods[n].data)) for n in scope}
         self.insn: dict[str, dict[int, object]] = {n: {} for n in scope}
-        self.work: list[tuple[str, int, str]] = []
+        self.work: list[tuple[str, int, str, int | None]] = []
         self.conflicts: list[tuple[str, int, str]] = []
         self.far_refs: list[tuple[str, int, int, int, str]] = []
         self.indirect: dict[tuple[str, int], str] = {}
@@ -73,9 +74,9 @@ class Sweep:
         else:
             self.conflicts.append((mod, off, why))
 
-    def seed(self, mod: str, off: int, why: str) -> None:
+    def seed(self, mod: str, off: int, why: str, cs: int | None = None) -> None:
         if mod in self.cls:
-            self.work.append((mod, off, why))
+            self.work.append((mod, off, why, cs))
 
     def segment(self, mod: str, off: int) -> int:
         """Code segment (link paragraph) of a module offset: highest known base below."""
@@ -95,18 +96,29 @@ class Sweep:
                 self.conflicts.append((mod, at, f"thunk target outside {ovl}"))
             elif ovl in self.scope:
                 self.segs[ovl].add(seg)
-                self.seed(ovl, target.from_link(linear), f"thunk {mod}+{at:X}")
+                self.seed(ovl, target.from_link(linear), f"thunk {mod}+{at:X}", seg)
             self.far_refs.append((mod, at, seg, off, f"{ovl} (thunk)"))
             return
         if own.link_lo <= linear < own.link_hi:
             self.segs[mod].add(seg)
-            self.seed(mod, own.from_link(linear), f"far from {mod}+{at:X}")
+            self.seed(mod, own.from_link(linear), f"far from {mod}+{at:X}", seg)
             return
         owners = [n for n in M.link_owners(self.mods, linear) if n in self.scope]
+        chain = [n for n in self.ancestors(mod) if n in owners]  # PLINK keeps parents resident
+        if len(owners) > 1 and chain:
+            owners = chain[:1]
         if len(owners) == 1:
             self.segs[owners[0]].add(seg)
-            self.seed(owners[0], self.mods[owners[0]].from_link(linear), f"far from {mod}+{at:X}")
+            self.seed(owners[0], self.mods[owners[0]].from_link(linear), f"far from {mod}+{at:X}",
+                      seg)
         self.far_refs.append((mod, at, seg, off, " ".join(owners) or "-"))
+
+    def ancestors(self, mod: str) -> list[str]:
+        out, m = [], self.mods[mod]
+        while m.flags & 0x1FFF:
+            m = self.mods[self.by_index[(m.flags & 0x1FFF) - 1]]
+            out.append(m.name)
+        return out
 
     def switch(self, mod: str, off: int, seg: int, i) -> None:
         """MS C switch: cmp ax,N; ja/jbe; add ax,ax; xchg bx,ax; jmp cs:[bx+T]."""
@@ -138,7 +150,7 @@ class Sweep:
                 cls[b] = TABLE
         self.tables[(mod, off)] = targets
         for t in targets:
-            self.seed(mod, t, f"switch {mod}+{off:X}")
+            self.seed(mod, t, f"switch {mod}+{off:X}", seg)
 
     def far_pointers(self, sources: list[str]) -> None:
         """Far pointers outside instructions: fixup segment words not inside decoded code."""
@@ -160,17 +172,19 @@ class Sweep:
         """Drain the worklist; switch dispatches resolve once their bounds check is decoded."""
         while self.work or self.switch_sites:
             while self.work:
-                mod, off, why = self.work.pop()
-                self.flow(mod, off, why)
+                self.flow(*self.work.pop())
             pending, self.switch_sites = self.switch_sites, []
             for mod, off, seg, i in pending:
                 if (mod, off) not in self.tables:
                     self.switch(mod, off, seg, i)
 
-    def flow(self, mod: str, off: int, why: str) -> None:
+    def flow(self, mod: str, off: int, why: str, cs: int | None = None) -> None:
         cls, data = self.cls[mod], self.mods[mod].data
         ovl = None  # overlay named by the last manager call on this path
-        seg = self.segment(mod, off) if off < len(data) else 0
+        if not 0 <= off < len(data):
+            self.conflict(mod, off, f"flow outside module ({why})")
+            return
+        seg = self.segment(mod, off) if cs is None else cs  # CS is kept along the flow
         while 0 <= off < len(data):
             if cls[off] == START:
                 return
@@ -202,6 +216,8 @@ class Sweep:
                 if i.mnemonic == "lcall" and (fseg, target) == M.MANAGER:
                     oid, = struct.unpack_from("<H", data, nxt)
                     ovl = self.by_index[oid - 1]
+                    self.seed(M.ROOT, self.mods[M.ROOT].from_link(fseg * 16 + target),
+                              f"manager {mod}+{off:X}", fseg)
                     for k in (nxt, nxt + 1):
                         cls[k] = BODY  # inline overlay id, consumed by the manager
                     off = nxt + 2
@@ -209,10 +225,11 @@ class Sweep:
                 self.far_target(mod, off, fseg, target, ovl if i.mnemonic == "ljmp" else None)
                 if i.mnemonic == "ljmp":
                     return
-            elif capstone.CS_GRP_JUMP in g or capstone.CS_GRP_CALL in g:
+            elif capstone.CS_GRP_JUMP in g or capstone.CS_GRP_CALL in g or \
+                    i.mnemonic in ("loop", "loope", "loopne", "jcxz"):
                 if ops and ops[0].type == x86.X86_OP_IMM:
                     target = self.mods[mod].from_link(seg * 16 + (ops[0].imm & 0xFFFF))
-                    self.seed(mod, target, f"{mod}+{off:X}")
+                    self.seed(mod, target, f"{mod}+{off:X}", seg)
                 else:
                     self.indirect[(mod, off)] = f"{i.mnemonic} {i.op_str}"
                     self.switch_sites.append((mod, off, seg, i))
@@ -264,7 +281,7 @@ def main() -> int:
           for r in M.csv_rows(traces, "interrupts.csv") if r["type"] == "0"}
     edge_set = M.edges(traces)
     bases = {n: {0 if n == M.ROOT else m.link_seg} for n, m in mods.items()}
-    bases[M.ROOT].add(M.entry() >> 4)
+    bases[M.ROOT].add(M.mz(M.REF / M.ROOT)[2][0])  # MZ entry CS
     while True:  # segment bases come from decoded far references; iterate to a fixpoint
         sw = Sweep(mods, scope, {n: sorted(b) for n, b in bases.items()})
         sw.seed(M.ROOT, M.entry(), "MZ entry")

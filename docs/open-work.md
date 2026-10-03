@@ -8,11 +8,10 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
 
 9a. Cross-reference TFH Amiga `BOB` (Aztec C, same source family) in Ghidra
    for routine naming and `.PAC`/`.GOB` formats; evidence only.
-9b. 215 indirect sites are static-only (no traced target,
+9b. 232 indirect sites are static-only (no traced target,
    `annotations/indirect.csv`), mostly `lcall [mem]` through DGROUP
-   pointers (203); FRONTEND has 6.7 KB of unreached code-like residue. Add
-   coverage scripts (campaign play, other aircraft, film load/save) where a
-   generated path needs them.
+   pointers (221). Add coverage scripts (campaign play, other aircraft,
+   film load/save) where a generated path needs them.
 9c. PLINK flag bit 13 (set on DATA only): meaning unknown; no effect seen.
 
 ## Phases 3–4 — translator

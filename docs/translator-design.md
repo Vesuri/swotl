@@ -70,7 +70,7 @@ so translator speed is irrelevant.
 | D4 | Register allocation | (a) fixed mapping program-wide; (b) per-function with edge shuffles | spill audit after (a) | (a) |
 | D5 | Byte order | (a) swap on word load/store; (b) byte-reversed guest memory | 68020 cost microbenchmark (open-work), word-access share | (a) |
 | D6 | Flags | lazy: keep operands of last flag-setter, materialize on use; reuse CCR when semantics match | instruction corpus | as stated |
-| D7 | Indirect control flow | sorted/hashed guest-linear IP -> native table; recognised jump tables lowered directly; unknown -> `stop_unknown` | `annotations/indirect.csv`: 449 sites, 214 executed (all with traced targets), 41 MS C switch tables resolved statically, 215 static-only sites unresolved (203 `lcall [mem]`) | as stated |
+| D7 | Indirect control flow | sorted/hashed guest-linear IP -> native table; recognised jump tables lowered directly; unknown -> `stop_unknown` | `annotations/indirect.csv`: 468 sites, 214 executed (all with traced targets), 43 MS C switch tables resolved statically, 232 static-only sites unresolved (221 `lcall [mem]`) | as stated |
 | D8 | Interrupt delivery | (a) runtime runs translated guest ISRs at safe points (loop back-edges, calls); (b) HLE of the game's ISRs | [external-surface.md](external-surface.md): guest installs INT 00h/05h/08h (SPAZ tick)/23h/24h; INT 09h/1Ch stay BIOS | (a) |
 | D9 | Graphics drivers | (a) HLE at RTSVGA's call table on the dA JoRMaS layer; (b) translate driver + emulate VGA ports/memory | chained mode 13h via INT 10h, no VGA ports, no page flip; entries = PLINK thunks with id 3 | (a), with RTSVGA itself as oracle |
 | D10 | Sound | SPAZ HLE at its table; AdLib music method open (OPL -> Paula) | 2.5; open-work AdLib item | HLE |
