@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run every milestone in reference/milestones.csv and check its signal.
+`--table reference/coverage.csv` runs the coverage scripts the same way.
 
 Each milestone is one tools/pc_run.py run. Snapshots (space-separated
 triggers, taken in order after the key script) are named <name>-0, -1, ...;
@@ -73,12 +74,16 @@ def run(m: dict) -> tuple[list[str], dict]:
 
 
 def main() -> int:
-    only = set(sys.argv[1:])
+    args = sys.argv[1:]
+    table = REPO / "reference/milestones.csv"
+    if args[:1] == ["--table"]:
+        table, args = REPO / args[1], args[2:]
+    only = set(args)
     previous = {}
     if HASHES.exists():
         previous = {r["name"]: r for r in csv.DictReader(HASHES.open())}
     results, failed = [], False
-    for m in csv.DictReader((REPO / "reference/milestones.csv").open()):
+    for m in csv.DictReader(table.open()):
         if only and m["name"] not in only:
             continue
         problems, row = run(m)

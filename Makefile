@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference trace-summary amiga smoke clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage trace-summary amiga smoke clean
 
 PYTHON ?= python3
 REFERENCE_ROOT ?= tmp/pc-root
@@ -20,6 +20,7 @@ help:
 	@echo "  make reference-emulator build instrumented DOSBox-X (tools/patches/ORDER)"
 	@echo "  make reference-run RUN=name [RUN_ARGS=...]  headless traced run -> tmp/pc-runs/name"
 	@echo "  make reference          run all milestones (reference/milestones.csv): signals, determinism, image proof"
+	@echo "  make coverage           run the coverage scripts (reference/coverage.csv)"
 	@echo "  make trace-summary RUN=name                 summarise that run's trace"
 	@echo "  make amiga   build amiga/out/Swotl.exe"
 	@echo "  make smoke   boot it under FS-UAE + GDB and check the takeover runs"
@@ -56,6 +57,9 @@ reference-run: check-ref
 
 reference: check-ref
 	$(PYTHON) tools/reference.py
+
+coverage: check-ref
+	$(PYTHON) tools/reference.py --table reference/coverage.csv
 
 trace-summary:
 	$(PYTHON) tools/trace_summary.py tmp/pc-runs/$(RUN)/trace

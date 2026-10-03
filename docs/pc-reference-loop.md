@@ -119,6 +119,19 @@ runs once per frame in flight, every ~645 instructions in menus.
 
 All nine in-scope overlays are captured and pass the image proof.
 
+Coverage scripts: `reference/coverage.csv`, run by `make coverage` (same
+checks; no determinism history needed). They feed the phase 2 map
+(`make map`: sweep, PLINK check, code-write audit, surface).
+
+| Script | Input after K2 | Reaches |
+|---|---|---|
+| c1-historical | U, H, 1, 1, S | historical mission flight |
+| c2-german-school | G, F, 1, 1, S | Luftwaffe flight school flight |
+| c3-custom | U, C, 1, 1, S | custom missions menus |
+| c4-tour | U, T, 1, 1, S | tour of duty menus |
+| c5-records | U, R | combat records (CAMPAIGN) |
+| c6-flight-keys | m5 path, then 47 keys at 30-frame intervals in flight | in-flight controls, gun camera film room (REPLAY, `RP*.TMP` written) |
+
 Facts from these runs:
 
 - Unattended: logo, then the `DEMO1.DEM` attract flight (FRONTEND, FLIGHT,

@@ -80,6 +80,11 @@ def build(ref: Path, load: int) -> tuple[dict[str, tuple[int, bytearray, int]], 
 def dos_reads(events: Path, until: int, ref: Path) -> dict[int, int]:
     """Linear address -> byte from the last traced DOS read before `until`."""
     files = {p.name.upper(): p for p in ref.rglob("*") if p.is_file()}
+    run_root = events.parent.parent / "root"  # files the game wrote (e.g. RP2.TMP film)
+    if run_root.exists():
+        for p in run_root.rglob("*"):
+            if p.is_file():
+                files.setdefault(p.name.upper(), p)
     cache, out = {}, {}
     for line in events.open():
         f = line.rstrip("\n").split(",", 4)
