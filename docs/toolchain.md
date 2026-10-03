@@ -80,7 +80,7 @@ provenance is in brackets.
 | Tool | Where | Version | Slicks use |
 |---|---|---|---|
 | Unicorn (C library) | `/opt/homebrew/opt/unicorn` | 2.1.4 | Compack unpack capture (`build/unpack_compack`). x86-16 vs M68k differential executors `verify_*.c`, built with `cc -I$(UNICORN_PREFIX)/include … -lunicorn` |
-| Unicorn Python binding | — | **missing** | not used by Slicks |
+| Unicorn Python binding | — | **missing**; SWOTL uses `tests/uc.py` (ctypes over `libunicorn.2.dylib`, no install) | not used by Slicks |
 | Capstone C + `cstool` | `/opt/homebrew/opt/capstone` | 5.0.9 | 16-bit decode |
 | Capstone Python | pyenv 3.11.10 site-packages | 5.0.7 | `from capstone import CS_ARCH_X86, CS_MODE_16, Cs` in `mz_info.py`, `analyze_execution_trace.py`, `analyze_vga_sites.py`, `summarize_memory_trace.py` |
 | Intel XED | — | **missing** (`/usr/bin/xed` is Xcode's editor launcher) | listed as optional second decoder |
@@ -88,6 +88,10 @@ provenance is in brackets.
 
 - Slicks rule: every instruction semantic and every lowering is differentially tested against an independent x86 oracle (Unicorn x86-16 vs Unicorn 68020 on assembled bytes). [Slicks `CLAUDE.md`, `docs/validation-harness.md`]. Details are in [translation-lessons.md](translation-lessons.md).
 - Slicks: no LLVM and no generated-C backend until there is a measured need. [Slicks `docs/toolchain.md`]
+- SWOTL translator and tests (Python 3.11, stdlib + capstone): `make gen` (build/gen), `make
+  gen-check` (G1), `make lint` (G2), `make test` (lint, decoder vs Capstone, x86 differential vs
+  Unicorn, guard plants, gen-check; ~7 min), `make test-sabotage` (~3 min). Unicorn x86 quirks the
+  harness works around: [x86-notes.md](x86-notes.md#unicorn-x86-16-as-oracle).
 
 ## Host language and build
 

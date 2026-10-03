@@ -7,6 +7,9 @@ Facts the decoder, IR and 68020 lowering must get right. Source tags:
 - **[K]** general architecture knowledge (Intel/Motorola manuals). Not yet
   checked against our oracle; every [K] row needs a differential case before
   the lowering that relies on it is accepted.
+- **[T]** checked by `tests/x86_diff.py` (IR on the host vs Unicorn x86-16,
+  gate 3); the [K] rows below on shifts, rotates, flags, strings, stack and
+  address wrap, MUL/DIV and BCD are covered by its boundary corpus.
 - **UNKNOWN** — open; must be measured, not assumed.
 
 Lessons and provenance: [translation-lessons.md](translation-lessons.md).
@@ -23,6 +26,8 @@ Lessons and provenance: [translation-lessons.md](translation-lessons.md).
 | Relocated segment words | 46 distinct values, incl. `1770h 18E4h 1E7Ch 210Eh 218Dh 23A1h 3156h 3449h 344Dh 36D6h 39AAh 4B1Eh` | relocation table walk |
 | Runtime strings | `Copyright (C) 1984, 1985, 1986 by Phoenix Software Associates Ltd.`; `Ovl stack underflow $`, `Ovl stack overflow $`, `No mem for ovl stack $`, `Dos 2.0 required $` (`$`-terminated: `int 21h AH=09h` style); the 12 `.OVL` names | `strings` |
 | Compiler runtime | Microsoft C 5.x, medium model; root `+13692..+1615B` (`1369:0002..`); R60xx table in DGROUP; entries named in `annotations/runtime.csv` | trace + sweep |
+| Instruction set | 8086 only: no 186+ opcode (`0Fh`, `C0h/C1h`, `68h/6Ah`, `C8h/C9h`, `60h–6Fh`), no FPU/`WAIT`/`LOCK` in the 118,348 decoded instructions; 1,059 operand forms | `tests/test_decode.py`, `tests/x86_diff.py` |
+| Code segment frames | MS C/LINK far references use a frame paragraph up to 15 bytes below the segment's first byte, inside the previous function: CS follows control flow, not address | `translator/cfg.py` (FLIGHT `277Fh` frame at `+9EC0`, segment from `+9ECA`) |
 | `.OVL` format | Fixup list (far pointers to segment words), padded to a paragraph, then code; layout and loader in [plink.md](plink.md) | gate 1 image proof |
 
 ### Linear-sweep inventory is garbage [SW]
@@ -150,6 +155,34 @@ SWOTL calling convention [SW] (MS C 5.x medium; `annotations/runtime.csv`):
 | Stack probe | `__chkstk` (`1369:24DA`) called only by `__output`: game built without stack checks | call-target scan |
 | Long helpers | `__aFlmul` `098E`, `__aFldiv` `0292`, `__aFlrem` `239A`, `__aFuldiv` `08A8`, `__aFlshl` `1A56`, `__aFlshr` `0DAA`, `__aFulshr` `2442`; assign forms `__aFNalmul` `0862`, `__aFNaldiv` `096A`, `__aFNauldiv` `09C2`, `__aFNalshl` `010E`, `__aFNalshr` `0886`, `__aFNaulshr` `0D88` | runtime.csv |
 | Floating point | not linked: `__fpmath` (DGROUP `[5876]`) = 0, no INT 34h–3Dh or `WAIT`+`ESC` decoded or traced | `__cinit` `+137E0` |
+
+## Real-mode details fixed by the differential [T]
+
+- Word access at offset `FFFFh` reads/writes linear `base+FFFFh` and
+  `base+10000h` (no wrap inside the word, no fault), as DOSBox. Whether
+  SWOTL forms one: UNKNOWN.
+- No 1 MiB wrap (A20 on): `FFFF:0010` is linear `100000h`.
+- `LES/LDS`, far `CALL/JMP [m]`: the segment word is at offset+2 mod 64 KiB.
+- `push sp` stores SP before the decrement; `pop sp` loads the popped word.
+- `IDIV` accepts the most negative quotient (−128 / −32768); `DIV`/`IDIV`
+  overflow and divide-by-zero fault with IP at the instruction, registers
+  unchanged; `AAM 0` faults the same way.
+- `POPF` in real mode keeps FLAGS bits 12–14 (IOPL/NT, 386) and clears 15.
+
+## Unicorn x86-16 as oracle
+
+Deviations and quirks of Unicorn 2.1.4 the harness works around (each
+probed on this host):
+
+| Quirk | Handling |
+|---|---|
+| `uc_mem_write` does not invalidate translated blocks | flush (`UC_CTL_TB_FLUSH`) after every patch |
+| `count=1` runs one `REP` iteration | stop from a code hook at the next instruction boundary |
+| Interrupt hook skips QEMU delivery: `old_exception` stays set, the next exception becomes #DF (8), then a silent triple fault | reopen the engine after every exception |
+| `REP` string right after a flag setter in one translation block recomputes OF/AF wrongly (e.g. `add cx,3636h; rep movsb` clears OF) | one instruction per `uc_emu_start` |
+| `RETF` at SP ≥ `FFFDh` reads CS at `SS:SP+2` without 16-bit wrap (Intel/DOSBox wrap) | counted as an oracle deviation, not compared |
+| Self-overwriting `REP` refetches the modified instruction | case discarded |
+| Capstone prints `notrack` for `3Eh`-prefixed `call/jmp`, `cdq`/`cwde` for `CWD`/`CBW` in 16-bit mode | normalised in `tests/test_decode.py` |
 
 ## Interrupts [K] unless tagged
 
