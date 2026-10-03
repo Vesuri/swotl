@@ -1,0 +1,7 @@
+counter,expected,reason
+spill,0,fixed register contract (D4); no lowering spills to the native stack
+full-flag materialization,0,no setter has all six status flags live after it
+PF store,0,no PF reader is reached (the PUSHF pairs in annotations/flags.csv only save and restore)
+AF store,0,no AF reader is reached
+dispatcher exit,426,"425 indirect.csv sites without a proved switch table + SWOTL+140DB (callf [56EAh] in __harderr_handler, runtime.csv seed the sweep does not reach)"
+stop_unknown site,631,"528 entries into the self-modified block (D16), 60 PLINK thunks of out-of-scope overlays, 43 switch tables' out-of-table fallback"

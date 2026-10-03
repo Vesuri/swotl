@@ -1,0 +1,3 @@
+module,save,restore,reason
+SWOTL.EXE,0x16405,0x1640f,"PLINK load routine: PUSHF/POP CX keeps FLAGS in CX across INT 21h AH=25h (+161E0; DOS preserves CX), PUSH CX/POPF restores it"
+SWOTL.EXE,0x164bc,0x164f0,"PLINK manager: PUSHF first, POPF before its RETF; the frame is read only at [bp+14h]/[bp+16h] (return IP/CS), FLAGS at [bp+12h] is not touched"

@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-sabotage test-guards amiga smoke clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards amiga smoke clean
 
 PYTHON ?= python3
 REFERENCE_ROOT ?= tmp/pc-root
@@ -97,11 +97,18 @@ test-x86:
 
 test-sabotage:
 	$(PYTHON) tests/x86_sabotage.py
+	$(PYTHON) tests/m68k_sabotage.py
+
+test-m68k:
+	$(PYTHON) tests/m68k_diff.py
+
+test-blocks:
+	$(PYTHON) tests/m68k_blocks.py
 
 test-guards: gen
 	$(PYTHON) tests/test_guards.py
 
-test: lint test-decode test-x86 test-guards gen-check
+test: lint test-decode test-x86 test-m68k test-blocks test-guards gen-check
 
 amiga:
 	. amiga/env.sh && $(MAKE) -C amiga

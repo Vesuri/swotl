@@ -2,7 +2,7 @@
 
 The single list of open work. Remove items when done; history is in git.
 Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
-[translator-design.md](translator-design.md) (phases 4–5, decisions D1–D16).
+[translator-design.md](translator-design.md) (phase 5 on, decisions D1–D16).
 
 ## Guest map follow-ups
 
@@ -17,16 +17,26 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
    lowered: which bytes each writer produces (opcodes, not only operands)
    and what selects the 5 run-time variants; extend
    `annotations/self-modifying.csv` accordingly.
+9e. `tools/sweep.py` does not seed `annotations/runtime.csv` entries, so
+   `callf [56EAh]` at SWOTL+140DB (`__harderr_handler`) has no
+   `indirect.csv` row (it dispatches; counted in `tests/audit.csv`).
 
-## Phase 4 — translator
+## Translator
 
-13. Set up the host 68k oracle (Unicorn 68020, as Slicks).
-14. Decide RET mapping: guest return addresses on the byte-exact guest stack
-    vs native return.
+13. D16: lower the self-modified block (after 9d); its 528 entries stop now.
+14. Phase 5 runtime surface: `rt_*` entries, the dispatch table (seeds, call
+    and far targets, indirect targets), object/link layout of
+    `build/gen/*.s` (sections, xdef/xref) for the Amiga build.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/
-    `divu.l`, unaligned word/long, byte-swap) to replace [arch] guesses in
-    `m68k-optimisation.md`.
+    `divu.l`, unaligned word/long, `ror.w #8` swap) to replace [arch]
+    guesses in `m68k-optimisation.md`.
 16. Lookup-table policy with no Fast RAM (tables are Chip reads).
+23. Return-flag precision: every `ret` sees the union of all return sites
+    (CF/OF/ZF/SF live), so each function's last setter stores flags; refine
+    with per-function return sets (phase 7, profile first).
+24. Lockstep RAM compare (phase 6): undefined flags and FLAGS words pushed
+    below SP (PUSHF, interrupt frames) differ from DOSBox by design; decide
+    the mask.
 
 ## Amiga platform
 

@@ -39,6 +39,7 @@ class Unit:
     cs: dict[int, int] = field(default_factory=dict)          # offset -> CS link paragraph
     manager_calls: dict[int, str] = field(default_factory=dict)  # offset -> overlay named
     smc_entries: dict[int, str] = field(default_factory=dict)  # region entry -> reason
+    far_targets: dict[int, tuple[str, int]] = field(default_factory=dict)  # site -> (module, offset)
     seeds: dict[int, str] = field(default_factory=dict)
 
     def segment(self, off: int) -> int:
@@ -107,6 +108,7 @@ class _Descent:
             if ovl in self.units:
                 self.far_segs[ovl].add(f.seg)
                 self.seed(ovl, t.from_link(linear), f"thunk {mod}+{at:05X}", f.seg)
+                self.units[mod].far_targets[at] = (ovl, t.from_link(linear))
             return
         own = self.mods[mod]
         if own.link_lo <= linear < own.link_hi:
@@ -123,6 +125,7 @@ class _Descent:
             self.far_segs[owners[0]].add(f.seg)
             self.seed(owners[0], self.mods[owners[0]].from_link(linear), f"far {mod}+{at:05X}",
                       f.seg)
+            self.units[mod].far_targets[at] = (owners[0], self.mods[owners[0]].from_link(linear))
 
     def run(self):
         while self.work:
@@ -170,8 +173,9 @@ class _Descent:
                     oid, = struct.unpack_from("<H", data, nxt)
                     ovl = self.by_index[oid - 1]
                     u.manager_calls[off] = ovl
-                    self.seed(M.ROOT, self.mods[M.ROOT].from_link(f.seg * 16 + f.off),
-                              f"PLINK manager {mod}+{off:05X}", f.seg)
+                    mgr = self.mods[M.ROOT].from_link(f.seg * 16 + f.off)
+                    self.seed(M.ROOT, mgr, f"PLINK manager {mod}+{off:05X}", f.seg)
+                    u.far_targets[off] = (M.ROOT, mgr)
                     for k in (nxt, nxt + 1):
                         self.body[mod][k] = off
                     off = nxt + 2

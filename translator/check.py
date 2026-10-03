@@ -33,7 +33,7 @@ GUEST_NAME = re.compile(
 
 def check_gen(regen: bool, out: Path = gen.OUT) -> list[str]:
     bad = []
-    files = sorted(out.glob("*.ir"))
+    files = sorted(list(out.glob("*.ir")) + list(out.glob("*.s")))
     if not files:
         return [f"no generated files in {out}"]
     for f in files:
@@ -46,7 +46,7 @@ def check_gen(regen: bool, out: Path = gen.OUT) -> list[str]:
         inputs = lines[2].decode().removeprefix("; inputs ")
         body_hash = lines[3].decode().removeprefix("; body ")
         body = lines[4]
-        if module not in image.SCOPE:
+        if module not in image.SCOPE and module != gen.SUPPORT:
             bad.append(f"{f.name}: unknown module {module}")
             continue
         if inputs != gen.inputs_digest(module):

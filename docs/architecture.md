@@ -47,21 +47,22 @@ root EXE + .OVL images (proved against DOSBox captures)
 7. Unresolved indirect control flow, writes to translated code and unknown
    ports/interrupts stop with a report. No interpreter fallback in release.
 
-## Target model [PROPOSED — decisions D1–D16 in translator-design.md]
+## Target model (contract: translator-design.md; D2, D8–D11, D15, D16 open)
 
-- Guest RAM: one contiguous block, byte-exact little-endian, linear address
-  `seg*16+off` as in DOSBox, so RAM images diff directly against captures.
-- Segments: DS/SS constant-propagated (DGROUP) to base+offset; ES and far
-  pointers computed. 64 KiB offset wrap honoured where analysis cannot rule
-  it out.
-- Registers: AX–DI, BP, SP resident in data registers; guest RAM and segment
-  bases in address registers. AH-class halves lowered explicitly.
-- Flags: virtual; computed only for observed uses. CF borrow convention
-  matches 68k after SUB/CMP; INC/DEC preserve CF; PF/AF only when live.
-- Endianness: word access via byte-swap on load/store. Alternatives (e.g.
+- Guest RAM: one contiguous block at a6, byte-exact little-endian, linear
+  address `seg*16+off` with the reference load segment, so RAM images diff
+  directly against captures.
+- Segments: ES/SS/DS bases cached in a1–a3 and recomputed on every write;
+  CS static per instruction. 64 KiB offset wrap honoured everywhere (phase 7
+  may drop it where analysis rules it out).
+- Registers: AX–DX, SP, BP in d0–d5, SI/DI in a4/a5, zero-extended; d6/d7/a0
+  scratch. AH-class halves lowered explicitly.
+- Flags: virtual; stored only where live, read from the CCR by the next
+  instruction where the 68k flags agree; PF/AF only when live.
+- Endianness: word access via `ror.w #8` on load/store. Alternatives (e.g.
   byte-reversed memory) only after a measured A/B.
-- Calls: guest stack stays byte-exact; how RET maps guest return addresses
-  to native code is open (see open-work).
+- Calls: guest stack byte-exact; native `jsr`/`rts` with a return-site check
+  of the popped IP/CS.
 - Overlays: each `.OVL` is a separately translated module at its proved load
   address; the PLINK manager's role is taken by the runtime loader.
 - Drivers: RTSVGA and SPAZ are replacement candidates at
@@ -72,7 +73,8 @@ root EXE + .OVL images (proved against DOSBox captures)
 - x86 semantics: Unicorn x86-16 (C library, as in Slicks, via ctypes `tests/uc.py`):
   `make test` (gate 3); its known deviations: [x86-notes.md](x86-notes.md).
 - Generated 68020 code on host: Unicorn 68020 (as Slicks) runs the same
-  cases, so instruction/block differentials need no Amiga.
+  cases (`make test-m68k`) and the generated program's traced blocks
+  (`make test-blocks`), so differentials need no Amiga (gate 4).
 - Whole game: lockstep against DOSBox with recorded input; compare guest RAM
   and the mode 13h framebuffer at frame boundaries
   ([pc-reference-loop.md](pc-reference-loop.md)).

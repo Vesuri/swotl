@@ -1,11 +1,15 @@
-"""`make gen`: translate every in-scope module (phase 3: decoded IR listing).
+"""`make gen`: translate every in-scope module.
 
-Output `build/gen/<module>.ir`, one file per module, never edited by hand
+Output per module `build/gen/<module>.ir` (decoded IR listing) and
+`build/gen/<module>.s` (68020, Motorola syntax, translator/emit.py), plus
+`build/gen/support.s` (state equates, flag/BCD helpers); never edited by hand
 (G1). Header: generator version, SHA-256 of the inputs (translator sources,
 tools/swotl_model.py, annotations/, the module file) and of the body.
-Prints the coverage report (G6): executed instruction bytes of the trace
-corpus as translated / self-modified (D16, not yet lowered) / HLE /
-unclassified; unclassified executed bytes fail.
+Prints the audit (spills, flag materializations, dispatcher exits, stop
+sites, return checks) against tests/audit.csv, where a count above its
+expected value fails, and the coverage report (G6): executed instruction
+starts of the trace corpus as translated / self-modified (D16, not yet
+lowered) / HLE / unclassified; unclassified ones fail.
 """
 
 from __future__ import annotations
@@ -15,10 +19,15 @@ import hashlib
 import sys
 from pathlib import Path
 
-from . import cfg, image
+import csv
+from collections import Counter
+
+from . import cfg, emit, image, support
 from .sem import lift
 
-VERSION = "swotl-gen 1 (ir)"
+VERSION = "swotl-gen 2 (ir, 68020)"
+AUDIT = image.REPO / "tests/audit.csv"
+SUPPORT = "support"
 OUT = image.REPO / "build/gen"
 M = image.M
 
@@ -27,7 +36,8 @@ def inputs_digest(module: str) -> str:
     h = hashlib.sha256()
     files = sorted((image.REPO / "translator").glob("*.py")) + [image.REPO / "tools/swotl_model.py"]
     files += sorted(image.ANNOTATIONS.glob("*.csv"))
-    files.append(M.REF / module)
+    if module != SUPPORT:
+        files.append(M.REF / module)
     for f in files:
         h.update(f.relative_to(image.REPO).as_posix().encode() + b"\0")
         h.update(f.read_bytes())
@@ -53,15 +63,47 @@ def listing(u: cfg.Unit) -> bytes:
     return ("\n".join(out) + "\n").encode()
 
 
-def generate(out: Path) -> dict[str, cfg.Unit]:
+def write(out: Path, file: str, module: str, body: bytes) -> None:
+    (out / file).write_bytes(header(module, body) + body)
+
+
+def generate(out: Path) -> tuple[dict[str, cfg.Unit], Counter, dict[str, Counter]]:
     units = cfg.build()
     out.mkdir(parents=True, exist_ok=True)
+    prog = emit.Program(units)
+    total, per = Counter(), {}
     for name, u in units.items():
         if not u.insns and not u.smc_entries:
             continue  # DATA.OVL: DGROUP, no code
-        body = listing(u)
-        (out / f"{name}.ir").write_bytes(header(name, body) + body)
-    return units
+        write(out, f"{name}.ir", name, listing(u))
+        lines, stats = prog.module_text(name)
+        write(out, f"{name}.s", name, (support.equates() + "\n".join(lines) + "\n").encode())
+        per[name] = stats
+        total.update(stats)
+    write(out, "support.s", SUPPORT, (support.equates() + support.HELPERS).encode())
+    return units, total, per
+
+
+AUDITED = ("spill", "full-flag materialization", "PF store", "AF store", "dispatcher exit",
+           "stop_unknown site")
+
+
+def audit(total: Counter, per: dict[str, Counter]) -> int:
+    with AUDIT.open() as f:
+        expected = {r["counter"]: (int(r["expected"]), r["reason"]) for r in csv.DictReader(f)}
+    cols = ("guest instructions", "68k lines", "CCR fused", "flag store", "flag merge",
+            "flag load", "return check", "dispatcher exit", "stop_unknown site")
+    print(f"{'module':13}" + "".join(f"{c.split()[0][:10]:>11}" for c in cols))
+    for name, st in per.items():
+        print(f"{name:13}" + "".join(f"{st[c]:11}" for c in cols))
+    bad = 0
+    for c in sorted(set(AUDITED) | set(expected)):
+        want, why = expected.get(c, (0, "not in tests/audit.csv"))
+        got = total[c]
+        mark = "FAIL" if got > want else "ok" if got == want else "below (update tests/audit.csv)"
+        bad += got > want
+        print(f"audit {c:28} {got:7} expected {want:7} {mark}: {why}")
+    return bad
 
 
 def coverage(units: dict[str, cfg.Unit]) -> int:
@@ -96,13 +138,14 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=OUT)
     ap.add_argument("--no-coverage", action="store_true")
     args = ap.parse_args()
-    units = generate(args.out)
+    units, total, per = generate(args.out)
+    failed = audit(total, per)
     if args.no_coverage:
-        return 0
+        return 1 if failed else 0
     bad = coverage(units)
     if bad:
         print(f"{bad} executed instructions unclassified")
-    return 1 if bad else 0
+    return 1 if bad or failed else 0
 
 
 if __name__ == "__main__":

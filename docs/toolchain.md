@@ -88,10 +88,16 @@ provenance is in brackets.
 
 - Slicks rule: every instruction semantic and every lowering is differentially tested against an independent x86 oracle (Unicorn x86-16 vs Unicorn 68020 on assembled bytes). [Slicks `CLAUDE.md`, `docs/validation-harness.md`]. Details are in [translation-lessons.md](translation-lessons.md).
 - Slicks: no LLVM and no generated-C backend until there is a measured need. [Slicks `docs/toolchain.md`]
-- SWOTL translator and tests (Python 3.11, stdlib + capstone): `make gen` (build/gen), `make
-  gen-check` (G1), `make lint` (G2), `make test` (lint, decoder vs Capstone, x86 differential vs
-  Unicorn, guard plants, gen-check; ~7 min), `make test-sabotage` (~3 min). Unicorn x86 quirks the
-  harness works around: [x86-notes.md](x86-notes.md#unicorn-x86-16-as-oracle).
+- SWOTL translator and tests (Python 3.11, stdlib + capstone): `make gen` (build/gen: `.ir`, `.s`,
+  audit), `make gen-check` (G1), `make lint` (G2), `make test` (lint, decoder vs Capstone, x86
+  differential vs Unicorn, 68020 instruction differential, generated-program block differential,
+  guard plants, gen-check; ~16 min), `make test-sabotage` (x86 and 68020 plants, ~6 min). Unicorn x86
+  quirks the harness works around: [x86-notes.md](x86-notes.md#unicorn-x86-16-as-oracle).
+- 68020 side: vasm `-quiet -m68020 -Fbin` with its default optimisations (branch sizes;
+  `-no-opt` disables them); it drops a `bra` to the next instruction, so labels can share an
+  address and `tests/m68k_blocks.py` matches stops by address. Unicorn 68020: write SR before A7
+  (A7 is the active stack pointer; at open S=1, so A7 is the SSP). Test images assemble per batch
+  into `tmp/m68k/`.
 
 ## Host language and build
 
