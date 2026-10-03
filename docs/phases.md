@@ -5,7 +5,7 @@ criteria name generated-code coverage, not pictures.
 
 | # | Phase | Exit |
 |---|---|---|
-| 1 | PC reference loop | Original runs unattended from a disposable copy of `ref/`; deterministic input; root image and each overlay captured at a named state; capture reproduced from file + loader semantics. |
+| 1 | PC reference loop | Original runs unattended from a disposable copy of `ref/`; deterministic input; root image and each in-scope overlay captured at a named state; capture reproduced from file + loader semantics. |
 | 2 | Static/live map | PLINK mechanism, overlay load areas, entry points, indirect targets, interrupts, ports and VGA use mapped; static and trace agree; no executed byte unclassified. |
 | 3 | x86 semantics | Decoder + IR cover every opcode present; randomized instruction and short-block differential vs Unicorn is clean. |
 | 4 | 68020 backend | Generated blocks match the x86 oracle on the host 68k core; audits pass (no unexpected spills, full-flag materializations, dispatcher exits). |

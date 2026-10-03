@@ -54,7 +54,8 @@ touches VGA memory and ports.
 
 ## Launcher
 
-`sw.bat`: `swotl V S 5 N Y Y 64`, pinned for reference runs. Parsed in
+`sw.bat`: `swotl V S 5 N Y Y 64`, pinned for reference runs; args 1–2
+fixed by scope (VGA, AdLib). Parsed in
 `main` (`SWOTL.EXE+0000`, argc at `[bp+6]`, argv at `[bp+8]`); no
 arguments prints "Run INSTALL".
 

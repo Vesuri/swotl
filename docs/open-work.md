@@ -14,7 +14,7 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
    stack, residency rules, the table's last word; which overlays coexist
    (FLIGHT's range covers CAMPAIGN/NOTCAMP and REPLAY/PANEL).
 8. Recursive-descent sweep of root and overlays; settle int 21h/67h/33h and
-   port inventories (`SFXA`/`SPAZ` contain `CD 21` byte pairs).
+   port inventories (`SPAZ` contains `CD 21` byte pairs).
 9. Identify the compiler runtime (Microsoft C 5.x per strings) and calling
    convention; check whether the MS C floating-point emulator is linked
    (INT 34h–3Dh fixups) and used.

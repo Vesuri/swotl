@@ -73,7 +73,7 @@ so translator speed is irrelevant.
 | D7 | Indirect control flow | sorted/hashed guest-linear IP -> native table; recognised jump tables lowered directly; unknown -> `stop_unknown` | 2.7 | as stated |
 | D8 | Interrupt delivery | (a) runtime runs translated guest ISRs at safe points (loop back-edges, calls); (b) HLE of the game's ISRs | which handlers the game installs (INT 8/9/other): 1.10, 2.5 | (a) |
 | D9 | Graphics drivers | (a) HLE at RTSVGA's call table on the dA JoRMaS layer; (b) translate driver + emulate VGA ports/memory | call table, chained/unchained, page flips: 2.5 | (a), with RTSVGA itself as oracle |
-| D10 | Sound | SFXA/SPAZ HLE at their tables; AdLib music method open (OPL -> Paula) | 2.5; open-work AdLib item | HLE |
+| D10 | Sound | SPAZ HLE at its table; AdLib music method open (OPL -> Paula) | 2.5; open-work AdLib item | HLE |
 | D11 | String ops | IR loops; `rep movs/stos` fast paths when DF and overlap provable | corpus + profile | as stated |
 | D12 | Translator language | Python vs C++ | none | Python |
 | D13 | Decoder | own vs Capstone | none | own, Capstone cross-check |

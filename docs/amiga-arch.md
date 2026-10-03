@@ -22,7 +22,7 @@ slave: [whdload.md](whdload.md).
 | --- | --- | --- |
 | Framework | `src/platform/amiga/framework/`: `AmigaHardware`, `Bitmap`, `CopperList`, `Palette24Bit` (+ `Palette`, `Sprite`, `Util` headers) from SL's DanceDiverse3 set | C++ bodies only; every local change recorded in `framework/README.md` (L90, L95) |
 | Platform | takeover, VBI, display views, C2P, Paula, keyboard/joystick/mouse, I/O windows, allocation | single owner per hardware register group; no game logic |
-| Runtime services | native replacements for the original's DOS/BIOS/port boundaries (VGA, PIT/INT 08h, INT 09h keyboard, mouse, joystick, Sound Blaster/AdLib, INT 21h files) | replace the *routine* behind a port sequence, never emulate ports one access at a time (SL `docs/external-surface.md`) |
+| Runtime services | native replacements for the original's DOS/BIOS/port boundaries (VGA, PIT/INT 08h, INT 09h keyboard, mouse, joystick, AdLib, INT 21h files) | replace the *routine* behind a port sequence, never emulate ports one access at a time (SL `docs/external-surface.md`) |
 | Translated game | generated 68020 code | calls runtime services through explicit register contracts (SL `docs/native-graphics-abi.md`) |
 
 Not used: the framework's `Production`/`Part`/`Script` timeline and module player
@@ -92,10 +92,9 @@ per source-defined loop (L45).
 
 ## Audio
 
-- **Digital effects** (Sound Blaster path): SL's model — load-time conversion to signed
-  PCM in Chip, period from the sample rate, four channels, explicit priority allocation,
-  one-shot via silent reload, all DMA control in the VBI (L59–63).
-- **Music** (AdLib/OPL path): no sibling re-hosted FM synthesis. The proven pattern for
+- No digital path: SPAZ plays music and effects (`ADLIB.SFX`) on the OPL only
+  (ports `388h/389h`; no SB DSP access traced).
+- **Music and effects** (AdLib/OPL path): no sibling re-hosted FM synthesis. The proven pattern for
   chip music is a faithful chip-state producer (the original's driver writing a register
   shadow) plus a Paula-only re-hoster that never decides what sounds (RV
   `RevsAudio.h`, L71). The OPL re-hosting method is an open design decision.

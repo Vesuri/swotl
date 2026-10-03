@@ -106,21 +106,18 @@ Enter at the mouse poll `+44E2` #300 (leaves the demo). Menu keys are the
 red letters, pressed at `+44E2` #200 after the previous release. `+44E2`
 runs once per frame in flight, every ~645 instructions in menus.
 
-| Milestone | Launch | Input | Signal |
-|---|---|---|---|
-| m0-entry | pinned | none | `SWOTL.EXE+164F2` (MZ entry) |
-| m1-mode13h | pinned | none | `RTSVGA.OVL+390D`, after INT 10h AX=0013h |
-| m2-choose-side | pinned | K2 | "CHOOSE A SIDE" (FRONTEND + NOTCAMP), `+44E2` #600 |
-| m3-demo-flight | pinned | none | `REPLAY.OVL+31E6` #1: `DEMO1.DEM` attract flight |
-| m4-demo-frames | pinned | none | `+44E2` #150 and 50 frames later; scene advances |
-| m5-player-flight | pinned | K2, U (US), F (flight school), 1 (P-47), 1 (gunnery), S (start) | FLIGHT + PANEL cockpit, `+44E2` #400 and 50 frames later |
-| m6-film-room | pinned | K2, U, V | film viewing room (REPLAY + FLIGHT) |
-| m7-campaign | pinned | K2, U, B, S | new campaign (CAMPAIGN) |
-| m8-ega | `E S 5 N Y Y 64` | none | `RTSEGA.OVL+4850` |
-| m9-tandy | `T S 5 N Y Y 64` | none | `RTSTANDY.OVL+3A5C` |
-| m10-pc-speaker | `V I 5 N Y Y 64` | none | `SFXA.OVL+26` |
+| Milestone | Input | Signal |
+|---|---|---|
+| m0-entry | none | `SWOTL.EXE+164F2` (MZ entry) |
+| m1-mode13h | none | `RTSVGA.OVL+390D`, after INT 10h AX=0013h |
+| m2-choose-side | K2 | "CHOOSE A SIDE" (FRONTEND + NOTCAMP), `+44E2` #600 |
+| m3-demo-flight | none | `REPLAY.OVL+31E6` #1: `DEMO1.DEM` attract flight |
+| m4-demo-frames | none | `+44E2` #150 and 50 frames later; scene advances |
+| m5-player-flight | K2, U (US), F (flight school), 1 (P-47), 1 (gunnery), S (start) | FLIGHT + PANEL cockpit, `+44E2` #400 and 50 frames later |
+| m6-film-room | K2, U, V | film viewing room (REPLAY + FLIGHT) |
+| m7-campaign | K2, U, B, S | new campaign (CAMPAIGN) |
 
-All twelve overlays are captured and pass the image proof.
+All nine in-scope overlays are captured and pass the image proof.
 
 Facts from these runs:
 

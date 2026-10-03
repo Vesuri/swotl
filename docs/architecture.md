@@ -64,7 +64,7 @@ root EXE + .OVL images (proved against DOSBox captures)
   to native code is open (see open-work).
 - Overlays: each `.OVL` is a separately translated module at its proved load
   address; the PLINK manager's role is taken by the runtime loader.
-- Drivers: RTSVGA/RTSEGA/RTSTANDY and SFXA/SPAZ are replacement candidates at
+- Drivers: RTSVGA and SPAZ are replacement candidates at
   their call interface (G3 table), implemented on the dA JoRMaS layer.
 
 ## Oracles

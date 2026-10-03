@@ -4,6 +4,8 @@ Port Secret Weapons of the Luftwaffe 2.2 (Totally Games / Lucasfilm Games,
 1991, VGA DOS) to a PAL A1200 (68020, AGA, 2 MiB Chip) by translating its
 16-bit real-mode x86 code offline to 68020 assembly. The translator is the
 product. The original running under a PC emulator is the ground truth.
+Scope: VGA (RTSVGA, mode 13h) and AdLib FM (SPAZ), the only non-speaker
+audio the game has; RTSEGA, RTSTANDY and SFXA (PC speaker) are out.
 
 ## Standing rules
 
