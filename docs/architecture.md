@@ -47,7 +47,7 @@ root EXE + .OVL images (proved against DOSBox captures)
 7. Unresolved indirect control flow, writes to translated code and unknown
    ports/interrupts stop with a report. No interpreter fallback in release.
 
-## Target model (contract: translator-design.md; D2, D8–D11, D15, D16 open)
+## Target model (contract: translator-design.md; D8–D11, D16 open)
 
 - Guest RAM: one contiguous block at a6, byte-exact little-endian, linear
   address `seg*16+off` with the reference load segment, so RAM images diff
@@ -64,7 +64,12 @@ root EXE + .OVL images (proved against DOSBox captures)
 - Calls: guest stack byte-exact; native `jsr`/`rts` with a return-site check
   of the popped IP/CS.
 - Overlays: each `.OVL` is a separately translated module at its proved load
-  address; the PLINK manager's role is taken by the runtime loader.
+  address, all resident in native code (D2); the translated PLINK manager
+  loads the bytes into guest RAM and its thunks jump to the native module.
+- Memory: Fast RAM required (D15): ~1.44 MB code + 1.06 MiB guest RAM.
+- Runtime (`src/runtime/`): the reference machine as the guest sees it
+  (DOS 5 PSP/MCBs/environment, IVT values, BIOS/EMS answers) behind
+  `platform.h`; one implementation for the host harness and the A1200.
 - Drivers: RTSVGA and SPAZ are replacement candidates at
   their call interface (G3 table), implemented on the dA JoRMaS layer.
 
@@ -72,6 +77,10 @@ root EXE + .OVL images (proved against DOSBox captures)
 
 - x86 semantics: Unicorn x86-16 (C library, as in Slicks, via ctypes `tests/uc.py`):
   `make test` (gate 3); its known deviations: [x86-notes.md](x86-notes.md).
+- Generated program + runtime on host: `make test-host` runs it on Unicorn
+  68020 to a milestone and checks the service log (every software INT's
+  registers in and out, recorded by the tracer) and RAM against the
+  reference; `make test-amiga` checks the A1200 model's capture likewise.
 - Generated 68020 code on host: Unicorn 68020 (as Slicks) runs the same
   cases (`make test-m68k`) and the generated program's traced blocks
   (`make test-blocks`), so differentials need no Amiga (gate 4).

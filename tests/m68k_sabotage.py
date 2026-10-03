@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 """Sabotage the 68020 differential (translation-lessons #42): each planted fault in
 the lowering's output must produce mismatches. Exit 1 if one passes unnoticed.
+Corpus "program" runs the generated-program block differential (m68k_blocks).
 """
 
 from __future__ import annotations
 
+import contextlib
+import io
 import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import m68k_blocks as B  # noqa: E402
 import m68k_diff as D  # noqa: E402
 from translator import lower as L  # noqa: E402
 
@@ -70,7 +74,7 @@ SABOTAGE = [
     ("DF ignored", sub(r"^\ttst\.b G_DF\(a6\)$", "\tcmp.b d0,d0"), "boundary"),
     ("partial flag merge as full store", no_merge, "boundary"),
     ("shift count mod 16", sub(r"moveq #\$1f,d7", "moveq #$f,d7"), "boundary"),
-    ("fused setter stores nothing", drop_fused_store, "blocks"),
+    ("fused setter stores nothing", drop_fused_store, "program"),
     ("ror for ror.w on memory dest", sub(r"^\tror\.w #8,d6$", "\trol.b #8,d6"), "forms"),
 ]
 
@@ -80,13 +84,21 @@ def main() -> int:
     for name, fn, corpus in SABOTAGE:
         L.Lowering.run = text(fn)
         try:
-            h = D.X.run(["--only", corpus, "--states", "1", "--space", "2", "--blocks", "1500"],
-                        quiet=True, harness=D.Harness)
-            h.flush()
+            if corpus == "program":
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    B.main(["--blocks", "1500", "--states", "1"])
+                bad = int(re.search(r"(\d+) mismatches", out.getvalue()).group(1))
+                total = int(re.search(r"cases (\d+)", out.getvalue()).group(1))
+            else:
+                h = D.X.run(["--only", corpus, "--states", "1", "--space", "2", "--blocks", "1500"],
+                            quiet=True, harness=D.Harness)
+                h.flush()
+                bad, total = len(h.bad), sum(h.count.values())
         finally:
             L.Lowering.run = real_run
-        print(f"{name:36} {corpus:15} mismatches {len(h.bad)} of {sum(h.count.values())}")
-        if not h.bad:
+        print(f"{name:36} {corpus:15} mismatches {bad} of {total}")
+        if not bad:
             missed.append(name)
     if missed:
         print("not caught:", ", ".join(missed))

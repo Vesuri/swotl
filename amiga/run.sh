@@ -22,13 +22,14 @@ mkdir -p "$DH0/c" "$DH0/s" "$DH1" "$RUN/state"
 printf 'C:SetPatch QUIET\ncd dh1:\nSwotl\n' > "$DH0/s/startup-sequence"
 cp -f "$SETPATCH" "$DH0/c/SetPatch"
 cp -f "$EXE" "$DH1/Swotl"
+rsync -a --exclude '*.pdf' ../ref/ "$DH1/"
 # A resumed .uss saved by a halted GDB session makes any build look frozen.
 rm -f "$RUN"/state/*.uss
 
 fsuae_stop_previous
 fsuae_track_self
 exec "$FSUAE" \
-  --amiga_model=A1200 --chip_memory=2048 --fast_memory=0 \
+  --amiga_model=A1200 --chip_memory=2048 --fast_memory="${FAST_MEMORY:-8192}" \
   --kickstart_file="$ROM" \
   --hard_drive_0="$DH0" --hard_drive_1="$DH1" \
   --joystick_port_0=mouse --joystick_port_1=nothing \

@@ -24,19 +24,24 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
 ## Translator
 
 13. D16: lower the self-modified block (after 9d); its 528 entries stop now.
-14. Phase 5 runtime surface: `rt_*` entries, the dispatch table (seeds, call
-    and far targets, indirect targets), object/link layout of
-    `build/gen/*.s` (sections, xdef/xref) for the Amiga build.
+14. Gate 5 frame: a drawn milestone on the A1200 model. Past m1 the path
+    needs INT 10h mode 13h/DAC (1012h/1017h) and display of guest
+    A0000h (D9), DOS AH=48h, INT 33h, INT 16h/DOS keyboard, EMS AH=44h
+    mapping, the SPAZ INT 08h tick (D8; `(isr)` targets are not dispatch
+    rows yet) and, for menus and flight, D16. Choose the first milestone
+    with game pixels (logo `LUCASLOG.PAC` before m2) and add it to
+    `reference/milestones.csv` and `tests/host_run.py`.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/
     `divu.l`, unaligned word/long, `ror.w #8` swap) to replace [arch]
     guesses in `m68k-optimisation.md`.
 16. Lookup-table policy with no Fast RAM (tables are Chip reads).
-23. Return-flag precision: every `ret` sees the union of all return sites
-    (CF/OF/ZF/SF live), so each function's last setter stores flags; refine
-    with per-function return sets (phase 7, profile first).
 24. Lockstep RAM compare (phase 6): undefined flags and FLAGS words pushed
-    below SP (PUSHF, interrupt frames) differ from DOSBox by design; decide
-    the mask.
+    below SP (PUSHF, interrupt frames) differ from DOSBox by design. The host
+    run masks dead stack (below SS:SP at a service, not rewritten by the
+    guest); decide whether lockstep needs more (dead flag bits in pushed
+    images under the remaining `annotations/flags.csv` pair).
+25. `Swotl.exe` is 3.7 MB: elf2hunk keeps the symbols of ~140K generated
+    labels (needed by GDB fixtures); strip for release.
 
 ## Amiga platform
 

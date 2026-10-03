@@ -181,7 +181,7 @@ class M68k:
              "DF": st[16 - 5], "IF": st[16 - 6], "TF": st[16 - 7]}
         fx = int.from_bytes(st[16 - 10:16 - 8], "big")
         d6, d7 = self.r("d6") & 0xFFFF, self.r("d7") & 0xFFFF
-        info = {"stop": self.stop, "err": err, "d6": d6, "d7": d7,
+        info = {"stop": self.stop, "err": err, "d6": d6, "d7": d7, "d6.l": self.r("d6"),
                 "upper": {r: out[r] >> 16 for r in REGS},
                 "a7": self.r("a7"), "segbase": {a: self.r(a) for a in ("a1", "a2", "a3")}}
         mem = {a: b for a, b in zip(sorted(self.writes), (e.read(GUEST + a, 1)[0]

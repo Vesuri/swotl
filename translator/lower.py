@@ -1092,10 +1092,10 @@ class Lowering:
         if not self.c.program:
             return
         self.e(f"cmp.w #{hx(ip)},d7")
-        self.e("bne rt_ret_mismatch")
+        self.e("bne.l rt_ret_mismatch")  # external: 32-bit displacement
         if cs is not None:
             self.e(f"cmp.w #{cs},d6")
-            self.e("bne rt_ret_mismatch")
+            self.e("bne.l rt_ret_mismatch")  # external: 32-bit displacement
         self.stats["return check"] += 1
 
     def dispatch_near(self, how: str) -> None:
@@ -1295,9 +1295,13 @@ class Lowering:
     def op_int3(self):
         self.interrupt(3)
 
+    def vector(self, vec: int) -> str:
+        """d6 operand: the vector, in program mode with CS in the upper word."""
+        return f"#(({self.c.cs})<<16)|{hx(vec)}" if self.c.program else f"#{hx(vec)}"
+
     def interrupt(self, vec: int) -> None:
         self.e(f"move.l #{hx(self.i.next_ip)},d7")
-        self.e(f"move.l #{hx(vec)},d6")
+        self.e(f"move.l {self.vector(vec)},d6")
         self.e("jsr rt_int" if self.c.program else "jmp T_INT")
 
     def op_into(self):
@@ -1310,7 +1314,7 @@ class Lowering:
 
     def exit_fault(self, vec: int) -> None:
         self.e(f"move.l #{hx(self.i.ip)},d7")
-        self.e(f"move.l #{hx(vec)},d6")
+        self.e(f"move.l {self.vector(vec)},d6")
         if self.c.program:
             self.e("jsr rt_fault")
             self.e(f"bra {self.c.label}")

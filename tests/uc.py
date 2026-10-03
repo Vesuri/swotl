@@ -100,6 +100,17 @@ class Engine:
         self.hooks.append(cb)
         return hh.value
 
+    def hook_range(self, kind: int, cb, begin: int, end: int) -> int:
+        """Hook on [begin, end] only (code and memory hooks)."""
+        hh = C.c_size_t()
+        check(uc.uc_hook_add(self.h, C.byref(hh), kind, C.cast(cb, C.c_void_p), None,
+                             C.c_uint64(begin), C.c_uint64(end)), "uc_hook_add")
+        self.hooks.append(cb)
+        return hh.value
+
+    def unhook(self, hh: int) -> None:
+        check(uc.uc_hook_del(self.h, hh), "uc_hook_del")
+
     def flush(self) -> None:
         """Drop translated blocks; uc_mem_write does not invalidate them."""
         check(uc.uc_ctl(self.h, CTL_TB_FLUSH | (1 << 30)), "uc_ctl tb flush")

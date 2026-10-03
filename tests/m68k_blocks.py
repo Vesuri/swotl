@@ -204,7 +204,7 @@ def main(argv=None) -> int:
             elif stop == "T_RET":
                 mip = info["d7"]
                 mcs = info["d6"] if last.op in ("retf", "iret") else cs
-                live = set(p.ret_live) if last.op != "iret" else set()
+                live = p.ret_live_of((mod, run[-1])) if last.op != "iret" else set()
                 exits["ret"] += 1
             elif stop in ("rt_dispatch_near", "rt_dispatch_far"):
                 mip = info["d7"]
@@ -212,7 +212,7 @@ def main(argv=None) -> int:
                 live = set(p.unknown_live)
                 exits["dispatch"] += 1
             elif stop in ("rt_int", "rt_fault"):
-                mip, mcs = info["d7"], cs
+                mip, mcs = info["d7"], info["d6.l"] >> 16  # d6 = CS << 16 | vector
                 live = p.live_out[(mod, run[-1])] if stop == "rt_int" else set()
                 exits[stop] += 1
                 if exc is None or info["d6"] != exc:

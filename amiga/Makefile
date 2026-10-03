@@ -18,6 +18,8 @@ SUPPORT  = $(abspath $(dir $(shell which $(CC)))../../support)
 REPO      = ..
 AMIGA_SRC = $(REPO)/src/platform/amiga
 FRAMEWORK = $(AMIGA_SRC)/framework
+RUNTIME   = $(REPO)/src/runtime
+GEN       = $(REPO)/build/gen
 
 CCFLAGS  = -g -MP -MMD -m68020 -msoft-float -O2 -nostdlib \
 	-fomit-frame-pointer -fno-tree-loop-distribution \
@@ -28,15 +30,19 @@ CPPFLAGS = $(CCFLAGS) -fno-rtti -fno-exceptions -fno-use-cxa-atexit -fcheck-new 
 	-Wno-ignored-qualifiers -Wno-sign-compare \
 	-Wno-parentheses -Wno-unused-parameter \
 	-include "$(FRAMEWORK)/SASCCompat.h" \
-	-I"$(FRAMEWORK)" -I"$(AMIGA_SRC)"
+	-I"$(FRAMEWORK)" -I"$(AMIGA_SRC)" -I"$(RUNTIME)"
 ASFLAGS  = -mcpu=68020 -g --register-prefix-optional -I"$(SDKDIR)"
 VASMFLAGS = -m68020 -Felf -quiet -x -no-opt -nowarn=62 -I"$(SDKDIR)" -Iobj
+# Generated code: vasm picks branch sizes (translator/emit.py output, never edited).
+VASMGEN  = -m68020 -Felf -quiet -x -nowarn=62
 LDFLAGS  = -Wl,--emit-relocs,--gc-sections,-Ttext=0,-Map=$(OUT).map
 
 OBJECTS = obj/main.o obj/Swotl.o obj/GCCRuntime.o \
 	obj/framework_amiga_hardware.o obj/framework_bitmap.o \
 	obj/framework_copper_list.o obj/framework_palette24.o \
-	obj/gcc8_c_support.o obj/gcc8_a_support.o obj/memory.o obj/version.o
+	obj/gcc8_c_support.o obj/gcc8_a_support.o obj/memory.o obj/version.o \
+	obj/amiga_platform.o obj/amiga_run.o obj/rt_entry.o \
+	$(patsubst $(RUNTIME)/%.c,obj/rt_%.o,$(wildcard $(RUNTIME)/*.c)) obj/program.o
 
 .PHONY: all clean verify-runtime
 # Never leave a truncated executable that looks up to date after elf2hunk fails.
@@ -80,6 +86,21 @@ obj/gcc8_a_support.o: $(SUPPORT)/gcc8_a_support.s | obj
 
 obj/memory.o: $(AMIGA_SRC)/memory.s | obj
 	$(VASM) $(VASMFLAGS) -o $@ $<
+
+obj/amiga_platform.o: $(AMIGA_SRC)/amiga_platform.c | obj
+	$(CC) $(CCFLAGS) -ffreestanding -I"$(RUNTIME)" -I"$(AMIGA_SRC)" -c -o $@ $<
+
+obj/amiga_run.o: $(AMIGA_SRC)/amiga_run.s | obj
+	$(VASM) $(VASMFLAGS) -o $@ $<
+
+obj/rt_%.o: $(RUNTIME)/%.c | obj
+	$(CC) $(CCFLAGS) -ffreestanding -I"$(RUNTIME)" -c -o $@ $<
+
+obj/rt_entry.o: $(RUNTIME)/rt_entry.s | obj
+	$(VASM) $(VASMFLAGS) -o $@ $<
+
+obj/program.o: $(GEN)/program.s $(wildcard $(GEN)/*.s) | obj
+	$(VASM) $(VASMGEN) -I"$(GEN)" -o $@ $<
 
 obj/version.o: $(AMIGA_SRC)/version.s | obj
 	$(AS) $(ASFLAGS) -o $@ $<

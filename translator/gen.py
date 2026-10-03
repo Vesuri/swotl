@@ -2,7 +2,8 @@
 
 Output per module `build/gen/<module>.ir` (decoded IR listing) and
 `build/gen/<module>.s` (68020, Motorola syntax, translator/emit.py), plus
-`build/gen/support.s` (state equates, flag/BCD helpers); never edited by hand
+`build/gen/support.s` (flag/BCD helpers) and `build/gen/program.s` (assembly root:
+state equates, runtime xrefs, module includes, dispatch table); never edited by hand
 (G1). Header: generator version, SHA-256 of the inputs (translator sources,
 tools/swotl_model.py, annotations/, the module file) and of the body.
 Prints the audit (spills, flag materializations, dispatcher exits, stop
@@ -28,6 +29,7 @@ from .sem import lift
 VERSION = "swotl-gen 2 (ir, 68020)"
 AUDIT = image.REPO / "tests/audit.csv"
 SUPPORT = "support"
+PROGRAM = "program"  # assembly root: equates, runtime xrefs, includes, dispatch table
 OUT = image.REPO / "build/gen"
 M = image.M
 
@@ -36,7 +38,7 @@ def inputs_digest(module: str) -> str:
     h = hashlib.sha256()
     files = sorted((image.REPO / "translator").glob("*.py")) + [image.REPO / "tools/swotl_model.py"]
     files += sorted(image.ANNOTATIONS.glob("*.csv"))
-    if module != SUPPORT:
+    if module not in (SUPPORT, PROGRAM):
         files.append(M.REF / module)
     for f in files:
         h.update(f.relative_to(image.REPO).as_posix().encode() + b"\0")
@@ -72,15 +74,19 @@ def generate(out: Path) -> tuple[dict[str, cfg.Unit], Counter, dict[str, Counter
     out.mkdir(parents=True, exist_ok=True)
     prog = emit.Program(units)
     total, per = Counter(), {}
+    files: list[str] = []
     for name, u in units.items():
         if not u.insns and not u.smc_entries:
             continue  # DATA.OVL: DGROUP, no code
         write(out, f"{name}.ir", name, listing(u))
         lines, stats = prog.module_text(name)
-        write(out, f"{name}.s", name, (support.equates() + "\n".join(lines) + "\n").encode())
+        write(out, f"{name}.s", name, ("\n".join(lines) + "\n").encode())
+        files.append(f"{name}.s")
         per[name] = stats
         total.update(stats)
-    write(out, "support.s", SUPPORT, (support.equates() + support.HELPERS).encode())
+    write(out, "support.s", SUPPORT, support.HELPERS.encode())
+    files.append("support.s")
+    write(out, "program.s", PROGRAM, (support.equates() + prog.program_text(files)).encode())
     return units, total, per
 
 
