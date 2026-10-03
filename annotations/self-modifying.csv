@@ -1,0 +1,4 @@
+module,first,last,kind,writers,note
+SWOTL.EXE,0x06a4d,0x089fd,terminator,+4FF0/+4FFC +5132/+513D +52CE/+52DA +EBB5/+EBBE,RET (C3) written at an instruction start of the unrolled block; call dx into the block; original byte restored after the call
+SWOTL.EXE,0x06a4d,0x089fd,operand,+8FD5 +9030 +908E,word operands at stride 4 patched before each call
+SWOTL.EXE,0x06a4d,0x089fd,operand,+E5FD +E600 +E616 +E619 +E626 +E629 +E641,operand bytes and words of the unrolled templates rebuilt at setup (two copies: +6A51.. and +7D51..)

@@ -1,0 +1,86 @@
+module,offset,seg_ip,name,class,executed,evidence
+SWOTL.EXE,0x13692,1369:0002,__astart,startup,1,"MZ+PLINK startup ljmp 1369:0002; DOS version, DGROUP 3BAB, SS=DS, SP=EF2E, AH=4Ah shrink, BSS clear 5E32..EF30, calls __cinit/__setenvp/__setargv, main (0000:0000), exit"
+SWOTL.EXE,0x13735,1369:00A5,__cintDIV,startup,0,INT 0 (divide error) handler installed by __cinit; not executed
+SWOTL.EXE,0x13758,1369:00C8,_printf,stdio,0,stdout (DS:5714) via __stbuf/__output/__ftbuf
+SWOTL.EXE,0x1379a,1369:010A,_atoi,string,1,jmp _atol; main args 3/7
+SWOTL.EXE,0x1379e,1369:010E,__aFNalshl,math helper,1,*p <<= cl (long); via __aFlshl; callee pops 4
+SWOTL.EXE,0x137c0,1369:0130,__cinit,startup,1,"AH=30h, saves/sets INT 0, FP init via [5876] (0: no FP), C_FILE_INFO inherit, initterm tables"
+SWOTL.EXE,0x13884,1369:01F4,_exit,exit,0,"runs onexit/atexit tables 5E58,5882..5886 via __initterm, then __exit"
+SWOTL.EXE,0x1389b,1369:020B,__exit,exit,0,"terminators then __ctermsub, AH=4Ch"
+SWOTL.EXE,0x138e2,1369:0252,__ctermsub,exit,0,restores INT 0 vector (AH=25h) and saved vectors
+SWOTL.EXE,0x1390f,1369:027F,__initterm,startup,1,calls far pointer table SI..DI in reverse
+SWOTL.EXE,0x13922,1369:0292,__aFldiv,math helper,1,signed long divide DX:AX; callee pops 8
+SWOTL.EXE,0x139c8,1369:0338,_fwrite,stdio,0,size*count; _write/__flsbuf/_memcpy
+SWOTL.EXE,0x13b42,1369:04B2,_unlink,file I/O,0,AH=41h (alias remove)
+SWOTL.EXE,0x13b50,1369:04C0,_fclose,stdio,1,"_fflush, __freebuf, _close; tmpfile removal (strcpy/strcat/itoa/unlink)"
+SWOTL.EXE,0x13c12,1369:0582,_strcpy,string,1,repne scasb length then rep movs
+SWOTL.EXE,0x13c44,1369:05B4,_strcat,string,1,"scan dst end, copy src"
+SWOTL.EXE,0x13c84,1369:05F4,_fgetc,stdio,1,"getc: dec cnt, read [ptr]++, else __filbuf"
+SWOTL.EXE,0x13ca8,1369:0618,_dos_findnext,DOS wrapper,0,AH=4Fh
+SWOTL.EXE,0x13cb2,1369:0622,_dos_findfirst,DOS wrapper,1,"AH=1Ah set DTA, AH=4Eh"
+SWOTL.EXE,0x13cd0,1369:0640,_fopen,stdio,1,__getstream + __openfile
+SWOTL.EXE,0x13cfe,1369:066E,_fread,stdio,1,size*count; _read/__filbuf/_memcpy
+SWOTL.EXE,0x13ec6,1369:0836,_kbhit,DOS wrapper,1,AH=0Bh; ungetch buffer [56E8]
+SWOTL.EXE,0x13eda,1369:084A,_getch,DOS wrapper,1,AH=08h; ungetch buffer [56E8]
+SWOTL.EXE,0x13ef2,1369:0862,__aFNalmul,math helper,1,*p *= long; via __aFlmul; callee pops 6
+SWOTL.EXE,0x13f16,1369:0886,__aFNalshr,math helper,1,*p >>= cl (signed long); via __aFlshr; callee pops 4
+SWOTL.EXE,0x13f38,1369:08A8,__aFuldiv,math helper,1,unsigned long divide; callee pops 8
+SWOTL.EXE,0x13fa0,1369:0910,_sprintf,stdio,1,"string FILE (flag 42h, cnt 7FFFh) + __output"
+SWOTL.EXE,0x13ffa,1369:096A,__aFNaldiv,math helper,1,*p /= long; via __aFldiv; callee pops 6
+SWOTL.EXE,0x1401e,1369:098E,__aFlmul,math helper,1,long multiply DX:AX; callee pops 8
+SWOTL.EXE,0x14052,1369:09C2,__aFNauldiv,math helper,1,*p /= unsigned long; via __aFuldiv; callee pops 6
+SWOTL.EXE,0x140a2,1369:0A12,_harderr,DOS wrapper,1,"saves user handler [56EA], AH=25h INT 24h -> cs:0A35"
+SWOTL.EXE,0x140c5,1369:0A35,__harderr_handler,DOS wrapper,0,INT 24h stub calling user handler; not executed
+SWOTL.EXE,0x140f8,1369:0A68,_fseek,stdio,0,whence 0..2 else errno 16h (EINVAL); flush + _lseek
+SWOTL.EXE,0x143ec,1369:0D5C,_fputc,stdio,0,"putc: dec cnt, store [ptr]++, else __flsbuf"
+SWOTL.EXE,0x14418,1369:0D88,__aFNaulshr,math helper,0,*p >>= cl (unsigned long); via __aFulshr; callee pops 4
+SWOTL.EXE,0x1443a,1369:0DAA,__aFlshr,math helper,1,sar dx/rcr ax loop CL
+SWOTL.EXE,0x14446,1369:0DB6,__FF_MSGBANNER,exit,0,"__NMSG_WRITE(252), user hook [56F0], __NMSG_WRITE(255)"
+SWOTL.EXE,0x1446a,1369:0DDA,__NMSG_TEXT,exit,0,message number lookup in DS:5D60 (R60xx table)
+SWOTL.EXE,0x14495,1369:0E05,__NMSG_WRITE,exit,0,writes message text to handle 2
+SWOTL.EXE,0x144c0,1369:0E30,__nullcheck,exit,0,checksum DS:0..41h xor 55h; R6001 null pointer assignment
+SWOTL.EXE,0x144e6,1369:0E56,__setargv,startup,1,"pops return address; program name from env (DOS>=3), builds argv on stack"
+SWOTL.EXE,0x14678,1369:0FE8,__setenvp,startup,1,"PSP:[2Ch] environment, counts strings, builds envp"
+SWOTL.EXE,0x146de,1369:104E,__stbuf,stdio,0,temporary buffer for stdout/stderr ([583A] counter)
+SWOTL.EXE,0x1478c,1369:10FC,__ftbuf,stdio,0,"release temporary buffer; _isatty, _fflush"
+SWOTL.EXE,0x14824,1369:1194,__output,stdio,1,printf engine; __chkstk 162h; state 5E3E..5E56
+SWOTL.EXE,0x14e6c,1369:17DC,__output_string,stdio,1,__output helper: emit string (far ptr)
+SWOTL.EXE,0x14fe8,1369:1958,__output_getnum,stdio,1,"__output helper: width/precision, * from args"
+SWOTL.EXE,0x15068,1369:19D8,__output_isflag,stdio,1,__output helper: flag char lookup in DS:5706
+SWOTL.EXE,0x15092,1369:1A02,_atol,string,1,"skip blanks, sign, decimal digits into DX:BX"
+SWOTL.EXE,0x150e6,1369:1A56,__aFlshl,math helper,1,shl ax/rcl dx loop CL
+SWOTL.EXE,0x150f8,1369:1A68,_write,file I/O,0,"handle < [56B2], append (flag 20h) AH=4202h seek, text-mode LF->CRLF, AH=40h"
+SWOTL.EXE,0x151a0,1369:1B10,__write_chunk,file I/O,0,_write helper: AH=40h flush of translated buffer
+SWOTL.EXE,0x15222,1369:1B92,_memcpy,string,1,"ES=DS, movsb/movsw, no overlap check"
+SWOTL.EXE,0x1524e,1369:1BBE,__flsbuf,stdio,0,flush full buffer / unbuffered write; __getbuf
+SWOTL.EXE,0x153f0,1369:1D60,__dosret0,DOS wrapper,1,"shared tail: clear errno path, AX=0"
+SWOTL.EXE,0x153f8,1369:1D68,__dosretax,DOS wrapper,1,shared tail: return AX or map error
+SWOTL.EXE,0x15403,1369:1D73,__dosret,DOS wrapper,1,"shared tail: CF -> __dosmaperr, AX=-1"
+SWOTL.EXE,0x15416,1369:1D86,__dosmaperr,DOS wrapper,1,"DOS error AL -> errno via table, [56B0] _doserrno"
+SWOTL.EXE,0x15444,1369:1DB4,_close,file I/O,1,"AH=3Eh, clears _osfile[handle] (56B4)"
+SWOTL.EXE,0x15464,1369:1DD4,__freebuf,stdio,1,"_free stream buffer, clear flag 08h"
+SWOTL.EXE,0x15494,1369:1E04,_fflush,stdio,1,write mode (flags&3==2) flush via _write
+SWOTL.EXE,0x154fe,1369:1E6E,_itoa,string,0,"radix 10 signed, else unsigned"
+SWOTL.EXE,0x1551a,1369:1E8A,__filbuf,stdio,1,refill buffer via _read; EOF/err flags
+SWOTL.EXE,0x155c0,1369:1F30,__getbuf,stdio,1,"_malloc(200h) stream buffer, else 1-byte"
+SWOTL.EXE,0x15626,1369:1F96,__getstream,stdio,1,"first free FILE from DS:570C, [5824] count"
+SWOTL.EXE,0x15662,1369:1FD2,__openfile,stdio,1,mode chars a/r/w/+/b/t -> _open flags
+SWOTL.EXE,0x15758,1369:20C8,_read,file I/O,1,"AH=3Fh; text mode CR LF -> LF, ^Z EOF"
+SWOTL.EXE,0x15834,1369:21A4,_ftell,stdio,0,"_lseek(fd,0,1) minus buffered count"
+SWOTL.EXE,0x159b0,1369:2320,_lseek,file I/O,0,AH=42h; errno 16h on negative result
+SWOTL.EXE,0x15a2a,1369:239A,__aFlrem,math helper,0,signed long remainder; callee pops 8
+SWOTL.EXE,0x15ad2,1369:2442,__aFulshr,math helper,0,shr dx/rcr ax loop CL
+SWOTL.EXE,0x15ade,1369:244E,__sbrk,memory,1,grow DGROUP heap below stack [563A]/[5634]; AH=4Ah
+SWOTL.EXE,0x15b20,1369:2490,_isatty,file I/O,0,_osfile[handle] & 40h (FDEV)
+SWOTL.EXE,0x15b6a,1369:24DA,__chkstk,other,1,stack probe AX bytes vs [585A]; only caller __output
+SWOTL.EXE,0x15b8e,1369:24FE,_stackavail,memory,0,SP - [585A]
+SWOTL.EXE,0x15ba2,1369:2512,_free,memory,1,near heap: set free bit at [p-2]
+SWOTL.EXE,0x15bb4,1369:2524,_malloc,memory,1,"near heap (DS:585C rover), grows via __heap_grow"
+SWOTL.EXE,0x15c5a,1369:25CA,_open,file I/O,1,oflags 8000h binary/4000h text/_fmode [5873]; AH=3Dh/3Ch/43h/44h
+SWOTL.EXE,0x15ded,1369:275D,__open_umask,file I/O,0,_open helper: apply _umask [56A7] to attribute
+SWOTL.EXE,0x15e35,1369:27A5,__heap_search,memory,1,first-fit scan of near heap blocks
+SWOTL.EXE,0x15f18,1369:2888,__heap_coalesce,memory,1,merge free neighbour blocks
+SWOTL.EXE,0x15f52,1369:28C2,__heap_newblock,memory,1,split/append block at heap end
+SWOTL.EXE,0x15f74,1369:28E4,__heap_grow,memory,1,grow heap via __brkctl
+SWOTL.EXE,0x15f96,1369:2906,__brkctl,memory,1,DGROUP segment table DS:563A..568A; AH=4Ah
+SWOTL.EXE,0x16004,1369:2974,__brkctl_find,memory,1,__brkctl helper: find segment entry

@@ -22,48 +22,24 @@ Lessons and provenance: [translation-lessons.md](translation-lessons.md).
 | Stack | SS:SP `4A9E:0800`; minalloc `33AEh` para. Image end + minalloc = `4B1E0h` = SS:SP top exactly: 2 KiB stack at the end of the minimum allocation | arithmetic |
 | Relocated segment words | 46 distinct values, incl. `1770h 18E4h 1E7Ch 210Eh 218Dh 23A1h 3156h 3449h 344Dh 36D6h 39AAh 4B1Eh` | relocation table walk |
 | Runtime strings | `Copyright (C) 1984, 1985, 1986 by Phoenix Software Associates Ltd.`; `Ovl stack underflow $`, `Ovl stack overflow $`, `No mem for ovl stack $`, `Dos 2.0 required $` (`$`-terminated: `int 21h AH=09h` style); the 12 `.OVL` names | `strings` |
-| Compiler runtime | UNKNOWN. No Borland ("Abnormal program termination") or Microsoft (`R6xxx`) runtime strings found | `strings` grep |
-| `.OVL` format | Not MZ. Files start with tables of little-endian far pointers (offset, segment) | `xxd` |
-| `.OVL` segment words | `SFXA`,`SPAZ`: `1770h`; `RTSVGA`,`RTSEGA`,`RTSTANDY`: `18E4h` (5 entries, then zeros); `FRONTEND`: `1E7Ch`,`1F40h`; `FLIGHT`: `1E7Ch`,`210Eh`,`218Dh`,…; `CAMPAIGN`: `3156h`,`3449h`; `NOTCAMP`: `3156h`,`33A0h`,`344Dh`; `REPLAY`: `36D6h`,`39AAh`; `DATA`: `3BAFh`,`4133h` | `xxd`, crude table parse |
-
-Interpretation (hypothesis, verify with a runtime dump): overlays are linked
-at fixed paragraph addresses relative to the load segment; `1770h` is exactly
-the end of the root image; files sharing a segment are alternatives in one
-overlay area (sound drivers; graphics drivers; FRONTEND/FLIGHT;
-CAMPAIGN/NOTCAMP); the root holds relocated far pointers into overlay segments.
+| Compiler runtime | Microsoft C 5.x, medium model; root `+13692..+1615B` (`1369:0002..`); R60xx table in DGROUP; entries named in `annotations/runtime.csv` | trace + sweep |
+| `.OVL` format | Fixup list (far pointers to segment words), padded to a paragraph, then code; layout and loader in [plink.md](plink.md) | gate 1 image proof |
 
 ### Linear-sweep inventory is garbage [SW]
 
 A Capstone linear sweep (every byte from 0) gives, for `FLIGHT.OVL`, 126
 `OUTSW`, 105 `OUTSB`, 104 `INSB`, 42 `BOUND`, 30 `DAA` — ASCII `l m n o b '`
 decoded as instructions. Use only recursive descent from proved entries plus
-the trace. Linear-sweep upper bounds (root only, unverified): `int 21h` 74,
-`int 67h` (EMS) 14, `int 33h` (mouse) 6, `int 10h` 2, `int 16h` 1. `SFXA.OVL`
-and `SPAZ.OVL` each contain three `CD 21` byte pairs: the claim "int 21h only
-in the root" is UNKNOWN until the sweep proves those are data.
+the trace (`tools/sweep.py`). The sweep's inventory is in
+[external-surface.md](external-surface.md): SPAZ does call INT 21h (vector
+get/set `+0250/+0266`, `+0306` untraced).
 
 ## PLINK overlays
 
-Known [SW]: Phoenix PLINK copyright (1984–86); an overlay return stack exists
-("Ovl stack" errors); 12 named `.OVL` files; segment words above.
-
-UNKNOWN — all must come from the reference trace and the root's manager code:
-
-- How a call reaches a non-resident overlay: direct relocated far call plus
-  fault-in, thunk/stub table, interrupt, or `int 21h AX=4B03h` (DOS load
-  overlay). The manager's entry and its register contract.
-- Whether `.OVL` files carry fixups; how far-pointer tables are used.
-- File-to-area mapping, residency rules, which overlays can coexist.
-- What the overlay return stack stores and when it reloads a caller's overlay
-  on return (a return can change resident code).
-- Whether driver overlays are called only through their 5-entry tables.
-- Whether `DATA.OVL` is code at all.
-
-Consequences for the translator: translated code is keyed by
-`(overlay, segment, offset)`; an overlay load is a runtime boundary that
-switches resident translated code; every root far pointer into an overlay
-segment is an entry candidate; a return into a different overlay must be
-checked, not assumed.
+Mechanism, table and verified rules: [plink.md](plink.md). For the
+translator: thunk = "make overlay id resident" + `jmp far`; no return stack;
+a load never replaces the calling code; parents reload with children.
+Translated code is keyed by `(overlay, offset)`.
 
 ## Flags vs 68k CCR [K]
 
@@ -157,9 +133,23 @@ classic CPU probe. [SL] found a CPU probe selecting an optional 386 path
   `RET` is a mapping from guest IP to native code unless call/return pairing is
   proved. Design decision for `architecture.md`.
 - [SL] Borland far cdecl: caller cleans arguments; a far pointer argument is
-  two words; static callers' `add sp,n` confirms arity
-  (`docs/external-surface.md`). SWOTL's calling convention is UNKNOWN until
-  its compiler is identified.
+  two words; static callers' `add sp,n` confirms arity.
+
+SWOTL calling convention [SW] (MS C 5.x medium; `annotations/runtime.csv`):
+
+| Item | SWOTL fact | Evidence |
+|---|---|---|
+| Memory model | MS C medium: far code (`lcall`/`retf`), near data in DGROUP; far pointers explicit (`les` 539 sites) | 3,587 `lcall`, 965 `retf` in decoded game code |
+| DGROUP | DATA.OVL; DS = SS = load seg + `3BABh`; near stack in DGROUP, SP = `EF2Eh` at start; BSS `5E32h..EF30h` cleared | `__astart` `+1369C..+13707` |
+| Argument passing | right to left on the stack; first argument at `[bp+6]` | prologues; `__astart` pushes envp, argv, argc |
+| Cleanup | caller pops (`add sp,N` after 2,503 of 3,587 far calls); long-arithmetic helpers pop their own (`retf 4/6/8`) | runtime.csv |
+| Return values | AX (int, near pointer); DX:AX (long, far pointer) | `__aFlmul`, `_atol` |
+| Preserved | SI, DI, BP, DS, SS; AX, BX, CX, DX, ES clobbered | prologue `push di; push si`, epilogue `pop si; pop di; mov sp,bp; pop bp; retf` |
+| Prologue | `push bp; mov bp,sp; sub sp,N; push di; push si` (649 frames); no `enter` | sweep |
+| Same-segment far calls | `push cs; call rel16` (1,111 sites; every near call in the overlays); the callee returns with `retf` | treat as a far call |
+| Stack probe | `__chkstk` (`1369:24DA`) called only by `__output`: game built without stack checks | call-target scan |
+| Long helpers | `__aFlmul` `098E`, `__aFldiv` `0292`, `__aFlrem` `239A`, `__aFuldiv` `08A8`, `__aFlshl` `1A56`, `__aFlshr` `0DAA`, `__aFulshr` `2442`; assign forms `__aFNalmul` `0862`, `__aFNaldiv` `096A`, `__aFNauldiv` `09C2`, `__aFNalshl` `010E`, `__aFNalshr` `0886`, `__aFNaulshr` `0D88` | runtime.csv |
+| Floating point | not linked: `__fpmath` (DGROUP `[5876]`) = 0, no INT 34h–3Dh or `WAIT`+`ESC` decoded or traced | `__cinit` `+137E0` |
 
 ## Interrupts [K] unless tagged
 
@@ -173,8 +163,7 @@ classic CPU probe. [SL] found a CPU probe selecting an optional 386 path
 - [SL] Observed DOS services (Slicks): `1A 25 29 2A 2C 2F 30 35 37 38 3B 3D 3E
   3F 41 42 43 44 4A 4B 4D 4E 4F`; INT 10h `00 08 0F 12`; INT 2Fh `4300/4310`
   (XMS); INT 33h `0000 0003 0008 0009`. Trace kept AX..BP, SP, FLAGS per event
-  (`docs/external-surface.md`). SWOTL's set is UNKNOWN; expect EMS (`int 67h`)
-  and mouse from the sweep above.
+  (Slicks `docs/external-surface.md`). SWOTL's set: [external-surface.md](external-surface.md).
 - [SL] Timer handler entered from game code and while a DOS service was
   active: asynchronous state, not a call (`external-surface.md`).
 - Delivery in the port: at safe guest boundaries, never as game code inside an
@@ -195,10 +184,9 @@ classic CPU probe. [SL] found a CPU probe selecting an optional 386 path
 | `3D4h/3D5h` | CRTC | 0Ch/0Dh start address (page flip), 14h/17h for unchained modes [K] |
 | `3DAh` | Input status 1 | bit 3 vertical retrace, bit 0 display disabled [K]. [SL] polled millions of times |
 
-Linear-sweep evidence in SWOTL overlays (unverified): `SFXA` `out 42h`,
-`in/out 61h` (speaker); `SPAZ` `out 43h`, `out 40h`, `out 20h`; `RTSVGA`
-`out 40h`. [SL] rule: replace the routines around port traffic, not ports one
-by one (translation-lessons #25).
+SWOTL port use (swept + traced): [external-surface.md](external-surface.md);
+RTSVGA has no port I/O. [SL] rule: replace the routines around port traffic,
+not ports one by one (translation-lessons #25).
 
 ## Mode 13h
 
@@ -210,7 +198,8 @@ by one (translation-lessons #25).
   page separation 32,700, sequencer/GC programming in the inner loops. "Treating
   mode 13h as only a flat 320×200 framebuffer would be insufficient"
   (`external-surface.md`).
-- SWOTL: UNKNOWN whether `RTSVGA` stays chained. Decide from the port trace.
+- SWOTL: RTSVGA stays chained (no VGA port access, no page flip;
+  [external-surface.md](external-surface.md)).
 
 ## MZ relocation [K]
 

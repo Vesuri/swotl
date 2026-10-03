@@ -19,38 +19,17 @@ SHA-256 of every `ref/` file in `tmp/ref.sha256` (`make hash`, local only).
 
 ## Overlays
 
-PLINK overlay table: 12 records of 16 bytes at root `+169E8` (in
-`.OVL` name order; name offsets relative to `+169E0`). The `.OVL` file is
-the fixup list (`nfix` far pointers `off, link seg`, padded to a
-paragraph), then `paras` paragraphs of code. Load (proved by
-`tools/load_image.py`, gate 1): code at load seg + link seg; each fixup
-word += load seg. The loader reads code at `SWOTL.EXE+16328`, then the
-fixup list in 128-byte chunks into a buffer at root `+160D4`.
-
-| # | Overlay | nfix | Link seg | End seg | Paras | Last word |
-|---|---|---|---|---|---|---|
-| 0 | SPAZ | `8D` | `1770` | `18E4` | `174` | 0 |
-| 1 | SFXA | `08` | `1770` | `187A` | `10A` | 0 |
-| 2 | RTSVGA | `05` | `18E4` | `1D5A` | `476` | 0 |
-| 3 | RTSTANDY | `05` | `18E4` | `1D87` | `4A3` | 0 |
-| 4 | RTSEGA | `05` | `18E4` | `1E7C` | `598` | 0 |
-| 5 | FRONTEND | `4C0` | `1E7C` | `3156` | `12DA` | 6 |
-| 6 | CAMPAIGN | `2CB` | `3156` | `3B53` | `9FD` | 6 |
-| 7 | NOTCAMP | `371` | `3156` | `3AE5` | `98F` | 0 |
-| 8 | FLIGHT | `3A3` | `1E7C` | `36D6` | `185A` | 9 |
-| 9 | REPLAY | `ED` | `36D6` | `3A85` | `3AF` | 9 |
-| 10 | PANEL | `60` | `36D6` | `3A14` | `33E` | `6000` |
-| 11 | DATA | `234` | `3B53` | `4B1E` | `F4B` | `FFFF` |
-
-Record words 4–5 are zero in the file (runtime state); the last word is
-open (2.2). DATA is the C data segment: DS = load seg + `3BAB`. Load
-segment in all runs: `0822`.
+PLINK table, file format, loader and residency rules:
+[plink.md](plink.md). Each `.OVL` is its fixup list (padded to a
+paragraph) followed by the code; code lands at load seg + link seg and each
+fixup word gets the load segment added (gate 1). DATA is the C data segment
+(DGROUP): DS = load seg + `3BAB`. Load segment in all runs: `0822`.
 
 Other first-run facts: PIT reprogrammed (~250 Hz INT 8); AdLib music
 (`388h/389h`); joystick probe on `201h`; mouse via INT 33h; EMS 4.0 used
 for paging data (INT 67h AH=40–44); keyboard via C runtime `kbhit`
 (INT 21h AH=0Bh at `SWOTL.EXE+13ED3`) and INT 16h AH=02h; only RTSVGA
-touches VGA memory and ports.
+touches VGA memory. Full inventory: [external-surface.md](external-surface.md).
 
 ## Launcher
 
@@ -71,6 +50,34 @@ arguments prints "Run INSTALL".
 
 PLINK thunks (root `+16B66` onwards, 12 bytes each): `call far 1E39:034C`
 (overlay manager), `dw` overlay id, `jmp far` target.
+
+## Coverage
+
+`make map` over `tmp/pc-runs/ref-*` (milestones m0–m7 + coverage scripts
+c1–c6). Bytes of each module's code part. Static = reached by the sweep
+(traced starts, direct flow, PLINK thunks, switch tables); executed = bytes
+of traced instructions (m0–m7 alone in brackets). Residue = never decoded:
+zero fill, text, code-like (MS C prologue or fixup-anchored far call: code
+reached only through untraced pointers), other (tables, data in code
+segments; FRONTEND's includes its far data `+F348..`, 19,800 B of
+strings). Self-modified: root block `+6A4D..+89FD` (24,339 B), classified
+by `annotations/self-modifying.csv`. Executed bytes outside sweep code: 0.
+
+| Module | Code part | Static | Executed (m0–m7) | Switch tables | Residue: zero / text / code-like / other |
+|---|---|---|---|---|---|
+| SWOTL | 96,000 | 79,968 | 45,727 (39,886) | 110 | 137 / 66 / 1,840 / 13,879 |
+| SPAZ | 5,952 | 4,324 | 3,308 (3,308) | 0 | 1,458 / 0 / 133 / 37 |
+| RTSVGA | 18,272 | 3,694 | 2,326 (2,278) | 0 | 14,550 / 0 / 0 / 28 |
+| FRONTEND | 77,216 | 49,108 | 8,533 (7,858) | 172 | 1 / 0 / 6,699 / 21,236 |
+| CAMPAIGN | 40,912 | 35,733 | 3,856 (2,237) | 78 | 0 / 0 / 0 / 5,101 |
+| NOTCAMP | 39,152 | 36,088 | 6,983 (5,350) | 80 | 0 / 0 / 0 / 2,984 |
+| FLIGHT | 99,744 | 93,879 | 38,736 (30,242) | 642 | 0 / 4,728 / 83 / 412 |
+| REPLAY | 15,088 | 13,698 | 5,902 (2,528) | 54 | 0 / 0 / 0 / 1,336 |
+| PANEL | 13,280 | 13,200 | 6,724 (6,414) | 0 | 0 / 0 / 0 / 80 |
+
+DATA.OVL (62,640 B) is DGROUP: no code. Executed coverage still rises
+with each new script (c1–c6 added 0–134 %), so the translator works from
+static reach and unknown indirect targets stop loudly (D7).
 
 ## Their Finest Hour (Amiga) — cross-reference only
 

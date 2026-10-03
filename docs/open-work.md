@@ -4,22 +4,16 @@ The single list of open work. Remove items when done; history is in git.
 Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
 [translator-design.md](translator-design.md) (phases 3–5, decisions D1–D16).
 
-## Phase 2 — static/live map
+## Guest map follow-ups
 
-6b. D16 evidence: classify the self-modified executed bytes that
-   `tools/load_image.py` lists by writer (root `+4FFC`, `+52DA`, `+8FD5`,
-   `+9030`, `+E5FD..+E626`): patched code vs code-segment variables.
-7. Reverse the PLINK overlay manager (thunks and table:
-   `source-inventory.md`): call path to non-resident overlays, return
-   stack, residency rules, the table's last word; which overlays coexist
-   (FLIGHT's range covers CAMPAIGN/NOTCAMP and REPLAY/PANEL).
-8. Recursive-descent sweep of root and overlays; settle int 21h/67h/33h and
-   port inventories (`SPAZ` contains `CD 21` byte pairs).
-9. Identify the compiler runtime (Microsoft C 5.x per strings) and calling
-   convention; check whether the MS C floating-point emulator is linked
-   (INT 34h–3Dh fixups) and used.
 9a. Cross-reference TFH Amiga `BOB` (Aztec C, same source family) in Ghidra
    for routine naming and `.PAC`/`.GOB` formats; evidence only.
+9b. 215 indirect sites are static-only (no traced target,
+   `annotations/indirect.csv`), mostly `lcall [mem]` through DGROUP
+   pointers (203); FRONTEND has 6.7 KB of unreached code-like residue. Add
+   coverage scripts (campaign play, other aircraft, film load/save) where a
+   generated path needs them.
+9c. PLINK flag bit 13 (set on DATA only): meaning unknown; no effect seen.
 
 ## Phases 3–4 — translator
 
