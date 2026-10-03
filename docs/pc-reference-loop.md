@@ -78,11 +78,11 @@ Facts about the originals: [source-inventory.md](source-inventory.md).
 | Run | `make reference-run RUN=name RUN_ARGS=...` → `tools/pc_run.py`: fresh `tmp/pc-runs/<name>/root/` copy of `ref/`, headless, `swotl V S 5 N Y Y 64`. Exit 0 = `SWOTL_EXIT_AFTER` snapshot reached, 2 = time limit, 3 = guest fault (INT 0/6), 4 = no trace output |
 | Arming | first instruction at `PSP+10h+1617h:0382h`; off unless `SWOTL_TRACE` |
 | Addresses | `(module, offset)`: root = image offset; overlay = `.OVL` file offset of the bytes the last DOS read put at that paragraph; `-` = unowned linear address |
-| Determinism | BIOS tick count set to `SWOTL_BIOS_TICKS` (0) at arming; DOS time and INT 1Ah derive from it. Two runs to M1 give identical RAM |
+| Determinism | BIOS tick count set to `SWOTL_BIOS_TICKS` (0) at arming; DOS time and INT 1Ah derive from it, so the RNG seed (DOS time) is fixed. Every milestone repeats byte-identical |
 | Input | `SWOTL_KEYS=MODULE+HEX[#N]=key,...`: press when the guest reaches that instruction (Nth time since the previous key's release), release after `SWOTL_KEY_HOLD` instructions |
 | Snapshot | `SWOTL_SNAPSHOTS=name@MODULE+HEX[#N],...`: counted after the key script, each after the previous; `snap-<name>/` with `ram.bin` (1 MiB), `vram.bin`, `dac.bin`, `regs.txt`, `residency.csv`, `writes.csv` (last CPU writer per byte of module-owned paragraphs since load) |
 | Summary | `make trace-summary RUN=name` |
-| Image proof | `tools/load_image.py <snap>` (gate 1): rebuilds root + overlays from `ref/` with the loader model ([source-inventory.md](source-inventory.md)); every byte of every resident row equals the rebuilt byte, the last traced DOS read, or has a CPU writer. Lists self-modified executed bytes by writer |
+| Image proof | `tools/load_image.py <snap>` (gate 1, also run by `make reference`): rebuilds root + overlays from `ref/` with the loader model ([source-inventory.md](source-inventory.md)); every byte of every resident row equals the rebuilt byte, the last traced DOS read, or has a CPU writer. Lists self-modified executed bytes by writer |
 
 Trace outputs (`tmp/pc-runs/<name>/trace/`, written at exit):
 
@@ -96,16 +96,31 @@ Trace outputs (`tmp/pc-runs/<name>/trace/`, written at exit):
 | `residency.csv` | paragraph ranges → module at exit |
 
 Milestones: `reference/milestones.csv`, run by `make reference`
-(`tools/reference.py`): snapshot reached, modules resident, BIOS video mode,
-RAM/VRAM/DAC hashes equal to the previous run (`tmp/reference-hashes.csv`).
-Frames: `tools/snap_png.py tmp/pc-runs/<run>/trace/snap-<name>`.
+(`tools/reference.py`): every snapshot reached, modules resident, BIOS
+video mode, consecutive snapshots differ in RAM and VRAM, image proof,
+last-snapshot RAM/VRAM/DAC hashes equal to the previous run
+(`tmp/reference-hashes.csv`). Frames: `tools/snap_png.py <snap>`.
 
-| Milestone | Signal | Input |
-|---|---|---|
-| m0-entry | `SWOTL.EXE+164F2` (MZ entry) | none |
-| m1-mode13h | `RTSVGA.OVL+390D`, after INT 10h AX=0013h | none |
-| m2-choose-side | "CHOOSE A SIDE" (FRONTEND + NOTCAMP), mouse poll `SWOTL.EXE+44E2` #900 | Enter at `kbhit` (`+13ED3`) #3000 skips the logo; Enter at mouse poll #300 leaves the demo |
-| m3-demo-flight | `REPLAY.OVL+31E6` #1: `DEMO1.DEM` attract flight | none |
+Keys `K2` = Enter at `kbhit` (`SWOTL.EXE+13ED3`) #3000 (skips the logo),
+Enter at the mouse poll `+44E2` #300 (leaves the demo). Menu keys are the
+red letters, pressed at `+44E2` #200 after the previous release. `+44E2`
+runs once per frame in flight, every ~645 instructions in menus.
+
+| Milestone | Launch | Input | Signal |
+|---|---|---|---|
+| m0-entry | pinned | none | `SWOTL.EXE+164F2` (MZ entry) |
+| m1-mode13h | pinned | none | `RTSVGA.OVL+390D`, after INT 10h AX=0013h |
+| m2-choose-side | pinned | K2 | "CHOOSE A SIDE" (FRONTEND + NOTCAMP), `+44E2` #600 |
+| m3-demo-flight | pinned | none | `REPLAY.OVL+31E6` #1: `DEMO1.DEM` attract flight |
+| m4-demo-frames | pinned | none | `+44E2` #150 and 50 frames later; scene advances |
+| m5-player-flight | pinned | K2, U (US), F (flight school), 1 (P-47), 1 (gunnery), S (start) | FLIGHT + PANEL cockpit, `+44E2` #400 and 50 frames later |
+| m6-film-room | pinned | K2, U, V | film viewing room (REPLAY + FLIGHT) |
+| m7-campaign | pinned | K2, U, B, S | new campaign (CAMPAIGN) |
+| m8-ega | `E S 5 N Y Y 64` | none | `RTSEGA.OVL+4850` |
+| m9-tandy | `T S 5 N Y Y 64` | none | `RTSTANDY.OVL+3A5C` |
+| m10-pc-speaker | `V I 5 N Y Y 64` | none | `SFXA.OVL+26` |
+
+All twelve overlays are captured and pass the image proof.
 
 Facts from these runs:
 
@@ -115,9 +130,12 @@ Facts from these runs:
 - During the demo the only input polled is INT 33h (`+44E2`/`+44FA`);
   keyboard input there arrives without an observed poll (BIOS buffer read
   likely).
-- Determinism: RAM/VRAM/DAC at m1 and m3 are identical across runs. The
-  instruction count at a milestone is not (interrupt arrival points vary
-  with host tick interleaving), so lockstep must sync on guest events.
+- Determinism: RAM/VRAM/DAC at every milestone are identical across runs.
+  The instruction count at a milestone can differ (interrupt arrival points
+  vary with host tick interleaving), so lockstep must sync on guest events.
+- RNG: root `+DC91`, 16 rounds of shift/XOR over `[255E..255F]` with carry
+  into `[255C]` (returned); seeded at `+DCB1` from INT 21h AH=2Ch DX (DOS
+  time, fixed by the pinned tick count). Not the MS C `rand`.
 - CPU: executed code is 8086-only (no 186/286/386 opcodes outside the
   self-modified block, no CPU probe). Primary `cputype=386`; 286 differs
   only in interrupt arrival points and PUSHF's upper flag bits (PLINK saves

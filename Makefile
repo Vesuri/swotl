@@ -19,7 +19,7 @@ help:
 	@echo "  make reference-staging  play the disposable copy in DOSBox Staging"
 	@echo "  make reference-emulator build instrumented DOSBox-X (tools/patches/ORDER)"
 	@echo "  make reference-run RUN=name [RUN_ARGS=...]  headless traced run -> tmp/pc-runs/name"
-	@echo "  make reference          run all milestones (reference/milestones.csv), check signals + determinism"
+	@echo "  make reference          run all milestones (reference/milestones.csv): signals, determinism, image proof"
 	@echo "  make trace-summary RUN=name                 summarise that run's trace"
 	@echo "  make amiga   build amiga/out/Swotl.exe"
 	@echo "  make smoke   boot it under FS-UAE + GDB and check the takeover runs"

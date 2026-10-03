@@ -4,17 +4,6 @@ The single list of open work. Remove items when done; history is in git.
 Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
 [translator-design.md](translator-design.md) (phases 3–5, decisions D1–D16).
 
-## Phase 1 — PC reference loop
-
-3. Launcher args 3 and 6/7 (`5`, `Y 64`): effect not yet observed
-   (`source-inventory.md`); settle before relying on detail/timing.
-5. Find the RNG; check that the `DEMO1.DEM` attract flight stays
-   byte-identical over many frames (candidate deterministic flight input).
-6. Milestones m4 (N flight frames, needs a per-frame trigger site:
-   `REPLAY.OVL+31E6` fires only per demo cycle, RTSVGA table entries never
-   ran) and m5 (player flight from the menu, film replay); M2 key triggers
-   use Nth-hit counts of generic polls, replace with menu-specific sites.
-
 ## Phase 2 — static/live map
 
 6b. D16 evidence: classify the self-modified executed bytes that
@@ -31,8 +20,6 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
    (INT 34h–3Dh fixups) and used.
 9a. Cross-reference TFH Amiga `BOB` (Aztec C, same source family) in Ghidra
    for routine naming and `.PAC`/`.GOB` formats; evidence only.
-10. Measure whether RTSVGA uses chained mode 13h or unchained VGA, and
-    whether it page-flips (decides Amiga single vs double buffering).
 
 ## Phases 3–4 — translator
 
