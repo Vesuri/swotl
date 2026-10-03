@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 """Rebuild root and overlay images from ref/ and compare with a snapshot.
 
-Loader model (gate 1):
+Loader model (gate 1; layout in docs/plink.md, code in swotl_model.py):
 - Root: MZ load image at the load segment, each relocation word += load seg.
-- Overlays: PLINK descriptor table in the root (16-byte records from
-  OVL_TABLE): fixup count, link segment, end segment, name offset, 2 runtime
-  words, code paragraphs, flags. The `.OVL` file is `count` far pointers
-  (off, link seg) padded to a paragraph, then the code. Code lands at
-  load seg + link seg; each fixup word += load seg.
+- Overlays: code (after the fixup list) at load seg + link seg; each fixup
+  word += load seg.
 
 Every snapshot residency row is compared with the rebuilt bytes (raw file
 bytes before an overlay's code). A differing byte must have a CPU writer
@@ -29,52 +26,21 @@ from pathlib import Path
 
 import capstone
 
-REPO = Path(__file__).resolve().parent.parent
-OVL_TABLE = 0x169E8
-OVL_COUNT = 12
+import swotl_model as M
 
 
-def mz(path: Path) -> tuple[bytes, list[tuple[int, int]]]:
-    data = path.read_bytes()
-    (last, pages, nrel, hdr, *_rest) = struct.unpack_from("<HHHH", data, 2)
-    size = pages * 512 - (512 - last if last else 0) - hdr * 16
-    relo = struct.unpack_from("<H", data, 0x18)[0]
-    rels = [struct.unpack_from("<HH", data, relo + 4 * i) for i in range(nrel)]
-    return data[hdr * 16: hdr * 16 + size], rels
-
-
-def overlays(root: bytes) -> dict[str, dict]:
-    base = OVL_TABLE - 8  # name offsets are relative to the manager's data block
-    table = {}
-    for i in range(OVL_COUNT):
-        nfix, seg, end, name, _, _, paras, flags = struct.unpack_from(
-            "<8H", root, OVL_TABLE + 16 * i)
-        n = root[base + name: root.index(b"\0", base + name)].decode()
-        table[n] = dict(nfix=nfix, seg=seg, end=end, paras=paras, flags=flags)
-    return table
-
-
-def build(ref: Path, load: int) -> tuple[dict[str, tuple[int, bytearray, int]], dict]:
+def build(ref: Path, load: int) -> dict[str, tuple[int, bytearray, int]]:
     """Module -> (linear base, image, file offset of image byte 0)."""
-    image, rels = mz(ref / "SWOTL.EXE")
-    root = bytearray(image)
-    for off, seg in rels:
-        a = seg * 16 + off
-        struct.pack_into("<H", root, a, (struct.unpack_from("<H", root, a)[0] + load) & 0xFFFF)
-    out = {"SWOTL.EXE": (load * 16, root, 0)}
-    table = overlays(bytes(image))
-    for name, d in table.items():
-        data = (ref / name).read_bytes()
-        hdr = (d["nfix"] * 4 + 15) & ~15
-        code = bytearray(data[hdr:])
-        if len(code) != d["paras"] * 16:
-            raise SystemExit(f"{name}: code {len(code)} B, table says {d['paras'] * 16}")
-        for i in range(d["nfix"]):
-            off, seg = struct.unpack_from("<HH", data, 4 * i)
-            a = (seg - d["seg"]) * 16 + off
+    out = {}
+    for name, m in M.load_modules(ref).items():
+        code = bytearray(m.data[m.code_start:])
+        if name != M.ROOT and len(code) != m.paras * 16:
+            raise SystemExit(f"{name}: code {len(code)} B, table says {m.paras * 16}")
+        for fx in m.fixups:
+            a = fx - m.code_start
             struct.pack_into("<H", code, a, (struct.unpack_from("<H", code, a)[0] + load) & 0xFFFF)
-        out[name] = ((load + d["seg"]) * 16, code, hdr)
-    return out, table
+        out[name] = ((load + m.link_seg) * 16, code, m.code_start)
+    return out
 
 
 def dos_reads(events: Path, until: int, ref: Path) -> dict[int, int]:
@@ -118,14 +84,14 @@ def code_bytes(module_image: bytes, base_off: int, bitmap: bytes) -> set[int]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("snapshot", type=Path, help="tmp/pc-runs/<run>/trace/snap-<name>")
-    ap.add_argument("--ref", type=Path, default=REPO / "ref")
+    ap.add_argument("--ref", type=Path, default=M.REF)
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
     snap, trace = args.snapshot, args.snapshot.parent
     regs = dict(kv.split("=") for kv in (snap / "regs.txt").read_text().split())
     load = int(regs["load_seg"], 16)
     ram = (snap / "ram.bin").read_bytes()
-    images, _ = build(args.ref, load)
+    images = build(args.ref, load)
     raw = {m: (args.ref / m).read_bytes() for m in images}
     read = dos_reads(trace / "events.csv", int(regs["icount"]), args.ref)
     writer = {}

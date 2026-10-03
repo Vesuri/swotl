@@ -94,6 +94,7 @@ Trace outputs (`tmp/pc-runs/<name>/trace/`, written at exit):
 | `interrupts.csv`, `ports.csv`, `vga.csv` | aggregates by source site (AX for software INTs; port value; 256-byte VGA page) |
 | `code-writes.csv` | CPU writes into paragraphs that have executed since their last load |
 | `residency.csv` | paragraph ranges → module at exit |
+| `plink.csv` | calls of the PLINK load routine: caller, overlay id, via thunk, resident before, loaded, caller intact, count ([plink.md](plink.md)) |
 
 Milestones: `reference/milestones.csv`, run by `make reference`
 (`tools/reference.py`): every snapshot reached, modules resident, BIOS

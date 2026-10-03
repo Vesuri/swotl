@@ -300,10 +300,10 @@ index e31e63f..fab8958 100644
 +libmisc_a_SOURCES = clipboard.cpp cross.cpp ethernet.cpp ethernet_pcap.cpp ethernet_slirp.cpp ethernet_ethnet.cpp ethernet_nothing.cpp messages.cpp programs.cpp setup.cpp support.cpp regionalloctracking.cpp savestates.cpp shiftjis.cpp iconvpp.cpp mkdir_p.cpp swotl_trace.cpp
 diff --git a/src/misc/swotl_trace.cpp b/src/misc/swotl_trace.cpp
 new file mode 100644
-index 0000000..c988d37
+index 0000000..cb8fb85
 --- /dev/null
 +++ b/src/misc/swotl_trace.cpp
-@@ -0,0 +1,569 @@
+@@ -0,0 +1,643 @@
 +/* SWOTL reference instrumentation (Secret Weapons of Luftwaffe port).
 + *
 + * Enabled by SWOTL_TRACE=1; armed at the first instruction of SWOTL.EXE
@@ -420,6 +420,21 @@ index 0000000..c988d37
 +KBD_KEYS key_held = KBD_NONE;
 +uint64_t key_hold = 600000;
 +std::string exit_after;
++
++/* PLINK probe: calls of the "make overlay CX resident" routine (root +16462). */
++constexpr uint32_t PLINK_LOAD = 0x16462, PLINK_MANAGER_RET = 0x164E7, PLINK_TABLE = 0x169E8;
++struct PlinkCall {
++	bool active = false;
++	uint16_t id = 0;
++	uint32_t ret_linear = 0, caller_linear = 0;
++	Location caller{0, 0};
++	bool via_thunk = false, resident = false;
++	uint64_t reads = 0;
++};
++PlinkCall plink;
++uint64_t overlay_reads = 0;
++std::map<std::tuple<std::string, uint16_t, bool, bool, bool, bool>, uint64_t> plink_calls;
++std::string OverlayName(uint16_t id);
 +
 +std::string Path(const std::string &file) { return out_dir + "/" + file; }
 +
@@ -599,6 +614,15 @@ index 0000000..c988d37
 +		}
 +		fclose(f);
 +	}
++	if (auto *f = fopen(Path("plink.csv").c_str(), "w")) {
++		fputs("caller_module,id,overlay,via_thunk,resident,loaded,caller_intact,count\n", f);
++		for (const auto &item : plink_calls)
++			fprintf(f, "%s,%u,%s,%d,%d,%d,%d,%llu\n", std::get<0>(item.first).c_str(),
++			        std::get<1>(item.first), OverlayName(std::get<1>(item.first)).c_str(),
++			        std::get<2>(item.first), std::get<3>(item.first), std::get<4>(item.first),
++			        std::get<5>(item.first), (unsigned long long)item.second);
++		fclose(f);
++	}
 +	if (auto *f = fopen(Path("summary.txt").c_str(), "w")) {
 +		fprintf(f, "load_seg=0x%04x\ninstructions=%llu\nedges=%zu\n", load_seg,
 +		        (unsigned long long)icount, edges.size());
@@ -745,6 +769,54 @@ index 0000000..c988d37
 +	LOG_MSG("SWOTL: armed, root load segment %04x", load_seg);
 +}
 +
++std::string OverlayName(const uint16_t id) {
++	const uint32_t table = ((uint32_t)load_seg << 4) + PLINK_TABLE;
++	uint32_t name = table - 8 + mem_readw(table + 16 * (id - 1) + 6);
++	std::string s;
++	for (uint8_t c; (c = mem_readb(name)) != 0 && s.size() < 16; ++name) s += (char)c;
++	return s;
++}
++
++bool OverlayResident(const uint16_t id) {
++	const uint32_t rec = ((uint32_t)load_seg << 4) + PLINK_TABLE + 16 * (id - 1);
++	/* The startup relocation makes the table's segment words absolute. */
++	const uint32_t first = mem_readw(rec + 2), paras = mem_readw(rec + 12);
++	const int32_t hdr = (int32_t)((mem_readw(rec) * 4 + 15) & ~15u);
++	const uint16_t m = ModuleId(OverlayName(id));
++	for (uint32_t p = first; p < first + paras && p < PARAGRAPHS; ++p)
++		if (para_module[p] != m || para_offset[p] != hdr + (int32_t)(p - first) * 16) return false;
++	return true;
++}
++
++void PlinkProbe(const uint32_t linear, const Location &here) {
++	if (plink.active && linear == plink.ret_linear) {
++		const bool loaded = overlay_reads != plink.reads;
++		const auto now = Locate(plink.caller_linear);
++		const bool caller_ok = now.module == plink.caller.module && now.offset == plink.caller.offset;
++		++plink_calls[std::make_tuple(modules[plink.caller.module].name, plink.id, plink.via_thunk,
++		                              plink.resident, loaded, caller_ok)];
++		if (loaded || !caller_ok || plink.resident == loaded)
++			Event("plink", "%s id=%u caller=%s+0x%05x thunk=%d resident=%d loaded=%d caller_ok=%d",
++			      OverlayName(plink.id).c_str(), plink.id, modules[plink.caller.module].name.c_str(),
++			      plink.caller.offset, plink.via_thunk, plink.resident, loaded, caller_ok);
++		plink.active = false;
++	}
++	static const uint16_t root = ModuleId("SWOTL.EXE");
++	if (here.module != root || here.offset != PLINK_LOAD) return;
++	const uint32_t sp = SegPhys(ss) + reg_sp;
++	plink.active = true;
++	plink.id = reg_cx;
++	plink.ret_linear = ((uint32_t)mem_readw(sp + 2) << 4) + mem_readw(sp);
++	plink.via_thunk = Locate(plink.ret_linear).module == root &&
++	                  Locate(plink.ret_linear).offset == PLINK_MANAGER_RET;
++	/* Thunk path: manager frame (10 words) above the far return; the thunk's caller beyond. */
++	const uint32_t frame = plink.via_thunk ? sp + 4 + 0x18 : sp;
++	plink.caller_linear = ((uint32_t)mem_readw(frame + 2) << 4) + mem_readw(frame);
++	plink.caller = Locate(plink.caller_linear);
++	plink.resident = OverlayResident(plink.id);
++	plink.reads = overlay_reads;
++}
++
 +} // namespace
 +
 +void SWOTL_Instruction(const uint32_t linear) {
@@ -767,6 +839,7 @@ index 0000000..c988d37
 +	if (prev_valid) edges.insert((prev_packed << 32) | packed);
 +	prev_packed = packed;
 +	prev_valid = true;
++	PlinkProbe(linear, here);
 +
 +	/* Snapshots count after the key script, each after the previous one. */
 +	if (key_index == keys.size() && key_held == KBD_NONE)
@@ -854,6 +927,7 @@ index 0000000..c988d37
 +	if (IsCodeFile(name)) {
 +		const uint16_t id = ModuleId(name);
 +		if (file_pos == 0) modules[id].loads++;
++		++overlay_reads;
 +		MapRange(buffer, actual, id, (int32_t)file_pos);
 +	} else {
 +		MapRange(buffer, actual, 0, 0);
