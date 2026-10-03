@@ -80,7 +80,9 @@ root EXE + .OVL images (proved against DOSBox captures)
 - Generated program + runtime on host: `make test-host` runs it on Unicorn
   68020 to a milestone and checks the service log (every software INT's
   registers in and out, recorded by the tracer) and RAM against the
-  reference; `make test-amiga` checks the A1200 model's capture likewise.
+  reference, and at mode 13h milestones framebuffer and DAC; `make
+  test-amiga` checks the A1200 model's capture likewise, plus the frame
+  the Amiga screen shows.
 - Generated 68020 code on host: Unicorn 68020 (as Slicks) runs the same
   cases (`make test-m68k`) and the generated program's traced blocks
   (`make test-blocks`), so differentials need no Amiga (gate 4).

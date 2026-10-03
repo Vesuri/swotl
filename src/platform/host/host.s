@@ -7,6 +7,7 @@
 	xdef	plat_read
 	xdef	plat_seek
 	xdef	plat_close
+	xdef	plat_present
 	xdef	plat_log
 	xdef	plat_exit
 	xdef	host_stubs
@@ -27,6 +28,8 @@ plat_read:	nop
 plat_seek:	nop
 	rts
 plat_close:	nop
+	rts
+plat_present:	nop
 	rts
 plat_log:	nop
 	rts

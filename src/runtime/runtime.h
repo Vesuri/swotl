@@ -56,6 +56,9 @@ extern const struct rt_dispatch_row dispatch_table[];
 extern const uint32_t load_segment;
 extern const uint32_t overlay_table;
 
+/* Reference: environment block; its MCB is the first one DOS gives programs. */
+#define RT_ENV_SEG 0x07ca
+
 /* Reference: INT 21h AH=1Bh returns DS:BX here, at the media descriptor byte. */
 #define MEDIA_SEG 0x0410
 #define MEDIA_OFF 0x0059
@@ -69,6 +72,7 @@ extern uint16_t rt_entry_cs, rt_entry_ip;
 /* services */
 void rt_int21(uint16_t cs, uint16_t ip);
 void rt_int10(void);
+extern uint8_t rt_dac[768];      /* video.c: 6-bit R, G, B */
 void rt_int67(void);
 void rt_dos_init(void);
 uint16_t rt_psp(void);

@@ -28,10 +28,10 @@ help:
 	@echo "  make gen-check          G1: headers, digests and byte-identical regeneration of build/gen"
 	@echo "  make lint               G2: no guest-address names in hand-written code"
 	@echo "  make test               lint, decoder, x86/68020/block differentials, guards, gen-check, host run"
-	@echo "  make test-sabotage      planted IR/decoder faults must fail the x86 differential"
+	@echo "  make test-sabotage      planted IR/decoder/runtime faults must fail the differentials and host run"
 	@echo "  make host               link generated program + runtime for Unicorn 68020 -> build/host/swotl.elf"
-	@echo "  make test-host          run it from the MZ entry to milestone m1 against the reference"
-	@echo "  make test-amiga         same milestone on the A1200 model (FS-UAE + GDB capture, amiga/diag_m1.gdb)"
+	@echo "  make test-host          run it from the MZ entry to milestones m1 and m1b-logo against the reference"
+	@echo "  make test-amiga         m1b-logo on the A1200 model (FS-UAE + GDB capture, amiga/milestone.gdb.in)"
 	@echo "  make amiga   build amiga/out/Swotl.exe"
 	@echo "  make smoke   boot it under FS-UAE + GDB and check the takeover runs"
 	@echo "  make clean   remove Amiga build output"
@@ -101,7 +101,7 @@ test-x86:
 test-sabotage:
 	$(PYTHON) tests/x86_sabotage.py
 	$(PYTHON) tests/m68k_sabotage.py
-	$(PYTHON) tests/host_run.py --sabotage
+	$(PYTHON) tests/host_run.py --sabotage --milestone m1b-logo
 
 test-m68k:
 	$(PYTHON) tests/m68k_diff.py
@@ -149,14 +149,20 @@ build/host/swotl.elf: $(HOST_OBJ)
 
 host: gen-check build/host/swotl.elf
 
+HOST_MILESTONES = m1-mode13h m1b-logo
+AMIGA_MILESTONE ?= m1b-logo
+AMIGA_CAPTURE = tmp/amiga-$(AMIGA_MILESTONE)
+
 test-host: host
-	$(PYTHON) tests/host_run.py
+	@set -e; for m in $(HOST_MILESTONES); do $(PYTHON) tests/host_run.py --milestone $$m; done
 
 test-amiga: amiga host
-	@mkdir -p tmp/amiga-m1
-	. amiga/env.sh && cd amiga && ./debug.sh "" "$(CURDIR)/amiga/diag_m1.gdb" | \
-		sed -n 's/^SWOTL_M1_REGS //p' > ../tmp/amiga-m1/regs.txt
-	$(PYTHON) tests/host_run.py --amiga tmp/amiga-m1
+	@mkdir -p $(AMIGA_CAPTURE)
+	sed -e "s|@LABEL@|$$($(PYTHON) tests/host_run.py --label --milestone $(AMIGA_MILESTONE))|" \
+		-e "s|@OUT@|../$(AMIGA_CAPTURE)|" amiga/milestone.gdb.in > $(AMIGA_CAPTURE)/fixture.gdb
+	. amiga/env.sh && cd amiga && ./debug.sh "" "../$(AMIGA_CAPTURE)/fixture.gdb" 2>&1 | \
+		tee ../$(AMIGA_CAPTURE)/gdb.log | sed -n 's/^SWOTL_REGS //p' > ../$(AMIGA_CAPTURE)/regs.txt
+	$(PYTHON) tests/host_run.py --milestone $(AMIGA_MILESTONE) --amiga $(AMIGA_CAPTURE)
 
 amiga: gen-check
 	. amiga/env.sh && $(MAKE) -C amiga

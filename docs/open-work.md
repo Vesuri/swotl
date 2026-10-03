@@ -24,13 +24,15 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
 ## Translator
 
 13. D16: lower the self-modified block (after 9d); its 528 entries stop now.
-14. Gate 5 frame: a drawn milestone on the A1200 model. Past m1 the path
-    needs INT 10h mode 13h/DAC (1012h/1017h) and display of guest
-    A0000h (D9), DOS AH=48h, INT 33h, INT 16h/DOS keyboard, EMS AH=44h
-    mapping, the SPAZ INT 08h tick (D8; `(isr)` targets are not dispatch
-    rows yet) and, for menus and flight, D16. Choose the first milestone
-    with game pixels (logo `LUCASLOG.PAC` before m2) and add it to
-    `reference/milestones.csv` and `tests/host_run.py`.
+14. Path past m1b-logo (phase 6 runtime surface): EMS AH=44h mapping,
+    INT 33h, the joystick probe on port 201h (`SWOTL+0446D..+044A6`), the
+    SPAZ INT 08h tick (D8; `(isr)` targets are not dispatch rows yet), PIT/
+    AdLib ports, and D16 for menus and flight. Next milestone with pixels
+    m2-choose-side (needs the key script on the runtime).
+14a. Display presents only at mode/DAC sets (`plat_present`, Intuition
+    screen while the OS serves dos.library); frames drawn without a DAC
+    change need a periodic present, and D9's framework (copper) display
+    needs file I/O that survives the takeover.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/
     `divu.l`, unaligned word/long, `ror.w #8` swap) to replace [arch]
     guesses in `m68k-optimisation.md`.

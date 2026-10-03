@@ -1,0 +1,47 @@
+# Milestone fixture (gate 5), filled in by `make test-amiga`: the generated
+# program reaches label @LABEL@; dump the guest registers, state block, guest
+# RAM and rt_dac, and once a screen is open the shown frame (bitplanes and the
+# LoadRGB32 table) for tests/host_run.py --amiga. Output directory: @OUT@.
+# gdb types a0-a7 as pointers and rt_guest has no debug type: cast both;
+# dump splits its arguments at spaces, so casts go through $variables.
+break @LABEL@
+commands
+  silent
+  set $bm = amiga_screen ? amiga_screen->RastPort.BitMap : 0
+  printf "SWOTL_REGS ax=%04x cx=%04x dx=%04x bx=%04x sp=%04x bp=%04x si=%04x di=%04x bpr=%d\n", $d0 & 0xffff, $d1 & 0xffff, $d2 & 0xffff, $d3 & 0xffff, $d4 & 0xffff, $d5 & 0xffff, (unsigned)$a4 & 0xffff, (unsigned)$a5 & 0xffff, $bm ? $bm->BytesPerRow : 0
+  set $g = *(unsigned char **)&rt_guest
+  dump binary memory @OUT@/state.bin $g-16 $g
+  dump binary memory @OUT@/ram.bin $g $g+0x100000
+  set $d = (char *)rt_dac
+  dump binary memory @OUT@/dac.bin $d $d+768
+  if $bm
+    set $n = $bm->BytesPerRow * 200
+    set $p = (char *)$bm->Planes[0]
+    dump binary memory @OUT@/plane0.bin $p $p+$n
+    set $p = (char *)$bm->Planes[1]
+    dump binary memory @OUT@/plane1.bin $p $p+$n
+    set $p = (char *)$bm->Planes[2]
+    dump binary memory @OUT@/plane2.bin $p $p+$n
+    set $p = (char *)$bm->Planes[3]
+    dump binary memory @OUT@/plane3.bin $p $p+$n
+    set $p = (char *)$bm->Planes[4]
+    dump binary memory @OUT@/plane4.bin $p $p+$n
+    set $p = (char *)$bm->Planes[5]
+    dump binary memory @OUT@/plane5.bin $p $p+$n
+    set $p = (char *)$bm->Planes[6]
+    dump binary memory @OUT@/plane6.bin $p $p+$n
+    set $p = (char *)$bm->Planes[7]
+    dump binary memory @OUT@/plane7.bin $p $p+$n
+    set $c = (char *)amiga_colours
+    dump binary memory @OUT@/colours.bin $c $c+sizeof(amiga_colours)
+  end
+  printf "SWOTL_MILESTONE_OK\n"
+  quit 0
+end
+break plat_exit
+commands
+  silent
+  printf "SWOTL_MILESTONE_EXIT\n"
+  quit 1
+end
+continue

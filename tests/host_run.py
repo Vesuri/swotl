@@ -10,12 +10,15 @@ Checked against the DOSBox-X reference run of that milestone
 - at the milestone label: guest registers and guest RAM (COMPARE ranges);
   dead stack is masked: bytes in the DEAD_STACK window below SS:SP at a
   service call that the guest did not write afterwards (DOSBox-X's own code
-  and the interrupt frame's FLAGS word leave other values there, open-work 24);
+  and the interrupt frame's FLAGS word leave other values there, open-work 24),
+  and the FLAGS images of annotations/flags.csv PUSHFs until rewritten;
 - every machine byte outside COMPARE that generated code read holds the
   reference value.
-With --amiga DIR, the same RAM/register checks run on the A1200 model's
-capture (amiga/diag_m1.gdb: ram.bin, regs.txt), masked by this host run's
-dead-stack set.
+With --amiga DIR, the same checks run on the A1200 model's capture
+(amiga/milestone.gdb.in: regs.txt, state.bin, ram.bin, dac.bin), masked by
+this host run's dead-stack set, and the shown frame (plane0-7.bin, bytes per
+row in regs.txt, colours.bin = LoadRGB32 table) decodes to the reference
+framebuffer and DAC. --label prints a milestone's label for the fixture.
 Exit 1 on any difference, a runtime stop or an instruction limit.
 """
 
@@ -38,11 +41,17 @@ MEM = 0x01000000          # flat map: code, data, stack, guest RAM
 STACK_TOP = 0x00FF0000
 GUEST = 0x00400010        # src/platform/host/host.c HOST_GUEST
 GUEST_BYTES = 0x110000
-MILESTONES = {"m1-mode13h": ("RTSVGA.OVL", 0x390D)}
+# name: (module, label offset, frame compared); m1 is still text mode, which
+# the runtime does not model (only mode 13h).
+MILESTONES = {"m1-mode13h": ("RTSVGA.OVL", 0x390D, False),
+              "m1b-logo": ("RTSVGA.OVL", 0x39AD, True)}
 # Compared guest RAM: the DOS arena from the environment MCB to the top of
 # conventional memory; below it are IVT/BIOS/DOS internals the runtime models
 # only through services, above it video and BIOS ROM.
 COMPARE = [(0x07C90, 0xA0000)]
+# Chained mode 13h: guest A0000h+a is DOSBox-X vram[((a & ~3) << 2) | (a & 3)]
+# (tools/snap_png.py); the whole 64 KiB window is compared with the DAC.
+FRAME = (0xA0000, 0xB0000)
 REGS = ("ax", "cx", "dx", "bx", "sp", "bp", "si", "di")
 DEAD_STACK = 0x60
 
@@ -86,6 +95,7 @@ SABOTAGE = {
     "read": "first byte of each guest file read flipped",
     "ax": "AX of the tenth service result off by one",
     "psp": "one command-tail byte of the PSP changed at the guest entry",
+    "dac": "one DAC gun off at each frame present",
 }
 
 
@@ -106,7 +116,9 @@ class Host:
         self.services: list[tuple[str, dict]] = []
         self.stopped_at: str | None = None
         self.stubs = {self.syms[n]: n for n in ("plat_open", "plat_read", "plat_seek",
-                                                "plat_close", "plat_log", "plat_exit")}
+                                                "plat_close", "plat_present", "plat_log",
+                                                "plat_exit")}
+        self.presents = 0
 
         @U.CODE_CB
         def stub(h, addr, size, user):
@@ -154,9 +166,25 @@ class Host:
 
         @U.MEM_CB
         def write(h, kind, addr, size, value, user):
-            if not self.in_service and self.masked:
-                self.masked.difference_update(range(addr - GUEST, addr - GUEST + size))
+            span = range(addr - GUEST, addr - GUEST + size)
+            if self.dead_flags is not None and self.dead_flags in span:
+                self.masked.update(span)
+                self.dead_flags = None
+            elif not self.in_service and self.masked:
+                self.masked.difference_update(span)
             return True
+
+        # The FLAGS image of an annotations/flags.csv PUSHF is dead by that
+        # annotation; its word below SS:SP is masked until the guest rewrites it.
+        @U.CODE_CB
+        def dead_pushf(h, addr, size, user):
+            g = self.guest_regs(0)
+            self.dead_flags = g["ss"] * 16 + ((g["sp"] - 2) & 0xFFFF)
+
+        self.dead_flags = None
+        for r in image.rows("flags.csv"):
+            a = self.syms[emit.label(r["module"], int(r["save"], 16))]
+            e.hook_range(U.HOOK_CODE, dead_pushf, a, a)
 
         @U.MEM_CB
         def read(h, kind, addr, size, value, user):
@@ -211,10 +239,12 @@ class Host:
         args = struct.unpack(">III", self.mem(sp + 4, 12))
         res = 0
         if n == "plat_open":
-            name = self.cstr(args[0])
-            matches = [p for p in self.root.iterdir() if p.name.upper() == name]
-            if matches and matches[0].is_file():
-                self.files[self.next_file] = matches[0].open("rb")
+            path = self.root
+            for part in self.cstr(args[0]).split("/"):
+                matches = [p for p in path.iterdir() if p.name.upper() == part] if path.is_dir() else []
+                path = matches[0] if matches else self.root / "\0"
+            if path.is_file():
+                self.files[self.next_file] = path.open("rb")
                 res, self.next_file = self.next_file, self.next_file + 1
             else:
                 res = -1
@@ -231,6 +261,10 @@ class Host:
             res = f.seek(off, args[2])
         elif n == "plat_close":
             self.files.pop(args[0]).close()
+        elif n == "plat_present":
+            self.presents += 1
+            if self.sabotage == "dac":
+                self.e.write(args[1] + 300, bytes([self.mem(args[1] + 300, 1)[0] ^ 1]))
         elif n == "plat_log":
             self.log.append(self.cstr(args[0]))
             print(self.log[-1])
@@ -245,6 +279,7 @@ class Host:
 
             @U.CODE_CB
             def hit(h, addr, size, user):
+                self.ret_cb(h, addr, size, user)  # a service returning to the label
                 self.stopped_at = stop_label
                 self.e.stop()
 
@@ -260,10 +295,10 @@ class Host:
 def machine_ranges() -> list[tuple[int, int]]:
     """Guest memory outside COMPARE."""
     out, at = [], 0
-    for lo, hi in COMPARE:
+    for lo, hi in sorted(COMPARE + [FRAME]):
         out.append((at, lo))
         at = hi
-    return out + [(at, GUEST_BYTES)]
+    return [(lo, hi) for lo, hi in out + [(at, GUEST_BYTES)] if lo < hi]
 
 
 def compare_services(got, want) -> list[str]:
@@ -322,8 +357,48 @@ def compare_ram(ram: bytes, ref: bytes, residency: Path, masked: set[int]) -> li
     return bad
 
 
-def check_capture(tag, regs, state, ram, ref_regs, ref, snap, h) -> list[str]:
-    """Registers (state block: segments) and RAM of one capture vs the snapshot."""
+def compare_frame(ram: bytes, dac: bytes, snap: Path, size: int = FRAME[1] - FRAME[0]) -> list[str]:
+    planes = (snap / "vram.bin").read_bytes()
+    lo = FRAME[0]
+    ref = bytes(planes[((a & ~3) << 2) | (a & 3)] for a in range(size))
+    bad = [a for a in range(size) if ram[lo + a] != ref[a]]
+    out = [f"frame: {len(bad)} bytes differ, first at A000:{bad[0]:04X} ours "
+           f"{ram[lo + bad[0]]:02x} reference {ref[bad[0]]:02x}"] if bad else []
+    want = (snap / "dac.bin").read_bytes()
+    bad = [k for k in range(256) if dac[k * 3:k * 3 + 3] != want[k * 3:k * 3 + 3]]
+    if bad:
+        k = bad[0]
+        out.append(f"DAC: {len(bad)} entries differ, first {k:02x} ours {dac[k * 3:k * 3 + 3].hex()} "
+                   f"reference {want[k * 3:k * 3 + 3].hex()}")
+    return out
+
+
+def compare_shown(capture: Path, bytes_per_row: int, snap: Path) -> list[str]:
+    """The Amiga screen: 8 bitplanes, plane k = bit k of the pixel; colours =
+    LoadRGB32 (count << 16, first 0), 32-bit guns whose top 6 bits are the DAC."""
+    if not bytes_per_row:
+        return ["amiga: no screen shown"]
+    planes = [(capture / f"plane{k}.bin").read_bytes() for k in range(8)]
+    lo, hi = FRAME
+    shown = bytearray(320 * 200)
+    for y in range(200):
+        for xb in range(40):
+            bits = [p[y * bytes_per_row + xb] for p in planes]
+            for b in range(8):
+                shown[y * 320 + xb * 8 + b] = sum(((bits[k] >> (7 - b)) & 1) << k for k in range(8))
+    words = struct.unpack(f">{1 + 768 + 1}I", (capture / "colours.bin").read_bytes())
+    dac = bytes(w >> 26 for w in words[1:769])
+    out = []
+    if words[0] != 256 << 16:
+        out.append(f"amiga: LoadRGB32 header {words[0]:08x}")
+    ram = bytes(lo) + bytes(shown) + bytes(hi - lo - len(shown))
+    out += [f"amiga shown: {p}" for p in compare_frame(ram, dac, snap, len(shown))]
+    return out
+
+
+def check_capture(tag, regs, state, ram, dac, ref_regs, ref, snap, h) -> list[str]:
+    """Registers (state block: segments), RAM, framebuffer and DAC (dac None:
+    not compared) of one capture vs the snapshot."""
     problems = []
     seg = {"es": state[4:6], "ss": state[2:4], "ds": state[0:2]}  # G_ES -12, G_SS -14, G_DS -16
     regs = dict(regs, **{n: int.from_bytes(v, "big") for n, v in seg.items()})
@@ -333,6 +408,8 @@ def check_capture(tag, regs, state, ram, ref_regs, ref, snap, h) -> list[str]:
     dead = sum(ram[a] != ref[a] for a in h.masked if a < len(ref))
     print(f"{tag}: dead stack {len(h.masked)} bytes masked, {dead} of them differ")
     problems += [f"{tag}: {p}" for p in compare_ram(ram, ref, snap / "residency.csv", h.masked)]
+    if dac is not None:
+        problems += [f"{tag}: {p}" for p in compare_frame(ram, dac, snap)]
     reads = sorted(a for a in h.machine_reads if a < len(ref) and ram[a] != ref[a])
     print(f"{tag}: machine bytes read by the guest {len(h.machine_reads)}, {len(reads)} differ")
     for a in reads[:20]:
@@ -346,9 +423,14 @@ def main(argv=None) -> int:
     ap.add_argument("--milestone", default="m1-mode13h")
     ap.add_argument("--limit", type=int, default=200_000_000, help="68k instruction limit")
     ap.add_argument("--amiga", type=Path, help="also check this A1200-model capture")
+    ap.add_argument("--label", action="store_true", help="print the milestone's label and exit")
     ap.add_argument("--sabotage", action="store_true",
                     help="each planted runtime fault (SABOTAGE) must fail the check")
     args = ap.parse_args(argv)
+    if args.label:
+        mod, off, _ = MILESTONES[args.milestone]
+        print(emit.label(mod, off))
+        return 0
     if args.sabotage:
         missed = []
         for name, what in SABOTAGE.items():
@@ -369,7 +451,7 @@ def check(milestone: str, limit: int, amiga: Path | None, sabotage: str | None) 
     class args:  # noqa: N801
         pass
     args.milestone, args.limit, args.amiga = milestone, limit, amiga
-    mod, off = MILESTONES[args.milestone]
+    mod, off, frame = MILESTONES[args.milestone]
     trace = REPO / f"tmp/pc-runs/ref-{args.milestone}/trace"
     snap = trace / f"snap-{args.milestone}-0"
     h = Host(image.M.REF, sabotage)
@@ -389,12 +471,17 @@ def check(milestone: str, limit: int, amiga: Path | None, sabotage: str | None) 
         ref = (snap / "ram.bin").read_bytes()
         g = h.guest_regs(0)
         problems += check_capture("host", g, h.mem(GUEST - 16, 16), h.mem(GUEST, 0x100000),
+                                  h.mem(h.syms["rt_dac"], 768) if frame else None,
                                   ref_regs, ref, snap, h)
         if args.amiga:
             regs = dict(kv.split("=") for kv in (args.amiga / "regs.txt").read_text().split())
             ga = {n: int(regs[n], 16) for n in REGS}
+            if frame:
+                problems += compare_shown(args.amiga, int(regs["bpr"]), snap)
             problems += check_capture("amiga", ga, (args.amiga / "state.bin").read_bytes(),
-                                      (args.amiga / "ram.bin").read_bytes(), ref_regs, ref,
+                                      (args.amiga / "ram.bin").read_bytes(),
+                                      (args.amiga / "dac.bin").read_bytes() if frame else None,
+                                      ref_regs, ref,
                                       snap, h)
     return problems
 

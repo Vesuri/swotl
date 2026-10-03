@@ -1,20 +1,37 @@
-/* Platform services for the runtime on AmigaOS (dos.library), and the run of
- * the translated program on its own native stack. Game files are read from
- * the current directory (the game's own data files, supplied by the user). */
+/* Platform services for the runtime on AmigaOS (dos.library, an Intuition
+ * screen for the frame), and the run of the translated program on its own
+ * native stack. Game files are read from the current directory (the game's
+ * own data files, supplied by the user). */
 #include <proto/exec.h>
 #include <proto/dos.h>
+#include <proto/graphics.h>
+#include <proto/intuition.h>
 #include <exec/memory.h>
 #include <dos/dos.h>
+#include <graphics/gfxbase.h>
+#include <graphics/modeid.h>
+#include <intuition/screens.h>
 #include "runtime.h"
 #include "platform.h"
 #include "amiga_platform.h"
 
 struct DosLibrary *DOSBase = 0;
+struct IntuitionBase *IntuitionBase = 0;
+extern struct GfxBase *GfxBase;
 
 #define MAX_FILES 16
 #define GUEST_STACK_BYTES 0x10000
 
 static BPTR files[MAX_FILES];
+
+/* The frame as shown (tests/host_run.py --amiga reads them back through the
+ * GDB fixture): the screen's bitplanes and the LoadRGB32 table. */
+#define FRAME_W 320
+#define FRAME_H 200
+struct Screen *amiga_screen = 0;
+uint32_t amiga_colours[1 + 256 * 3 + 1];
+static struct RastPort row_port;
+static struct BitMap *row_bitmap = 0;
 
 int32_t amiga_guest_call(void *stack_top);
 
@@ -53,6 +70,51 @@ void plat_close(int32_t handle)
     files[handle] = 0;
 }
 
+static void close_screen(void)
+{
+    if (amiga_screen) {
+        CloseScreen(amiga_screen);
+        amiga_screen = 0;
+    }
+    if (row_bitmap) {
+        WaitBlit();
+        FreeBitMap(row_bitmap);
+        row_bitmap = 0;
+    }
+}
+
+/* Mode 13h on a 320x200 8-plane PAL screen: WritePixelArray8 converts the
+ * chunky frame, the DAC's 6-bit guns are widened to 32 bits for LoadRGB32. */
+void plat_present(const uint8_t *frame, const uint8_t *dac)
+{
+    if (!amiga_screen) {
+        if (!IntuitionBase || !GfxBase) {
+            return;
+        }
+        amiga_screen = OpenScreenTags(0, SA_Width, FRAME_W, SA_Height, FRAME_H, SA_Depth, 8,
+                                      SA_DisplayID, PAL_MONITOR_ID | LORES_KEY,
+                                      SA_Type, CUSTOMSCREEN, SA_Quiet, TRUE,
+                                      SA_ShowTitle, FALSE, SA_Draggable, FALSE,
+                                      SA_Exclusive, TRUE, TAG_DONE);
+        row_bitmap = AllocBitMap(FRAME_W, 1, 8, 0, 0);
+        if (!amiga_screen || !row_bitmap) {
+            close_screen();
+            plat_log("SWOTL no 8-plane screen");
+            return;
+        }
+        InitRastPort(&row_port);
+        row_port.BitMap = row_bitmap;
+    }
+    amiga_colours[0] = 256u << 16;
+    for (int k = 0; k < 256 * 3; ++k) {
+        amiga_colours[1 + k] = (dac[k] & 0x3f) * 0x04104104u;
+    }
+    amiga_colours[1 + 256 * 3] = 0;
+    WritePixelArray8(&amiga_screen->RastPort, 0, 0, FRAME_W - 1, FRAME_H - 1,
+                     (UBYTE *)frame, &row_port);
+    LoadRGB32(&amiga_screen->ViewPort, (ULONG *)amiga_colours);
+}
+
 void plat_log(const char *line)
 {
     LONG n = 0;
@@ -72,6 +134,8 @@ long amiga_run_guest(void)
     if (!DOSBase) {
         return -1;
     }
+    IntuitionBase = (struct IntuitionBase *)OpenLibrary((CONST_STRPTR)"intuition.library", 40);
+    GfxBase = (struct GfxBase *)OpenLibrary((CONST_STRPTR)"graphics.library", 40);
     /* Guest RAM plus the state block below it; Fast RAM when present (D15). */
     uint8_t *block = (uint8_t *)AllocMem(RT_STATE_BYTES + RT_GUEST_BYTES, MEMF_ANY | MEMF_CLEAR);
     uint8_t *stack = (uint8_t *)AllocMem(GUEST_STACK_BYTES, MEMF_ANY);
@@ -91,6 +155,14 @@ long amiga_run_guest(void)
     }
     if (block) {
         FreeMem(block, RT_STATE_BYTES + RT_GUEST_BYTES);
+    }
+    close_screen();
+    if (IntuitionBase) {
+        CloseLibrary((struct Library *)IntuitionBase);
+    }
+    if (GfxBase) {
+        CloseLibrary((struct Library *)GfxBase);
+        GfxBase = 0;
     }
     CloseLibrary((struct Library *)DOSBase);
     return code;

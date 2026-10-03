@@ -20,7 +20,6 @@ static const char environment[] =
     "PROMPT=$P$G\0"
     "\0\1\0C:\\SWOTL.EXE\0NT.COM";  /* reference: residue of the shell's own path */
 
-#define ENV_SEG 0x07ca          /* reference: environment block, MCB below */
 #define ENV_PARAS 0x47
 #define TOP_SEG 0x9fff          /* reference: first segment past DOS memory */
 #define PARENT_PSP 0x0701       /* reference: COMMAND.COM */
@@ -65,7 +64,7 @@ static void psp(uint16_t seg)
     wr16(p + 0x12, 0x0110); wr16(p + 0x14, PARENT_PSP);  /* INT 24h */
     wr16(p + 0x16, PARENT_PSP);
     put_bytes(p + 0x18, jft, sizeof jft);
-    wr16(p + 0x2c, ENV_SEG);
+    wr16(p + 0x2c, RT_ENV_SEG);
     wr16(p + 0x2e, 0x05e6); wr16(p + 0x30, 0x071b);  /* reference: shell SS:SP */
     wr16(p + 0x32, 20);
     wr16(p + 0x34, 0x18); wr16(p + 0x36, seg);
@@ -144,8 +143,8 @@ void rt_start(uint8_t *guest)
     wr8(0x449, 0x03);                             /* BIOS: text mode 3, 80 columns */
     wr16(0x44a, 80);
     uint16_t psp_seg = (uint16_t)load_segment - 0x10;
-    mcb(ENV_SEG - 1, 'M', psp_seg, ENV_PARAS, "SWOTL\0\0\0");
-    put_bytes(lin(ENV_SEG, 0), environment, sizeof environment);
+    mcb(RT_ENV_SEG - 1, 'M', psp_seg, ENV_PARAS, "SWOTL\0\0\0");
+    put_bytes(lin(RT_ENV_SEG, 0), environment, sizeof environment);
     mcb(psp_seg - 1, 'Z', psp_seg, TOP_SEG - psp_seg, "SWOTL\0\0\0");
     mcb(TOP_SEG, 'M', 0x0008, 0x2c00, "SC      ");  /* reference: link to upper memory */
     wr8(lin(MEDIA_SEG, MEDIA_OFF), 0xf8);          /* reference: drive C: media descriptor */

@@ -156,6 +156,87 @@ static void ioctl(uint16_t cs, uint16_t ip)
     set_cf(0);
 }
 
+static void attributes(uint16_t cs, uint16_t ip)
+{
+    char path[80];
+    if (AL(rt_r.ax) != 0) {
+        rt_unsupported("set file attributes", 0x21, cs, ip);
+    }
+    path_of(lin(G_DS, rt_r.dx), path, sizeof path);
+    int32_t f = plat_open(path);
+    if (f < 0) {
+        fail(2);
+        return;
+    }
+    plat_close(f);
+    rt_r.ax = rt_r.cx = 0x0020;  /* reference: archive */
+    set_cf(0);
+}
+
+static uint32_t mcb_at(uint16_t seg)
+{
+    uint32_t m = lin(seg, 0);
+    if (rd8(m) != 'M' && rd8(m) != 'Z') {
+        rt_stop("corrupt MCB chain", seg, rd8(m));
+    }
+    return m;
+}
+
+/* AH=48h: DOS first fit (the reference strategy 0) after merging adjacent
+ * free blocks: a free block of the exact size is taken whole, a larger one
+ * split with the new block named after the program. */
+static void allocate(void)
+{
+    for (uint16_t seg = RT_ENV_SEG - 1; rd8(mcb_at(seg)) == 'M'; ) {
+        uint32_t m = lin(seg, 0), next = mcb_at(seg + rd16(m + 3) + 1);
+        if (rd16(m + 1) == 0 && rd16(next + 1) == 0) {
+            wr8(m, rd8(next));
+            wr16(m + 3, rd16(m + 3) + rd16(next + 3) + 1);
+        } else {
+            seg += rd16(m + 3) + 1;
+        }
+    }
+    uint16_t want = rt_r.bx, biggest = 0;
+    uint32_t name = lin(rt_psp() - 1, 8);
+    for (uint16_t seg = RT_ENV_SEG - 1;; ) {
+        uint32_t m = mcb_at(seg);
+        uint8_t type = rd8(m);
+        uint16_t size = rd16(m + 3);
+        if (rd16(m + 1) == 0 && size == want) {
+            wr16(m + 1, rt_psp());
+            rt_r.ax = seg + 1;
+            set_cf(0);
+            return;
+        }
+        if (rd16(m + 1) == 0 && size > want) {
+            uint32_t rest = lin(seg + want + 1, 0);
+            wr8(rest, type);
+            wr16(rest + 1, 0);
+            wr16(rest + 3, size - want - 1);
+            wr8(m, 'M');
+            wr16(m + 1, rt_psp());
+            wr16(m + 3, want);
+            for (int k = 0, end = 0; k < 8; ++k) {
+                uint8_t c = end ? 0 : rd8(name + k);
+                end |= c == 0;
+                wr8(m + 8 + k, c);
+            }
+            rt_r.ax = seg + 1;
+            set_cf(0);
+            return;
+        }
+        if (rd16(m + 1) == 0 && size > biggest) {
+            biggest = size;
+        }
+        if (type == 'Z') {
+            rt_r.bx = biggest;
+            fail(8);
+            return;
+        }
+        seg += size + 1;
+    }
+}
+
 /* AH=4Ah: DOS 5 shrink/grow of the PSP's block with the next MCB. */
 static void resize(uint16_t cs, uint16_t ip)
 {
@@ -217,7 +298,9 @@ void rt_int21(uint16_t cs, uint16_t ip)
     case 0x3e: close_file(); break;
     case 0x3f: read_file(); break;
     case 0x42: seek_file(); break;
+    case 0x43: attributes(cs, ip); break;
     case 0x44: ioctl(cs, ip); break;
+    case 0x48: allocate(); break;
     case 0x4a: resize(cs, ip); break;
     case 0x4c:
         rt_log_hex("SWOTL_EXIT", AL(rt_r.ax));

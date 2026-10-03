@@ -1,6 +1,6 @@
 # Translator design
 
-Skeleton for phase 5 on (phases 3–4 done: decoder, IR, 68020 backend; 5.1 done: runtime, host run to m1). Fixed parts are decided; decision points D1–D16
+Skeleton for phase 5 on (phases 3–4 done: decoder, IR, 68020 backend; phase 5 done: runtime, host and A1200 runs to the logo frame). Fixed parts are decided; decision points D1–D16
 list options, the evidence that settles them (from
 [plan-reference-map.md](plan-reference-map.md)) and the default if evidence
 does not object. Replace each decision with its outcome when settled.
@@ -121,13 +121,20 @@ diffs directly); relocated words in instructions are emitted as
   run from executed leaders to the first transfer with random states; flags
   compared where live at the successor reached; calls also run the return
   protocol (right IP reaches the return site, wrong IP `rt_ret_mismatch`).
-- Host run (`make test-host`, gate 5 step 5.1): `build/host/swotl.elf` on
-  Unicorn 68020 from the MZ entry to milestone m1; every software INT's
-  registers at entry and return vs the tracer's service log; registers and
-  RAM (environment MCB to A0000h) vs the snapshot, dead stack masked (below
-  SS:SP at a service, not rewritten by the guest); machine bytes the guest
-  read hold reference values. `make test-amiga`: the same on the A1200 model
-  (FS-UAE, `amiga/diag_m1.gdb`).
+- Host run (`make test-host`, gate 5): `build/host/swotl.elf` on Unicorn
+  68020 from the MZ entry to milestones m1 and m1b-logo; every software
+  INT's registers at entry and return vs the tracer's service log; registers
+  and RAM (environment MCB to A0000h) vs the snapshot, dead stack masked
+  (below SS:SP at a service, and the FLAGS image of an `annotations/flags.csv`
+  PUSHF, until the guest rewrites it); at m1b-logo the A0000h window and the
+  DAC; machine bytes the guest read hold reference values. `make
+  test-amiga`: the same at m1b-logo on the A1200 model (FS-UAE,
+  `amiga/milestone.gdb.in`), plus the shown screen (bitplanes, LoadRGB32
+  table) decoded against the reference framebuffer and DAC.
+- Display (D9 slice): the runtime presents guest A0000h and the DAC at each
+  mode set and DAC block set (`plat_present`); on the Amiga an 8-plane
+  Intuition screen (WritePixelArray8, LoadRGB32), the OS staying up for
+  dos.library.
 - Audits (`make gen`): spills, full-flag materializations, PF/AF stores,
   dispatcher exits, `stop_unknown` sites against `tests/audit.csv` (above
   expected fails), plus flag stores/merges/loads and return checks; HLE count.
@@ -142,8 +149,3 @@ diffs directly); relocated words in instructions are emitted as
 | D11 | String ops | per-element loops, one body per DF (done); `rep movs/stos` fast paths when DF and overlap provable | corpus + profile | fast paths in phase 7 |
 | D16 | Self-modifying code | (a) runtime stop; (b) annotate as data + regenerate per variant; (c) translate the block with patched operands read from guest bytes at run time and the patched RET as a computed exit | root unrolled block `+6A4D..+89FD` only (`annotations/self-modifying.csv`): RET written at an instruction start around `call dx`, word operands patched at stride 4 per call and at setup; executed in menus and in flight (m2–m5). Run-time bytes differ from the file at every byte phase (opcodes too: file `and/or [bx+2710h]` template, run time `mov [bx+disp],al` runs then template); file = m0/m1, 5 further variants over 16 snapshots; the file template continues to `+8E2C` past the region | (c); (a) is not viable |
 
-## Phase 5 steps
-
-| Step | Deliverable | Done when |
-|---|---|---|
-| 5.2 | First target slice: generated path on the A1200 model, display via D9 | m1: RAM + registers match on the A1200 model (`make test-amiga`); open: a drawn milestone (framebuffer) — **gate 5** |
