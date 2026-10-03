@@ -8,6 +8,8 @@ G_SS	equ	-14
 G_DS	equ	-16
 
 	xdef	rt_int
+	xdef	rt_irq
+	xdef	rt_bios_int08
 	xdef	rt_fault
 	xdef	rt_halt
 	xdef	rt_in8
@@ -27,6 +29,8 @@ G_DS	equ	-16
 	xref	rt_deliver_cs
 	xref	rt_deliver_ip
 	xref	rt_int_c
+	xref	rt_irq_c
+	xref	rt_bios_int08_c
 	xref	rt_fault_c
 	xref	rt_halt_c
 	xref	rt_port_in
@@ -113,6 +117,32 @@ deliver_or_return:
 	cmp.w	(a7),d6
 	bne	rt_ret_mismatch
 	addq.l	#4,a7
+	rts
+
+; Poll point with G_IRQ set (D8): d6 = CS << 16, d7 = IP of the loop head.
+; A pending timer tick runs the guest INT 08h handler on the frame C pushed,
+; or the machine's BIOS tick.
+rt_irq:
+	bsr	save_regs
+	move.l	d7,-(a7)
+	move.l	d6,-(a7)
+	jsr	rt_irq_c
+	addq.l	#8,a7
+	bra.s	deliver_or_return
+
+; The BIOS INT 08h handler, reached by a guest handler chaining to the vector
+; it replaced (jmp far): the tick, then IRET; d7/d6 = popped IP/CS for the
+; return check of the code that delivered the interrupt.
+rt_bios_int08:
+	bsr	save_regs
+	jsr	rt_bios_int08_c
+	move.l	d0,-(a7)
+	bsr	load_regs
+	moveq	#0,d7
+	move.w	2(a7),d7
+	moveq	#0,d6
+	move.w	(a7)+,d6
+	addq.l	#2,a7
 	rts
 
 ; Divide error: d6 = CS << 16 | 0, d7 = IP of the faulting instruction; the

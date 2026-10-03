@@ -31,7 +31,7 @@ TAG = {"SWOTL.EXE": "R", "SPAZ.OVL": "SPZ", "RTSVGA.OVL": "VGA", "FRONTEND.OVL":
        "PANEL.OVL": "PNL", "DATA.OVL": "DAT"}
 RET, UNKNOWN, SMC = "ret", "unknown", "smc"
 TERMINAL = {"jmp", "jmpf", "ret", "retf", "iret", "hlt"}
-RUNTIME = ("rt_int", "rt_fault", "rt_halt", "rt_in8", "rt_in16", "rt_out8", "rt_out16",
+RUNTIME = ("rt_int", "rt_irq", "rt_fault", "rt_halt", "rt_in8", "rt_in16", "rt_out8", "rt_out16",
            "rt_ret_mismatch", "rt_dispatch_near", "rt_dispatch_far", "rt_stop_unknown")
 
 
@@ -45,6 +45,15 @@ def smc_label(mod: str, off: int) -> str:
 
 def stop_label(mod: str, off: int) -> str:
     return f"{TAG[mod]}_{off:05X}_stop"
+
+
+def poll(ip: int, cs: str) -> list[str]:
+    """D8 safe point at a loop head (a block leader: live flags are in the state
+    block, so the CCR is free): rt_irq takes a pending hardware interrupt with
+    d6 = CS << 16, d7 = this IP."""
+    skip = f".np{ip:04x}"
+    return ["\ttst.b G_IRQ(a6)", f"\tbeq.s {skip}", f"\tmove.l #{hx(ip)},d7",
+            f"\tmove.l #({cs})<<16,d6", "\tjsr rt_irq", f"{skip}:"]
 
 
 def cs_expr(cs: int) -> str:
@@ -77,6 +86,12 @@ class Program:
         int0 = [r for r in image.rows("runtime.csv") if r["name"] == "__cintDIV"]
         self.int0 = (int0[0]["module"], int(int0[0]["offset"], 16)) if int0 else None
         self.build_edges()
+        # D8 poll points: targets of backward branches in the same module
+        # (loop heads); a pending hardware interrupt is taken there
+        self.loop_heads = {s for n, ss in self.succ.items()
+                           if self.node_insn(n).op not in ("call", "callf")
+                           for s in ss if isinstance(s, tuple) and s not in (RET, UNKNOWN, SMC)
+                           and s[0] == n[0] and s[1] <= n[1]}
         self.live_in: dict = {}
         self.live_out: dict = {}
         self.ret_of: dict = {}
@@ -352,6 +367,10 @@ class Program:
             for o, lw in zip(run, lws):
                 n = u.insns[o]
                 lines.append(f"{label(mod, o)}:\t; {u.cs[o]:04X}:{n.ip:04X} {n}")
+                if (mod, o) in self.loop_heads:
+                    assert (mod, o) in self.leaders, (mod, o)
+                    lines.extend(poll(u.ip_of(o), cs_expr(u.cs[o])))
+                    stats["interrupt poll"] += 1
                 lines.extend(lw.out)
                 stats.update(lw.stats)
             # fall-through out of the run into something not decoded here

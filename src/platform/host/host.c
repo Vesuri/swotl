@@ -6,7 +6,8 @@
 
 void rt_run_guest(void);
 
-/* Guest RAM of the harness memory map (tests/host_run.py GUEST). */
+/* Guest RAM (EMS store after it) of the harness memory map (tests/host_run.py
+ * GUEST). */
 #define HOST_GUEST ((uint8_t *)0x00400010)
 
 void host_main(void)

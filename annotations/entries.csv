@@ -1,1 +1,2 @@
 module,offset,reason
+SPAZ.OVL,0x007cc,"INT 08h handler (1770:058C), installed by AH=25h at +0266; delivered by the runtime (D8), chains to the BIOS handler via jmp far cs:[0] at +0A79"

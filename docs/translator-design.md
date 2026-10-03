@@ -135,6 +135,15 @@ diffs directly); relocated words in instructions are emitted as
   mode set and DAC block set (`plat_present`); on the Amiga an 8-plane
   Intuition screen (WritePixelArray8, LoadRGB32), the OS staying up for
   dos.library.
+- Interrupts (D8): poll points at loop heads (targets of backward branches,
+  all block leaders, so live flags are in the state block): `tst.b G_IRQ(a6)`
+  then `rt_irq` (d6 = CS << 16, d7 = IP). With guest IF set the runtime stores
+  new keys (BIOS INT 09h) and takes one due PIT tick: the guest INT 08h
+  handler (`annotations/entries.csv`) on a pushed frame, else the BIOS tick;
+  a guest handler's `jmp far` to F000:FEA5 is the BIOS tick plus IRET
+  (`rt_bios_int08`). Clock: the platform adds PIT clocks to `rt_pit_clocks`
+  (Amiga: CIA-B timer per PIT period, `plat_timer_rate`; host harness: per
+  Unicorn slice, nominal 12000 x86 instructions/ms at 5 68k each).
 - Audits (`make gen`): spills, full-flag materializations, PF/AF stores,
   dispatcher exits, `stop_unknown` sites against `tests/audit.csv` (above
   expected fails), plus flag stores/merges/loads and return checks; HLE count.

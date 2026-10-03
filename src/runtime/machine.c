@@ -150,6 +150,7 @@ void rt_start(uint8_t *guest)
     wr8(lin(MEDIA_SEG, MEDIA_OFF), 0xf8);          /* reference: drive C: media descriptor */
     psp(psp_seg);
     rt_dos_init();
+    rt_input_init();
     exec_root(psp_seg);
     rt_set_flags_word(0x7202);
 }
@@ -225,10 +226,81 @@ uint32_t rt_int_c(uint32_t d6, uint32_t ip)
     switch (vector) {
     case 0x10: rt_int10(); break;
     case 0x21: rt_int21(cs, (uint16_t)ip); break;
+    case 0x16: rt_int16(); break;
+    case 0x33: rt_int33(); break;
     case 0x67: rt_int67(); break;
     default: rt_unsupported("interrupt", vector, cs, (uint16_t)ip);
     }
     return 0;
+}
+
+/* -- timer (D8) ------------------------------------------------------------ */
+
+/* PIT input clocks elapsed (the platform adds them and sets G_IRQ); channel 0
+ * fires every rt_pit_divisor clocks. */
+volatile uint32_t rt_pit_clocks;
+static uint32_t pit_taken;
+
+#define BIOS_TICKS 0x46c
+#define BIOS_MIDNIGHT 0x470
+#define BIOS_INT08_SEG 0xf000      /* reference vector 08h (vectors[] above) */
+#define BIOS_INT08_OFF 0xfea5
+
+/* The reference BIOS handler: tick count with midnight wrap (INT 1Ch and EOI
+ * have no effect here: the vector is the BIOS IRET, the PIC is not modelled). */
+static void bios_tick(void)
+{
+    uint32_t t = rd16(BIOS_TICKS) | (uint32_t)rd16(BIOS_TICKS + 2) << 16;
+    if (++t >= 0x1800b0) {
+        wr8(BIOS_MIDNIGHT, rd8(BIOS_MIDNIGHT) + 1);
+        t = 0;
+    }
+    wr16(BIOS_TICKS, (uint16_t)t);
+    wr16(BIOS_TICKS + 2, (uint16_t)(t >> 16));
+}
+
+static int tick_due(void)
+{
+    return rt_pit_clocks - pit_taken >= rt_pit_divisor;
+}
+
+/* With guest interrupts enabled: new keys (BIOS INT 09h), then one due tick;
+ * returns as rt_int_c does. G_IRQ stays set while ticks remain due. */
+uint32_t rt_irq_c(uint32_t d6, uint32_t ip)
+{
+    uint16_t cs = (uint16_t)(d6 >> 16);
+    if (!G_IF) {
+        return 0;
+    }
+    if (rt_key_pending()) {
+        rt_keyboard_irq();
+    }
+    if (!tick_due()) {
+        G_IRQ = 0;
+        return 0;
+    }
+    pit_taken += rt_pit_divisor;
+    G_IRQ = (uint8_t)tick_due();
+    if (guest_vector(8)) {
+        return deliver(8, cs, (uint16_t)ip);
+    }
+    if (rd16(8 * 4) != BIOS_INT08_OFF || rd16(8 * 4 + 2) != BIOS_INT08_SEG) {
+        rt_unsupported("INT 08h vector outside the program and the BIOS", 8, cs, (uint16_t)ip);
+    }
+    bios_tick();
+    return 0;
+}
+
+/* jmp far to the BIOS INT 08h entry: the tick, then the handler's IRET from
+ * SS:SP; returns CS << 16 | IP popped. */
+uint32_t rt_bios_int08_c(void)
+{
+    bios_tick();
+    uint32_t sp = lin(G_SS, rt_r.sp);
+    uint16_t ip = rd16(sp), cs = rd16(sp + 2);
+    rt_set_flags_word(rd16(sp + 4));
+    rt_r.sp += 6;
+    return (uint32_t)cs << 16 | ip;
 }
 
 uint32_t rt_fault_c(uint32_t d6, uint32_t ip)
@@ -257,6 +329,9 @@ static int resident(uint16_t overlay)
 
 void *rt_lookup(uint32_t cs, uint32_t ip)
 {
+    if ((cs & 0xffff) == BIOS_INT08_SEG && (ip & 0xffff) == BIOS_INT08_OFF) {
+        return rt_bios_int08;
+    }
     uint32_t key = (cs & 0xffff) << 16 | (ip & 0xffff);
     uint32_t lo = 0, hi = dispatch_count;
     while (lo < hi) {
@@ -288,17 +363,6 @@ void rt_ret_mismatch_c(uint32_t ip, uint32_t cs)
 void rt_stop_unknown_c(uint32_t ip, uint32_t cs)
 {
     rt_stop("transfer into untranslated code IP/CS", ip & 0xffff, cs & 0xffff);
-}
-
-uint32_t rt_port_in(uint32_t port, uint32_t width)
-{
-    rt_stop("unsupported port in (port, width)", port & 0xffff, width);
-}
-
-void rt_port_out(uint32_t port, uint32_t value, uint32_t width)
-{
-    (void)value;
-    rt_stop("unsupported port out (port, width)", port & 0xffff, width);
 }
 
 /* -- log and stop ------------------------------------------------------------ */

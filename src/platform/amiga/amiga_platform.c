@@ -6,11 +6,14 @@
 #include <proto/dos.h>
 #include <proto/graphics.h>
 #include <proto/intuition.h>
+#include <proto/cia.h>
 #include <exec/memory.h>
 #include <dos/dos.h>
 #include <graphics/gfxbase.h>
 #include <graphics/modeid.h>
 #include <intuition/screens.h>
+#include <hardware/cia.h>
+#include <resources/cia.h>
 #include "runtime.h"
 #include "platform.h"
 #include "amiga_platform.h"
@@ -115,6 +118,71 @@ void plat_present(const uint8_t *frame, const uint8_t *dac)
     LoadRGB32(&amiga_screen->ViewPort, (ULONG *)amiga_colours);
 }
 
+/* PIT channel 0 on a CIA-B timer (D8): one CIA period per PIT period, the
+ * latch scaled from the PIT clock (1193182 Hz) to the PAL E-clock (709379 Hz,
+ * 35469/59659 within 1e-5); the interrupt only posts the clocks, the guest
+ * handler runs at the next poll point. */
+#define CIAB ((volatile struct CIA *)0xbfd000)
+static struct Library *cia_base = 0;
+static struct Interrupt cia_interrupt;
+static WORD cia_bit = -1;
+
+static ULONG cia_tick(void)
+{
+    rt_pit_clocks += rt_pit_divisor;
+    G_IRQ = 1;
+    return 0;
+}
+
+static void cia_load(uint32_t divisor)
+{
+    uint32_t latch = (divisor * 35469u + 29829u) / 59659u;
+    volatile UBYTE *cr = cia_bit == CIAICRB_TA ? &CIAB->ciacra : &CIAB->ciacrb;
+    volatile UBYTE *lo = cia_bit == CIAICRB_TA ? &CIAB->ciatalo : &CIAB->ciatblo;
+    volatile UBYTE *hi = cia_bit == CIAICRB_TA ? &CIAB->ciatahi : &CIAB->ciatbhi;
+    *cr &= cia_bit == CIAICRB_TA ? 0xc0 : 0x80;    /* stop; keep TOD/serial bits */
+    *lo = (UBYTE)latch;
+    *hi = (UBYTE)(latch >> 8);
+    *cr |= CIACRAF_LOAD | CIACRAF_START;          /* continuous */
+}
+
+static int timer_open(void)
+{
+    cia_base = (struct Library *)OpenResource((CONST_STRPTR)CIABNAME);
+    if (!cia_base) {
+        return 0;
+    }
+    cia_interrupt.is_Node.ln_Type = NT_INTERRUPT;
+    cia_interrupt.is_Node.ln_Name = (char *)"SWOTL PIT";
+    cia_interrupt.is_Code = (void (*)(void))cia_tick;
+    for (WORD bit = CIAICRB_TA; bit <= CIAICRB_TB; ++bit) {
+        if (!AddICRVector(cia_base, bit, &cia_interrupt)) {
+            cia_bit = bit;
+            cia_load(0x10000);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void timer_close(void)
+{
+    if (cia_bit >= 0) {
+        *(cia_bit == CIAICRB_TA ? &CIAB->ciacra : &CIAB->ciacrb) &= ~CIACRAF_START;
+        RemICRVector(cia_base, cia_bit, &cia_interrupt);
+        cia_bit = -1;
+    }
+}
+
+void plat_timer_rate(uint32_t divisor)
+{
+    if (cia_bit >= 0) {
+        Disable();
+        cia_load(divisor);
+        Enable();
+    }
+}
+
 void plat_log(const char *line)
 {
     LONG n = 0;
@@ -136,15 +204,20 @@ long amiga_run_guest(void)
     }
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((CONST_STRPTR)"intuition.library", 40);
     GfxBase = (struct GfxBase *)OpenLibrary((CONST_STRPTR)"graphics.library", 40);
-    /* Guest RAM plus the state block below it; Fast RAM when present (D15). */
-    uint8_t *block = (uint8_t *)AllocMem(RT_STATE_BYTES + RT_GUEST_BYTES, MEMF_ANY | MEMF_CLEAR);
+    /* Guest RAM, the state block below it and the EMS store after it; Fast RAM
+     * when present (D15). */
+    uint8_t *block = (uint8_t *)AllocMem(RT_STATE_BYTES + RT_GUEST_BYTES + RT_EMS_BYTES, MEMF_ANY | MEMF_CLEAR);
     uint8_t *stack = (uint8_t *)AllocMem(GUEST_STACK_BYTES, MEMF_ANY);
     int32_t code = -1;
     if (block && stack) {
         plat_log("SWOTL guest start");
         rt_start(block + RT_STATE_BYTES);
+        if (!timer_open()) {
+            plat_log("SWOTL no CIA-B timer");
+        }
         code = amiga_guest_call(stack + GUEST_STACK_BYTES);
     }
+    timer_close();
     for (int32_t k = 0; k < MAX_FILES; ++k) {
         if (files[k]) {
             plat_close(k);
@@ -154,7 +227,7 @@ long amiga_run_guest(void)
         FreeMem(stack, GUEST_STACK_BYTES);
     }
     if (block) {
-        FreeMem(block, RT_STATE_BYTES + RT_GUEST_BYTES);
+        FreeMem(block, RT_STATE_BYTES + RT_GUEST_BYTES + RT_EMS_BYTES);
     }
     close_screen();
     if (IntuitionBase) {

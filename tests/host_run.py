@@ -41,10 +41,16 @@ MEM = 0x01000000          # flat map: code, data, stack, guest RAM
 STACK_TOP = 0x00FF0000
 GUEST = 0x00400010        # src/platform/host/host.c HOST_GUEST
 GUEST_BYTES = 0x110000
-# name: (module, label offset, frame compared); m1 is still text mode, which
-# the runtime does not model (only mode 13h).
-MILESTONES = {"m1-mode13h": ("RTSVGA.OVL", 0x390D, False),
-              "m1b-logo": ("RTSVGA.OVL", 0x39AD, True)}
+# Key names of the reference key script (tracer KeyByName): scan << 8 | ASCII
+# as the BIOS INT 09h handler stores them.
+KEYS = {"enter": 0x1C0D, "esc": 0x011B, "space": 0x3920, "tab": 0x0F09, "backspace": 0x0E08,
+        "up": 0x4800, "down": 0x5000, "left": 0x4B00, "right": 0x4D00,
+        **{f"f{k}": (0x3A + k) << 8 for k in range(1, 11)},
+        **{c: s << 8 | ord(c) for c, s in zip("qwertyuiopasdfghjklzxcvbnm",
+                                             list(range(0x10, 0x1A)) + list(range(0x1E, 0x27))
+                                             + list(range(0x2C, 0x33)))},
+        **{str(k): (k + 1) << 8 | ord(str(k)) for k in range(1, 10)}, "0": 0x0B30}
+KEY_HOLD = 600_000  # tracer: x86 instructions from key down to key up
 # Compared guest RAM: the DOS arena from the environment MCB to the top of
 # conventional memory; below it are IVT/BIOS/DOS internals the runtime models
 # only through services, above it video and BIOS ROM.
@@ -54,6 +60,13 @@ COMPARE = [(0x07C90, 0xA0000)]
 FRAME = (0xA0000, 0xB0000)
 REGS = ("ax", "cx", "dx", "bx", "sp", "bp", "si", "di")
 DEAD_STACK = 0x60
+# Host clock (D8): Unicorn runs SLICE 68k instructions at a time; each slice
+# adds PIT_PER_SLICE input clocks to rt_pit_clocks and sets G_IRQ. Nominal:
+# the reference runs 12000 x86 instructions/ms, RATIO 68k per x86 instruction;
+# the clock starts at the guest entry.
+SLICE = 20_000
+RATIO = 5  # measured to m1b-logo: 8.3M 68k for 1.5M x86 instructions
+PIT_PER_SLICE = SLICE * 1193182 // (12_000_000 * RATIO)
 
 
 def elf_load(path: Path):
@@ -116,7 +129,7 @@ class Host:
         self.services: list[tuple[str, dict]] = []
         self.stopped_at: str | None = None
         self.stubs = {self.syms[n]: n for n in ("plat_open", "plat_read", "plat_seek",
-                                                "plat_close", "plat_present", "plat_log",
+                                                "plat_close", "plat_timer_rate", "plat_present", "plat_log",
                                                 "plat_exit")}
         self.presents = 0
 
@@ -188,7 +201,7 @@ class Host:
 
         @U.MEM_CB
         def read(h, kind, addr, size, value, user):
-            if not self.in_service:
+            if not self.in_service and self.code[0] <= self.r("pc") < self.code[1]:
                 self.machine_reads.update(range(addr - GUEST, addr - GUEST + size))
             return True
 
@@ -204,6 +217,12 @@ class Host:
             for lo, hi in machine_ranges():
                 self.e.hook_range(U.HOOK_MEM_READ, read, GUEST + lo, GUEST + hi - 1)
 
+        # generated code: from the first guest label to program.s's data after
+        # the modules (the runtime's own reads, e.g. the BIOS tick, are not the
+        # guest's)
+        tags = tuple(t + "_" for t in emit.TAG.values())
+        self.code = (min(v for k, v in self.syms.items() if k.startswith(tags)),
+                     self.syms["load_segment"])
         self.watching = False
         a = self.syms["rt_run_guest"]
         e.hook_range(U.HOOK_CODE, guest_start, a, a)
@@ -270,26 +289,85 @@ class Host:
             print(self.log[-1])
         elif n == "plat_exit":
             self.exit = args[0]
+            self.halted = True
             self.e.stop()
         self.e.reg_write(U.M68K["d0"], res & 0xFFFFFFFF)
 
-    def run(self, stop_label: str | None, limit: int) -> None:
-        if stop_label:
-            a = self.syms[stop_label]
+    def press(self, key: int) -> None:
+        tail = self.mem(self.syms["rt_key_tail"], 1)[0]
+        self.e.write(self.syms["rt_key_ring"] + 2 * (tail % 16), struct.pack(">H", key))
+        self.e.write(self.syms["rt_key_tail"], bytes([(tail + 1) & 0xFF]))
+        self.e.write(GUEST - 8, b"\1")
 
-            @U.CODE_CB
-            def hit(h, addr, size, user):
+    def run(self, script: dict | None, limit: int) -> None:
+        """Run to the script's last snapshot trigger (None: until a stop)."""
+        steps = [(t, k) for t, k in script["keys"]] + [(t, None) for t in script["snapshots"]] \
+            if script else []
+        self.step, self.hits, self.release = 0, 0, None
+        hold = KEY_HOLD * RATIO // SLICE
+
+        @U.CODE_CB
+        def hit(h, addr, size, user):
+            if self.step == len(steps) or self.release is not None:
+                return
+            (lab, _, n), key = steps[self.step]
+            if self.syms[lab] != addr:
+                return
+            self.hits += 1
+            if self.hits < n:
+                return
+            self.step, self.hits = self.step + 1, 0
+            if key is not None:
+                self.press(key)
+                self.release = self.slices + hold
+            elif self.step == len(steps):
                 self.ret_cb(h, addr, size, user)  # a service returning to the label
-                self.stopped_at = stop_label
+                self.stopped_at = lab
+                self.halted = True
                 self.e.stop()
 
+        for a in {self.syms[t[0]] for t, _ in steps}:
             self.e.hook_range(U.HOOK_CODE, hit, a, a)
         self.e.reg_write(U.M68K["sr"], 0x2700)
         self.e.reg_write(U.M68K["a7"], STACK_TOP)
-        err = self.e.start(self.entry, 0xFFFFFFFF, limit)
-        if err:
-            print(f"unicorn error {U.uc.uc_strerror(err).decode()} pc={self.r('pc'):x}")
-            self.exit = -1
+        clocks, irq = self.syms["rt_pit_clocks"], GUEST - 8
+        pc, self.slices = self.entry, 0
+        while self.slices * SLICE < limit:
+            self.halted = False
+            err = self.e.start(pc, 0xFFFFFFFF, SLICE)
+            self.slices += 1
+            if err:
+                print(f"unicorn error {U.uc.uc_strerror(err).decode()} pc={self.r('pc'):x}")
+                self.exit = -1
+            if err or self.halted:
+                return
+            pc = self.r("pc")
+            if self.release is not None and self.slices >= self.release:
+                self.release = None  # key up: the next trigger counts from here
+            if self.watching:  # the clock starts at the guest entry
+                self.e.write(clocks, struct.pack(">I", (self.u32(clocks) + PIT_PER_SLICE) & 0xFFFFFFFF))
+                self.e.write(irq, b"\1")
+
+
+def trigger(spec: str) -> tuple[str, int, int]:
+    """MODULE+HEX[#N] -> (label, offset, N)."""
+    at, _, n = spec.partition("#")
+    mod, off = at.split("+")
+    return emit.label(mod, int(off, 16)), int(off, 16), int(n or 1)
+
+
+def milestone_script(name: str) -> dict:
+    """reference/milestones.csv row: the run stops at the last snapshot trigger;
+    keys are pressed in order, each counted from the previous key's release
+    (the tracer's rules); the frame is compared at vga_mode 13."""
+    rows = {r["name"]: r for r in csv.DictReader((REPO / "reference/milestones.csv").open())}
+    r = rows[name]
+    keys = []
+    for k in filter(None, r["keys"].split(";")):
+        spec, _, key = k.partition("=")
+        keys.append((trigger(spec), KEYS[key]))
+    return {"keys": keys, "snapshots": [trigger(s) for s in r["snapshots"].split()],
+            "frame": r["vga_mode"] == "13"}
 
 
 def machine_ranges() -> list[tuple[int, int]]:
@@ -428,8 +506,7 @@ def main(argv=None) -> int:
                     help="each planted runtime fault (SABOTAGE) must fail the check")
     args = ap.parse_args(argv)
     if args.label:
-        mod, off, _ = MILESTONES[args.milestone]
-        print(emit.label(mod, off))
+        print(milestone_script(args.milestone)["snapshots"][-1][0])
         return 0
     if args.sabotage:
         missed = []
@@ -451,12 +528,13 @@ def check(milestone: str, limit: int, amiga: Path | None, sabotage: str | None) 
     class args:  # noqa: N801
         pass
     args.milestone, args.limit, args.amiga = milestone, limit, amiga
-    mod, off, frame = MILESTONES[args.milestone]
+    script = milestone_script(args.milestone)
+    frame = script["frame"]
     trace = REPO / f"tmp/pc-runs/ref-{args.milestone}/trace"
     snap = trace / f"snap-{args.milestone}-0"
     h = Host(image.M.REF, sabotage)
-    label = emit.label(mod, off)
-    h.run(label, args.limit)
+    label = script["snapshots"][-1][0]
+    h.run(script, args.limit)
     problems = []
     if h.stopped_at != label:
         problems.append(f"milestone label {label} not reached (exit {h.exit}, pc={h.r('pc'):x})")

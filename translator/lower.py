@@ -48,7 +48,7 @@ CCR_OK = {"add": ALLC | {"X"}, "adc": ALLC | {"X"}, "sub": ALLC | {"X"}, "sbb": 
           "neg": ALLC | {"X"}, "shl": ALLC | {"X"}, "sar": ALLC | {"X"},
           "shr": {"CF", "ZF", "SF", "X"}}
 STATE_EQU = (("G_FL", -2), ("G_PF", -3), ("G_AF", -4), ("G_DF", -5), ("G_IF", -6),
-             ("G_TF", -7), ("G_FX", -10), ("G_ES", -12), ("G_SS", -14), ("G_DS", -16))
+             ("G_TF", -7), ("G_IRQ", -8), ("G_FX", -10), ("G_ES", -12), ("G_SS", -14), ("G_DS", -16))
 LOADSEG = 0x0822  # load segment of every reference run (docs/source-inventory.md)
 
 

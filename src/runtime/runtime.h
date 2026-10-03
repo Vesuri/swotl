@@ -17,6 +17,10 @@ extern uint8_t *rt_guest;          /* a6: guest linear 0; state block below */
 
 #define RT_GUEST_BYTES 0x110000u   /* 1 MiB + HMA (A20 on) */
 #define RT_STATE_BYTES 16u
+/* EMS logical pages after guest RAM (ems.c); reference: 16 KiB pages, memsize = 4 */
+#define RT_EMS_PAGES 0x00a4u
+#define RT_EMS_PAGE 0x4000u
+#define RT_EMS_BYTES (RT_EMS_PAGES * RT_EMS_PAGE)
 
 /* State block (translator/lower.py STATE_EQU), native big-endian. */
 #define G_CCR  (rt_guest[-1])      /* C=CF V=OF Z=ZF N=SF */
@@ -25,6 +29,7 @@ extern uint8_t *rt_guest;          /* a6: guest linear 0; state block below */
 #define G_DF   (rt_guest[-5])
 #define G_IF   (rt_guest[-6])
 #define G_TF   (rt_guest[-7])
+#define G_IRQ  (rt_guest[-8])      /* hardware interrupt pending: poll points call rt_irq */
 #define G_FX   (*(uint16_t *)(rt_guest - 10))
 #define G_ES   (*(uint16_t *)(rt_guest - 12))
 #define G_SS   (*(uint16_t *)(rt_guest - 14))
@@ -76,6 +81,26 @@ extern uint8_t rt_dac[768];      /* video.c: 6-bit R, G, B */
 void rt_int67(void);
 void rt_dos_init(void);
 uint16_t rt_psp(void);
+
+/* timer (machine.c): the platform adds PIT input clocks and sets G_IRQ */
+extern volatile uint32_t rt_pit_clocks;
+void rt_bios_int08(void);
+
+/* input.c: the platform appends keys (scan << 8 | ASCII) and sets G_IRQ */
+#define RT_KEY_RING 16
+extern volatile uint16_t rt_key_ring[RT_KEY_RING];
+extern volatile uint8_t rt_key_tail;
+void rt_input_init(void);
+int rt_key_pending(void);
+void rt_keyboard_irq(void);
+int rt_key_available(void);
+uint16_t rt_key_take(void);
+void rt_int16(void);
+void rt_int33(void);
+
+/* ports.c */
+extern uint32_t rt_pit_divisor;    /* channel 0 reload, 1..65536 */
+extern uint8_t rt_opl[256];         /* AdLib registers as written */
 
 /* stop: report and halt, never resumes */
 void rt_stop(const char *what, uint32_t a, uint32_t b) __attribute__((noreturn));

@@ -261,6 +261,42 @@ static void resize(uint16_t cs, uint16_t ip)
     set_cf(0);
 }
 
+/* AH=2Ch: DOS time from the BIOS tick count (reference: no RTC read after
+ * start-up), hundredths = ticks * 100 * 65536 / 1193182, exact. */
+static void get_time(void)
+{
+    uint32_t ticks = rd16(0x46c) | (uint32_t)rd16(0x46e) << 16;
+    uint32_t a = ticks * 100, q = a / 1193182, r = a % 1193182;
+    uint32_t t = q * 65536;
+    r *= 256;
+    t += (r / 1193182) * 256;
+    r = (r % 1193182) * 256;
+    t += r / 1193182;
+    rt_r.dx = (uint16_t)((t / 100 % 60) << 8 | t % 100);
+    t /= 6000;
+    rt_r.cx = (uint16_t)((t / 60 % 24) << 8 | t % 60);
+    SET_AL(rt_r.ax, 0);
+}
+
+/* AH=08h: CON input, no echo; an extended key gives 0 then its scan code. */
+static void read_char(uint16_t cs, uint16_t ip)
+{
+    static uint8_t scan_next;
+    if (scan_next) {
+        SET_AL(rt_r.ax, scan_next);
+        scan_next = 0;
+        return;
+    }
+    if (!rt_key_available()) {
+        rt_unsupported("console read with no key buffered", 0x21, cs, ip);
+    }
+    uint16_t key = rt_key_take();
+    SET_AL(rt_r.ax, key);
+    if (!(uint8_t)key) {
+        scan_next = (uint8_t)(key >> 8);
+    }
+}
+
 void rt_int21(uint16_t cs, uint16_t ip)
 {
     uint8_t ah = AH(rt_r.ax);
@@ -271,6 +307,10 @@ void rt_int21(uint16_t cs, uint16_t ip)
         wr16(p + 0x30, G_SS);
     }
     switch (ah) {
+    case 0x08: read_char(cs, ip); break;
+    case 0x0b:  /* CON input status */
+        SET_AL(rt_r.ax, rt_key_available() ? 0xff : 0x00);
+        break;
     case 0x1b:  /* reference: allocation info of drive C: */
         SET_AL(rt_r.ax, 0x40);
         rt_r.cx = 0x0200;
@@ -282,6 +322,7 @@ void rt_int21(uint16_t cs, uint16_t ip)
         wr16(AL(rt_r.ax) * 4, rt_r.dx);
         wr16(AL(rt_r.ax) * 4 + 2, G_DS);
         break;
+    case 0x2c: get_time(); break;
     case 0x30:
         if (AL(rt_r.ax) == 0) {
             SET_AH(rt_r.bx, 0xff);
