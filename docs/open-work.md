@@ -19,10 +19,14 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
 
 ## Translator
 
-14. Past the milestones: the host run matches m1–m7 (`make test-host-all`).
-    Next: mouse input, Amiga keyboard input, the A1200 model past m1b-logo;
-    the D16 cell walk is a per-cell form match (perf: specialise once the
-    shape is fixed); find-first gives platform files no DOS time/date.
+14. Past the milestones: the host run matches m1–m7 (`make test-host-all`);
+    the A1200 model (68030) runs the attract demo for minutes unattended,
+    checked only at m1b-logo (it runs on wall-clock time, not replayed).
+    Next: mouse input, Amiga keyboard input; the D16 cell walk is a per-cell
+    form match (perf: specialise once the shape is fixed); find-first gives
+    platform files no DOS time/date; table targets added by
+    `annotations/tables.csv` that no reference run executed are checked by
+    the instruction differential only.
 14a. Display: c2p into the shown screen bitmap every 5th vertical blank
     (tears; no double buffer) on an Intuition screen while the OS serves
     dos.library; D9's framework (copper) display needs file I/O that

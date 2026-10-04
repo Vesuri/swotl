@@ -45,6 +45,13 @@ def smc_regions() -> dict[str, list[tuple[int, int]]]:
     return out
 
 
+def dispatch_tables() -> dict[tuple[str, int], int]:
+    """annotations/tables.csv: indirect sites whose word table length is shown by
+    evidence other than an MS C bounds check -> entry count."""
+    with (M.REPO / "annotations/tables.csv").open() as f:
+        return {(r["module"], int(r["site"], 16)): int(r["entries"]) for r in csv.DictReader(f)}
+
+
 class Sweep:
     def __init__(self, mods: dict[str, M.Module], scope: list[str], bases: dict[str, list[int]]):
         self.mods, self.scope, self.bases = mods, scope, bases
@@ -63,6 +70,7 @@ class Sweep:
         self.far_ptrs: list[tuple[str, int, str, int]] = []  # (module, at, target module, offset)
         self.smc = smc_regions()
         self.smc_conflicts = 0
+        self.curated = dispatch_tables()
 
     def in_smc(self, mod: str, off: int) -> bool:
         return any(lo <= off <= hi for lo, hi in self.smc.get(mod, ()))
@@ -121,22 +129,28 @@ class Sweep:
         return out
 
     def switch(self, mod: str, off: int, seg: int, i) -> None:
-        """MS C switch: cmp ax,N; ja/jbe; add ax,ax; xchg bx,ax; jmp cs:[bx+T]."""
+        """MS C switch: cmp ax,N; ja/jbe; add ax,ax; xchg bx,ax; jmp cs:[bx+T]; or a
+        cs: word table call/jmp of annotations/tables.csv (count from there)."""
         ops = i.operands
-        if i.mnemonic != "jmp" or not ops or ops[0].type != x86.X86_OP_MEM:
+        if i.mnemonic not in ("jmp", "call") or not ops or ops[0].type != x86.X86_OP_MEM:
             return
         mem = ops[0].mem
-        if i.reg_name(mem.segment) != "cs" or i.reg_name(mem.base) != "bx" or mem.index:
+        if i.reg_name(mem.segment) != "cs" or mem.index:
             return
-        # The bounds check precedes the dispatch in the byte stream, not always on this path.
-        before = [self.insn[mod][k] for k in range(off - 1, max(off - 24, 0), -1) if k in self.insn[mod]]
-        cmp = next((r for r in before if r.mnemonic == "cmp"
-                    and len(r.operands) == 2 and r.operands[1].type == x86.X86_OP_IMM), None)
-        if cmp is None:
-            return
+        if (mod, off) in self.curated:
+            n = self.curated[(mod, off)]
+        else:
+            if i.mnemonic != "jmp" or i.reg_name(mem.base) != "bx":
+                return
+            # The bounds check precedes the dispatch in the byte stream, not always on this path.
+            before = [self.insn[mod][k] for k in range(off - 1, max(off - 24, 0), -1) if k in self.insn[mod]]
+            cmp = next((r for r in before if r.mnemonic == "cmp"
+                        and len(r.operands) == 2 and r.operands[1].type == x86.X86_OP_IMM), None)
+            if cmp is None:
+                return
+            n = (cmp.operands[1].imm & 0xFFFF) + 1
         m, cls = self.mods[mod], self.cls[mod]
         table = m.from_link(seg * 16 + (mem.disp & 0xFFFF))
-        n = (cmp.operands[1].imm & 0xFFFF) + 1
         if not 0 < n <= 512 or table < m.code_start or table + 2 * n > len(m.data):
             self.conflicts.append((mod, off, "switch table out of range"))
             return

@@ -108,7 +108,9 @@ diffs directly); relocated words in instructions are emitted as
 
 ### Annotations (`annotations/`, CSV)
 
-`entries.csv`, `indirect.csv` (site -> targets), `data.csv` (ranges),
+`entries.csv`, `indirect.csv` (site -> targets; written by `make map`),
+`tables.csv` (cs: word tables sized by evidence other than an MS C bounds
+check, read by the sweep), `data.csv` (ranges),
 `hle.csv` (guest range, service, reason, oracle; starts empty), `names.csv`
 (name, evidence class).
 
