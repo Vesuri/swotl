@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Boot the Amiga build on the target A1200 configuration. Left mouse button quits.
 #   ./run.sh [path-to-kickstart-rom]
-# Run a different binary with $SWOTL_EXE; extra fs-uae args via $EXTRA_ARGS.
+# Run a different binary with $SWOTL_EXE; extra fs-uae args via $EXTRA_ARGS;
+# AMIGA_CPU=68030 for the faster development model.
 set -euo pipefail
 cd "$(dirname "$0")"
 . "${FSUAE_COMMON:-$HOME/.local/share/amiga/fsuae_common.sh}"
@@ -29,7 +30,7 @@ rm -f "$RUN"/state/*.uss
 fsuae_stop_previous
 fsuae_track_self
 exec "$FSUAE" \
-  --amiga_model=A1200 --chip_memory=2048 --fast_memory="${FAST_MEMORY:-8192}" \
+  --amiga_model=A1200 ${AMIGA_CPU:+--cpu=$AMIGA_CPU} --chip_memory=2048 --fast_memory="${FAST_MEMORY:-8192}" \
   --kickstart_file="$ROM" \
   --hard_drive_0="$DH0" --hard_drive_1="$DH1" \
   --joystick_port_0=mouse --joystick_port_1=nothing \

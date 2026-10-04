@@ -13,6 +13,7 @@
 #include <graphics/modeid.h>
 #include <intuition/screens.h>
 #include <hardware/cia.h>
+#include <hardware/intbits.h>
 #include <resources/cia.h>
 #include "runtime.h"
 #include "platform.h"
@@ -33,8 +34,20 @@ static BPTR files[MAX_FILES];
 #define FRAME_H 200
 struct Screen *amiga_screen = 0;
 uint32_t amiga_colours[1 + 256 * 3 + 1];
-static struct RastPort row_port;
-static struct BitMap *row_bitmap = 0;
+
+/* Kalms c2p (c2p1x1_8_c5_bm.s): d0/d1 chunky width (a multiple of 32) and
+ * height, d2/d3 screen offset, a0 chunky, a1 BitMap; saves d2-d7/a2-a6. */
+static void c2p(const void *chunky, struct BitMap *bitmap)
+{
+    register int32_t d0 __asm("d0") = FRAME_W;
+    register int32_t d1 __asm("d1") = FRAME_H;
+    register int32_t d2 __asm("d2") = 0;
+    register int32_t d3 __asm("d3") = 0;
+    register const void *a0 __asm("a0") = chunky;
+    register struct BitMap *a1 __asm("a1") = bitmap;
+    __asm volatile("jsr c2p1x1_8_c5_bm" : "+r"(d0), "+r"(d1), "+r"(a0), "+r"(a1)
+                   : "r"(d2), "r"(d3) : "cc", "memory");
+}
 
 int32_t amiga_guest_call(void *stack_top);
 
@@ -110,15 +123,10 @@ static void close_screen(void)
         CloseScreen(amiga_screen);
         amiga_screen = 0;
     }
-    if (row_bitmap) {
-        WaitBlit();
-        FreeBitMap(row_bitmap);
-        row_bitmap = 0;
-    }
 }
 
-/* Mode 13h on a 320x200 8-plane PAL screen: WritePixelArray8 converts the
- * chunky frame, the DAC's 6-bit guns are widened to 32 bits for LoadRGB32. */
+/* Mode 13h on a 320x200 8-plane PAL screen: Kalms' c2p converts the chunky
+ * frame, the DAC's 6-bit guns are widened to 32 bits for LoadRGB32. */
 void plat_present(const uint8_t *frame, const uint8_t *dac)
 {
     if (!amiga_screen) {
@@ -130,22 +138,17 @@ void plat_present(const uint8_t *frame, const uint8_t *dac)
                                       SA_Type, CUSTOMSCREEN, SA_Quiet, TRUE,
                                       SA_ShowTitle, FALSE, SA_Draggable, FALSE,
                                       SA_Exclusive, TRUE, TAG_DONE);
-        row_bitmap = AllocBitMap(FRAME_W, 1, 8, 0, 0);
-        if (!amiga_screen || !row_bitmap) {
-            close_screen();
+        if (!amiga_screen) {
             plat_log("SWOTL no 8-plane screen");
             return;
         }
-        InitRastPort(&row_port);
-        row_port.BitMap = row_bitmap;
     }
     amiga_colours[0] = 256u << 16;
     for (int k = 0; k < 256 * 3; ++k) {
         amiga_colours[1 + k] = (dac[k] & 0x3f) * 0x04104104u;
     }
     amiga_colours[1 + 256 * 3] = 0;
-    WritePixelArray8(&amiga_screen->RastPort, 0, 0, FRAME_W - 1, FRAME_H - 1,
-                     (UBYTE *)frame, &row_port);
+    c2p(frame, amiga_screen->RastPort.BitMap);
     LoadRGB32(&amiga_screen->ViewPort, (ULONG *)amiga_colours);
 }
 
@@ -215,6 +218,42 @@ void plat_timer_rate(uint32_t divisor)
     }
 }
 
+/* Periodic present (14a): every PRESENT_FRAMES vertical blanks the frame is
+ * due again; the runtime shows it at the next poll point. */
+#define PRESENT_FRAMES 5
+static struct Interrupt vblank_interrupt;
+static int vblank_added = 0;
+static UWORD vblank_count = 0;
+volatile ULONG amiga_frames = 0;   /* vertical blanks since start (debug fixtures) */
+
+static ULONG vblank_tick(void)
+{
+    ++amiga_frames;
+    if (++vblank_count >= PRESENT_FRAMES) {
+        vblank_count = 0;
+        rt_present_due = 1;
+        G_IRQ = 1;
+    }
+    return 0;
+}
+
+static void vblank_open(void)
+{
+    vblank_interrupt.is_Node.ln_Type = NT_INTERRUPT;
+    vblank_interrupt.is_Node.ln_Name = (char *)"SWOTL present";
+    vblank_interrupt.is_Code = (void (*)(void))vblank_tick;
+    AddIntServer(INTB_VERTB, &vblank_interrupt);
+    vblank_added = 1;
+}
+
+static void vblank_close(void)
+{
+    if (vblank_added) {
+        RemIntServer(INTB_VERTB, &vblank_interrupt);
+        vblank_added = 0;
+    }
+}
+
 void plat_log(const char *line)
 {
     LONG n = 0;
@@ -247,9 +286,11 @@ long amiga_run_guest(void)
         if (!timer_open()) {
             plat_log("SWOTL no CIA-B timer");
         }
+        vblank_open();
         code = amiga_guest_call(stack + GUEST_STACK_BYTES);
     }
     timer_close();
+    vblank_close();
     for (int32_t k = 0; k < MAX_FILES; ++k) {
         if (files[k]) {
             plat_close(k);

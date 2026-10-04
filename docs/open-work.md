@@ -23,10 +23,10 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     Next: mouse input, Amiga keyboard input, the A1200 model past m1b-logo;
     the D16 cell walk is a per-cell form match (perf: specialise once the
     shape is fixed); find-first gives platform files no DOS time/date.
-14a. Display presents only at mode/DAC sets (`plat_present`, Intuition
-    screen while the OS serves dos.library); frames drawn without a DAC
-    change need a periodic present, and D9's framework (copper) display
-    needs file I/O that survives the takeover.
+14a. Display: c2p into the shown screen bitmap every 5th vertical blank
+    (tears; no double buffer) on an Intuition screen while the OS serves
+    dos.library; D9's framework (copper) display needs file I/O that
+    survives the takeover.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/
     `divu.l`, unaligned word/long, `ror.w #8` swap) to replace [arch]
     guesses in `m68k-optimisation.md`.

@@ -1,6 +1,7 @@
 /* INT 10h video BIOS as the reference machine answers it: chained mode 13h
  * at A000:0000 (guest RAM) and the DAC (docs/external-surface.md). The
- * frame is presented at each mode set and DAC block set (D9 slice). */
+ * frame is presented at each mode set and DAC block set (D9 slice) and when
+ * the platform asks for it (rt_present_due). */
 #include "runtime.h"
 #include "platform.h"
 
@@ -79,6 +80,17 @@ static void set_mode(void)
 static void present(void)
 {
     plat_present(rt_guest + 0xa0000, rt_dac);
+}
+
+volatile uint8_t rt_present_due;
+
+/* At a poll point: frames drawn without a DAC change (mode 13h only). */
+void rt_video_refresh(void)
+{
+    rt_present_due = 0;
+    if (rd8(BDA_MODE) == 0x13) {
+        present();
+    }
 }
 
 static void dac_block(int set)

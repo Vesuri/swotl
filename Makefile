@@ -32,7 +32,7 @@ help:
 	@echo "  make host               link generated program + runtime for Unicorn 68020 -> build/host/swotl.elf"
 	@echo "  make test-host          run it from the MZ entry to milestones m1-m3 against the reference"
 	@echo "  make test-host-all      the same to every milestone, m1-m7 (~2 min)"
-	@echo "  make test-amiga         m1b-logo on the A1200 model (FS-UAE + GDB capture, amiga/milestone.gdb.in)"
+	@echo "  make test-amiga         m1b-logo on the A1200 model (FS-UAE + GDB capture, amiga/milestone.gdb.in; AMIGA_CPU=68030)"
 	@echo "  make amiga   build amiga/out/Swotl.exe"
 	@echo "  make smoke   boot it under FS-UAE + GDB and check the takeover runs"
 	@echo "  make clean   remove Amiga build output"
@@ -185,6 +185,7 @@ host: gen-check build/host/swotl.elf
 HOST_MILESTONES = m1-mode13h m1b-logo m2-choose-side m3-demo-flight
 HOST_MILESTONES_ALL = $(HOST_MILESTONES) m4-demo-frames m5-player-flight m6-film-room m7-campaign
 AMIGA_MILESTONE ?= m1b-logo
+AMIGA_CPU ?= 68030
 AMIGA_CAPTURE = tmp/amiga-$(AMIGA_MILESTONE)
 
 test-host: host
@@ -197,7 +198,7 @@ test-amiga: amiga host
 	@mkdir -p $(AMIGA_CAPTURE)
 	sed -e "s|@LABEL@|$$($(PYTHON) tests/host_run.py --label --milestone $(AMIGA_MILESTONE))|" \
 		-e "s|@OUT@|../$(AMIGA_CAPTURE)|" amiga/milestone.gdb.in > $(AMIGA_CAPTURE)/fixture.gdb
-	. amiga/env.sh && cd amiga && ./debug.sh "" "../$(AMIGA_CAPTURE)/fixture.gdb" 2>&1 | \
+	. amiga/env.sh && cd amiga && AMIGA_CPU=$(AMIGA_CPU) ./debug.sh "" "../$(AMIGA_CAPTURE)/fixture.gdb" 2>&1 | \
 		tee ../$(AMIGA_CAPTURE)/gdb.log | sed -n 's/^SWOTL_REGS //p' > ../$(AMIGA_CAPTURE)/regs.txt
 	$(PYTHON) tests/host_run.py --milestone $(AMIGA_MILESTONE) --amiga $(AMIGA_CAPTURE)
 

@@ -56,6 +56,7 @@ fs-uae --audio_driver=dummy \
 | `EXTRA_ARGS=--cpu=68040` | exposes beam-timing races that A1200 alone missed | Revs, Vette |
 | `--warp_mode=1` | correctness runs only. Slicks refuses warp for benchmark fixtures. Revs: warp leaves emulated-quantity ratios unchanged (~4.9× faster) | Slicks `debug.sh`, Revs `perf-method.md` |
 | `--ntsc_mode=0` | PAL | all |
+| A1200 + `--cpu=68030`, 8 MiB fast | SWOTL development default (`AMIGA_CPU`, ~3× the 68020); `A1200/1230` needs the Blizzard 1230-IV ROM (absent); no A4000 ROM here | SWOTL |
 
 The SWOTL chip/fast budget is not chosen yet. Decide it before the first timing run, and never time with diagnostic fast RAM.
 

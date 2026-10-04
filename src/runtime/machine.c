@@ -265,6 +265,9 @@ static void bios_tick(void)
 uint32_t rt_irq_c(uint32_t d6, uint32_t ip)
 {
     uint16_t cs = (uint16_t)(d6 >> 16);
+    if (rt_present_due) {
+        rt_video_refresh();
+    }
     while (G_IF && irq_head != rt_irq_tail) {
         uint8_t irq = rt_irq_ring[irq_head++ % RT_IRQ_RING];
         uint8_t vector = irq & 0x7f;

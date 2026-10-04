@@ -102,7 +102,9 @@ diffs directly); relocated words in instructions are emitted as
   guest's own PLINK manager runs translated and loads the overlay bytes into
   guest RAM (data, CS-relative reads, RAM equal to the reference).
 - Memory (D15 = b): Fast RAM required (1.44 MB code + 1.06 MiB guest RAM);
-  the A1200 model runs with 8 MiB Fast.
+  the A1200 model runs with 8 MiB Fast; development runs set `--cpu=68030`
+  (`AMIGA_CPU`, ~3× the 68020: logo at 80 vs 252 frames); timing runs
+  leave it unset (68020).
 
 ### Annotations (`annotations/`, CSV)
 
@@ -133,9 +135,11 @@ diffs directly); relocated words in instructions are emitted as
   `amiga/milestone.gdb.in`), plus the shown screen (bitplanes, LoadRGB32
   table) decoded against the reference framebuffer and DAC.
 - Display (D9 slice): the runtime presents guest A0000h and the DAC at each
-  mode set and DAC block set (`plat_present`); on the Amiga an 8-plane
-  Intuition screen (WritePixelArray8, LoadRGB32), the OS staying up for
-  dos.library.
+  mode set and DAC block set (`plat_present`) and at the poll point after
+  the platform sets `rt_present_due` (Amiga: every 5th vertical blank); on
+  the Amiga an 8-plane Intuition screen (Kalms `c2p1x1_8_c5_bm` into the
+  shown bitmap, LoadRGB32; 2 frames on the 68030 model, 3–4 on the 68020;
+  WritePixelArray8 took 27), the OS staying up for dos.library.
 - Interrupts (D8): poll points at loop heads (targets of backward branches,
   all block leaders, so live flags are in the state block): `tst.b G_IRQ(a6)`
   then `rt_irq` (d6 = CS << 16, d7 = IP). With guest IF set posted interrupts

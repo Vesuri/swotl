@@ -101,7 +101,7 @@ provenance is in brackets.
   typedefs must not meet it in C++ units) and links with `m68k-amiga-elf-ld -Ttext=0x10000`;
   `tests/host_run.py` loads the ELF itself (no objcopy in the toolchain). `make test-amiga` fills
   `amiga/milestone.gdb.in` (label from `tests/host_run.py --label`) and runs it under
-  `amiga/debug.sh` (8 MiB Fast, `ref/` copied to dh1; gdb output in `tmp/amiga-<m>/gdb.log`):
+  `amiga/debug.sh` (8 MiB Fast, `--cpu=$AMIGA_CPU` when set, 68030 from the Makefile, `ref/` copied to dh1; gdb output in `tmp/amiga-<m>/gdb.log`):
   gdb types a0–a7 as pointers, symbols without debug type need a cast, `dump` splits its
   arguments at spaces (casts via `$variables`), and an error inside a breakpoint's commands
   leaves gdb waiting at its prompt; a 1 MiB `dump binary memory` over the FS-UAE stub takes

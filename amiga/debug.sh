@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Source-level debug the Amiga build via FS-UAE's GDB stub.
 #   ./debug.sh [path-to-kickstart] [fixture.gdb]
+# AMIGA_CPU=68030 (make test-amiga) for the faster development model.
 # Without a fixture: interactive gdb; `continue` runs the program.
 # The stub serves memory reads but silently drops writes: inject inputs from C.
 set -uo pipefail
@@ -29,7 +30,7 @@ rm -f "$RUN"/state/*.uss
 
 fsuae_claim_port
 "$FSUAE" \
-  --amiga_model=A1200 --chip_memory=2048 --fast_memory="${FAST_MEMORY:-8192}" \
+  --amiga_model=A1200 ${AMIGA_CPU:+--cpu=$AMIGA_CPU} --chip_memory=2048 --fast_memory="${FAST_MEMORY:-8192}" \
   --kickstart_file="$ROM" \
   --hard_drive_0="$DH0" --hard_drive_1="$DH1" \
   --automatic_input_grab=0 --fullscreen=0 --window_width=720 --window_height=568 \
