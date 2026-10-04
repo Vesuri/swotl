@@ -143,7 +143,7 @@ class M68k:
         self.e.write(CODE, image)
         self.e.flush()
 
-    def run(self, entry: int, case, rng, skip_entry: bool = True):
+    def run(self, entry: int, case, rng, skip_entry: bool = True, init: dict | None = None):
         regs, flags, flagsx, ip, patches = case
         e = self.e
         for a, data in patches:
@@ -155,6 +155,8 @@ class M68k:
         e.reg_write(U.M68K["a6"], GUEST)
         for j in ("d6", "d7", "a0"):
             e.reg_write(U.M68K[j], rng.randrange(1 << 32))
+        for j, v in (init or {}).items():
+            e.reg_write(U.M68K[j], v)
         st = bytearray(16)
         st[16 - 2:16] = bytes([rng.randrange(256) & 0xE0, ccr_image(flags) | rng.randrange(2) << 4])
         st[16 - 3] = 0 if flags["PF"] else 1

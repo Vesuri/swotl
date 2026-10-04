@@ -77,6 +77,7 @@ class Ctx:
     near: object = None                       # ip -> label | None (None: test exit)
     far: object = None                        # (seg, off) -> label | None
     near_targets: tuple = ()                  # known targets of an indirect near transfer
+    smc_targets: tuple = ()                   # (first IP, last IP, walk label): D16 regions
     complete: bool = False                    # near_targets is a proved switch table
     far_targets: tuple = ()                   # known (seg, off) targets of an indirect far one
     manager: bool = False                     # PLINK manager call: return skips `dw id`
@@ -1101,6 +1102,16 @@ class Lowering:
     def dispatch_near(self, how: str) -> None:
         """Target IP in d7: compare with the known targets, else the runtime table."""
         done = self.local() if how == "jsr" else None
+        for lo, hi, lab in self.c.smc_targets:
+            nxt = self.local()
+            self.e(f"cmp.w #{hx(lo)},d7")
+            self.e(f"blo {nxt}")
+            self.e(f"cmp.w #{hx(hi)},d7")
+            self.e(f"bhi {nxt}")
+            self.e(f"{how} {lab}")
+            if done:
+                self.e(f"bra {done}")
+            self.at(nxt)
         for ip in self.c.near_targets:
             lab = self.c.near(ip) if self.c.near else None
             if not lab:

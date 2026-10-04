@@ -144,9 +144,20 @@ diffs directly); relocated words in instructions are emitted as
   (`rt_bios_int08`). The platform posts vectors to `rt_irq_ring` (08h tick,
   09h/89h key make/break): Amiga a CIA-B timer per PIT period
   (`plat_timer_rate`); host run the reference's `irq` events, replayed at the
-  same visit of the same poll point after the same service event (the
+  same visit of the same poll point after the same service event, one of a
+  same-visit group per return of the guest handler to that poll point (the
   reference takes interrupts only at poll points, `build/gen/poll-points.csv`;
   references are re-recorded when poll points change).
+- Self-modified code (D16, `translator/smc.py`): the root block
+  `+6A4D..+89FD` is one generated cell walk. The setup (+E50E) writes opcodes
+  as well as operands, and the shape (cell counts [2587]/[2591], reload position) varies,
+  so cells are matched at run time against the forms the writers produce
+  (`annotations/self-modifying.csv` kind `form`: `mov [bx+w],al`, the
+  `bx`/`ds` reload, the planted `ret`), each checked against the decoder,
+  operand words read from guest RAM; anything else stops. `call dx` sites
+  range-check into the walk. The EGA/Tandy and/or variant ([2581]=0) is out
+  of scope. Checked by `make test-blocks` (walks over every snapshot image
+  vs x86).
 - Audits (`make gen`): spills, full-flag materializations, PF/AF stores,
   dispatcher exits, `stop_unknown` sites against `tests/audit.csv` (above
   expected fails), plus flag stores/merges/loads and return checks; HLE count.
@@ -159,5 +170,4 @@ diffs directly); relocated words in instructions are emitted as
 | D9 | Graphics drivers | (a) HLE at RTSVGA's call table on the dA JoRMaS layer; (b) translate driver + emulate VGA ports/memory | chained mode 13h via INT 10h, no VGA ports, no page flip; entries = PLINK thunks with id 3 | (a), with RTSVGA itself as oracle |
 | D10 | Sound | SPAZ HLE at its table; AdLib music method open (OPL -> Paula) | 2.5; open-work AdLib item | HLE |
 | D11 | String ops | per-element loops, one body per DF (done); `rep movs/stos` fast paths when DF and overlap provable | corpus + profile | fast paths in phase 7 |
-| D16 | Self-modifying code | (a) runtime stop; (b) annotate as data + regenerate per variant; (c) translate the block with patched operands read from guest bytes at run time and the patched RET as a computed exit | root unrolled block `+6A4D..+89FD` only (`annotations/self-modifying.csv`): RET written at an instruction start around `call dx`, word operands patched at stride 4 per call and at setup; executed in menus and in flight (m2–m5). Run-time bytes differ from the file at every byte phase (opcodes too: file `and/or [bx+2710h]` template, run time `mov [bx+disp],al` runs then template); file = m0/m1, 5 further variants over 16 snapshots; the file template continues to `+8E2C` past the region | (c); (a) is not viable |
 

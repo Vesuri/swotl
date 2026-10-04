@@ -319,6 +319,13 @@ class Host:
         self.e.write(self.syms["rt_irq_tail"], bytes([(tail + 1) & 0xFF]))
         self.e.write(GUEST - 8, b"\1")
 
+    def guest_vector(self, vector: int) -> bool:
+        """machine.c guest_vector: the IVT entry points into the program's memory."""
+        off, seg = struct.unpack("<HH", self.mem(GUEST + vector * 4, 4))
+        psp = int.from_bytes(self.mem(self.syms["load_segment"], 4), "big") - 0x10
+        top = struct.unpack("<H", self.mem(GUEST + psp * 16 + 2, 2))[0]
+        return psp * 16 <= seg * 16 + off < top * 16
+
     def press(self, key: int) -> None:
         tail = self.mem(self.syms["rt_key_tail"], 1)[0]
         self.e.write(self.syms["rt_key_ring"] + 2 * (tail % 16), struct.pack(">H", key))
@@ -334,7 +341,7 @@ class Host:
         releases = list(script["releases"]) if script else []
         self.irqs = list(script["irqs"]) if script else []
         self.step, self.hits, self.release = 0, 0, None
-        self.irq_i, self.visits, self.visit_svc, self.irq_hook = 0, 0, None, None
+        self.irq_i, self.visit_n, self.visits, self.group = 0, None, {}, None
         self.irq_lost: str | None = None
         makes = 0
 
@@ -369,34 +376,58 @@ class Host:
                 self.e.stop()
 
         def replay(addr):
-            nonlocal makes
             if self.irq_i == len(self.irqs):
                 return
             n = len(self.services)
+            if n != self.visit_n:  # executions of each poll point since the service event
+                self.visit_n, self.visits = n, {}
+            self.visits[addr] = self.visits.get(addr, 0) + 1
             svc, lab, hits, _ = self.irqs[self.irq_i]
-            if self.syms[lab] != addr:
-                return
-            if (n, lab) != self.visit_svc:  # executions of this poll point since the service
-                self.visit_svc, self.visits = (n, lab), 0
-            self.visits += 1
             if n > svc and not self.irq_lost:
                 self.irq_lost = f"reference irq #{self.irq_i} at {lab} svc={svc} hits={hits} " \
                                 f"not reached (service events {n})"
-            if n != svc or self.visits != hits + 1 or self.syms[lab] != addr:
+            if n != svc or self.syms[lab] != addr or self.visits[addr] != hits + 1:
                 return
-            while self.irq_i < len(self.irqs) and self.irqs[self.irq_i][:3] == (svc, lab, hits):
+            post_group(self.r("a7"))
+
+        def post_group(a7):
+            """Post the next interrupt of the reference's (svc, label, hits) group;
+            for the BIOS's handlers (instant) the whole group. One the guest
+            handles, the reference took the next of its group only after the IRET
+            back to the same poll point (rt_irq_back at this stack depth)."""
+            nonlocal makes
+            key = self.irqs[self.irq_i][:3]
+            while self.irq_i < len(self.irqs) and self.irqs[self.irq_i][:3] == key:
                 vector = self.irqs[self.irq_i][3]
+                guest = self.guest_vector(vector)
                 if vector == 9:
                     makes += 1
                     vector = 9 if makes % 2 else 0x89  # make, then the key's break
                 self.post(vector)
                 self.irq_i += 1
+                if guest:
+                    self.group = (key, a7 - 12)  # a7 at rt_irq_back: jsr rt_irq, movem d6-d7
+                    return
+            self.group = None
+
+        @U.CODE_CB
+        def back(h, addr, size, user):
+            try:
+                if self.group and self.irq_i < len(self.irqs) and \
+                        self.irqs[self.irq_i][:3] == self.group[0] and \
+                        self.r("a7") == self.group[1] and len(self.services) == self.group[0][0]:
+                    post_group(self.group[1] + 12)
+            except Exception as e:  # ctypes drops exceptions raised in hooks
+                self.irq_lost = f"interrupt replay: {e!r}"
+                self.halted = True
+                self.e.stop()
 
         # static hooks (Unicorn retranslates on every hook change)
         for a in {self.syms[t[0]] for t, _ in steps}:
             self.e.hook_range(U.HOOK_CODE, hit, a, a)
         for a in {self.syms[lab] for _, lab, _, _ in self.irqs}:
             self.e.hook_range(U.HOOK_CODE, poll, a, a)
+        self.e.hook_range(U.HOOK_CODE, back, self.syms["rt_irq_back"], self.syms["rt_irq_back"])
         self.e.reg_write(U.M68K["sr"], 0x2700)
         self.e.reg_write(U.M68K["a7"], STACK_TOP)
         self.halted = False
@@ -404,6 +435,11 @@ class Host:
         if err:
             print(f"unicorn error {U.uc.uc_strerror(err).decode()} pc={self.r('pc'):x}")
             self.exit = -1
+        if self.irq_i < len(self.irqs) and self.irqs[self.irq_i][0] < len(self.services) \
+                and not self.irq_lost:
+            svc, lab, hits, _ = self.irqs[self.irq_i]
+            self.irq_lost = f"reference irq #{self.irq_i} at {lab} svc={svc} hits={hits} " \
+                            f"not reached (service events {len(self.services)})"
 
 
 def trigger(spec: str) -> tuple[str, int, int]:
@@ -556,7 +592,7 @@ def check_capture(tag, regs, state, ram, dac, ref_regs, ref, snap, h) -> list[st
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--milestone", default="m1-mode13h")
-    ap.add_argument("--limit", type=int, default=200_000_000, help="68k instruction limit")
+    ap.add_argument("--limit", type=int, default=2_000_000_000, help="68k instruction limit")
     ap.add_argument("--amiga", type=Path, help="also check this A1200-model capture")
     ap.add_argument("--label", action="store_true", help="print the milestone's label and exit")
     ap.add_argument("--sabotage", action="store_true",

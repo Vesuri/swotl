@@ -33,6 +33,15 @@ def smc_regions() -> dict[str, list[tuple[int, int]]]:
     return out
 
 
+def smc_forms() -> dict[tuple[str, int, int], list[str]]:
+    """Cell forms (hex, `ww` = word read at run time) per self-modified region."""
+    out: dict[tuple[str, int, int], list[str]] = defaultdict(list)
+    for r in rows("self-modifying.csv"):
+        if r["kind"] == "form":
+            out[(r["module"], int(r["first"], 16), int(r["last"], 16))].append(r["form"])
+    return out
+
+
 def runtime_bytes(traces: list[Path]) -> dict[str, bytes]:
     """Module images as found in the first snapshot holding each self-modified region."""
     out = {}

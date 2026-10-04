@@ -1,4 +1,6 @@
-module,first,last,kind,writers,note
-SWOTL.EXE,0x06a4d,0x089fd,terminator,+4FF0/+4FFC +5132/+513D +52CE/+52DA +EBB5/+EBBE,RET (C3) written at an instruction start of the unrolled block; call dx into the block; original byte restored after the call
-SWOTL.EXE,0x06a4d,0x089fd,operand,+8FD5 +9030 +908E,word operands at stride 4 patched before each call
-SWOTL.EXE,0x06a4d,0x089fd,operand,+E5FD +E600 +E616 +E619 +E626 +E629 +E641,operand bytes and words of the unrolled templates rebuilt at setup (two copies: +6A51.. and +7D51..)
+module,first,last,kind,writers,form,note
+SWOTL.EXE,0x06a4d,0x089fd,form,+E5FD +E600 +E626 +E629 +E63E +E641,8887ww,mov byte [bx+w],al: setup (+E50E) with [2581]=1 copies the opcode word of +6A3F at stride 4; runs +6A4D and +7C3D ([2587] cells; reload; [2587] cells) and +758E and +877E ([2591] cells)
+SWOTL.EXE,0x06a4d,0x089fd,form,+E616 +E619,2e8b1eww2e8e1eww,mov bx/ds from cs:[w]: setup copies the 10 bytes of +6A43 after the first [2587] cells of runs +6A4D and +7C3D
+SWOTL.EXE,0x06a4d,0x089fd,form,+4FF0/+4FFC +5132/+513D +52CE/+52DA +EBB5/+EBBE,c3,ret: written at a cell start of a run before call dx into the run; original byte restored after the call
+SWOTL.EXE,0x06a4d,0x089fd,operand,+8FD5 +9030 +908E,,word w of the mov cells (stride 4; +10 over the reload) patched before the calls
+SWOTL.EXE,0x06a4d,0x089fd,variant,+E68D +E690 +E694 +E697 +E6AD +E6B0 +E6B4 +E6B7,,[2581]=0 (+3BDE: EGA and Tandy drivers only) builds 9-byte and/or cells (the file template); out of scope and not lowered: a walk meeting one stops

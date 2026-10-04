@@ -149,7 +149,7 @@ build/host/swotl.elf: $(HOST_OBJ)
 
 host: gen-check build/host/swotl.elf
 
-HOST_MILESTONES = m1-mode13h m1b-logo
+HOST_MILESTONES = m1-mode13h m1b-logo m2-choose-side
 AMIGA_MILESTONE ?= m1b-logo
 AMIGA_CAPTURE = tmp/amiga-$(AMIGA_MILESTONE)
 

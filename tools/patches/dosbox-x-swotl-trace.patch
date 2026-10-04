@@ -332,10 +332,10 @@ index e31e63f..fab8958 100644
 +libmisc_a_SOURCES = clipboard.cpp cross.cpp ethernet.cpp ethernet_pcap.cpp ethernet_slirp.cpp ethernet_ethnet.cpp ethernet_nothing.cpp messages.cpp programs.cpp setup.cpp support.cpp regionalloctracking.cpp savestates.cpp shiftjis.cpp iconvpp.cpp mkdir_p.cpp swotl_trace.cpp
 diff --git a/src/misc/swotl_trace.cpp b/src/misc/swotl_trace.cpp
 new file mode 100644
-index 0000000..3a0858c
+index 0000000..5d88c20
 --- /dev/null
 +++ b/src/misc/swotl_trace.cpp
-@@ -0,0 +1,737 @@
+@@ -0,0 +1,740 @@
 +/* SWOTL reference instrumentation (Secret Weapons of Luftwaffe port).
 + *
 + * Enabled by SWOTL_TRACE=1; armed at the first instruction of SWOTL.EXE
@@ -794,7 +794,10 @@ index 0000000..3a0858c
 +	const std::string dir = Path("snap-" + t.name);
 +	mkdir(dir.c_str(), 0755);
 +	const std::string prefix = "snap-" + t.name + "/";
-+	WriteFile(prefix + "ram.bin", MemBase, 0x100000);
++	/* the EMS page frame through its page handlers: the mapped pages */
++	std::vector<uint8_t> ram(MemBase, MemBase + 0x100000);
++	for (uint32_t a = 0xe0000; a < 0xf0000; ++a) ram[a] = mem_readb(a);
++	WriteFile(prefix + "ram.bin", ram.data(), ram.size());
 +	if (vga.mem.linear) WriteFile(prefix + "vram.bin", vga.mem.linear, vga.mem.memsize);
 +	uint8_t dac[768];
 +	for (int i = 0; i < 256; ++i) {

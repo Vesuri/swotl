@@ -47,7 +47,7 @@ root EXE + .OVL images (proved against DOSBox captures)
 7. Unresolved indirect control flow, writes to translated code and unknown
    ports/interrupts stop with a report. No interpreter fallback in release.
 
-## Target model (contract: translator-design.md; D8–D11, D16 open)
+## Target model (contract: translator-design.md; D8–D11 open)
 
 - Guest RAM: one contiguous block at a6, byte-exact little-endian, linear
   address `seg*16+off` with the reference load segment, so RAM images diff

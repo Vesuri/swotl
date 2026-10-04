@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from . import cfg, image
+from . import cfg, image, smc
 from .decode import Far, Rel
 from .flags import ALL, plan, transfer
 from .lower import Ctx, LowerError, hx
@@ -41,6 +41,10 @@ def label(mod: str, off: int) -> str:
 
 def smc_label(mod: str, off: int) -> str:
     return f"{TAG[mod]}_{off:05X}_smc"
+
+
+def walk_label(mod: str, first: int) -> str:
+    return f"{TAG[mod]}_{first:05X}_walk"
 
 
 def stop_label(mod: str, off: int) -> str:
@@ -85,6 +89,8 @@ class Program:
                       for r in image.rows("flags.csv")}
         int0 = [r for r in image.rows("runtime.csv") if r["name"] == "__cintDIV"]
         self.int0 = (int0[0]["module"], int(int0[0]["offset"], 16)) if int0 else None
+        # D16: self-modified regions, each lowered as one cell walk
+        self.smc_forms = image.smc_forms()
         self.build_edges()
         # D8 poll points: targets of backward branches in the same module
         # (loop heads); a pending hardware interrupt is taken there
@@ -271,6 +277,10 @@ class Program:
         return leaders
 
     # -- generation -------------------------------------------------------------
+    def region(self, mod: str, off: int) -> tuple[int, int] | None:
+        return next(((lo, hi) for m, lo, hi in self.smc_forms if m == mod and lo <= off <= hi),
+                    None)
+
     def dispatch_rows(self) -> list[tuple[int, int, int, str]]:
         """Run-time dispatch table: (link CS, IP, overlay id (root 0), label) of every
         decoded entry, sorted by CS:IP. Overlays sharing an area share CS:IP, so the
@@ -321,10 +331,11 @@ class Program:
             return stop_label(mod, off)
 
         far_map = {}
-        near_t, far_t = (), ()
+        near_t, far_t, smc_t = (), (), set()
         sw, tr = self.indirect.get((mod, off), ([], []))
         if i.op in ("jmp", "call") and not isinstance(i.operands[0], Rel):
-            near_t = tuple(self.units[m].ip_of(o) for m, o in sw + tr if m == mod)
+            near_t = tuple(u.ip_of(o) for m, o in sw + tr if m == mod and not self.region(m, o))
+            smc_t = {self.region(m, o) for m, o in sw + tr if m == mod and self.region(m, o)}
         if i.op in ("jmpf", "callf") and not isinstance(i.operands[0], Far):
             keys = []
             for m, o in sw + tr:
@@ -337,6 +348,8 @@ class Program:
         rel = frozenset(f - off for f in u.module.fixups if off <= f < off + i.size)
         return Ctx(cs=cs_expr(cs), label=label(mod, off), reloc=rel, near=near, far=far,
                    near_targets=near_t, complete=bool(sw), far_targets=far_t,
+                   smc_targets=tuple(sorted((u.ip_of(lo), u.ip_of(hi), walk_label(mod, lo))
+                                            for lo, hi in smc_t)),
                    manager=off in u.manager_calls, program=True)
 
     def runs(self, mod: str) -> list[list[int]]:
@@ -381,11 +394,16 @@ class Program:
                 if nxt not in u.insns:
                     lines.append(f"\tbra {smc_label(mod, nxt) if nxt in u.smc_entries else stop_label(mod, last)}")
         for off in sorted(u.smc_entries):
-            ip = u.ip_of(off)
+            lo, _ = self.region(mod, off)
             lines += [f"{smc_label(mod, off)}:\t; self-modified code (D16)",
-                      f"\tmove.l #{hx(ip)},d7", f"\tmove.l #{cs_expr(u.segment(off))},d6",
-                      "\tjmp rt_stop_unknown"]
-            stats["stop_unknown site"] += 1
+                      f"\tmove.l #{hx(u.ip_of(off))},d7", f"\tbra {walk_label(mod, lo)}"]
+        for (m, lo, hi), forms in sorted(self.smc_forms.items()):
+            if m == mod:
+                if u.ip_of(lo) > u.ip_of(hi) or u.segment(lo) != u.segment(hi):
+                    raise LowerError(f"{mod}+{lo:05X}: self-modified region crosses a segment")
+                lines += smc.walk(walk_label(mod, lo), cs_expr(u.segment(lo)), u.ip_of(lo),
+                                  u.ip_of(hi), forms)
+                stats["self-modified walk"] += 1
         stops = {w.strip("()") for x in lines for w in x.replace(",", " ").split()
                  if w.endswith("_stop")}
         for s in sorted(stops):

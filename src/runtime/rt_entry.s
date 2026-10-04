@@ -10,6 +10,7 @@ G_DS	equ	-16
 
 	xdef	rt_int
 	xdef	rt_irq
+	xdef	rt_irq_back
 	xdef	rt_exit
 	xdef	rt_exit_guest
 	xdef	rt_bios_int08
@@ -137,6 +138,7 @@ rt_irq:
 	beq	deliver_or_return
 	movem.l	d6-d7,-(a7)
 	bsr	deliver_or_return	; the guest handler, IRET checked
+rt_irq_back:				; back at the poll point (host run: next interrupt)
 	movem.l	(a7)+,d6-d7
 	tst.b	G_IRQ(a6)
 	bne.s	rt_irq			; more posted at this poll point

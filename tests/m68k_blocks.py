@@ -4,6 +4,10 @@ as `make gen` emits it (program mode: real labels, fused flags, liveness-elided
 stores, return checks, compare chains), run from traced block entries in
 Unicorn 68020 against the original bytes in Unicorn x86-16.
 
+Self-modified regions (D16): the cell walk runs from traced entries over the
+run-time bytes of every distinct snapshot image of the region, a RET planted
+a random number of cells on, against the same bytes in x86-16.
+
 A block runs from an executed leader to its first transfer (or the next
 leader). The 68k side stops at the first label outside the block or at a
 runtime entry. Compared: registers, segment registers, written bytes, OUT
@@ -27,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import m68k_diff as D  # noqa: E402
 import uc as U  # noqa: E402
 import x86_diff as X  # noqa: E402
-from translator import emit, image  # noqa: E402
+from translator import emit, image, smc  # noqa: E402
 from translator.decode import DecodeError  # noqa: E402
 from translator.interp import State, UndefinedFlag, step  # noqa: E402
 from translator.ir import FLAG_BIT, STATUS  # noqa: E402
@@ -50,6 +54,7 @@ def program_image(p: emit.Program, cache: Path) -> tuple[bytes, dict]:
         lines, _ = p.module_text(mod)
         body += lines
         order += [emit.label(mod, o) for o in sorted(p.units[mod].insns)]
+        order += [emit.walk_label(m, lo) for m, lo, _ in sorted(p.smc_forms) if m == mod]
     src = [equates()] + [f"{n}\tequ\t${a:x}" for n, a in STUB_AT.items()]
     src += [f"\torg\t${D.CODE:x}", "labels:"] + [f"\tdc.l\t{x}" for x in order]
     src += body + [HELPERS]
@@ -88,12 +93,101 @@ def blocks(p: emit.Program, executed: dict[str, set[int]]):
             yield mod, run
 
 
+def region_images(p: emit.Program) -> dict[tuple[str, int, int], list[bytes]]:
+    """Distinct snapshot bytes of each self-modified region (first .. last + 16)."""
+    out: dict[tuple[str, int, int], list[bytes]] = {k: [] for k in p.smc_forms}
+    for trace in M.runs():
+        for snap in sorted(trace.glob("snap-*")):
+            ram = (snap / "ram.bin").read_bytes()
+            for mod_, lo, hi in p.smc_forms:
+                for a, b, mod, off in M.residency(snap / "residency.csv"):
+                    if mod == mod_ and off <= lo and hi + 16 <= off + b - a:
+                        data = ram[a + lo - off:a + hi + 16 - off]
+                        if data not in out[(mod_, lo, hi)]:
+                            out[(mod_, lo, hi)].append(data)
+    return out
+
+
+def cells(data: bytes, start: int, forms: list[str]) -> list[str]:
+    """Forms of the cells from `start` up to (not including) the first RET or unknown."""
+    out, p = [], start
+    parsed = [(f, smc._parse(f)) for f in forms if f != "c3"]
+    while p < len(data) - 16:
+        for f, (code, fixed) in parsed:
+            if all(data[p + k] == code[k] for k in fixed):
+                out.append(f)
+                p += len(code)
+                break
+        else:
+            return out
+    return out
+
+
+def walks(p: emit.Program, h, m, addr, stop_names, cases: int) -> tuple[int, list[str]]:
+    count, bad = 0, []
+    for (mod, lo, hi), images in region_images(p).items():
+        u = p.units[mod]
+        cs = (LOADSEG + u.segment(lo)) & 0xFFFF
+        entries = sorted(o for o in u.smc_entries if lo <= o <= hi)
+        for data in images:
+            for _ in range(cases):
+                e = h.rng.choice(entries)
+                chain = cells(data, e - lo, p.smc_forms[(mod, lo, hi)])
+                k = h.rng.randrange(len(chain) + 1)
+                code = bytearray(data)
+                at = e - lo + sum(len(smc._parse(f)[0]) for f in chain[:k])
+                code[at] = 0xC3
+                n = sum(len(smc.FORMS[f][0]) for f in chain[:k]) + 1
+                ip = u.ip_of(e)
+                regs, flags, flagsx, _ = h.state({"regs": {"cs": cs}, "ip": ip})
+                ret_ip = h.rng.randrange(0x10000)
+                sp_lin = regs["ss"] * 16 + regs["sp"]
+                patches = [(sp_lin, ret_ip.to_bytes(2, "little")),
+                           (cs * 16 + u.ip_of(lo), bytes(code))]
+                case = (regs, flags, flagsx, ip, patches)
+                err, out, fl, umem, ints, outs, uwrites = h.oracle.run(case, n)
+                patched = {a: d[a - a0] for a0, d in patches for a in range(a0, a0 + len(d))}
+                umem = {a: umem.get(a, h.oracle.e.read(a, 1)[0]) for a in set(umem) | uwrites}
+                h.oracle.restore(uwrites | set(patched))
+                if uwrites & set(patched):
+                    continue  # stores over the cells or the return word
+                m.inside, m.extra_stops = set(), stop_names
+                mo, mf, mfx, mmem, mouts, mwrites, info = m.run(
+                    addr[emit.walk_label(mod, lo)], case, h.rng, init={"d7": ip})
+                diffs = []
+                if info["err"] or info["stop"] != "T_RET":
+                    diffs.append(f"stop {info['stop']} err {info['err']}")
+                if info["d7"] != out["ip"]:
+                    diffs.append(f"ip 68k={info['d7']:04x} x86={out['ip']:04x}")
+                for r in D.REGS:
+                    if mo[r] != out[r]:
+                        diffs.append(f"{r} 68k={mo[r]:x} x86={out[r]:04x}")
+                for sname in ("es", "ss", "ds"):
+                    if mo[sname] != out[sname]:
+                        diffs.append(f"{sname} 68k={mo[sname]:04x} x86={out[sname]:04x}")
+                for f in sorted(STATUS) + ["DF", "IF"]:
+                    if mf[f] != fl >> FLAG_BIT[f] & 1:
+                        diffs.append(f"{f} 68k={mf[f]} x86={fl >> FLAG_BIT[f] & 1}")
+                for a in sorted(set(umem) | mwrites):
+                    want = umem.get(a, patched.get(a, h.bg[a]))
+                    got = mmem.get(a, m.e.read(D.GUEST + a, 1)[0])
+                    if got != want:
+                        diffs.append(f"mem {a:05x} 68k={got:02x} x86={want:02x}")
+                        break
+                count += 1
+                if diffs:
+                    bad.append(f"{mod}+{e:05X} walk of {k} cells: {'; '.join(diffs[:6])}")
+                m.restore(set(mwrites) | set(patched))
+    return count, bad
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--blocks", type=int, default=0, help="sample size (0: every block)")
     ap.add_argument("--states", type=int, default=2)
     ap.add_argument("--only", default="", help="MODULE+offset of one block (prints its code)")
+    ap.add_argument("--walks", type=int, default=40, help="walk cases per region image")
     args = ap.parse_args(argv)
     p = emit.Program()
     mods = image.load()
@@ -126,6 +220,7 @@ def main(argv=None) -> int:
     m.load(img)
     reloc = {name: relocated(mods[name]) for name in p.units}
     count, bad, skipped, exits = Counter(), [], Counter(), Counter()
+    walks_at = {emit.walk_label(mo, lo) for mo, lo, _ in p.smc_forms}
     for mod, run in picks:
         u = p.units[mod]
         data = reloc[mod]
@@ -217,6 +312,10 @@ def main(argv=None) -> int:
                 exits[stop] += 1
                 if exc is None or info["d6"] != exc:
                     diffs.append(f"vector 68k={info['d6']} x86={exc}")
+            elif stop in walks_at:  # call into a self-modified region (D16)
+                mip, mcs = info["d7"], cs
+                live = set(STATUS)
+                exits["walk"] += 1
             elif stop == "rt_stop_unknown":
                 mip, mcs = info["d7"], cs
                 exits["stop"] += 1
@@ -280,6 +379,10 @@ def main(argv=None) -> int:
                 st = " ".join(f"{k}={v:04x}" for k, v in regs.items())
                 bad.append(f"{mod}+{run[0]:05X}..{run[-1]:05X} [{st}]: {'; '.join(diffs[:6])}")
             m.restore(set(mwrites) | set(patched))
+    if not args.only:
+        n, wbad = walks(p, h, m, addr, stop_names, args.walks)
+        count["walks"] += n
+        bad += wbad
     total = sum(v for k, v in count.items() if k != "return checks")
     print(f"blocks {len(picks)} of {len(allb)} executed; cases {total}", dict(count))
     print("exits", dict(exits))
