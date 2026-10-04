@@ -19,9 +19,10 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
 
 ## Translator
 
-14. Path past m2-choose-side: m3–m7 on the host run (m2: ~5 min in
-    `make test-host`); mouse input; Amiga keyboard input; the D16 cell walk
-    is a per-cell form match (perf: specialise once the shape is fixed).
+14. Past the milestones: the host run matches m1–m7 (`make test-host-all`).
+    Next: mouse input, Amiga keyboard input, the A1200 model past m1b-logo;
+    the D16 cell walk is a per-cell form match (perf: specialise once the
+    shape is fixed); find-first gives platform files no DOS time/date.
 14a. Display presents only at mode/DAC sets (`plat_present`, Intuition
     screen while the OS serves dos.library); frames drawn without a DAC
     change need a periodic present, and D9's framework (copper) display
@@ -32,7 +33,7 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
 16. Lookup-table policy with no Fast RAM (tables are Chip reads).
 24. Lockstep RAM compare (phase 6): undefined flags and FLAGS words pushed
     below SP (PUSHF, interrupt frames) differ from DOSBox by design. The host
-    run masks dead stack (below SS:SP at a service, not rewritten by the
+    run masks dead stack (below SS:SP at a service or hardware interrupt, not rewritten by the
     guest); decide whether lockstep needs more (dead flag bits in pushed
     images under the remaining `annotations/flags.csv` pair).
 25. `Swotl.exe` is 3.7 MB: elf2hunk keeps the symbols of ~140K generated

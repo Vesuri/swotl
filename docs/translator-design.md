@@ -122,7 +122,8 @@ diffs directly); relocated words in instructions are emitted as
   compared where live at the successor reached; calls also run the return
   protocol (right IP reaches the return site, wrong IP `rt_ret_mismatch`).
 - Host run (`make test-host`, gate 5): `build/host/swotl.elf` on Unicorn
-  68020 from the MZ entry to milestones m1 and m1b-logo; every software
+  68020 from the MZ entry to milestones m1–m3 (`make test-host-all`: m1–m7,
+  ~25 min); every software
   INT's registers at entry and return vs the tracer's service log; registers
   and RAM (environment MCB to A0000h) vs the snapshot, dead stack masked
   (below SS:SP at a service, and the FLAGS image of an `annotations/flags.csv`

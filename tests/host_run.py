@@ -9,7 +9,7 @@ Checked against the DOSBox-X reference run of that milestone
   registers at entry and at return (the tracer's svc/svc_ret events);
 - at the milestone label: guest registers and guest RAM (COMPARE ranges);
   dead stack is masked: bytes in the DEAD_STACK window below SS:SP at a
-  service call that the guest did not write afterwards (DOSBox-X's own code
+  service call or hardware interrupt that the guest did not write afterwards (DOSBox-X's own code
   and the interrupt frame's FLAGS word leave other values there, open-work 24),
   and the FLAGS images of annotations/flags.csv PUSHFs until rewritten;
 - every machine byte outside COMPARE that generated code read holds the
@@ -60,6 +60,7 @@ COMPARE = [(0x07C90, 0xA0000)]
 FRAME = (0xA0000, 0xB0000)
 REGS = ("ax", "cx", "dx", "bx", "sp", "bp", "si", "di")
 DEAD_STACK = 0x60
+TABLE = REPO / "reference/milestones.csv"  # --table: another table in that format
 POLLS = REPO / "build/gen/poll-points.csv"
 
 
@@ -149,7 +150,7 @@ class Host:
         self.services: list[tuple[str, dict]] = []
         self.stopped_at: str | None = None
         self.stubs = {self.syms[n]: n for n in ("plat_open", "plat_read", "plat_seek",
-                                                "plat_close", "plat_timer_rate", "plat_present", "plat_log",
+                                                "plat_close", "plat_dir_entry", "plat_timer_rate", "plat_present", "plat_log",
                                                 "plat_exit")}
         self.presents = 0
 
@@ -191,6 +192,17 @@ class Host:
 
         a = self.syms["rt_int"]
         e.hook_range(U.HOOK_CODE, int_entry, a, a)
+
+        # Hardware interrupts: the reference's BIOS handlers (and the INT frame)
+        # use the interrupted stack, ours run in C; the window below SS:SP is dead.
+        @U.CODE_CB
+        def irq_entry(h, addr, size, user):
+            g = self.guest_regs(0)
+            top = g["ss"] * 16 + g["sp"]
+            self.masked.update(range(top - DEAD_STACK, top))
+
+        for n in ("rt_irq", "rt_bios_int08"):
+            e.hook_range(U.HOOK_CODE, irq_entry, self.syms[n], self.syms[n])
 
         # memory watch from the guest entry on (rt_start's own writes are not watched)
         self.in_service = False
@@ -275,13 +287,22 @@ class Host:
 
     def platform(self, n: str) -> None:
         sp = self.r("a7")
-        args = struct.unpack(">III", self.mem(sp + 4, 12))
+        args = struct.unpack(">IIII", self.mem(sp + 4, 16))
         res = 0
-        if n == "plat_open":
+        if n in ("plat_open", "plat_dir_entry"):
             path = self.root
-            for part in self.cstr(args[0]).split("/"):
+            for part in filter(None, self.cstr(args[0]).split("/")):
                 matches = [p for p in path.iterdir() if p.name.upper() == part] if path.is_dir() else []
                 path = matches[0] if matches else self.root / "\0"
+        if n == "plat_dir_entry":
+            entries = sorted(p for p in path.iterdir() if p.is_file() and len(p.name) <= 12) \
+                if path.is_dir() else []
+            if args[1] < len(entries):
+                f = entries[args[1]]
+                self.e.write(args[2], f.name.encode() + b"\0")
+                self.e.write(args[3], struct.pack(">I", f.stat().st_size))
+                res = 1
+        elif n == "plat_open":
             if path.is_file():
                 self.files[self.next_file] = path.open("rb")
                 res, self.next_file = self.next_file, self.next_file + 1
@@ -453,7 +474,7 @@ def milestone_script(name: str) -> dict:
     """reference/milestones.csv row: the run stops at the last snapshot trigger;
     keys are pressed in order, each counted from the previous key's release
     (the tracer's rules); the frame is compared at vga_mode 13."""
-    rows = {r["name"]: r for r in csv.DictReader((REPO / "reference/milestones.csv").open())}
+    rows = {r["name"]: r for r in csv.DictReader(TABLE.open())}
     r = rows[name]
     keys = []
     for k in filter(None, r["keys"].split(";")):
@@ -595,9 +616,13 @@ def main(argv=None) -> int:
     ap.add_argument("--limit", type=int, default=2_000_000_000, help="68k instruction limit")
     ap.add_argument("--amiga", type=Path, help="also check this A1200-model capture")
     ap.add_argument("--label", action="store_true", help="print the milestone's label and exit")
+    ap.add_argument("--table", type=Path, help="milestone table (default reference/milestones.csv)")
     ap.add_argument("--sabotage", action="store_true",
                     help="each planted runtime fault (SABOTAGE) must fail the check")
     args = ap.parse_args(argv)
+    if args.table:
+        global TABLE
+        TABLE = args.table.resolve()
     if args.label:
         print(milestone_script(args.milestone)["snapshots"][-1][0])
         return 0
@@ -624,7 +649,7 @@ def check(milestone: str, limit: int, amiga: Path | None, sabotage: str | None) 
     script = milestone_script(args.milestone)
     frame = script["frame"]
     trace = REPO / f"tmp/pc-runs/ref-{args.milestone}/trace"
-    snap = trace / f"snap-{args.milestone}-0"
+    snap = trace / f"snap-{args.milestone}-{len(script['snapshots']) - 1}"  # where the run stops
     h = Host(image.M.REF, sabotage)
     label = script["snapshots"][-1][0]
     script["irqs"], script["releases"] = reference_inputs(trace)

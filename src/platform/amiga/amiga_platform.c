@@ -73,6 +73,37 @@ void plat_close(int32_t handle)
     files[handle] = 0;
 }
 
+int32_t plat_dir_entry(const char *dir, uint32_t index, char *name, uint32_t *size)
+{
+    int32_t found = 0;
+    BPTR lock = Lock((CONST_STRPTR)dir, ACCESS_READ);
+    struct FileInfoBlock *fib = AllocDosObject(DOS_FIB, 0);
+    if (lock && fib && Examine(lock, fib)) {
+        while (ExNext(lock, fib)) {
+            int k = 0;
+            while (fib->fib_FileName[k] && k <= 12) {
+                ++k;
+            }
+            if (fib->fib_DirEntryType < 0 && k <= 12 && index-- == 0) {  /* longer: not 8.3 */
+                for (k = 0; fib->fib_FileName[k]; ++k) {
+                    name[k] = fib->fib_FileName[k];
+                }
+                name[k] = 0;
+                *size = (uint32_t)fib->fib_Size;
+                found = 1;
+                break;
+            }
+        }
+    }
+    if (fib) {
+        FreeDosObject(DOS_FIB, fib);
+    }
+    if (lock) {
+        UnLock(lock);
+    }
+    return found;
+}
+
 static void close_screen(void)
 {
     if (amiga_screen) {

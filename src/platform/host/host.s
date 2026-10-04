@@ -7,6 +7,7 @@
 	xdef	plat_read
 	xdef	plat_seek
 	xdef	plat_close
+	xdef	plat_dir_entry
 	xdef	plat_timer_rate
 	xdef	plat_present
 	xdef	plat_log
@@ -29,6 +30,8 @@ plat_read:	nop
 plat_seek:	nop
 	rts
 plat_close:	nop
+	rts
+plat_dir_entry:	nop
 	rts
 plat_timer_rate:	nop
 	rts

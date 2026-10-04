@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards host test-host test-amiga amiga smoke clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards host test-host test-host-all test-amiga amiga smoke clean
 
 PYTHON ?= python3
 REFERENCE_ROOT ?= tmp/pc-root
@@ -30,7 +30,8 @@ help:
 	@echo "  make test               lint, decoder, x86/68020/block differentials, guards, gen-check, host run"
 	@echo "  make test-sabotage      planted IR/decoder/runtime faults must fail the differentials and host run"
 	@echo "  make host               link generated program + runtime for Unicorn 68020 -> build/host/swotl.elf"
-	@echo "  make test-host          run it from the MZ entry to milestones m1 and m1b-logo against the reference"
+	@echo "  make test-host          run it from the MZ entry to milestones m1-m3 against the reference"
+	@echo "  make test-host-all      the same to every milestone, m1-m7 (~25 min)"
 	@echo "  make test-amiga         m1b-logo on the A1200 model (FS-UAE + GDB capture, amiga/milestone.gdb.in)"
 	@echo "  make amiga   build amiga/out/Swotl.exe"
 	@echo "  make smoke   boot it under FS-UAE + GDB and check the takeover runs"
@@ -149,12 +150,16 @@ build/host/swotl.elf: $(HOST_OBJ)
 
 host: gen-check build/host/swotl.elf
 
-HOST_MILESTONES = m1-mode13h m1b-logo m2-choose-side
+HOST_MILESTONES = m1-mode13h m1b-logo m2-choose-side m3-demo-flight
+HOST_MILESTONES_ALL = $(HOST_MILESTONES) m4-demo-frames m5-player-flight m6-film-room m7-campaign
 AMIGA_MILESTONE ?= m1b-logo
 AMIGA_CAPTURE = tmp/amiga-$(AMIGA_MILESTONE)
 
 test-host: host
 	@set -e; for m in $(HOST_MILESTONES); do $(PYTHON) tests/host_run.py --milestone $$m; done
+
+test-host-all: host
+	@set -e; for m in $(HOST_MILESTONES_ALL); do $(PYTHON) tests/host_run.py --milestone $$m; done
 
 test-amiga: amiga host
 	@mkdir -p $(AMIGA_CAPTURE)

@@ -9,6 +9,8 @@
 #define FIRST_FILE_SFT 3        /* reference: SFT 0-2 are AUX, CON, PRN */
 
 static int32_t file_of_sft[FILES];   /* platform handle per SFT entry, -1 free */
+static uint16_t dta_seg, dta_off = 0x80;  /* AH=1Ah; reference: PSP:80h at start */
+static char find_dir[80];            /* directory of the last find-first */
 
 uint16_t rt_psp(void)
 {
@@ -17,6 +19,7 @@ uint16_t rt_psp(void)
 
 void rt_dos_init(void)
 {
+    dta_seg = rt_psp();
     for (int k = 0; k < FILES; ++k) {
         file_of_sft[k] = -1;
     }
@@ -297,6 +300,140 @@ static void read_char(uint16_t cs, uint16_t ip)
     }
 }
 
+/* DTA as the reference's DOSBox-X lays it out (DOS_DTA): search state, then
+ * the found entry. */
+#define DTA_DRIVE 0x00
+#define DTA_SPNAME 0x01     /* the pattern's name part as written, 8 bytes */
+#define DTA_SPEXT 0x09      /* its extension, 3 bytes */
+#define DTA_SATTR 0x0c
+#define DTA_NEXT 0x0d       /* reference dirID; here the next platform entry */
+#define DTA_ATTR 0x15
+#define DTA_TIME 0x16
+#define DTA_DATE 0x18
+#define DTA_SIZE 0x1a
+#define DTA_NAME 0x1e
+
+/* "NAME.EXT" (or a pattern field pair) -> 11-char FCB form, '*' as '?' fill */
+static int fcb_form(const char *name, int n, const char *ext, int e, char out[11])
+{
+    for (int k = 0, j = 0; k < 8; ++k) {
+        char c = j < n ? name[j] : ' ';
+        if (c == '*') {
+            c = '?';
+        } else {
+            ++j;
+        }
+        out[k] = c;
+    }
+    for (int k = 0, j = 0; k < 3; ++k) {
+        char c = j < e ? ext[j] : ' ';
+        if (c == '*') {
+            c = '?';
+        } else {
+            ++j;
+        }
+        out[8 + k] = c;
+    }
+    return n <= 8 && e <= 3;
+}
+
+static int field_len(uint32_t a, int max)
+{
+    int n = 0;
+    while (n < max && rd8(a + n)) {
+        ++n;
+    }
+    return n;
+}
+
+/* Search from the DTA's state: the next platform entry matching its pattern. */
+static int find_next_entry(void)
+{
+    uint32_t dta = lin(dta_seg, dta_off);
+    char pat[11], fcb[11], spname[8], spext[3], name[16];
+    for (int k = 0; k < 8; ++k) {
+        spname[k] = (char)rd8(dta + DTA_SPNAME + k);
+    }
+    for (int k = 0; k < 3; ++k) {
+        spext[k] = (char)rd8(dta + DTA_SPEXT + k);
+    }
+    fcb_form(spname, field_len(dta + DTA_SPNAME, 8), spext, field_len(dta + DTA_SPEXT, 3), pat);
+    uint32_t size;
+    for (uint16_t index = rd16(dta + DTA_NEXT); plat_dir_entry(find_dir, index, name, &size);
+         ++index) {
+        int n = 0;
+        for (; name[n]; ++n) {
+            name[n] = name[n] >= 'a' && name[n] <= 'z' ? (char)(name[n] - 32) : name[n];
+        }
+        const char *dot = 0;
+        for (int k = 0; k < n; ++k) {
+            dot = name[k] == '.' ? name + k : dot;
+        }
+        int base = dot ? (int)(dot - name) : n, ext = dot ? n - base - 1 : 0;
+        if (!fcb_form(name, base, dot ? dot + 1 : "", ext, fcb)) {
+            continue;  /* not an 8.3 name: DOS cannot see it */
+        }
+        int match = 1;
+        for (int k = 0; k < 11; ++k) {
+            match &= pat[k] == '?' || pat[k] == fcb[k];
+        }
+        if (!match) {
+            continue;
+        }
+        wr16(dta + DTA_NEXT, index + 1);
+        wr8(dta + DTA_ATTR, 0x20);  /* archive, as AH=43h */
+        wr16(dta + DTA_TIME, 0);    /* platform files carry no DOS time */
+        wr16(dta + DTA_DATE, 0);
+        wr16(dta + DTA_SIZE, (uint16_t)size);
+        wr16(dta + DTA_SIZE + 2, (uint16_t)(size >> 16));
+        for (int k = 0; k <= n; ++k) {
+            wr8(dta + DTA_NAME + k, (uint8_t)name[k]);
+        }
+        rt_r.ax = 0;  /* reference: undocumented AX=0 */
+        set_cf(0);
+        return 1;
+    }
+    fail(0x12);  /* no more files */
+    return 0;
+}
+
+/* AH=4Eh: the reference's SetupSearch (raw pattern fields), then the search. */
+static void find_first(uint16_t cs, uint16_t ip)
+{
+    char path[80];
+    path_of(lin(G_DS, rt_r.dx), path, sizeof path);
+    if (AL(rt_r.cx) & 0x08) {
+        rt_unsupported("find first of a volume label", 0x21, cs, ip);
+    }
+    int slash = -1;
+    for (int k = 0; path[k]; ++k) {
+        slash = path[k] == '/' ? k : slash;
+    }
+    for (int k = 0; k < slash; ++k) {
+        find_dir[k] = path[k];
+    }
+    find_dir[slash < 0 ? 0 : slash] = 0;
+    const char *pattern = path + slash + 1;
+    uint32_t dta = lin(dta_seg, dta_off);
+    for (int k = 0; k < 11; ++k) {
+        wr8(dta + DTA_SPNAME + k, 0);
+    }
+    wr8(dta + DTA_DRIVE, 2);  /* C: */
+    wr8(dta + DTA_SATTR, AL(rt_r.cx));
+    int n = 0;
+    while (pattern[n] && pattern[n] != '.') {
+        ++n;
+    }
+    for (int k = 0; k < n && k < 8; ++k) {
+        wr8(dta + DTA_SPNAME + k, (uint8_t)pattern[k]);
+    }
+    for (int k = 0; pattern[n] && pattern[n + 1 + k] && k < 3; ++k) {
+        wr8(dta + DTA_SPEXT + k, (uint8_t)pattern[n + 1 + k]);
+    }
+    wr16(dta + DTA_NEXT, 0);
+    find_next_entry();
+}
+
 void rt_int21(uint16_t cs, uint16_t ip)
 {
     uint8_t ah = AH(rt_r.ax);
@@ -310,6 +447,10 @@ void rt_int21(uint16_t cs, uint16_t ip)
     case 0x08: read_char(cs, ip); break;
     case 0x0b:  /* CON input status */
         SET_AL(rt_r.ax, rt_key_available() ? 0xff : 0x00);
+        break;
+    case 0x1a:
+        dta_seg = G_DS;
+        dta_off = rt_r.dx;
         break;
     case 0x1b:  /* reference: allocation info of drive C: */
         SET_AL(rt_r.ax, 0x40);
@@ -343,6 +484,8 @@ void rt_int21(uint16_t cs, uint16_t ip)
     case 0x44: ioctl(cs, ip); break;
     case 0x48: allocate(); break;
     case 0x4a: resize(cs, ip); break;
+    case 0x4e: find_first(cs, ip); break;
+    case 0x4f: find_next_entry(); break;
     case 0x4c:
         rt_log_hex("SWOTL_EXIT", AL(rt_r.ax));
         plat_exit(AL(rt_r.ax));

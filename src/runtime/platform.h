@@ -1,4 +1,4 @@
-/* Platform services the runtime needs: read-only data files, the timer, the
+/* Platform services the runtime needs: read-only data files and their directory, the timer, the
  * display of the mode 13h frame, a log line and exit. Implemented by src/platform/host (Unicorn harness) and
  * src/platform/amiga (dos.library). */
 #ifndef SWOTL_PLATFORM_H
@@ -12,6 +12,10 @@ int32_t plat_read(int32_t handle, void *buffer, uint32_t length);
 /* whence 0 start, 1 current, 2 end; returns the new position, < 0 on error */
 int32_t plat_seek(int32_t handle, int32_t offset, int32_t whence);
 void plat_close(int32_t handle);
+/* Entry `index` (0 first) of the files in directory `dir` (game-relative as
+ * above, "" the game directory): name (up to 12 chars + NUL, case as stored)
+ * and size; 0 past the last. */
+int32_t plat_dir_entry(const char *dir, uint32_t index, char *name, uint32_t *size);
 /* PIT channel 0 now fires every `divisor` input clocks (1..65536, 1193182 Hz):
  * per period the platform posts vector 08h (runtime.h rt_irq_ring). */
 void plat_timer_rate(uint32_t divisor);
