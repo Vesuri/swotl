@@ -121,8 +121,10 @@ class Engine:
         check(uc.uc_ctl(self.h, CTL_TB_REMOVE_CACHE | (2 << 26) | (1 << 30),
                         C.c_uint64(begin), C.c_uint64(end)), "uc_ctl tb remove cache")
 
-    def start(self, begin: int, until: int, count: int = 0) -> int:
-        return uc.uc_emu_start(self.h, begin, until, 0, count)
+    def start(self, begin: int, until: int, count: int = 0, timeout_us: int = 0) -> int:
+        """A count makes Unicorn hook every instruction (several times slower);
+        prefer a timeout for long runs."""
+        return uc.uc_emu_start(self.h, begin, until, timeout_us, count)
 
     def stop(self) -> None:
         uc.uc_emu_stop(self.h)

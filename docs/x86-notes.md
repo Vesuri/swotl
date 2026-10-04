@@ -182,6 +182,9 @@ probed on this host):
 | `REP` string right after a flag setter in one translation block recomputes OF/AF wrongly (e.g. `add cx,3636h; rep movsb` clears OF) | one instruction per `uc_emu_start` |
 | `RETF` at SP ≥ `FFFDh` reads CS at `SS:SP+2` without 16-bit wrap (Intel/DOSBox wrap) | counted as an oracle deviation, not compared |
 | Self-overwriting `REP` refetches the modified instruction | case discarded |
+| A store into the 4 KiB page of the executing instruction makes QEMU restart it; stopped after one instruction it has not run (IP unchanged, no store) | counted as an oracle deviation (only when IP did not move) |
+| Software `INT n` on an exception vector (0, 1, 5, 6, 8, 13) goes through QEMU's exception path (intno indistinguishable from the fault, sometimes `UC_ERR_EXCEPTION`) | counted as an oracle deviation, not compared |
+| A `count` to `uc_emu_start` hooks every instruction (the m2 host run 291 s vs 43 s) | long runs stop on a timeout |
 | Capstone prints `notrack` for `3Eh`-prefixed `call/jmp`, `cdq`/`cwde` for `CWD`/`CBW` in 16-bit mode | normalised in `tests/test_decode.py` |
 
 ## Interrupts [K] unless tagged

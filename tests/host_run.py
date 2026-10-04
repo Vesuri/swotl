@@ -19,7 +19,7 @@ With --amiga DIR, the same checks run on the A1200 model's capture
 this host run's dead-stack set, and the shown frame (plane0-7.bin, bytes per
 row in regs.txt, colours.bin = LoadRGB32 table) decodes to the reference
 framebuffer and DAC. --label prints a milestone's label for the fixture.
-Exit 1 on any difference, a runtime stop or an instruction limit.
+Exit 1 on any difference, a runtime stop or the time limit.
 """
 
 from __future__ import annotations
@@ -352,7 +352,7 @@ class Host:
         self.e.write(self.syms["rt_key_ring"] + 2 * (tail % 16), struct.pack(">H", key))
         self.e.write(self.syms["rt_key_tail"], bytes([(tail + 1) & 0xFF]))
 
-    def run(self, script: dict | None, limit: int) -> None:
+    def run(self, script: dict | None, timeout: int) -> None:
         """Run to the script's last snapshot trigger (None: until a stop).
         Hardware interrupts replay the reference's (script["irqs"]): posted at
         the same visit of the same poll point after the same service event;
@@ -452,7 +452,7 @@ class Host:
         self.e.reg_write(U.M68K["sr"], 0x2700)
         self.e.reg_write(U.M68K["a7"], STACK_TOP)
         self.halted = False
-        err = self.e.start(self.entry, 0xFFFFFFFF, limit)
+        err = self.e.start(self.entry, 0xFFFFFFFF, timeout_us=timeout * 1_000_000)
         if err:
             print(f"unicorn error {U.uc.uc_strerror(err).decode()} pc={self.r('pc'):x}")
             self.exit = -1
@@ -613,7 +613,7 @@ def check_capture(tag, regs, state, ram, dac, ref_regs, ref, snap, h) -> list[st
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--milestone", default="m1-mode13h")
-    ap.add_argument("--limit", type=int, default=2_000_000_000, help="68k instruction limit")
+    ap.add_argument("--timeout", type=int, default=600, help="seconds of emulation before failing")
     ap.add_argument("--amiga", type=Path, help="also check this A1200-model capture")
     ap.add_argument("--label", action="store_true", help="print the milestone's label and exit")
     ap.add_argument("--table", type=Path, help="milestone table (default reference/milestones.csv)")
@@ -629,23 +629,23 @@ def main(argv=None) -> int:
     if args.sabotage:
         missed = []
         for name, what in SABOTAGE.items():
-            problems = check(args.milestone, args.limit, None, name)
+            problems = check(args.milestone, args.timeout, None, name)
             print(f"sabotage {name:5} ({what}): {len(problems)} problems")
             if not problems:
                 missed.append(name)
         print("not caught: " + ", ".join(missed) if missed else "all sabotages caught")
         return 1 if missed else 0
-    problems = check(args.milestone, args.limit, args.amiga, None)
+    problems = check(args.milestone, args.timeout, args.amiga, None)
     for p in problems:
         print(p)
     print(f"host run to {args.milestone}: {'ok' if not problems else 'FAIL'}")
     return 1 if problems else 0
 
 
-def check(milestone: str, limit: int, amiga: Path | None, sabotage: str | None) -> list[str]:
+def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None) -> list[str]:
     class args:  # noqa: N801
         pass
-    args.milestone, args.limit, args.amiga = milestone, limit, amiga
+    args.milestone, args.timeout, args.amiga = milestone, timeout, amiga
     script = milestone_script(args.milestone)
     frame = script["frame"]
     trace = REPO / f"tmp/pc-runs/ref-{args.milestone}/trace"
@@ -657,7 +657,7 @@ def check(milestone: str, limit: int, amiga: Path | None, sabotage: str | None) 
     problems = []
     if int(summary.get("polls", "0"), 16) != fnv(POLLS.read_bytes()):
         problems.append("reference recorded with other poll points: rerun make reference")
-    h.run(script, args.limit)
+    h.run(script, args.timeout)
     if h.irq_lost:
         problems.append(h.irq_lost)
     print(f"hardware interrupts: {h.irq_i} replayed, {len(script['irqs'])} in the reference")

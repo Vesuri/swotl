@@ -249,6 +249,10 @@ class Harness(X.Harness):
             self.skipped["writes its own code"] += 1
             self.oracle.restore(uwrites | {a for a, d in patches for a in range(a, a + len(d))})
             return
+        if X.restarted(cs * 16 + ip, len(code), s.writes, ip, out, ints):
+            self.skipped["oracle: store into its code's page restarts it"] += 1
+            self.oracle.restore(uwrites | {a for a, d in patches for a in range(a, a + len(d))})
+            return
         why = X.oracle_deviation(code, regs) if n == 1 else None
         if why:
             self.skipped[f"oracle: {why}"] += 1

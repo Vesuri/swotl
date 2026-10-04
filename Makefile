@@ -31,7 +31,7 @@ help:
 	@echo "  make test-sabotage      planted IR/decoder/runtime faults must fail the differentials and host run"
 	@echo "  make host               link generated program + runtime for Unicorn 68020 -> build/host/swotl.elf"
 	@echo "  make test-host          run it from the MZ entry to milestones m1-m3 against the reference"
-	@echo "  make test-host-all      the same to every milestone, m1-m7 (~25 min)"
+	@echo "  make test-host-all      the same to every milestone, m1-m7 (~2 min)"
 	@echo "  make test-amiga         m1b-logo on the A1200 model (FS-UAE + GDB capture, amiga/milestone.gdb.in)"
 	@echo "  make amiga   build amiga/out/Swotl.exe"
 	@echo "  make smoke   boot it under FS-UAE + GDB and check the takeover runs"
@@ -99,10 +99,8 @@ test-decode:
 test-x86:
 	$(PYTHON) tests/x86_diff.py
 
-test-sabotage:
-	$(PYTHON) tests/x86_sabotage.py
-	$(PYTHON) tests/m68k_sabotage.py
-	$(PYTHON) tests/host_run.py --sabotage --milestone m1b-logo
+test-sabotage: host
+	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host
 
 test-m68k:
 	$(PYTHON) tests/m68k_diff.py
@@ -113,7 +111,41 @@ test-blocks:
 test-guards: gen
 	$(PYTHON) tests/test_guards.py
 
-test: lint test-decode test-x86 test-m68k test-blocks test-guards gen-check test-host
+# Checks run in parallel after the one writer of build/gen (gen-check) and the
+# host image; each logs to tmp/test/<name>.log and prints one status line.
+JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc)
+RUN = @mkdir -p tmp/test; if $(2) > tmp/test/$(1).log 2>&1; then echo "ok    $(1)"; \
+	else echo "FAIL  $(1) (tmp/test/$(1).log)"; tail -n 15 tmp/test/$(1).log; exit 1; fi
+SHARDS = forms.0/4 forms.1/4 forms.2/4 forms.3/4 space.0/1 boundary.0/1 blocks.0/1
+TESTS = t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
+	t-blocks t-guards $(HOST_MILESTONES:%=t-host-%)
+
+test: host
+	@$(MAKE) -s -k -j$(JOBS) $(TESTS)
+
+t-lint:
+	$(call RUN,lint,$(PYTHON) -m translator.check lint)
+t-decode:
+	$(call RUN,decode,$(PYTHON) tests/test_decode.py)
+# t-x86-<corpus>.<k>-of-<n>: one shard of a differential corpus
+CORPUS = $(word 1,$(subst ., ,$*))
+SHARD = $(subst -of-,/,$(word 2,$(subst ., ,$*)))
+t-x86-%:
+	$(call RUN,x86-$*,$(PYTHON) tests/x86_diff.py --only $(CORPUS) --shard $(SHARD))
+t-m68k-%:
+	$(call RUN,m68k-$*,$(PYTHON) tests/m68k_diff.py --only $(CORPUS) --shard $(SHARD))
+t-blocks:
+	$(call RUN,blocks,$(PYTHON) tests/m68k_blocks.py)
+t-guards:
+	$(call RUN,guards,$(PYTHON) tests/test_guards.py)
+t-host-%:
+	$(call RUN,host-$*,$(PYTHON) tests/host_run.py --milestone $*)
+t-sab-x86:
+	$(call RUN,sabotage-x86,$(PYTHON) tests/x86_sabotage.py)
+t-sab-m68k:
+	$(call RUN,sabotage-m68k,$(PYTHON) tests/m68k_sabotage.py)
+t-sab-host:
+	$(call RUN,sabotage-host,$(PYTHON) tests/host_run.py --sabotage --milestone m1b-logo)
 
 # Host image: the generated program and the runtime for tests/host_run.py.
 CROSS    = $(HOME)/.local/opt/bin/m68k-amiga-elf-
@@ -156,10 +188,10 @@ AMIGA_MILESTONE ?= m1b-logo
 AMIGA_CAPTURE = tmp/amiga-$(AMIGA_MILESTONE)
 
 test-host: host
-	@set -e; for m in $(HOST_MILESTONES); do $(PYTHON) tests/host_run.py --milestone $$m; done
+	@$(MAKE) -s -k -j$(JOBS) $(HOST_MILESTONES:%=t-host-%)
 
 test-host-all: host
-	@set -e; for m in $(HOST_MILESTONES_ALL); do $(PYTHON) tests/host_run.py --milestone $$m; done
+	@$(MAKE) -s -k -j$(JOBS) $(HOST_MILESTONES_ALL:%=t-host-%)
 
 test-amiga: amiga host
 	@mkdir -p $(AMIGA_CAPTURE)

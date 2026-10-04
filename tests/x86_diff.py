@@ -57,7 +57,17 @@ def oracle_deviation(code: bytes, regs: dict) -> str | None:
         k += 1
     if code[k] in (0xCA, 0xCB) and regs["sp"] >= 0xFFFD:
         return "retf CS read at SS:SP+2 without 16-bit SP wrap"
+    if code[k] == 0xCD and k + 1 < len(code) and code[k + 1] in EXCEPTIONS:
+        return "int n on an exception vector (QEMU's exception path)"
     return None
+
+
+def restarted(code_lo: int, size: int, writes: set, ip: int, out: dict, ints: list) -> bool:
+    """QEMU restarts an instruction that stores into the page of its own code
+    (self-modifying-code check); stopped after one instruction, the oracle
+    then has not executed it: IP unchanged, no store, no interrupt."""
+    pages = {a >> 12 for a in range(code_lo, code_lo + size)}
+    return out["ip"] == ip and not ints and any(a >> 12 in pages for a in writes)
 
 
 def port_value(port: int, size: int) -> int:
@@ -232,6 +242,10 @@ class Harness:
             self.skipped["writes its own code"] += 1  # QEMU refetches; the CPU would not
             self.reset(patches, s.writes, uwrites)
             return
+        if restarted(cs * 16 + ip, len(code), s.writes, ip, out, ints):
+            self.skipped["oracle: store into its code's page restarts it"] += 1
+            self.reset(patches, s.writes, uwrites)
+            return
         why = oracle_deviation(code, regs) if n == 1 else None
         if why:
             self.skipped[f"oracle: {why}"] += 1
@@ -387,7 +401,14 @@ def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Har
     ap.add_argument("--space", type=int, default=48, help="random encodings per opcode byte")
     ap.add_argument("--blocks", type=int, default=4000)
     ap.add_argument("--only", default="", help="comma list of corpora: forms,space,boundary,blocks")
+    ap.add_argument("--shard", default="0/1", help="K/N: only the forms, opcode bytes and blocks "
+                    "whose index is K mod N (make test runs shards in parallel)")
     args = ap.parse_args(argv)
+    shard, shards = map(int, args.shard.split("/"))
+
+    def mine(index: int) -> bool:
+        return index % shards == shard
+
     only = set(args.only.split(",")) if args.only else {"forms", "space", "boundary", "blocks"}
     h = (harness or Harness)(args.seed)
     mods = image.load()
@@ -398,7 +419,9 @@ def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Har
             for off, n in sorted(u.insns.items()):
                 if n.op != "hlt":
                     forms[form_key(n)].append(n.raw)
-        for key in sorted(forms, key=str):
+        for index, key in enumerate(sorted(forms, key=str)):
+            if not mine(index):
+                continue
             samples = forms[key]
             picks = h.rng.sample(samples, min(4, len(samples)))
             for raw in picks:
@@ -408,7 +431,7 @@ def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Har
             print(f"forms {len(forms)}")
     if "space" in only:
         for first in range(256):
-            if first in UNSUPPORTED:
+            if first in UNSUPPORTED or not mine(first):
                 continue
             for _ in range(args.space):
                 raw = bytes([first]) + bytes(h.rng.randrange(256) for _ in range(7))
@@ -419,11 +442,13 @@ def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Har
                 if n.op == "hlt":
                     continue
                 h.case(raw[:n.size], f"s:{n.op}{n.width or ''}")
-    if "boundary" in only:
+    if "boundary" in only and shard == 0:
         boundary(h)
     if "blocks" in only:
         starts = [(name, off) for name, u in units.items() for off in u.insns]
-        for _ in range(args.blocks):
+        for index in range(args.blocks):
+            if not mine(index):
+                continue
             name, off = h.rng.choice(starts)
             u, data = units[name], mods[name].data
             want = h.rng.randrange(2, 9)
