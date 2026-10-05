@@ -59,6 +59,11 @@ Emulator driving: [headless-fsuae.md](headless-fsuae.md). Process rules:
   self-time by address; needs code in the first hunk; no breakpoints in the window.
   Not inclusive timings; moving code changes attribution, so whole-frame timing
   is the performance measure. (Vette `docs/development.md` §Original-code gameplay profile.)
+- **SWOTL**: `tools/profile_report.py CAPTURE ELF [--count LABEL]` decodes a
+  `monitor profile N "" FILE` capture (gdb fixture, no breakpoints in the
+  window) to class, module, guest routine/instruction (generated labels) and
+  runtime shares; records without a PC are code outside the first hunk and
+  ROM (today the Kalms c2p in hunk `code`).
 - **Phase brackets** (beam stamps) for shares; mandatory sanity lines printed
   each run: accounted ≈100%, body ticks/field ≈1. Use a monotonic epoch, not
   `beam − beam` (wrap drops the longest phases). (Revs `perf-method.md` L68–114, §Lessons — measurement.)

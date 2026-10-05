@@ -36,6 +36,17 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     (tears; no double buffer) on an Intuition screen while the OS serves
     dos.library; D9's framework (copper) display needs file I/O that
     survives the takeover.
+14b. Speed (68020 + Fast, demo flight, first profile; plan doc pending).
+    Reference: one drawn frame per 9 PIT ticks (~36 ms, ~28 fps; host-run
+    census of m4-demo-frames). 68020 model: demo flight starts at frame
+    4438; a 100-field window had 4 `FLT_15E82` calls and no mouse poll or
+    RTSVGA update (rendered-frame rate not yet measured). Shares: c2p ~61%
+    (~870K cycles per present, every 5th field, whole screen), generated
+    code 20% (~13 cycles per guest instruction), runtime 10% (interrupt
+    delivery ~5.5%), Kickstart 7%. All A0000h writes in m2, m4, m6, m7 come
+    from ~13 RTSVGA instructions; RTSVGA already copies only changed words
+    (m4: ~300 bytes, median 6 rows per frame), so dirty rows at those
+    writers would remove most c2p work. m5 census not yet run.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/
     `divu.l`, unaligned word/long, `ror.w #8` swap) to replace [arch]
     guesses in `m68k-optimisation.md`.
