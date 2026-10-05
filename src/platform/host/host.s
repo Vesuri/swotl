@@ -12,6 +12,7 @@
 	xdef	plat_close
 	xdef	plat_dir_entry
 	xdef	plat_timer_rate
+	xdef	plat_mouse
 	xdef	plat_present
 	xdef	plat_log
 	xdef	plat_exit
@@ -43,6 +44,8 @@ plat_close:	nop
 plat_dir_entry:	nop
 	rts
 plat_timer_rate:	nop
+	rts
+plat_mouse:	nop
 	rts
 plat_present:	nop
 	rts

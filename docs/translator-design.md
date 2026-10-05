@@ -153,11 +153,16 @@ check, read by the sweep), `data.csv` (ranges),
   words like `48E0`/`xxF0` in the buffer, which DOS AH=08h converts as its
   CON device over INT 16h AH=10h);
   a guest handler's `jmp far` to F000:FEA5 is the BIOS tick plus IRET
-  (`rt_bios_int08`). The platform posts vectors to `rt_irq_ring` (08h tick,
+  (`rt_bios_int08`). INT 33h is DOSBox-X's driver with the mouse captured
+  (8/16 mickeys per 8 pixels, 640x200, mode 13h X even) over `plat_mouse`
+  counts, the Amiga's raw input.device mouse events. The platform posts vectors to `rt_irq_ring` (08h tick,
   09h/89h key make/break): Amiga a CIA-B timer per PIT period
   (`plat_timer_rate`) and an input.device handler (raw key -> scan code,
-  events swallowed; diagnostic argument `KEYS=frame:key,...` writes keys
-  into input.device, `SWOTL_ARGS` in `amiga/debug.sh`); host run the reference's `irq` events, replayed at the
+  events swallowed; diagnostic argument `KEYS=when:key,...` writes keys,
+  `lmb`/`rmb` and `mx±N`/`my±N` into input.device at a frame or `pN`, N
+  guest mouse reads after the previous step (host load moves frame
+  timings), and `shot`/`quit` call `amiga_script_mark` for a gdb fixture;
+  `SWOTL_ARGS` in `amiga/debug.sh`); host run the reference's `irq` events, replayed at the
   same visit of the same poll point after the same service event, one of a
   same-visit group per return of the guest handler to that poll point (the
   reference takes interrupts only at poll points, `build/gen/poll-points.csv`;

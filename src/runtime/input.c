@@ -1,6 +1,7 @@
 /* Keyboard and mouse as the reference machine presents them: the BIOS
  * keyboard buffer (filled by the BIOS INT 09h handler, which the game leaves
  * in place), INT 16h and the INT 33h driver (docs/external-surface.md). */
+#include "platform.h"
 #include "runtime.h"
 
 /* Keyboard events from the platform: PC set 1 scan code, bit 7 break,
@@ -10,6 +11,7 @@ volatile uint16_t rt_key_ring[RT_KEY_RING];
 volatile uint8_t rt_key_tail;
 static uint8_t key_head;
 
+#define BDA_MODE 0x449
 #define BDA_SHIFT 0x417
 #define BDA_HEAD 0x41a
 #define BDA_TAIL 0x41c
@@ -273,27 +275,56 @@ void rt_int16(void)
     }
 }
 
-/* Mouse: reference driver, 3 buttons, centre of the 640x200 range after a
- * reset; no motion is ever reported (no mouse input on the target yet). */
-static uint16_t mouse_x = 320, mouse_y = 100;
+/* Mouse: DOSBox-X's INT 33h with the mouse captured. Ranges 0-639 and 0-199
+ * in text mode 3 and mode 13h; a reset centres the pointer and sets 8 and 16
+ * mickeys per 8 pixels, so one host count moves the pointer one unit and the
+ * vertical motion counter two. Position reads mask to the mode's cell (8x8
+ * in text, 2 horizontally in mode 13h). The platform's counts are taken at
+ * each call, so clamping sees their sum rather than each event. */
+static int16_t mouse_x = 320, mouse_y = 100;
+static int16_t mickey_x, mickey_y;
+static uint8_t mouse_buttons;
+
+static int16_t clamp(int32_t v, int16_t max)
+{
+    return v < 0 ? 0 : v > max ? max : (int16_t)v;
+}
+
+static void mouse_poll(void)
+{
+    int32_t dx, dy;
+    mouse_buttons = (uint8_t)plat_mouse(&dx, &dy);
+    mouse_x = clamp(mouse_x + dx, 639);
+    mouse_y = clamp(mouse_y + dy, 199);
+    mickey_x = (int16_t)(mickey_x + dx);
+    mickey_y = (int16_t)(mickey_y + 2 * dy);
+}
 
 void rt_int33(void)
 {
+    mouse_poll();
     switch (rt_r.ax) {
     case 0x0000:  /* reset */
         rt_r.ax = 0xffff;
         rt_r.bx = 3;
         mouse_x = 320;
         mouse_y = 100;
+        mickey_x = mickey_y = 0;
         break;
     case 0x0003:  /* position and buttons */
-        rt_r.bx = 0;
-        rt_r.cx = mouse_x;
-        rt_r.dx = mouse_y;
+        rt_r.bx = mouse_buttons;
+        if (rd8(BDA_MODE) == 0x13) {
+            rt_r.cx = (uint16_t)mouse_x & 0xfffe;
+            rt_r.dx = (uint16_t)mouse_y;
+        } else {
+            rt_r.cx = (uint16_t)mouse_x & 0xfff8;
+            rt_r.dx = (uint16_t)mouse_y & 0xfff8;
+        }
         break;
     case 0x000b:  /* motion since last call */
-        rt_r.cx = 0;
-        rt_r.dx = 0;
+        rt_r.cx = (uint16_t)mickey_x;
+        rt_r.dx = (uint16_t)mickey_y;
+        mickey_x = mickey_y = 0;
         break;
     default:
         rt_unsupported("mouse function", 0x33, 0, 0);

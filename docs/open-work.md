@@ -23,8 +23,11 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     (`make test-host-all`; files the guest writes stay in memory there);
     the A1200 model (68030) runs the attract demo for minutes unattended,
     checked only at m1b-logo (it runs on wall-clock time, not replayed).
-    With `KEYS=` the model goes from the logo through the menus into flight.
-    Next: mouse input; the D16 cell walk is a per-cell form match (perf:
+    With `KEYS=` the model goes from the logo through the menus into flight
+    and moves and clicks the menu pointer. INT 33h motion and buttons are
+    transcribed from DOSBox-X but untested: no reference has mouse input
+    (needs scripted motion in the DOSBox-X mouse patch). Next: the D16
+    cell walk is a per-cell form match (perf:
     specialise once the shape is fixed); find-first gives platform files
     no DOS time/date; table targets added by
     `annotations/tables.csv` that no reference run executed are checked by

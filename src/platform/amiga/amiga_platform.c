@@ -315,9 +315,48 @@ static void post_key(uint16_t ev)
     Enable();
 }
 
+/* Mouse counts and buttons since plat_mouse last took them (input.device task). */
+static int32_t mouse_dx, mouse_dy;
+static uint32_t mouse_buttons;
+static ULONG mouse_reads;    /* plat_mouse calls: the guest's INT 33h requests */
+
+static void mouse_event(const struct InputEvent *e)
+{
+    static const UBYTE bit[3] = {1, 2, 4};  /* IECODE_LBUTTON, RBUTTON, MBUTTON */
+    UWORD code = e->ie_Code & ~IECODE_UP_PREFIX;
+    if (e->ie_Qualifier & IEQUALIFIER_RELATIVEMOUSE) {
+        mouse_dx += e->ie_X;
+        mouse_dy += e->ie_Y;
+    }
+    if (code >= IECODE_LBUTTON && code <= IECODE_MBUTTON) {
+        if (e->ie_Code & IECODE_UP_PREFIX) {
+            mouse_buttons &= ~(uint32_t)bit[code - IECODE_LBUTTON];
+        } else {
+            mouse_buttons |= bit[code - IECODE_LBUTTON];
+        }
+    }
+}
+
+uint32_t plat_mouse(int32_t *dx, int32_t *dy)
+{
+    Disable();
+    *dx = mouse_dx;
+    *dy = mouse_dy;
+    mouse_dx = mouse_dy = 0;
+    uint32_t buttons = mouse_buttons;
+    Enable();
+    ++mouse_reads;
+    return buttons;
+}
+
 struct InputEvent *amiga_input(struct InputEvent *events)
 {
     for (struct InputEvent *e = events; e; e = e->ie_NextEvent) {
+        if (e->ie_Class == IECLASS_RAWMOUSE) {
+            mouse_event(e);
+            e->ie_Class = IECLASS_NULL;
+            continue;
+        }
         if (e->ie_Class != IECLASS_RAWKEY) {
             continue;
         }
@@ -348,7 +387,7 @@ static void input_open(void)
     }
     input_interrupt.is_Node.ln_Type = NT_INTERRUPT;
     input_interrupt.is_Node.ln_Pri = 100;
-    input_interrupt.is_Node.ln_Name = (char *)"SWOTL keyboard";
+    input_interrupt.is_Node.ln_Name = (char *)"SWOTL input";
     input_interrupt.is_Code = amiga_input_stub;
     input_io->io_Command = IND_ADDHANDLER;
     input_io->io_Data = &input_interrupt;
@@ -375,19 +414,36 @@ static void input_close(void)
     }
 }
 
-/* Diagnostic key script (argument KEYS=frame:key,...; frames from the start,
- * keys a-z 0-9 enter esc space or $hex raw codes): written into input.device
+/* Diagnostic key script (argument KEYS=when:key,...; when is a frame from
+ * the start, or pN: N guest mouse reads after the previous step, which waits
+ * for a screen that is polling rather than for a time the host load moves;
+ * keys a-z 0-9 enter esc space or $hex raw codes, mouse buttons lmb rmb,
+ * mouse motion mx+N mx-N my+N my-N counts; shot and quit call
+ * amiga_script_mark for a debugger fixture): written into input.device
  * from the main task at each present, so it takes the handler path above;
- * each key is released 5 frames after it is pressed. */
+ * a key is released 5 frames after it is pressed, a button once the guest
+ * has also read the mouse twice (buttons are polled levels, keys reach the
+ * BIOS buffer). */
 static const char *key_script = 0;
 static ULONG key_up_frame = 0;
+static ULONG key_up_reads = 0;
+static ULONG step_reads = 0;    /* mouse_reads at the previous step */
 static UWORD key_up_code = 0;
+static UBYTE key_up_class = 0;
 
-static void write_raw(UWORD code)
+void __attribute__((noinline)) amiga_script_mark(int quit)
+{
+    __asm__ volatile("" : : "r"(quit) : "memory");
+}
+
+static void write_event(UBYTE class, UWORD code, WORD x, WORD y)
 {
     struct InputEvent e = {0};
-    e.ie_Class = IECLASS_RAWKEY;
+    e.ie_Class = class;
     e.ie_Code = code;
+    e.ie_Qualifier = class == IECLASS_RAWMOUSE ? IEQUALIFIER_RELATIVEMOUSE : 0;
+    e.ie_X = x;
+    e.ie_Y = y;
     input_io->io_Command = IND_WRITEEVENT;
     input_io->io_Data = &e;
     input_io->io_Length = sizeof e;
@@ -435,34 +491,59 @@ static void key_script_step(void)
     if (!input_added) {
         return;
     }
-    if (key_up_code && amiga_frames >= key_up_frame) {
-        write_raw(key_up_code | IECODE_UP_PREFIX);
+    if (key_up_code && amiga_frames >= key_up_frame && mouse_reads >= key_up_reads) {
+        write_event(key_up_class, key_up_code | IECODE_UP_PREFIX, 0, 0);
         key_up_code = 0;
     }
     if (!key_script || *key_script <= ' ' || key_up_code) {
         return;
     }
-    ULONG frame = 0;
+    ULONG when = 0;
     const char *p = key_script;
+    int reads = *p == 'p';
+    p += reads;
     while (*p >= '0' && *p <= '9') {
-        frame = frame * 10 + (ULONG)(*p++ - '0');
+        when = when * 10 + (ULONG)(*p++ - '0');
     }
-    if (amiga_frames < frame) {
+    if (reads ? mouse_reads - step_reads < when : amiga_frames < when) {
         return;
     }
+    step_reads = mouse_reads;
     const char *name = *p == ':' ? ++p : p;
     while (*p > ' ' && *p != ',') {
         ++p;
     }
-    int raw = raw_of(name, (int)(p - name));
+    int n = (int)(p - name);
     key_script = *p == ',' ? p + 1 : p;
+    if (n > 3 && name[0] == 'm' && (name[1] == 'x' || name[1] == 'y') &&
+        (name[2] == '+' || name[2] == '-')) {
+        WORD v = 0;
+        for (int k = 3; k < n; ++k) {
+            v = (WORD)(v * 10 + name[k] - '0');
+        }
+        v = name[2] == '-' ? (WORD)-v : v;
+        write_event(IECLASS_RAWMOUSE, IECODE_NOBUTTON, name[1] == 'x' ? v : 0, name[1] == 'y' ? v : 0);
+        return;
+    }
+    if (named(name, n, "shot") || named(name, n, "quit")) {
+        amiga_script_mark(name[0] == 'q');
+        return;
+    }
+    UBYTE class = IECLASS_RAWKEY;
+    int raw = raw_of(name, n);
+    if (named(name, n, "lmb") || named(name, n, "rmb")) {
+        class = IECLASS_RAWMOUSE;
+        raw = name[0] == 'l' ? IECODE_LBUTTON : IECODE_RBUTTON;
+    }
     if (raw < 0) {
         plat_log("SWOTL KEYS: unknown key");
         return;
     }
-    write_raw((UWORD)raw);
+    write_event(class, (UWORD)raw, 0, 0);
     key_up_code = (UWORD)raw;
+    key_up_class = class;
     key_up_frame = amiga_frames + 5;
+    key_up_reads = mouse_reads + (class == IECLASS_RAWMOUSE ? 2 : 0);
 }
 
 void plat_log(const char *line)

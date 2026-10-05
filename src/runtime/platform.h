@@ -1,5 +1,5 @@
 /* Platform services the runtime needs: the game's files and their directory, the timer, the
- * display of the mode 13h frame, a log line and exit. Implemented by src/platform/host (Unicorn harness) and
+ * mouse, the display of the mode 13h frame, a log line and exit. Implemented by src/platform/host (Unicorn harness) and
  * src/platform/amiga (dos.library). */
 #ifndef SWOTL_PLATFORM_H
 #define SWOTL_PLATFORM_H
@@ -27,6 +27,9 @@ int32_t plat_dir_entry(const char *dir, uint32_t index, char *name, uint32_t *si
  * per period the platform posts vector 08h (runtime.h rt_irq_ring). */
 void plat_timer_rate(uint32_t divisor);
 /* Show the 320x200 chunky frame with its DAC (256 x 6-bit R, G, B). */
+/* Mouse counts since the last call (right and down positive) and the
+ * buttons held (bit 0 left, 1 right, 2 middle). */
+uint32_t plat_mouse(int32_t *dx, int32_t *dy);
 void plat_present(const uint8_t *frame, const uint8_t *dac);
 void plat_log(const char *line);
 void plat_exit(int32_t code) __attribute__((noreturn));

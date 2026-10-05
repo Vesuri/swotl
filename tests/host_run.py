@@ -183,7 +183,7 @@ class Host:
         self.stopped_at: str | None = None
         self.stubs = {self.syms[n]: n for n in ("plat_open", "plat_create", "plat_read", "plat_write",
                                                 "plat_delete", "plat_seek",
-                                                "plat_close", "plat_dir_entry", "plat_timer_rate", "plat_present", "plat_log",
+                                                "plat_close", "plat_dir_entry", "plat_timer_rate", "plat_mouse", "plat_present", "plat_log",
                                                 "plat_exit")}
         self.presents = 0
 
@@ -379,6 +379,9 @@ class Host:
             res = f.seek(off, args[2])
         elif n == "plat_close":
             self.files.pop(args[0]).close()
+        elif n == "plat_mouse":  # the reference's mouse never moves (DOSBox-X, not captured)
+            self.e.write(args[0], bytes(4))
+            self.e.write(args[1], bytes(4))
         elif n == "plat_present":
             self.presents += 1
             if self.sabotage == "dac":
