@@ -21,7 +21,7 @@ RUN="$FSUAE_RUN"; DH0="$RUN/dh0"; DH1="$RUN/dh1"; GDBHOME="$RUN/gdbhome"
 mkdir -p "$DH0/c" "$DH0/s" "$DH1" "$RUN/state" "$GDBHOME"
 # Do not simplify to `dh1:Swotl`: with the path form gdb resolves symbols
 # against the wrong base and no breakpoint is ever hit (Rescue on Fractalus).
-printf 'C:SetPatch QUIET\ncd dh1:\nSwotl\n' > "$DH0/s/startup-sequence"
+printf 'C:SetPatch QUIET\ncd dh1:\nSwotl %s\n' "${SWOTL_ARGS:-}" > "$DH0/s/startup-sequence"
 cp -f "$SETPATCH" "$DH0/c/SetPatch"
 cp -f out/Swotl.exe "$DH1/Swotl"
 # The game's own data files next to the executable (local only, never committed).

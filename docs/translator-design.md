@@ -146,11 +146,17 @@ check, read by the sweep), `data.csv` (ranges),
   all block leaders, so live flags are in the state block): `tst.b G_IRQ(a6)`
   then `rt_irq` (d6 = CS << 16, d7 = IP). With guest IF set posted interrupts
   run in order: a guest handler (`annotations/entries.csv`) on a pushed
-  frame, else the BIOS one (INT 09h stores a key, INT 08h ticks);
+  frame, else the BIOS one (INT 08h ticks; INT 09h takes the next
+  `rt_key_ring` event, a set 1 scan code with break bit and E0 flag, as
+  DOSBox-X's IRQ1 handler does: its scan-code table, shift and lock flags,
+  words like `48E0`/`xxF0` in the buffer, which DOS AH=08h converts as its
+  CON device over INT 16h AH=10h);
   a guest handler's `jmp far` to F000:FEA5 is the BIOS tick plus IRET
   (`rt_bios_int08`). The platform posts vectors to `rt_irq_ring` (08h tick,
   09h/89h key make/break): Amiga a CIA-B timer per PIT period
-  (`plat_timer_rate`); host run the reference's `irq` events, replayed at the
+  (`plat_timer_rate`) and an input.device handler (raw key -> scan code,
+  events swallowed; diagnostic argument `KEYS=frame:key,...` writes keys
+  into input.device, `SWOTL_ARGS` in `amiga/debug.sh`); host run the reference's `irq` events, replayed at the
   same visit of the same poll point after the same service event, one of a
   same-visit group per return of the guest handler to that poll point (the
   reference takes interrupts only at poll points, `build/gen/poll-points.csv`;

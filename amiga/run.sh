@@ -20,7 +20,7 @@ SETPATCH="${SETPATCH:-../tmp/SetPatch}"
 RUN="$FSUAE_RUN"; DH0="$RUN/dh0"; DH1="$RUN/dh1"
 mkdir -p "$DH0/c" "$DH0/s" "$DH1" "$RUN/state"
 # The `cd` form is load-bearing for the GDB harnesses; keep both scripts alike.
-printf 'C:SetPatch QUIET\ncd dh1:\nSwotl\n' > "$DH0/s/startup-sequence"
+printf 'C:SetPatch QUIET\ncd dh1:\nSwotl %s\n' "${SWOTL_ARGS:-}" > "$DH0/s/startup-sequence"
 cp -f "$SETPATCH" "$DH0/c/SetPatch"
 cp -f "$EXE" "$DH1/Swotl"
 rsync -a --exclude '*.pdf' ../ref/ "$DH1/"

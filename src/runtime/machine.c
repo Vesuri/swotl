@@ -275,9 +275,7 @@ uint32_t rt_irq_c(uint32_t d6, uint32_t ip)
             return deliver(vector, cs, (uint16_t)ip);
         }
         if (vector == 9) {
-            if (irq == 9) {
-                rt_keyboard_irq();  /* BIOS INT 09h: the make code's key */
-            }
+            rt_keyboard_irq();      /* BIOS INT 09h: the next keyboard event */
             continue;
         }
         if (vector != 8 || rd16(8 * 4) != BIOS_INT08_OFF || rd16(8 * 4 + 2) != BIOS_INT08_SEG) {

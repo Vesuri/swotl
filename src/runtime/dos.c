@@ -281,7 +281,9 @@ static void get_time(void)
     SET_AL(rt_r.ax, 0);
 }
 
-/* AH=08h: CON input, no echo; an extended key gives 0 then its scan code. */
+/* AH=08h: CON input, no echo, as the reference's CON device reads INT 16h
+ * AH=10h: an F0h low byte reads as 0; a 0 or E0h low byte gives 0, then the
+ * scan code. */
 static void read_char(uint16_t cs, uint16_t ip)
 {
     static uint8_t scan_next;
@@ -294,9 +296,13 @@ static void read_char(uint16_t cs, uint16_t ip)
         rt_unsupported("console read with no key buffered", 0x21, cs, ip);
     }
     uint16_t key = rt_key_take();
-    SET_AL(rt_r.ax, key);
-    if (!(uint8_t)key) {
-        scan_next = (uint8_t)(key >> 8);
+    uint8_t c = (uint8_t)key, scan = (uint8_t)(key >> 8);
+    if (scan && (c == 0xf0 || c == 0xe0)) {
+        c = 0;
+    }
+    SET_AL(rt_r.ax, c);
+    if (!c) {
+        scan_next = scan;
     }
 }
 

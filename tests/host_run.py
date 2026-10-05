@@ -50,6 +50,7 @@ KEYS = {"enter": 0x1C0D, "esc": 0x011B, "space": 0x3920, "tab": 0x0F09, "backspa
                                              list(range(0x10, 0x1A)) + list(range(0x1E, 0x27))
                                              + list(range(0x2C, 0x33)))},
         **{str(k): (k + 1) << 8 | ord(str(k)) for k in range(1, 10)}, "0": 0x0B30}
+GREY = {KEYS[k] for k in ("up", "down", "left", "right")}  # E0-prefixed (DOSBox KBD_up..)
 KEY_HOLD = 600_000  # tracer: x86 instructions from key down to key up
 # Compared guest RAM: the DOS arena from the environment MCB to the top of
 # conventional memory; below it are IVT/BIOS/DOS internals the runtime models
@@ -348,9 +349,13 @@ class Host:
         return psp * 16 <= seg * 16 + off < top * 16
 
     def press(self, key: int) -> None:
-        tail = self.mem(self.syms["rt_key_tail"], 1)[0]
-        self.e.write(self.syms["rt_key_ring"] + 2 * (tail % 16), struct.pack(">H", key))
-        self.e.write(self.syms["rt_key_tail"], bytes([(tail + 1) & 0xFF]))
+        """The key's make and break scan codes (runtime.h rt_key_ring); the
+        runtime's BIOS INT 09h model stores the word at the make interrupt."""
+        scan = key >> 8 | (0x100 if key in GREY else 0)
+        for ev in (scan, scan | 0x80):
+            tail = self.mem(self.syms["rt_key_tail"], 1)[0]
+            self.e.write(self.syms["rt_key_ring"] + 2 * (tail % 16), struct.pack(">H", ev))
+            self.e.write(self.syms["rt_key_tail"], bytes([(tail + 1) & 0xFF]))
 
     def run(self, script: dict | None, timeout: int) -> None:
         """Run to the script's last snapshot trigger (None: until a stop).

@@ -93,9 +93,10 @@ extern volatile uint8_t rt_irq_ring[RT_IRQ_RING];
 extern volatile uint8_t rt_irq_tail;
 void rt_bios_int08(void);
 
-/* input.c: the platform appends keys (scan << 8 | ASCII); each 09h make
- * interrupt stores one into the BIOS buffer */
+/* input.c: the platform appends keyboard events (PC set 1 scan code, bit 7
+ * break, RT_KEY_E0 for E0-prefixed keys), one per 09h interrupt it posts */
 #define RT_KEY_RING 16
+#define RT_KEY_E0 0x100
 extern volatile uint16_t rt_key_ring[RT_KEY_RING];
 extern volatile uint8_t rt_key_tail;
 void rt_input_init(void);

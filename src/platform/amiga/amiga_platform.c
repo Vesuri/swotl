@@ -14,6 +14,8 @@
 #include <intuition/screens.h>
 #include <hardware/cia.h>
 #include <hardware/intbits.h>
+#include <devices/input.h>
+#include <devices/inputevent.h>
 #include <resources/cia.h>
 #include "runtime.h"
 #include "platform.h"
@@ -50,6 +52,7 @@ static void c2p(const void *chunky, struct BitMap *bitmap)
 }
 
 int32_t amiga_guest_call(void *stack_top);
+static void key_script_step(void);
 
 int32_t plat_open(const char *path)
 {
@@ -129,6 +132,7 @@ static void close_screen(void)
  * frame, the DAC's 6-bit guns are widened to 32 bits for LoadRGB32. */
 void plat_present(const uint8_t *frame, const uint8_t *dac)
 {
+    key_script_step();
     if (!amiga_screen) {
         if (!IntuitionBase || !GfxBase) {
             return;
@@ -254,6 +258,188 @@ static void vblank_close(void)
     }
 }
 
+/* Keyboard (input.c): an input.device handler ahead of Intuition turns raw
+ * keys into PC set 1 scan codes (US positions; RT_KEY_E0 for the grey keys)
+ * and posts them as 09h/89h; the events are swallowed. Caps Lock reports its
+ * lock state, so both edges are a PC make and break (one toggle each). */
+#define E0 RT_KEY_E0
+static const uint16_t raw_to_scan[0x68] = {
+    /* 00 */ 0x29, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x2b, 0, 0x52,
+    /* 10 */ 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0, 0x4f, 0x50, 0x51,
+    /* 20 */ 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0, 0, 0x4b, 0x4c, 0x4d,
+    /* 30 */ 0, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0, 0x53, 0x47, 0x48, 0x49,
+    /* 40 */ 0x39, 0x0e, 0x0f, E0 | 0x1c, 0x1c, 0x01, E0 | 0x53, 0, 0, 0, 0x4a, 0,
+             E0 | 0x48, E0 | 0x50, E0 | 0x4d, E0 | 0x4b,
+    /* 50 */ 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, E0 | 0x35, 0x37, 0x4e, 0,
+    /* 60 */ 0x2a, 0x36, 0x3a, 0x1d, 0x38, E0 | 0x38, 0, 0,
+};
+static struct MsgPort *input_port = 0;
+static struct IOStdReq *input_io = 0;
+static struct Interrupt input_interrupt;
+static int input_added = 0;
+void amiga_input_stub(void);
+
+static void post_key(uint16_t ev)
+{
+    Disable();                      /* rt_irq_ring is shared with the CIA tick */
+    rt_key_ring[rt_key_tail % RT_KEY_RING] = ev;
+    ++rt_key_tail;
+    rt_irq_ring[rt_irq_tail % RT_IRQ_RING] = ev & 0x80 ? 0x89 : 0x09;
+    ++rt_irq_tail;
+    G_IRQ = 1;
+    Enable();
+}
+
+struct InputEvent *amiga_input(struct InputEvent *events)
+{
+    for (struct InputEvent *e = events; e; e = e->ie_NextEvent) {
+        if (e->ie_Class != IECLASS_RAWKEY) {
+            continue;
+        }
+        UWORD raw = e->ie_Code & 0x7f, up = e->ie_Code & IECODE_UP_PREFIX;
+        uint16_t scan = raw < sizeof raw_to_scan / sizeof raw_to_scan[0] ? raw_to_scan[raw] : 0;
+        if (scan == 0x3a) {
+            post_key(scan);
+            post_key(scan | 0x80);
+        } else if (scan) {
+            post_key(up ? scan | 0x80 : scan);
+        }
+        e->ie_Class = IECLASS_NULL;
+    }
+    return events;
+}
+
+static void input_open(void)
+{
+    input_port = CreateMsgPort();
+    input_io = input_port ? (struct IOStdReq *)CreateIORequest(input_port, sizeof(struct IOStdReq)) : 0;
+    if (!input_io || OpenDevice((CONST_STRPTR)"input.device", 0, (struct IORequest *)input_io, 0)) {
+        plat_log("SWOTL no input.device");
+        if (input_io) {
+            DeleteIORequest((struct IORequest *)input_io);
+            input_io = 0;
+        }
+        return;
+    }
+    input_interrupt.is_Node.ln_Type = NT_INTERRUPT;
+    input_interrupt.is_Node.ln_Pri = 100;
+    input_interrupt.is_Node.ln_Name = (char *)"SWOTL keyboard";
+    input_interrupt.is_Code = amiga_input_stub;
+    input_io->io_Command = IND_ADDHANDLER;
+    input_io->io_Data = &input_interrupt;
+    DoIO((struct IORequest *)input_io);
+    input_added = 1;
+}
+
+static void input_close(void)
+{
+    if (input_added) {
+        input_io->io_Command = IND_REMHANDLER;
+        input_io->io_Data = &input_interrupt;
+        DoIO((struct IORequest *)input_io);
+        input_added = 0;
+    }
+    if (input_io) {
+        CloseDevice((struct IORequest *)input_io);
+        DeleteIORequest((struct IORequest *)input_io);
+        input_io = 0;
+    }
+    if (input_port) {
+        DeleteMsgPort(input_port);
+        input_port = 0;
+    }
+}
+
+/* Diagnostic key script (argument KEYS=frame:key,...; frames from the start,
+ * keys a-z 0-9 enter esc space or $hex raw codes): written into input.device
+ * from the main task at each present, so it takes the handler path above;
+ * each key is released 5 frames after it is pressed. */
+static const char *key_script = 0;
+static ULONG key_up_frame = 0;
+static UWORD key_up_code = 0;
+
+static void write_raw(UWORD code)
+{
+    struct InputEvent e = {0};
+    e.ie_Class = IECLASS_RAWKEY;
+    e.ie_Code = code;
+    input_io->io_Command = IND_WRITEEVENT;
+    input_io->io_Data = &e;
+    input_io->io_Length = sizeof e;
+    DoIO((struct IORequest *)input_io);
+}
+
+static int named(const char *name, int n, const char *word)
+{
+    int k = 0;
+    while (k < n && word[k] == name[k]) {
+        ++k;
+    }
+    return k == n && !word[k];
+}
+
+static int raw_of(const char *name, int n)
+{
+    static const char rows[4][11] = {"1234567890", "qwertyuiop", "asdfghjkl", "zxcvbnm"};
+    static const UBYTE base[4] = {0x01, 0x10, 0x20, 0x31};
+    if (n == 1) {
+        for (int r = 0; r < 4; ++r) {
+            for (int k = 0; rows[r][k]; ++k) {
+                if (rows[r][k] == name[0]) {
+                    return base[r] + k;
+                }
+            }
+        }
+    }
+    if (named(name, n, "enter")) return 0x44;
+    if (named(name, n, "esc")) return 0x45;
+    if (named(name, n, "space")) return 0x40;
+    if (n == 3 && name[0] == '$') {
+        int v = 0;
+        for (int k = 1; k < 3; ++k) {
+            char c = name[k];
+            v = v * 16 + (c <= '9' ? c - '0' : (c | 0x20) - 'a' + 10);
+        }
+        return v;
+    }
+    return -1;
+}
+
+static void key_script_step(void)
+{
+    if (!input_added) {
+        return;
+    }
+    if (key_up_code && amiga_frames >= key_up_frame) {
+        write_raw(key_up_code | IECODE_UP_PREFIX);
+        key_up_code = 0;
+    }
+    if (!key_script || *key_script <= ' ' || key_up_code) {
+        return;
+    }
+    ULONG frame = 0;
+    const char *p = key_script;
+    while (*p >= '0' && *p <= '9') {
+        frame = frame * 10 + (ULONG)(*p++ - '0');
+    }
+    if (amiga_frames < frame) {
+        return;
+    }
+    const char *name = *p == ':' ? ++p : p;
+    while (*p > ' ' && *p != ',') {
+        ++p;
+    }
+    int raw = raw_of(name, (int)(p - name));
+    key_script = *p == ',' ? p + 1 : p;
+    if (raw < 0) {
+        plat_log("SWOTL KEYS: unknown key");
+        return;
+    }
+    write_raw((UWORD)raw);
+    key_up_code = (UWORD)raw;
+    key_up_frame = amiga_frames + 5;
+}
+
 void plat_log(const char *line)
 {
     LONG n = 0;
@@ -273,6 +459,11 @@ long amiga_run_guest(void)
     if (!DOSBase) {
         return -1;
     }
+    for (const char *a = (const char *)GetArgStr(); a && *a; ++a) {
+        if (a[0] == 'K' && a[1] == 'E' && a[2] == 'Y' && a[3] == 'S' && a[4] == '=') {
+            key_script = a + 5;     /* ends at a space or the line end */
+        }
+    }
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((CONST_STRPTR)"intuition.library", 40);
     GfxBase = (struct GfxBase *)OpenLibrary((CONST_STRPTR)"graphics.library", 40);
     /* Guest RAM, the state block below it and the EMS store after it; Fast RAM
@@ -287,8 +478,10 @@ long amiga_run_guest(void)
             plat_log("SWOTL no CIA-B timer");
         }
         vblank_open();
+        input_open();
         code = amiga_guest_call(stack + GUEST_STACK_BYTES);
     }
+    input_close();
     timer_close();
     vblank_close();
     for (int32_t k = 0; k < MAX_FILES; ++k) {

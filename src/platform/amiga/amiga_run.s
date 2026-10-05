@@ -3,7 +3,9 @@
 
 	xdef	amiga_guest_call
 	xdef	plat_exit
+	xdef	amiga_input_stub
 	xref	rt_run_guest
+	xref	amiga_input
 
 	section	.text,code
 
@@ -23,6 +25,14 @@ plat_exit:
 unwind:
 	movea.l	saved_sp,a7
 	movem.l	(a7)+,d2-d7/a2-a6
+	rts
+
+; input.device handler: a0 = event list, a1 = is_Data; returns the list in d0.
+; struct InputEvent *amiga_input(struct InputEvent *events)
+amiga_input_stub:
+	move.l	a0,-(a7)
+	jsr	amiga_input
+	addq.l	#4,a7
 	rts
 
 	section	.bss,bss
