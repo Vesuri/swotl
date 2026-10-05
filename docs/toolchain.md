@@ -92,7 +92,7 @@ provenance is in brackets.
   audit), `make gen-check` (G1), `make lint` (G2), `make test` (lint, decoder vs Capstone, x86
   differential vs Unicorn, 68020 instruction differential, generated-program block differential,
   guard plants, gen-check, host run m1–m3; ~5 min), `make test-sabotage` (x86, 68020 and runtime plants, ~3.5 min),
-  `make test-host-all` (m1–m7, ~2 min). Checks run in parallel (`JOBS`, default all cores; the
+  `make test-host-all` (m1–m7 and coverage c6-flight-keys, ~6 min). Checks run in parallel (`JOBS`, default all cores; the
   differentials in `--shard K/N` pieces), each logging to `tmp/test/<name>.log`. Unicorn x86
   quirks the harness works around: [x86-notes.md](x86-notes.md#unicorn-x86-16-as-oracle).
 - Phase 5 link: `make host` assembles `build/gen/program.s` (one unit, `vasm -m68020 -Felf -x`,

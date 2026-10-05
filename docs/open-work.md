@@ -19,15 +19,14 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
 
 ## Translator
 
-14. Past the milestones: the host run matches m1–m7 (`make test-host-all`);
+14. Past the milestones: the host run matches m1–m7 and c6-flight-keys
+    (`make test-host-all`; files the guest writes stay in memory there);
     the A1200 model (68030) runs the attract demo for minutes unattended,
     checked only at m1b-logo (it runs on wall-clock time, not replayed).
     With `KEYS=` the model goes from the logo through the menus into flight.
-    Next: mouse input; DOS file writes (AH=3D01h, the flight recorder's
-    `RP*.TMP`: host run of c6-flight-keys stops there after its 55 keys
-    match); the D16 cell walk is a per-cell form match (perf: specialise
-    once the shape is fixed); find-first gives
-    platform files no DOS time/date; table targets added by
+    Next: mouse input; the D16 cell walk is a per-cell form match (perf:
+    specialise once the shape is fixed); find-first gives platform files
+    no DOS time/date; table targets added by
     `annotations/tables.csv` that no reference run executed are checked by
     the instruction differential only.
 14a. Display: c2p into the shown screen bitmap every 5th vertical blank

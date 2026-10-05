@@ -5,6 +5,9 @@
 	xdef	_start
 	xdef	plat_open
 	xdef	plat_read
+	xdef	plat_create
+	xdef	plat_write
+	xdef	plat_delete
 	xdef	plat_seek
 	xdef	plat_close
 	xdef	plat_dir_entry
@@ -26,6 +29,12 @@ host_stubs:
 plat_open:	nop
 	rts
 plat_read:	nop
+	rts
+plat_create:	nop
+	rts
+plat_write:	nop
+	rts
+plat_delete:	nop
 	rts
 plat_seek:	nop
 	rts

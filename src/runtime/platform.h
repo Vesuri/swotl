@@ -1,4 +1,4 @@
-/* Platform services the runtime needs: read-only data files and their directory, the timer, the
+/* Platform services the runtime needs: the game's files and their directory, the timer, the
  * display of the mode 13h frame, a log line and exit. Implemented by src/platform/host (Unicorn harness) and
  * src/platform/amiga (dos.library). */
 #ifndef SWOTL_PLATFORM_H
@@ -6,9 +6,16 @@
 
 #include <stdint.h>
 
-/* path: game-relative, upper case, '/' separated ("DATA.OVL"). < 0 if missing. */
-int32_t plat_open(const char *path);
+/* path: game-relative, upper case, '/' separated ("DATA.OVL"). mode 0 read,
+ * 1 write, 2 read/write (existing file). < 0 if missing. */
+int32_t plat_open(const char *path, int32_t mode);
+/* New empty file (an existing one is truncated), open read/write; < 0 on error. */
+int32_t plat_create(const char *path);
 int32_t plat_read(int32_t handle, void *buffer, uint32_t length);
+/* Bytes written, < 0 on error; length 0 truncates the file at the position. */
+int32_t plat_write(int32_t handle, const void *buffer, uint32_t length);
+/* < 0 if missing. */
+int32_t plat_delete(const char *path);
 /* whence 0 start, 1 current, 2 end; returns the new position, < 0 on error */
 int32_t plat_seek(int32_t handle, int32_t offset, int32_t whence);
 void plat_close(int32_t handle);

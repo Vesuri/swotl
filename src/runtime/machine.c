@@ -96,7 +96,7 @@ static void exec_root(uint16_t psp_seg)
 {
     uint8_t h[0x1c];
     uint16_t load = psp_seg + 0x10;
-    int32_t f = plat_open("SWOTL.EXE");
+    int32_t f = plat_open("SWOTL.EXE", 0);
     if (f < 0) {
         rt_stop("SWOTL.EXE not found", 0, 0);
     }

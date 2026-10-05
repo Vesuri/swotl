@@ -54,11 +54,11 @@ static void c2p(const void *chunky, struct BitMap *bitmap)
 int32_t amiga_guest_call(void *stack_top);
 static void key_script_step(void);
 
-int32_t plat_open(const char *path)
+static int32_t open_as(const char *path, LONG mode)
 {
     for (int32_t k = 0; k < MAX_FILES; ++k) {
         if (!files[k]) {
-            BPTR f = Open((CONST_STRPTR)path, MODE_OLDFILE);
+            BPTR f = Open((CONST_STRPTR)path, mode);
             if (!f) {
                 return -1;
             }
@@ -67,6 +67,31 @@ int32_t plat_open(const char *path)
         }
     }
     return -1;
+}
+
+/* MODE_OLDFILE reads and writes an existing file. */
+int32_t plat_open(const char *path, int32_t mode)
+{
+    (void)mode;
+    return open_as(path, MODE_OLDFILE);
+}
+
+int32_t plat_create(const char *path)
+{
+    return open_as(path, MODE_NEWFILE);
+}
+
+int32_t plat_write(int32_t handle, const void *buffer, uint32_t length)
+{
+    if (!length) {
+        return SetFileSize(files[handle], 0, OFFSET_CURRENT) < 0 ? -1 : 0;
+    }
+    return Write(files[handle], (APTR)buffer, (LONG)length);
+}
+
+int32_t plat_delete(const char *path)
+{
+    return DeleteFile((CONST_STRPTR)path) ? 0 : -1;
 }
 
 int32_t plat_read(int32_t handle, void *buffer, uint32_t length)

@@ -1,6 +1,6 @@
 /* INT 21h: the DOS 5 services SWOTL uses (docs/external-surface.md), with the
  * register results of the DOSBox-X reference (tests/host_run.py checks them
- * against the traced service log). Files are read-only platform files. */
+ * against the traced service log). Files are platform files. */
 #include "runtime.h"
 #include "platform.h"
 
@@ -61,18 +61,9 @@ static void path_of(uint32_t a, char *out, int size)
     out[n] = 0;
 }
 
-static void open_file(void)
+/* A free handle and SFT entry for platform file f (AX = handle), else error 4. */
+static void install(int32_t f)
 {
-    char path[80];
-    path_of(lin(G_DS, rt_r.dx), path, sizeof path);
-    if (AL(rt_r.ax) & 7) {
-        rt_unsupported("open for writing", 0x21, 0, 0);
-    }
-    int32_t f = plat_open(path);
-    if (f < 0) {
-        fail(2);
-        return;
-    }
     uint16_t h = 0;
     while (h < HANDLES && rd8(jft(h)) != 0xff) {
         ++h;
@@ -89,6 +80,72 @@ static void open_file(void)
     file_of_sft[sft] = f;
     wr8(jft(h), sft);
     rt_r.ax = h;
+    set_cf(0);
+}
+
+/* AH=3Dh: AL access 0 read, 1 write, 2 read/write (sharing bits ignored). */
+static void open_file(uint16_t cs, uint16_t ip)
+{
+    char path[80];
+    path_of(lin(G_DS, rt_r.dx), path, sizeof path);
+    uint8_t access = AL(rt_r.ax) & 7;
+    if (access > 2) {
+        rt_unsupported("file access mode", 0x21, cs, ip);
+    }
+    int32_t f = plat_open(path, access);
+    if (f < 0) {
+        fail(2);
+        return;
+    }
+    install(f);
+}
+
+/* AH=3Ch: CX attributes (the reference stores files as archive). */
+static void create_file(void)
+{
+    char path[80];
+    path_of(lin(G_DS, rt_r.dx), path, sizeof path);
+    int32_t f = plat_create(path);
+    if (f < 0) {
+        fail(5);
+        return;
+    }
+    install(f);
+}
+
+/* AH=41h: AX unchanged on success. */
+static void delete_file(void)
+{
+    char path[80];
+    path_of(lin(G_DS, rt_r.dx), path, sizeof path);
+    if (plat_delete(path) < 0) {
+        fail(2);
+        return;
+    }
+    set_cf(0);
+}
+
+/* AH=40h to a file handle; CX=0 truncates at the position. */
+static void write_file(uint16_t cs, uint16_t ip)
+{
+    if (rt_r.bx < 5) {
+        rt_unsupported("write to a device handle", 0x21, cs, ip);
+    }
+    int32_t f = file_of(rt_r.bx);
+    if (f < 0) {
+        fail(6);
+        return;
+    }
+    uint32_t a = lin(G_DS, rt_r.dx);
+    if (a + rt_r.cx > RT_GUEST_BYTES) {
+        rt_stop("write past guest memory", a, rt_r.cx);
+    }
+    int32_t put = plat_write(f, rt_guest + a, rt_r.cx);
+    if (put < 0) {
+        fail(5);
+        return;
+    }
+    rt_r.ax = (uint16_t)put;
     set_cf(0);
 }
 
@@ -166,7 +223,7 @@ static void attributes(uint16_t cs, uint16_t ip)
         rt_unsupported("set file attributes", 0x21, cs, ip);
     }
     path_of(lin(G_DS, rt_r.dx), path, sizeof path);
-    int32_t f = plat_open(path);
+    int32_t f = plat_open(path, 0);
     if (f < 0) {
         fail(2);
         return;
@@ -482,9 +539,12 @@ void rt_int21(uint16_t cs, uint16_t ip)
         rt_r.bx = rd16(AL(rt_r.ax) * 4);
         G_ES = rd16(AL(rt_r.ax) * 4 + 2);
         break;
-    case 0x3d: open_file(); break;
+    case 0x3c: create_file(); break;
+    case 0x3d: open_file(cs, ip); break;
     case 0x3e: close_file(); break;
     case 0x3f: read_file(); break;
+    case 0x40: write_file(cs, ip); break;
+    case 0x41: delete_file(); break;
     case 0x42: seek_file(); break;
     case 0x43: attributes(cs, ip); break;
     case 0x44: ioctl(cs, ip); break;

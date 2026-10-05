@@ -134,6 +134,35 @@ SABOTAGE = {
 }
 
 
+class MemFile:
+    """An open file the guest writes: kept in memory, never on disk."""
+
+    def __init__(self, data: bytearray):
+        self.data, self.pos = data, 0
+
+    def read(self, n: int) -> bytes:
+        out = bytes(self.data[self.pos:self.pos + n])
+        self.pos += len(out)
+        return out
+
+    def write(self, b: bytes) -> int:
+        if not b:  # DOS write of 0 bytes: truncate here
+            del self.data[self.pos:]
+            return 0
+        if self.pos > len(self.data):
+            self.data.extend(bytes(self.pos - len(self.data)))
+        self.data[self.pos:self.pos + len(b)] = b
+        self.pos += len(b)
+        return len(b)
+
+    def seek(self, off: int, whence: int) -> int:
+        self.pos = max(0, (0, self.pos, len(self.data))[whence] + off)
+        return self.pos
+
+    def close(self) -> None:
+        pass
+
+
 class Host:
     def __init__(self, ref_root: Path, sabotage: str | None = None):
         self.root = ref_root
@@ -146,11 +175,14 @@ class Host:
         self.entry = entry
         self.files: dict[int, object] = {}
         self.next_file = 1
+        self.written: dict[str, bytearray] = {}  # files the guest wrote (game path -> bytes)
+        self.deleted: set[str] = set()
         self.log: list[str] = []
         self.exit: int | None = None
         self.services: list[tuple[str, dict]] = []
         self.stopped_at: str | None = None
-        self.stubs = {self.syms[n]: n for n in ("plat_open", "plat_read", "plat_seek",
+        self.stubs = {self.syms[n]: n for n in ("plat_open", "plat_create", "plat_read", "plat_write",
+                                                "plat_delete", "plat_seek",
                                                 "plat_close", "plat_dir_entry", "plat_timer_rate", "plat_present", "plat_log",
                                                 "plat_exit")}
         self.presents = 0
@@ -290,23 +322,45 @@ class Host:
         sp = self.r("a7")
         args = struct.unpack(">IIII", self.mem(sp + 4, 16))
         res = 0
-        if n in ("plat_open", "plat_dir_entry"):
+        if n in ("plat_open", "plat_dir_entry", "plat_create", "plat_delete"):
+            name = self.cstr(args[0])
             path = self.root
-            for part in filter(None, self.cstr(args[0]).split("/")):
+            for part in filter(None, name.split("/")):
                 matches = [p for p in path.iterdir() if p.name.upper() == part] if path.is_dir() else []
                 path = matches[0] if matches else self.root / "\0"
+            on_disk = path.is_file() and name not in self.deleted
         if n == "plat_dir_entry":
-            entries = sorted(p for p in path.iterdir() if p.is_file() and len(p.name) <= 12) \
-                if path.is_dir() else []
+            prefix = name + "/" if name else ""
+            disk = {p.name: p.stat().st_size for p in path.iterdir()
+                    if p.is_file() and len(p.name) <= 12 and prefix + p.name.upper() not in self.deleted} \
+                if path.is_dir() else {}
+            disk.update({w[len(prefix):]: len(d) for w, d in self.written.items()
+                         if w.startswith(prefix) and "/" not in w[len(prefix):]})
+            entries = sorted(disk.items())
             if args[1] < len(entries):
-                f = entries[args[1]]
-                self.e.write(args[2], f.name.encode() + b"\0")
-                self.e.write(args[3], struct.pack(">I", f.stat().st_size))
+                self.e.write(args[2], entries[args[1]][0].encode() + b"\0")
+                self.e.write(args[3], struct.pack(">I", entries[args[1]][1]))
                 res = 1
         elif n == "plat_open":
-            if path.is_file():
-                self.files[self.next_file] = path.open("rb")
+            if args[1] and on_disk and name not in self.written:
+                self.written[name] = bytearray(path.read_bytes())  # a copy: ref/ stays untouched
+            f = MemFile(self.written[name]) if name in self.written else \
+                path.open("rb") if on_disk else None
+            if f:
+                self.files[self.next_file] = f
                 res, self.next_file = self.next_file, self.next_file + 1
+            else:
+                res = -1
+        elif n == "plat_create":
+            self.written[name] = bytearray()
+            self.deleted.discard(name)
+            self.files[self.next_file] = MemFile(self.written[name])
+            res, self.next_file = self.next_file, self.next_file + 1
+        elif n == "plat_delete":
+            if name in self.written:
+                del self.written[name]
+            elif on_disk:
+                self.deleted.add(name)
             else:
                 res = -1
         elif n == "plat_read":
@@ -316,6 +370,9 @@ class Host:
                 data = bytes([data[0] ^ 0xFF]) + data[1:]
             self.e.write(args[1], data)
             res = len(data)
+        elif n == "plat_write":
+            f = self.files[args[0]]
+            res = f.write(self.mem(args[1], args[2])) if isinstance(f, MemFile) else -1
         elif n == "plat_seek":
             f = self.files[args[0]]
             off = args[1] - (1 << 32) if args[1] & 0x80000000 else args[1]

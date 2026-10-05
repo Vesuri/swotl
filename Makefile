@@ -31,7 +31,7 @@ help:
 	@echo "  make test-sabotage      planted IR/decoder/runtime faults must fail the differentials and host run"
 	@echo "  make host               link generated program + runtime for Unicorn 68020 -> build/host/swotl.elf"
 	@echo "  make test-host          run it from the MZ entry to milestones m1-m3 against the reference"
-	@echo "  make test-host-all      the same to every milestone, m1-m7 (~2 min)"
+	@echo "  make test-host-all      the same to every milestone, m1-m7, and c6-flight-keys (~6 min)"
 	@echo "  make test-amiga         m1b-logo on the A1200 model (FS-UAE + GDB capture, amiga/milestone.gdb.in; AMIGA_CPU=68030)"
 	@echo "  make amiga   build amiga/out/Swotl.exe"
 	@echo "  make smoke   boot it under FS-UAE + GDB and check the takeover runs"
@@ -140,6 +140,8 @@ t-guards:
 	$(call RUN,guards,$(PYTHON) tests/test_guards.py)
 t-host-%:
 	$(call RUN,host-$*,$(PYTHON) tests/host_run.py --milestone $*)
+t-cov-%:
+	$(call RUN,host-$*,$(PYTHON) tests/host_run.py --table reference/coverage.csv --milestone $* --timeout 2400)
 t-sab-x86:
 	$(call RUN,sabotage-x86,$(PYTHON) tests/x86_sabotage.py)
 t-sab-m68k:
@@ -184,6 +186,7 @@ host: gen-check build/host/swotl.elf
 
 HOST_MILESTONES = m1-mode13h m1b-logo m2-choose-side m3-demo-flight
 HOST_MILESTONES_ALL = $(HOST_MILESTONES) m4-demo-frames m5-player-flight m6-film-room m7-campaign
+HOST_COVERAGE = c6-flight-keys
 AMIGA_MILESTONE ?= m1b-logo
 AMIGA_CPU ?= 68030
 AMIGA_CAPTURE = tmp/amiga-$(AMIGA_MILESTONE)
@@ -192,7 +195,7 @@ test-host: host
 	@$(MAKE) -s -k -j$(JOBS) $(HOST_MILESTONES:%=t-host-%)
 
 test-host-all: host
-	@$(MAKE) -s -k -j$(JOBS) $(HOST_MILESTONES_ALL:%=t-host-%)
+	@$(MAKE) -s -k -j$(JOBS) $(HOST_MILESTONES_ALL:%=t-host-%) $(HOST_COVERAGE:%=t-cov-%)
 
 test-amiga: amiga host
 	@mkdir -p $(AMIGA_CAPTURE)
