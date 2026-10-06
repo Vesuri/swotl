@@ -4,6 +4,7 @@ counts, never timing): from the first snapshot of a reference milestone to its
 last, with the reference's interrupts replayed (tests/host_run.py).
 
   host_census.py MILESTONE [--labels L ...] [--strops] [--vram] [--frame LABEL]
+                [--whole] [--table reference/coverage.csv]
 
 --labels  executions of each generated label
 --strops  elements processed by each `rep`/`repe`/`repne` string instruction
@@ -11,6 +12,8 @@ last, with the reference's interrupts replayed (tests/host_run.py).
           per frame; top counts
 --vram    bytes written to A0000h-AFFFFh by guest instruction label, and
           rows (320 bytes) written per frame
+--whole   count from the program entry instead of the first snapshot
+--table   milestone table (default reference/milestones.csv)
 --frame   label that runs once per drawn frame (default FLT_15E82; m4 census:
           49 per 49 frames, as R_044E2)
 """
@@ -23,6 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import host_run  # noqa: E402
 from host_run import GUEST, REPO, Host, U, image, milestone_script, reference_inputs  # noqa: E402
 
 LABEL = re.compile(r"^[A-Z]+_[0-9A-F]{5}$")
@@ -53,14 +57,18 @@ def main():
     ap.add_argument("--strops", action="store_true")
     ap.add_argument("--vram", action="store_true")
     ap.add_argument("--frame", default="FLT_15E82")
+    ap.add_argument("--whole", action="store_true")
+    ap.add_argument("--table", type=Path)
     ap.add_argument("--timeout", type=int, default=2400)
     args = ap.parse_args()
+    if args.table:
+        host_run.TABLE = args.table.resolve()
 
     script = milestone_script(args.milestone)
     trace = REPO / f"tmp/pc-runs/ref-{args.milestone}/trace"
     script["irqs"], script["releases"] = reference_inputs(trace)
     h = Host(image.M.REF, None)
-    state = dict(open=False, frames=0)
+    state = dict(open=args.whole, frames=0)
     hooks = []              # keep the ctypes callbacks alive
 
     def code(addr, fn):
