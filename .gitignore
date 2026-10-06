@@ -2,6 +2,7 @@
 
 # Original and derived game material stays local.
 ref/
+ref-originals/
 tmp/
 *.7z
 *.zip

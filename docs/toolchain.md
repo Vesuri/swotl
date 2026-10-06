@@ -32,7 +32,7 @@ provenance is in brackets.
 | LHa for UNIX | `~/.local/opt/lha/bin/lha`, `~/.local/bin/lha-compress` | 1.14i-ac20260723 | LH5 encoding (Vette: set `LHA` or install as `lha-compress`) |
 | Lhasa `lha` | `/opt/homebrew/bin/lha` | 0.6.0 | independent archive verification [Vette] |
 | olha | `~/.local/bin/olha` | 0.4.4 | — |
-| 7-Zip `7zz` | `/opt/homebrew/bin` | 26.03 | `tmp/*.7z` (`7z` missing) |
+| 7-Zip `7zz` | `/opt/homebrew/bin` | 26.03 | `ref-originals/*.7z` (`7z` missing) |
 | unar / lsar | `/opt/homebrew/bin` | 1.10.7 | — |
 
 ## Ghidra (headless)

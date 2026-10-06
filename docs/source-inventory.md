@@ -1,6 +1,7 @@
 # Source inventory
 
-SWOTL 2.2 as in `ref/` (eXoDOS install). Reproduce with `make inspect`;
+SWOTL 2.2 as in `ref/` (eXoDOS install); the installer, `Source.7z` and
+install instructions as supplied are in `ref-originals/` (local only). Reproduce with `make inspect`;
 SHA-256 of every `ref/` file in `tmp/ref.sha256` (`make hash`, local only).
 
 ## Root `SWOTL.EXE`
