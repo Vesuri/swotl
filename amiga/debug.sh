@@ -15,7 +15,7 @@ ROM="${1:-${KICKSTART:-$HOME/Documents/RetroPie/BIOS/kick31.rom}}"
 [ -f out/Swotl.elf ] || { echo "build first: make"; exit 1; }
 
 # KS 3.1 sets the AGA bits in GfxBase only after SetPatch (docs/amiga-lessons.md L8).
-SETPATCH="${SETPATCH:-../tmp/SetPatch}"
+SETPATCH="${SETPATCH:-$HOME/.local/share/amiga/SetPatch}"
 [ -f "$SETPATCH" ] || { echo "SetPatch not found: $SETPATCH"; exit 1; }
 RUN="$FSUAE_RUN"; DH0="$RUN/dh0"; DH1="$RUN/dh1"; GDBHOME="$RUN/gdbhome"
 mkdir -p "$DH0/c" "$DH0/s" "$DH1" "$RUN/state" "$GDBHOME"

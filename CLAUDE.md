@@ -51,4 +51,4 @@ audio the game has; RTSEGA, RTSTANDY and SFXA (PC speaker) are out.
   translator `make gen`, `make test` (G2 lint, decoder, x86 and 68020
   differentials, block differential, G1, host run), `make test-sabotage`;
   runtime on host / A1200 model `make test-host` (`test-host-all`: m1–m7, c6), `make test-amiga`; `SetPatch` expected
-  at `tmp/SetPatch`. Facts: `docs/source-inventory.md`.
+  at `~/.local/share/amiga/SetPatch`. Facts: `docs/source-inventory.md`.

@@ -35,7 +35,7 @@ fs-uae --audio_driver=dummy \
 ```
 
 - Boot volume: `dh0/s/startup-sequence` = `C:SetPatch QUIET` / `cd dh1:` / `<ExeName> [MODE]`. The exe is copied into `dh1`, and gdb loads the `.elf` from `out/`. [Slicks]
-- Slicks' AGA launchers copy in the user's own `SetPatch` from ignored `tmp/SetPatch`, and it is never committed. SWOTL `tmp/` has none yet. Slicks' copy is at `~/Documents/Slicks/tmp/SetPatch`. [Slicks `docs/toolchain.md`]
+- AGA launchers copy in the user's own `SetPatch` (`SETPATCH`, default `~/.local/share/amiga/SetPatch`, shared with the sibling ports); never committed. [Slicks `docs/toolchain.md`]
 - Wait for the stub with `lsof -nP -iTCP:$DEBUG_PORT -sTCP:LISTEN`, polling 60×1 s. Bail out if the FS-UAE PID dies. [Slicks, Revs]
 - gdb preamble: `set pagination off`, `set confirm off`, `set remotetimeout 90`, `target remote 127.0.0.1:$DEBUG_PORT`. Run gdb with `-q -l 10` under `HOME=$RUN/gdbhome XDG_CACHE_HOME=$RUN/gdbhome`. [Slicks, Revs]
 - FS-UAE keeps the **first** value of a repeated option, so `EXTRA_ARGS` cannot override the script's `--chip_memory/--fast_memory`. Use `CHIP_KB`/`FAST_KB` variables instead. [Revs]
