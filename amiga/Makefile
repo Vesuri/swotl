@@ -2,7 +2,7 @@
 #
 #   . ./env.sh && make   — build out/Swotl.exe
 #   make clean           — remove obj/ and out/
-#   ./run.sh             — boot in FS-UAE (A1200, Kickstart 3.1; left mouse button quits)
+#   ./run.sh             — boot in FS-UAE (A1200, Kickstart 3.1)
 #   ./debug.sh [ROM] [fixture.gdb] — source-level debug via the FS-UAE GDB stub
 #
 # Code lives under $(REPO)/src; this directory holds only build infrastructure.
@@ -30,14 +30,14 @@ CPPFLAGS = $(CCFLAGS) -fno-rtti -fno-exceptions -fno-use-cxa-atexit -fcheck-new 
 	-Wno-ignored-qualifiers -Wno-sign-compare \
 	-Wno-parentheses -Wno-unused-parameter \
 	-include "$(FRAMEWORK)/SASCCompat.h" \
-	-I"$(FRAMEWORK)" -I"$(AMIGA_SRC)" -I"$(RUNTIME)"
+	-I"$(FRAMEWORK)" -I"$(FRAMEWORK)/compat-include" -I"$(AMIGA_SRC)" -I"$(RUNTIME)"
 ASFLAGS  = -mcpu=68020 -g --register-prefix-optional -I"$(SDKDIR)"
 VASMFLAGS = -m68020 -Felf -quiet -x -no-opt -nowarn=62 -I"$(SDKDIR)" -Iobj
 # Generated code: vasm picks branch sizes (translator/emit.py output, never edited).
 VASMGEN  = -m68020 -Felf -quiet -x -nowarn=62
 LDFLAGS  = -Wl,--emit-relocs,--gc-sections,-Ttext=0,-Map=$(OUT).map
 
-OBJECTS = obj/main.o obj/Swotl.o obj/GCCRuntime.o \
+OBJECTS = obj/main.o obj/Swotl.o obj/Input.o obj/GCCRuntime.o \
 	obj/framework_amiga_hardware.o obj/framework_bitmap.o \
 	obj/framework_copper_list.o obj/framework_palette24.o \
 	obj/gcc8_c_support.o obj/gcc8_a_support.o obj/memory.o obj/version.o \
@@ -60,6 +60,9 @@ obj/main.o: $(REPO)/src/main.cpp | obj
 	$(CC) $(CPPFLAGS) -c -o $@ $<
 
 obj/Swotl.o: $(AMIGA_SRC)/Swotl.cpp | obj
+	$(CC) $(CPPFLAGS) -c -o $@ $<
+
+obj/Input.o: $(AMIGA_SRC)/Input.cpp | obj
 	$(CC) $(CPPFLAGS) -c -o $@ $<
 
 obj/GCCRuntime.o: $(AMIGA_SRC)/GCCRuntime.cpp | obj

@@ -26,7 +26,10 @@ slave: [whdload.md](whdload.md).
 | Translated game | generated 68020 code | calls runtime services through explicit register contracts (SL `docs/native-graphics-abi.md`) |
 
 Not used: the framework's `Production`/`Part`/`Script` timeline and module player
-(RV, VT `framework/UPSTREAM.md`).
+(RV, VT `framework/UPSTREAM.md`). `Swotl` follows `ProductionRunner`'s takeover through
+`AmigaHardware` but owns Exec's VERTB vector, not the level-3 autovector (L10, L13). The
+Template (`~/Projects/dA JoRMaS/Template/C++`) has no AGA 256-colour palette; the vendored
+DanceDiverse3 set (`Palette24Bit`, `setPalette24Bit`) is kept for it.
 
 ## Lifecycle
 
@@ -40,7 +43,10 @@ Not used: the framework's `Production`/`Part`/`Script` timeline and module playe
 5. **Take over** in SL's order (L2, L3), VERTB vector (L10), keyboard ICR (L72), `Forbid`
    (L6).
 6. **Run.** Main loop: drain timer ticks → translated game step → present. Disk access only
-   inside `begin_io`/`end_io` windows (L7).
+   inside I/O windows (L7). SWOTL: every DOS call of `amiga_platform.c` is one window
+   (`Swotl::beginIO`/`endIO`): Exec's VERTB vector, saved INTENA and DISK|BLITTER DMA
+   back, `Permit`; the copper display and the keyboard interrupt stay; fields the OS
+   serves are added from `GfxBase->VBCounter`.
 7. **Return** in SL/VT's order (L4), then pending saves, frees, `releaseBlitterQueue`
    (L50), library closes, Workbench reply last (L84). A readable-state restore check runs in
    the harness (L5).

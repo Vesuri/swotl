@@ -1,60 +1,30 @@
-/* Platform services for the runtime on AmigaOS (dos.library, an Intuition
- * screen for the frame), and the run of the translated program on its own
- * native stack. Game files are read from the current directory (the game's
- * own data files, supplied by the user). */
+/* Platform services for the runtime on AmigaOS: the game's files through
+ * dos.library (each call in an I/O window of the takeover, Swotl.cpp), the
+ * PIT on a CIA-B timer, the diagnostic key script, and the run of the
+ * translated program on its own native stack. Game files are read from the
+ * current directory (the game's own data files, supplied by the user). */
 #include <proto/exec.h>
 #include <proto/dos.h>
-#include <proto/graphics.h>
-#include <proto/intuition.h>
 #include <proto/cia.h>
 #include <exec/memory.h>
 #include <dos/dos.h>
-#include <graphics/gfxbase.h>
-#include <graphics/modeid.h>
-#include <intuition/screens.h>
 #include <hardware/cia.h>
-#include <hardware/intbits.h>
-#include <devices/input.h>
-#include <devices/inputevent.h>
 #include <resources/cia.h>
 #include "runtime.h"
 #include "platform.h"
 #include "amiga_platform.h"
 
 struct DosLibrary *DOSBase = 0;
-struct IntuitionBase *IntuitionBase = 0;
-extern struct GfxBase *GfxBase;
 
 #define MAX_FILES 16
 #define GUEST_STACK_BYTES 0x10000
 
 static BPTR files[MAX_FILES];
 
-/* The frame as shown (tests/host_run.py --amiga reads them back through the
- * GDB fixture): the screen's bitplanes and the LoadRGB32 table. */
-#define FRAME_W 320
-#define FRAME_H 200
-struct Screen *amiga_screen = 0;
-uint32_t amiga_colours[1 + 256 * 3 + 1];
-
-/* Kalms c2p (c2p1x1_8_c5_bm.s): d0/d1 chunky width (a multiple of 32) and
- * height, d2/d3 screen offset (x a multiple of 8), a0 contiguous chunky
- * pixels, a1 BitMap; saves d2-d7/a2-a6. */
-static void c2p(const void *chunky, int32_t w, int32_t h, int32_t x, int32_t y,
-                struct BitMap *bitmap)
-{
-    register int32_t d0 __asm("d0") = w;
-    register int32_t d1 __asm("d1") = h;
-    register int32_t d2 __asm("d2") = x;
-    register int32_t d3 __asm("d3") = y;
-    register const void *a0 __asm("a0") = chunky;
-    register struct BitMap *a1 __asm("a1") = bitmap;
-    __asm volatile("jsr c2p1x1_8_c5_bm" : "+r"(d0), "+r"(d1), "+r"(a0), "+r"(a1)
-                   : "r"(d2), "r"(d3) : "cc", "memory");
-}
-
 int32_t amiga_guest_call(void *stack_top);
 static void key_script_step(void);
+static uint8_t *guest_block = 0;
+static uint8_t *guest_stack = 0;
 
 static int32_t open_as(const char *path, LONG mode)
 {
@@ -75,50 +45,69 @@ static int32_t open_as(const char *path, LONG mode)
 int32_t plat_open(const char *path, int32_t mode)
 {
     (void)mode;
-    return open_as(path, MODE_OLDFILE);
+    amiga_io_begin();
+    int32_t handle = open_as(path, MODE_OLDFILE);
+    amiga_io_end();
+    return handle;
 }
 
 int32_t plat_create(const char *path)
 {
-    return open_as(path, MODE_NEWFILE);
+    amiga_io_begin();
+    int32_t handle = open_as(path, MODE_NEWFILE);
+    amiga_io_end();
+    return handle;
 }
 
 int32_t plat_write(int32_t handle, const void *buffer, uint32_t length)
 {
-    if (!length) {
-        return SetFileSize(files[handle], 0, OFFSET_CURRENT) < 0 ? -1 : 0;
-    }
-    return Write(files[handle], (APTR)buffer, (LONG)length);
+    amiga_io_begin();
+    int32_t n = length ? Write(files[handle], (APTR)buffer, (LONG)length)
+                       : SetFileSize(files[handle], 0, OFFSET_CURRENT) < 0 ? -1 : 0;
+    amiga_io_end();
+    return n;
 }
 
 int32_t plat_delete(const char *path)
 {
-    return DeleteFile((CONST_STRPTR)path) ? 0 : -1;
+    amiga_io_begin();
+    int32_t result = DeleteFile((CONST_STRPTR)path) ? 0 : -1;
+    amiga_io_end();
+    return result;
 }
 
 int32_t plat_read(int32_t handle, void *buffer, uint32_t length)
 {
-    return Read(files[handle], buffer, (LONG)length);
+    amiga_io_begin();
+    int32_t n = Read(files[handle], buffer, (LONG)length);
+    amiga_io_end();
+    return n;
 }
 
 int32_t plat_seek(int32_t handle, int32_t offset, int32_t whence)
 {
     static const LONG mode[3] = {OFFSET_BEGINNING, OFFSET_CURRENT, OFFSET_END};
-    if (whence < 0 || whence > 2 || Seek(files[handle], offset, mode[whence]) < 0) {
-        return -1;
+    int32_t position = -1;
+    amiga_io_begin();
+    if (whence >= 0 && whence <= 2 && Seek(files[handle], offset, mode[whence]) >= 0) {
+        position = Seek(files[handle], 0, OFFSET_CURRENT);  /* Seek returns the old position */
     }
-    return Seek(files[handle], 0, OFFSET_CURRENT);  /* Seek returns the old position */
+    amiga_io_end();
+    return position;
 }
 
 void plat_close(int32_t handle)
 {
+    amiga_io_begin();
     Close(files[handle]);
+    amiga_io_end();
     files[handle] = 0;
 }
 
 int32_t plat_dir_entry(const char *dir, uint32_t index, char *name, uint32_t *size)
 {
     int32_t found = 0;
+    amiga_io_begin();
     BPTR lock = Lock((CONST_STRPTR)dir, ACCESS_READ);
     struct FileInfoBlock *fib = AllocDosObject(DOS_FIB, 0);
     if (lock && fib && Examine(lock, fib)) {
@@ -144,73 +133,8 @@ int32_t plat_dir_entry(const char *dir, uint32_t index, char *name, uint32_t *si
     if (lock) {
         UnLock(lock);
     }
+    amiga_io_end();
     return found;
-}
-
-static void close_screen(void)
-{
-    if (amiga_screen) {
-        CloseScreen(amiga_screen);
-        amiga_screen = 0;
-    }
-}
-
-/* Mode 13h on a 320x200 8-plane PAL screen, opened at the first present
- * or DAC change. */
-static int screen(void)
-{
-    if (!amiga_screen && IntuitionBase && GfxBase) {
-        amiga_screen = OpenScreenTags(0, SA_Width, FRAME_W, SA_Height, FRAME_H, SA_Depth, 8,
-                                      SA_DisplayID, PAL_MONITOR_ID | LORES_KEY,
-                                      SA_Type, CUSTOMSCREEN, SA_Quiet, TRUE,
-                                      SA_ShowTitle, FALSE, SA_Draggable, FALSE,
-                                      SA_Exclusive, TRUE, TAG_DONE);
-        if (!amiga_screen) {
-            plat_log("SWOTL no 8-plane screen");
-        }
-    }
-    return amiga_screen != 0;
-}
-
-/* Kalms' c2p converts each changed rectangle into the shown bitmap: a
- * full-width band in one call, a narrower one row by row (the chunky rows
- * of a rectangle are not contiguous). */
-void plat_present(const uint8_t *frame, const struct plat_rect *rects, int32_t n)
-{
-    if (!screen()) {
-        return;
-    }
-    struct BitMap *bitmap = amiga_screen->RastPort.BitMap;
-    for (int32_t k = 0; k < n; ++k) {
-        const struct plat_rect *r = &rects[k];
-        int32_t w = r->x1 - r->x0;
-        if (w == FRAME_W) {
-            c2p(frame + r->y0 * FRAME_W, w, r->y1 - r->y0, 0, r->y0, bitmap);
-            continue;
-        }
-        for (int32_t y = r->y0; y < r->y1; ++y) {
-            c2p(frame + y * FRAME_W + r->x0, w, 1, r->x0, y, bitmap);
-        }
-    }
-}
-
-/* The DAC's 6-bit guns widened to 32 bits for LoadRGB32. */
-void plat_palette(const uint8_t *dac)
-{
-    if (!screen()) {
-        return;
-    }
-    amiga_colours[0] = 256u << 16;
-    for (int k = 0; k < 256 * 3; ++k) {
-        amiga_colours[1 + k] = (dac[k] & 0x3f) * 0x04104104u;
-    }
-    amiga_colours[1 + 256 * 3] = 0;
-    LoadRGB32(&amiga_screen->ViewPort, (ULONG *)amiga_colours);
-}
-
-void plat_service(void)
-{
-    key_script_step();
 }
 
 /* PIT channel 0 on a CIA-B timer (D8): one CIA period per PIT period, the
@@ -279,202 +203,36 @@ void plat_timer_rate(uint32_t divisor)
     }
 }
 
-/* Each vertical blank: a published frame is due (D9); the runtime presents
- * its changed rows at the next poll point. */
-static struct Interrupt vblank_interrupt;
-static int vblank_added = 0;
-volatile ULONG amiga_frames = 0;   /* vertical blanks since start (debug fixtures) */
-
-static ULONG vblank_tick(void)
-{
-    ++amiga_frames;
-    rt_present_due = 1;
-    G_IRQ = 1;
-    return 0;
-}
-
-static void vblank_open(void)
-{
-    vblank_interrupt.is_Node.ln_Type = NT_INTERRUPT;
-    vblank_interrupt.is_Node.ln_Name = (char *)"SWOTL present";
-    vblank_interrupt.is_Code = (void (*)(void))vblank_tick;
-    AddIntServer(INTB_VERTB, &vblank_interrupt);
-    vblank_added = 1;
-}
-
-static void vblank_close(void)
-{
-    if (vblank_added) {
-        RemIntServer(INTB_VERTB, &vblank_interrupt);
-        vblank_added = 0;
-    }
-}
-
-/* Keyboard (input.c): an input.device handler ahead of Intuition turns raw
- * keys into PC set 1 scan codes (US positions; RT_KEY_E0 for the grey keys)
- * and posts them as 09h/89h; the events are swallowed. Caps Lock reports its
- * lock state, so both edges are a PC make and break (one toggle each). */
-#define E0 RT_KEY_E0
-static const uint16_t raw_to_scan[0x68] = {
-    /* 00 */ 0x29, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x2b, 0, 0x52,
-    /* 10 */ 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0, 0x4f, 0x50, 0x51,
-    /* 20 */ 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0, 0, 0x4b, 0x4c, 0x4d,
-    /* 30 */ 0, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0, 0x53, 0x47, 0x48, 0x49,
-    /* 40 */ 0x39, 0x0e, 0x0f, E0 | 0x1c, 0x1c, 0x01, E0 | 0x53, 0, 0, 0, 0x4a, 0,
-             E0 | 0x48, E0 | 0x50, E0 | 0x4d, E0 | 0x4b,
-    /* 50 */ 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, E0 | 0x35, 0x37, 0x4e, 0,
-    /* 60 */ 0x2a, 0x36, 0x3a, 0x1d, 0x38, E0 | 0x38, 0, 0,
-};
-static struct MsgPort *input_port = 0;
-static struct IOStdReq *input_io = 0;
-static struct Interrupt input_interrupt;
-static int input_added = 0;
-void amiga_input_stub(void);
-
-static void post_key(uint16_t ev)
-{
-    Disable();                      /* rt_irq_ring is shared with the CIA tick */
-    rt_key_ring[rt_key_tail % RT_KEY_RING] = ev;
-    ++rt_key_tail;
-    rt_irq_ring[rt_irq_tail % RT_IRQ_RING] = ev & 0x80 ? 0x89 : 0x09;
-    ++rt_irq_tail;
-    G_IRQ = 1;
-    Enable();
-}
-
-/* Mouse counts and buttons since plat_mouse last took them (input.device task). */
-static int32_t mouse_dx, mouse_dy;
-static uint32_t mouse_buttons;
-static ULONG mouse_reads;    /* plat_mouse calls: the guest's INT 33h requests */
-
-static void mouse_event(const struct InputEvent *e)
-{
-    static const UBYTE bit[3] = {1, 2, 4};  /* IECODE_LBUTTON, RBUTTON, MBUTTON */
-    UWORD code = e->ie_Code & ~IECODE_UP_PREFIX;
-    if (e->ie_Qualifier & IEQUALIFIER_RELATIVEMOUSE) {
-        mouse_dx += e->ie_X;
-        mouse_dy += e->ie_Y;
-    }
-    if (code >= IECODE_LBUTTON && code <= IECODE_MBUTTON) {
-        if (e->ie_Code & IECODE_UP_PREFIX) {
-            mouse_buttons &= ~(uint32_t)bit[code - IECODE_LBUTTON];
-        } else {
-            mouse_buttons |= bit[code - IECODE_LBUTTON];
-        }
-    }
-}
-
-uint32_t plat_mouse(int32_t *dx, int32_t *dy)
-{
-    Disable();
-    *dx = mouse_dx;
-    *dy = mouse_dy;
-    mouse_dx = mouse_dy = 0;
-    uint32_t buttons = mouse_buttons;
-    Enable();
-    ++mouse_reads;
-    return buttons;
-}
-
-struct InputEvent *amiga_input(struct InputEvent *events)
-{
-    for (struct InputEvent *e = events; e; e = e->ie_NextEvent) {
-        if (e->ie_Class == IECLASS_RAWMOUSE) {
-            mouse_event(e);
-            e->ie_Class = IECLASS_NULL;
-            continue;
-        }
-        if (e->ie_Class != IECLASS_RAWKEY) {
-            continue;
-        }
-        UWORD raw = e->ie_Code & 0x7f, up = e->ie_Code & IECODE_UP_PREFIX;
-        uint16_t scan = raw < sizeof raw_to_scan / sizeof raw_to_scan[0] ? raw_to_scan[raw] : 0;
-        if (scan == 0x3a) {
-            post_key(scan);
-            post_key(scan | 0x80);
-        } else if (scan) {
-            post_key(up ? scan | 0x80 : scan);
-        }
-        e->ie_Class = IECLASS_NULL;
-    }
-    return events;
-}
-
-static void input_open(void)
-{
-    input_port = CreateMsgPort();
-    input_io = input_port ? (struct IOStdReq *)CreateIORequest(input_port, sizeof(struct IOStdReq)) : 0;
-    if (!input_io || OpenDevice((CONST_STRPTR)"input.device", 0, (struct IORequest *)input_io, 0)) {
-        plat_log("SWOTL no input.device");
-        if (input_io) {
-            DeleteIORequest((struct IORequest *)input_io);
-            input_io = 0;
-        }
-        return;
-    }
-    input_interrupt.is_Node.ln_Type = NT_INTERRUPT;
-    input_interrupt.is_Node.ln_Pri = 100;
-    input_interrupt.is_Node.ln_Name = (char *)"SWOTL input";
-    input_interrupt.is_Code = amiga_input_stub;
-    input_io->io_Command = IND_ADDHANDLER;
-    input_io->io_Data = &input_interrupt;
-    DoIO((struct IORequest *)input_io);
-    input_added = 1;
-}
-
-static void input_close(void)
-{
-    if (input_added) {
-        input_io->io_Command = IND_REMHANDLER;
-        input_io->io_Data = &input_interrupt;
-        DoIO((struct IORequest *)input_io);
-        input_added = 0;
-    }
-    if (input_io) {
-        CloseDevice((struct IORequest *)input_io);
-        DeleteIORequest((struct IORequest *)input_io);
-        input_io = 0;
-    }
-    if (input_port) {
-        DeleteMsgPort(input_port);
-        input_port = 0;
-    }
-}
-
 /* Diagnostic key script (argument KEYS=when:key,...; when is a frame from
  * the start, or pN: N guest mouse reads after the previous step, which waits
  * for a screen that is polling rather than for a time the host load moves;
  * keys a-z 0-9 enter esc space or $hex raw codes, mouse buttons lmb rmb,
  * mouse motion mx+N mx-N my+N my-N counts; shot and quit call
- * amiga_script_mark for a debugger fixture): written into input.device
- * from the main task at each present, so it takes the handler path above;
- * a key is released 5 frames after it is pressed, a button once the guest
- * has also read the mouse twice (buttons are polled levels, keys reach the
- * BIOS buffer). */
+ * amiga_script_mark for a debugger fixture): fed from the main program at
+ * each vertical blank into the keyboard and mouse paths of Input.cpp; a key
+ * is released 5 frames after it is pressed, a button once the guest has
+ * also read the mouse twice (buttons are polled levels, keys reach the BIOS
+ * buffer). */
+#define SCRIPT_LMB 0x100
+#define SCRIPT_RMB 0x101
 static const char *key_script = 0;
 static ULONG key_up_frame = 0;
 static ULONG key_up_reads = 0;
-static ULONG step_reads = 0;    /* mouse_reads at the previous step */
-static UWORD key_up_code = 0;
-static UBYTE key_up_class = 0;
+static ULONG step_reads = 0;    /* amiga_mouse_reads at the previous step */
+static int key_up = -1;         /* the held raw key or SCRIPT_LMB/RMB */
 
 void __attribute__((noinline)) amiga_script_mark(int quit)
 {
     __asm__ volatile("" : : "r"(quit) : "memory");
 }
 
-static void write_event(UBYTE class, UWORD code, WORD x, WORD y)
+static void script_event(int code, int up)
 {
-    struct InputEvent e = {0};
-    e.ie_Class = class;
-    e.ie_Code = code;
-    e.ie_Qualifier = class == IECLASS_RAWMOUSE ? IEQUALIFIER_RELATIVEMOUSE : 0;
-    e.ie_X = x;
-    e.ie_Y = y;
-    input_io->io_Command = IND_WRITEEVENT;
-    input_io->io_Data = &e;
-    input_io->io_Length = sizeof e;
-    DoIO((struct IORequest *)input_io);
+    if (code == SCRIPT_LMB || code == SCRIPT_RMB) {
+        amiga_mouse_script_buttons(up ? 0 : code == SCRIPT_LMB ? 1 : 2);
+    } else {
+        amiga_key(code, up);
+    }
 }
 
 static int named(const char *name, int n, const char *word)
@@ -502,6 +260,8 @@ static int raw_of(const char *name, int n)
     if (named(name, n, "enter")) return 0x44;
     if (named(name, n, "esc")) return 0x45;
     if (named(name, n, "space")) return 0x40;
+    if (named(name, n, "lmb")) return SCRIPT_LMB;
+    if (named(name, n, "rmb")) return SCRIPT_RMB;
     if (n == 3 && name[0] == '$') {
         int v = 0;
         for (int k = 1; k < 3; ++k) {
@@ -515,14 +275,11 @@ static int raw_of(const char *name, int n)
 
 static void key_script_step(void)
 {
-    if (!input_added) {
-        return;
+    if (key_up >= 0 && amiga_frames >= key_up_frame && amiga_mouse_reads >= key_up_reads) {
+        script_event(key_up, 1);
+        key_up = -1;
     }
-    if (key_up_code && amiga_frames >= key_up_frame && mouse_reads >= key_up_reads) {
-        write_event(key_up_class, key_up_code | IECODE_UP_PREFIX, 0, 0);
-        key_up_code = 0;
-    }
-    if (!key_script || *key_script <= ' ' || key_up_code) {
+    if (!key_script || *key_script <= ' ' || key_up >= 0) {
         return;
     }
     ULONG when = 0;
@@ -532,10 +289,10 @@ static void key_script_step(void)
     while (*p >= '0' && *p <= '9') {
         when = when * 10 + (ULONG)(*p++ - '0');
     }
-    if (reads ? mouse_reads - step_reads < when : amiga_frames < when) {
+    if (reads ? amiga_mouse_reads - step_reads < when : amiga_frames < when) {
         return;
     }
-    step_reads = mouse_reads;
+    step_reads = amiga_mouse_reads;
     const char *name = *p == ':' ? ++p : p;
     while (*p > ' ' && *p != ',') {
         ++p;
@@ -549,28 +306,27 @@ static void key_script_step(void)
             v = (WORD)(v * 10 + name[k] - '0');
         }
         v = name[2] == '-' ? (WORD)-v : v;
-        write_event(IECLASS_RAWMOUSE, IECODE_NOBUTTON, name[1] == 'x' ? v : 0, name[1] == 'y' ? v : 0);
+        amiga_mouse_move(name[1] == 'x' ? v : 0, name[1] == 'y' ? v : 0);
         return;
     }
     if (named(name, n, "shot") || named(name, n, "quit")) {
         amiga_script_mark(name[0] == 'q');
         return;
     }
-    UBYTE class = IECLASS_RAWKEY;
-    int raw = raw_of(name, n);
-    if (named(name, n, "lmb") || named(name, n, "rmb")) {
-        class = IECLASS_RAWMOUSE;
-        raw = name[0] == 'l' ? IECODE_LBUTTON : IECODE_RBUTTON;
-    }
-    if (raw < 0) {
+    int code = raw_of(name, n);
+    if (code < 0) {
         plat_log("SWOTL KEYS: unknown key");
         return;
     }
-    write_event(class, (UWORD)raw, 0, 0);
-    key_up_code = (UWORD)raw;
-    key_up_class = class;
+    script_event(code, 0);
+    key_up = code;
     key_up_frame = amiga_frames + 5;
-    key_up_reads = mouse_reads + (class == IECLASS_RAWMOUSE ? 2 : 0);
+    key_up_reads = amiga_mouse_reads + (code >= SCRIPT_LMB ? 2 : 0);
+}
+
+void plat_service(void)
+{
+    key_script_step();
 }
 
 void plat_log(const char *line)
@@ -579,63 +335,65 @@ void plat_log(const char *line)
     while (line[n]) {
         ++n;
     }
+    amiga_io_begin();
     BPTR out = Output();
     if (out) {
         Write(out, (APTR)line, n);
         Write(out, (APTR)"\n", 1);
     }
+    amiga_io_end();
 }
 
-long amiga_run_guest(void)
+int amiga_guest_open(void)
 {
     DOSBase = (struct DosLibrary *)OpenLibrary((CONST_STRPTR)"dos.library", 39);
     if (!DOSBase) {
-        return -1;
+        return 0;
     }
     for (const char *a = (const char *)GetArgStr(); a && *a; ++a) {
         if (a[0] == 'K' && a[1] == 'E' && a[2] == 'Y' && a[3] == 'S' && a[4] == '=') {
             key_script = a + 5;     /* ends at a space or the line end */
         }
     }
-    IntuitionBase = (struct IntuitionBase *)OpenLibrary((CONST_STRPTR)"intuition.library", 40);
-    GfxBase = (struct GfxBase *)OpenLibrary((CONST_STRPTR)"graphics.library", 40);
     /* Guest RAM, the state block below it and the EMS store after it; Fast RAM
      * when present (D15). */
-    uint8_t *block = (uint8_t *)AllocMem(RT_STATE_BYTES + RT_GUEST_BYTES + RT_EMS_BYTES, MEMF_ANY | MEMF_CLEAR);
-    uint8_t *stack = (uint8_t *)AllocMem(GUEST_STACK_BYTES, MEMF_ANY);
-    int32_t code = -1;
-    if (block && stack) {
-        plat_log("SWOTL guest start");
-        rt_start(block + RT_STATE_BYTES);
-        if (!timer_open()) {
-            plat_log("SWOTL no CIA-B timer");
-        }
-        vblank_open();
-        input_open();
-        code = amiga_guest_call(stack + GUEST_STACK_BYTES);
+    guest_block = (uint8_t *)AllocMem(RT_STATE_BYTES + RT_GUEST_BYTES + RT_EMS_BYTES, MEMF_ANY | MEMF_CLEAR);
+    guest_stack = (uint8_t *)AllocMem(GUEST_STACK_BYTES, MEMF_ANY);
+    if (!guest_block || !guest_stack) {
+        plat_log("SWOTL not enough memory");
+        return 0;
     }
-    input_close();
+    plat_log("SWOTL guest start");
+    rt_start(guest_block + RT_STATE_BYTES);
+    if (!timer_open()) {
+        plat_log("SWOTL no CIA-B timer");
+    }
+    return 1;
+}
+
+long amiga_guest_run(void)
+{
+    return amiga_guest_call(guest_stack + GUEST_STACK_BYTES);
+}
+
+void amiga_guest_close(void)
+{
     timer_close();
-    vblank_close();
     for (int32_t k = 0; k < MAX_FILES; ++k) {
         if (files[k]) {
             plat_close(k);
         }
     }
-    if (stack) {
-        FreeMem(stack, GUEST_STACK_BYTES);
+    if (guest_stack) {
+        FreeMem(guest_stack, GUEST_STACK_BYTES);
+        guest_stack = 0;
     }
-    if (block) {
-        FreeMem(block, RT_STATE_BYTES + RT_GUEST_BYTES + RT_EMS_BYTES);
+    if (guest_block) {
+        FreeMem(guest_block, RT_STATE_BYTES + RT_GUEST_BYTES + RT_EMS_BYTES);
+        guest_block = 0;
     }
-    close_screen();
-    if (IntuitionBase) {
-        CloseLibrary((struct Library *)IntuitionBase);
+    if (DOSBase) {
+        CloseLibrary((struct Library *)DOSBase);
+        DOSBase = 0;
     }
-    if (GfxBase) {
-        CloseLibrary((struct Library *)GfxBase);
-        GfxBase = 0;
-    }
-    CloseLibrary((struct Library *)DOSBase);
-    return code;
 }

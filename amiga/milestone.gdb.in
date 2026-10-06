@@ -1,13 +1,13 @@
 # Milestone fixture (gate 5), filled in by `make test-amiga`: the generated
 # program reaches label @LABEL@; dump the guest registers, state block, guest
-# RAM and rt_dac, and once a screen is open the shown frame (bitplanes and the
-# LoadRGB32 table) for tests/host_run.py --amiga. Output directory: @OUT@.
+# RAM and rt_dac, and the shown frame (bitplanes and the colour table in
+# LoadRGB32 layout) for tests/host_run.py --amiga. Output directory: @OUT@.
 # gdb types a0-a7 as pointers and rt_guest has no debug type: cast both;
 # dump splits its arguments at spaces, so casts go through $variables.
 break @LABEL@
 commands
   silent
-  set $bm = amiga_screen ? amiga_screen->RastPort.BitMap : 0
+  set $bm = &amiga_bitmap
   printf "SWOTL_REGS ax=%04x cx=%04x dx=%04x bx=%04x sp=%04x bp=%04x si=%04x di=%04x bpr=%d\n", $d0 & 0xffff, $d1 & 0xffff, $d2 & 0xffff, $d3 & 0xffff, $d4 & 0xffff, $d5 & 0xffff, (unsigned)$a4 & 0xffff, (unsigned)$a5 & 0xffff, $bm ? $bm->BytesPerRow : 0
   set $g = *(unsigned char **)&rt_guest
   dump binary memory @OUT@/state.bin $g-16 $g

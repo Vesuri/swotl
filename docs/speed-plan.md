@@ -89,7 +89,10 @@ at 12000 cycles or paced is not measured.
 **A1200 model: P ≈ 0.74 s per drawn frame** (display of changed rows of
 published frames, D9; three runs, frame 4–11 intervals 33–44 fields,
 median 37; demo flight starts at field ≈ 1290). Before it, with the whole
-frame converted every 5th field: ≈ 4.2 s (median 210 fields).
+frame converted every 5th field: ≈ 4.2 s (median 210 fields). Machine
+takeover (copper display, own VERTB/keyboard, DOS in I/O windows): same
+period (medians 34, 35, 40 fields; demo flight from field ≈ 1280–1380);
+Kickstart 2.8% → 1.0%, "no PC" 2.0%, runtime 16.3%.
 
 Steady flight window (100 fields after frame 11):
 
@@ -166,8 +169,8 @@ interrupt delivery per real interrupt (`save_regs`/`load_regs`,
 `push_frame`, `rt_flags_word`, `guest_vector`); `rt_lookup` (binary search
 per indirect transfer: a direct-mapped cache keyed by CS:IP, flushed at
 overlay load); the cell walk (open-work 14, D16 specialisation); the
-constant Kickstart 7% (find the ROM code: input.device, timer or vblank
-servers, the Intuition screen); generated-code shape (the role table's
+the "no PC" 2% after the takeover (outside the executable and ROM: Exec's
+interrupt dispatch? find it); generated-code shape (the role table's
 "other" split finer: flag materialisation, segment arithmetic, byte
 swaps).
 

@@ -33,11 +33,12 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     `annotations/tables.csv` that no reference run executed are checked by
     the instruction differential only.
 14a. Display: the changed rows of each published frame are converted into
-    the shown screen bitmap (tears; no double buffer) on an Intuition screen
-    while the OS serves dos.library; D9's framework (copper) display needs
-    file I/O that survives the takeover. A double buffer must carry the
-    other buffer's changed rows too (Vette: back buffer inherits the
-    previous update's rectangles).
+    the shown copper bitmap (tears; no double buffer). A double buffer must
+    carry the other buffer's changed rows too (Vette: back buffer inherits
+    the previous update's rectangles). Takeover: no readable-state restore
+    check yet (L5, SL `restore_status`); keyboard and mouse input from the
+    takeover are untested by any reference (scripted input enters past the
+    CIA and JOY0DAT reads).
 14b. Speed: [speed-plan.md](speed-plan.md) (rules, measurement, baseline,
     steps S0, S2–S4). 68020 + Fast: ≈ 0.74 s per drawn frame vs ≈ 36 ms on
     the reference; guest 80%, runtime 15% (`rt_irq` entered while IF = 0),

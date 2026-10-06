@@ -135,7 +135,7 @@ check, read by the sweep), `data.csv` (ranges),
   PUSHF, until the guest rewrites it); at m1b-logo the A0000h window and the
   DAC; machine bytes the guest read hold reference values. `make
   test-amiga`: the same at m1b-logo on the A1200 model (FS-UAE,
-  `amiga/milestone.gdb.in`), plus the shown screen (bitplanes, LoadRGB32
+  `amiga/milestone.gdb.in`), plus the shown screen (bitplanes, colour
   table) decoded against the reference framebuffer and DAC.
 - Display (D9 slice): only the graphics driver (`emit.GRAPHICS_DRIVER`,
   RTSVGA) writes video memory. Before each of its memory stores the
@@ -148,10 +148,12 @@ check, read by the sweep), `data.csv` (ranges),
   as 32-pixel-aligned rectangles at the first vertical blank after it
   (`rt_present_due`) while no driver call runs; mode set marks the whole
   frame; DAC block sets go to `plat_palette` at once. No frame is read to
-  find changes. Amiga: an 8-plane Intuition screen, Kalms
-  `c2p1x1_8_c5_bm` per rectangle (one call per full-width band, per row
-  otherwise) into the shown bitmap, LoadRGB32 per DAC change, the OS staying
-  up for dos.library. Checked by the host run (every byte the guest stores
+  find changes. Amiga (machine taken over, `Swotl.cpp`): an 8-plane copper
+  display (framework `CopperList`/`Bitmap`), Kalms `c2p1x1_8_c5_bm` per
+  rectangle (one call per full-width band, per row otherwise) into the
+  shown bitmap (`amiga_bitmap`), the copper's 24-bit palette MOVEs
+  rewritten per DAC change (`amiga_colours` keeps the LoadRGB32-layout
+  table). Checked by the host run (every byte the guest stores
   to A0000h lies in the next present's rectangles; sabotage `vram`) and
   `amiga/display_audit.gdb` + `tests/display_audit.py` (after a present the
   shown bitplanes equal guest A0000h).
@@ -167,11 +169,12 @@ check, read by the sweep), `data.csv` (ranges),
   a guest handler's `jmp far` to F000:FEA5 is the BIOS tick plus IRET
   (`rt_bios_int08`). INT 33h is DOSBox-X's driver with the mouse captured
   (8/16 mickeys per 8 pixels, 640x200, mode 13h X even) over `plat_mouse`
-  counts, the Amiga's raw input.device mouse events. The platform posts vectors to `rt_irq_ring` (08h tick,
+  counts, the Amiga's JOY0DAT deltas taken at each vertical blank. The platform posts vectors to `rt_irq_ring` (08h tick,
   09h/89h key make/break): Amiga a CIA-B timer per PIT period
-  (`plat_timer_rate`) and an input.device handler (raw key -> scan code,
-  events swallowed; diagnostic argument `KEYS=when:key,...` writes keys,
-  `lmb`/`rmb` and `mx±N`/`my±N` into input.device at a frame or `pN`, N
+  (`plat_timer_rate`) and the CIA-A keyboard interrupt (`Input.cpp`: raw
+  key -> scan code, PC typematic repeat from the vertical blank; diagnostic
+  argument `KEYS=when:key,...` feeds keys, `lmb`/`rmb` and `mx±N`/`my±N`
+  into the same paths at a frame or `pN`, N
   guest mouse reads after the previous step (host load moves frame
   timings), and `shot`/`quit` call `amiga_script_mark` for a gdb fixture;
   `SWOTL_ARGS` in `amiga/debug.sh`); host run the reference's `irq` events, replayed at the

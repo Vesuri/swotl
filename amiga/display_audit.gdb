@@ -14,7 +14,7 @@ while $k < 40
   set $n = $n + 1
   if $n % 20 == 0
     finish
-    set $bm = amiga_screen->RastPort.BitMap
+    set $bm = &amiga_bitmap
     set $q = $bm->BytesPerRow * 200
     set $g = *(unsigned char **)&rt_guest + 0xa0000
     eval "dump binary memory ../tmp/display-audit/%02d-chunky.bin %u %u", $k, $g, $g + 64000
