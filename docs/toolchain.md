@@ -4,6 +4,25 @@ The host is macOS on Apple Silicon. Every version below was checked on this mach
 2026-10-02 with `which`/`--version`/`ls`. "Missing" means it was not found. Sibling
 provenance is in brackets.
 
+## Fresh host setup (checked 2026-10-06)
+
+- `brew install unicorn capstone ffmpeg sevenzip lhasa unar dosbox-x dosbox-staging
+  openjdk@21 ghidra automake libtool`; pyenv Python 3.12.8 with `pip install
+  capstone==5.0.7 numpy Pillow`. Brew's dosbox-x is 2026.10.01; the reference is the
+  patched build (`make reference-emulator`); with Command Line Tools 26.6 the default
+  MacOSX27 SDK fails to link (`ld: tapi error … arm64e.x1`): build with
+  `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk`.
+- Amiga toolchain: BartmanAbyss `vscode-amiga-debug` 1.8.2 VSIX (`gh release download
+  1.8.2 -R BartmanAbyss/vscode-amiga-debug`, a zip): `extension/bin/darwin/*` into
+  `~/.local/`, `extension/template/support/gcc8_*` into `~/.local/support/`. The zip has
+  no Unix modes: `chmod +x` the Mach-O files under `~/.local/opt/{bin,libexec,m68k-amiga-elf/bin}`
+  and the top-level tools. Its FS-UAE is x86_64 (Rosetta).
+- Ghidra: `~/.local/share/ghidra/ghidra_12.1_PUBLIC` → `/opt/homebrew/opt/ghidra/libexec`
+  (brew 12.1.4).
+- `~/.local/share/amiga/`: `SetPatch` (Workbench 3.1 `C/SetPatch`) and `fsuae_common.sh`
+  (no copy survived; rewritten to the contract in [headless-fsuae.md](headless-fsuae.md)).
+- Not on this host yet: LHa for UNIX encoder, olha, WHDLoad dev files (release only).
+
 ## Amiga cross-build (`. amiga/env.sh`, same shell command as the use)
 
 | Tool | Path | Version / note |
@@ -88,7 +107,7 @@ provenance is in brackets.
 
 - Slicks rule: every instruction semantic and every lowering is differentially tested against an independent x86 oracle (Unicorn x86-16 vs Unicorn 68020 on assembled bytes). [Slicks `CLAUDE.md`, `docs/validation-harness.md`]. Details are in [translation-lessons.md](translation-lessons.md).
 - Slicks: no LLVM and no generated-C backend until there is a measured need. [Slicks `docs/toolchain.md`]
-- SWOTL translator and tests (Python 3.11, stdlib + capstone): `make gen` (build/gen: `.ir`, `.s`,
+- SWOTL translator and tests (Python 3.12, stdlib + capstone; numpy for `tools/profile_report.py`): `make gen` (build/gen: `.ir`, `.s`,
   audit), `make gen-check` (G1), `make lint` (G2), `make test` (lint, decoder vs Capstone, x86
   differential vs Unicorn, 68020 instruction differential, generated-program block differential,
   guard plants, gen-check, host run m1–m3; ~5 min), `make test-sabotage` (x86, 68020 and runtime plants, ~3.5 min),
@@ -116,8 +135,8 @@ provenance is in brackets.
 
 | Tool | Version |
 |---|---|
-| Python (pyenv default) | 3.11.10. Also 2.7.18, 3.9.16, 3.12.4; Homebrew 3.13/3.14 (Homebrew python lacks capstone) |
-| Python packages (3.11) | capstone 5.0.7, numpy 2.4.6, Pillow 12.2.0 |
+| Python (pyenv default) | 3.12.8 |
+| Python packages | capstone 5.0.7, numpy 2.5.3, Pillow 12.3.0 |
 | uv | 0.12.18 |
 | cc | Apple clang 21.0.0 |
 | make | GNU Make 3.81 (Slicks Makefile is 3.81-safe: mode stamps, not same-second timestamps) |
