@@ -64,6 +64,10 @@ Emulator driving: [headless-fsuae.md](headless-fsuae.md). Process rules:
   window) to class, module, guest routine/instruction (generated labels) and
   runtime shares; records without a PC are code outside the first hunk and
   ROM (today the Kalms c2p in hunk `code`).
+- **SWOTL counts**: `tools/host_census.py MILESTONE [--labels L…] [--strops]
+  [--vram]` (host run between milestone snapshots: label executions, string-op
+  elements, A0000h writers and rows per frame); `amiga/perf_frames.gdb` (frame
+  period and a capture, [speed-plan.md](speed-plan.md) §1).
 - **Phase brackets** (beam stamps) for shares; mandatory sanity lines printed
   each run: accounted ≈100%, body ticks/field ≈1. Use a monotonic epoch, not
   `beam − beam` (wrap drops the longest phases). (Revs `perf-method.md` L68–114, §Lessons — measurement.)
