@@ -130,7 +130,8 @@ SABOTAGE = {
     "read": "first byte of each guest file read flipped",
     "ax": "AX of the tenth service result off by one",
     "psp": "one command-tail byte of the PSP changed at the guest entry",
-    "dac": "one DAC gun off at each frame present",
+    "dac": "one DAC gun off at each DAC change",
+    "vram": "graphics driver stores to video memory not marked (rt_vram_mark returns at once)",
 }
 
 
@@ -183,9 +184,25 @@ class Host:
         self.stopped_at: str | None = None
         self.stubs = {self.syms[n]: n for n in ("plat_open", "plat_create", "plat_read", "plat_write",
                                                 "plat_delete", "plat_seek",
-                                                "plat_close", "plat_dir_entry", "plat_timer_rate", "plat_mouse", "plat_present", "plat_log",
-                                                "plat_exit")}
+                                                "plat_close", "plat_dir_entry", "plat_timer_rate", "plat_mouse", "plat_present", "plat_palette",
+                                                "plat_service", "plat_log", "plat_exit")}
         self.presents = 0
+        # D9 display: every byte the guest stores to the frame is inside the
+        # rectangles of the next present (the runtime's marks vs the stores)
+        self.vram_written: set[int] = set()
+        self.display_miss: str | None = None
+        e.write(self.syms["rt_present_due"], b"\1")  # a vertical blank is always due
+        if sabotage == "vram":
+            e.write(self.syms["rt_vram_mark"], b"\x4e\x75")  # rts
+
+        @U.MEM_CB
+        def vram(h, kind, addr, size, value, user):  # the frame exists in mode 13h only
+            if self.e.read(GUEST + 0x449, 1)[0] == 0x13:
+                off = addr - GUEST - 0xA0000
+                self.vram_written.update(range(off, min(off + size, 64000)))
+            return True
+
+        e.hook_range(U.HOOK_MEM_WRITE, vram, GUEST + 0xA0000, GUEST + 0xA0000 + 63999)
 
         @U.CODE_CB
         def stub(h, addr, size, user):
@@ -384,8 +401,20 @@ class Host:
             self.e.write(args[1], bytes(4))
         elif n == "plat_present":
             self.presents += 1
+            shown = bytearray(64000)
+            for k in range(args[2]):
+                x0, y0, x1, y1 = struct.unpack(">4H", self.mem(args[1] + 8 * k, 8))
+                for y in range(y0, y1):
+                    shown[y * 320 + x0:y * 320 + x1] = b"\1" * (x1 - x0)
+            miss = sorted(o for o in self.vram_written if not shown[o])
+            if miss and not self.display_miss:
+                self.display_miss = f"present {self.presents}: {len(miss)} stored pixels outside " \
+                    f"its rectangles, first x={miss[0] % 320} y={miss[0] // 320}"
+            self.vram_written.clear()
+            self.e.write(self.syms["rt_present_due"], b"\1")
+        elif n == "plat_palette":
             if self.sabotage == "dac":
-                self.e.write(args[1] + 300, bytes([self.mem(args[1] + 300, 1)[0] ^ 1]))
+                self.e.write(args[0] + 300, bytes([self.mem(args[0] + 300, 1)[0] ^ 1]))
         elif n == "plat_log":
             self.log.append(self.cstr(args[0]))
             print(self.log[-1])
@@ -725,6 +754,18 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
     h.run(script, args.timeout)
     if h.irq_lost:
         problems.append(h.irq_lost)
+    if h.display_miss:
+        problems.append(h.display_miss)
+    marked = bytearray(64000)  # stored since the last present: still marked (rt_vram_rows)
+    rows = h.mem(h.syms["rt_vram_rows"], 800)
+    for y in range(200):
+        lo, hi = struct.unpack_from(">2H", rows, 4 * y)
+        marked[y * 320 + lo:y * 320 + hi] = b"\1" * max(0, hi - lo)
+    unmarked = sorted(o for o in h.vram_written if not marked[o])
+    if unmarked:
+        problems.append(f"{len(unmarked)} pixels stored since the last present and not marked, "
+                        f"first x={unmarked[0] % 320} y={unmarked[0] // 320}")
+    print(f"frame presents: {h.presents}")
     print(f"hardware interrupts: {h.irq_i} replayed, {len(script['irqs'])} in the reference")
     if h.stopped_at != label:
         problems.append(f"milestone label {label} not reached (exit {h.exit}, pc={h.r('pc'):x})")

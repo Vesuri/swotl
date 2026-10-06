@@ -82,6 +82,8 @@ class Ctx:
     far_targets: tuple = ()                   # known (seg, off) targets of an indirect far one
     manager: bool = False                     # PLINK manager call: return skips `dw id`
     program: bool = False                     # program mode (return checks, runtime calls)
+    vram: bool = False                        # graphics driver: stores to A000h mark rows (D9)
+    driver_call: bool = False                 # PLINK thunk jump into the graphics driver (D9)
 
 
 class Lowering:
@@ -358,8 +360,57 @@ class Lowering:
                 raise LowerError(f"no lowering for {i}")
         if op not in ("mov", "push", "callf", "jmpf"):
             self.check_reloc(set())
+        if self.c.vram and op not in STRING_OPS:
+            for m in mem_dests(i):
+                self.vram_mark(m)
         fn()
         return self.out
+
+    # -- D9 display: the graphics driver's stores to video memory ------------
+    def vram_mark(self, m: Mem) -> None:
+        """Before a store to `m` in the graphics driver: if its segment is
+        A000h, rt_vram_mark widens the changed rows (d7 = offset, d6 = bytes)."""
+        if m.seg == "cs":
+            return
+        skip = self.local()
+        self.e(f"cmp.w #$a000,{SEGSLOT[m.seg]}(a6)")
+        self.e(f"bne.s {skip}")
+        regs = [GREG[r] for r in (m.base, m.index) if r]
+        if regs:
+            self.e(f"move.l {regs[0]},d7")
+            if len(regs) == 2:
+                self.e(f"add.w {regs[1]},d7")
+            if m.disp:
+                self.e(f"add.w #{hx(m.disp)},d7")
+        else:
+            self.e(f"move.l #{hx(m.disp)},d7")
+        self.e(f"moveq #{m.width // 8},d6")
+        self.e("jsr rt_vram_mark")
+        self.at(skip)
+        self.stats["video store mark"] += 1
+
+    def vram_mark_string(self, step: int) -> None:
+        """Before `stos`/`movs` (ES:DI, CX elements under REP): the bytes the
+        instruction will write, in the direction of `step`."""
+        skip = self.local()
+        self.e("cmp.w #$a000,G_ES(a6)")
+        self.e(f"bne.s {skip}")
+        n = abs(step)
+        if self.i.rep:
+            self.e("moveq #0,d6")
+            self.e("move.w d1,d6")
+            self.e(f"beq.s {skip}")
+            if n == 2:
+                self.e("add.l d6,d6")
+        else:
+            self.e(f"moveq #{n},d6")
+        self.e("move.l a5,d7")
+        if step < 0:            # DF = 1: the lowest byte written is DI + n - bytes
+            self.e("sub.l d6,d7")
+            self.e(f"addq.l #{n},d7")
+        self.e("jsr rt_vram_mark")
+        self.at(skip)
+        self.stats["video store mark"] += 1
 
     # -- ALU -----------------------------------------------------------------
     def src_operand(self, o, *, areg: bool, mem: bool, scratch: str = "d7",
@@ -1001,6 +1052,8 @@ class Lowering:
         src = self.seg_base(i.seg or "ds") if op in ("movs", "cmps", "lods") else None
         add = f"{'addq' if step > 0 else 'subq'}.w #{abs(step)}"
         top = self.local()
+        if self.c.vram and op in ("movs", "stos"):
+            self.vram_mark_string(step)
         if i.rep:
             self.at(top)
             self.e("tst.w d1")
@@ -1193,6 +1246,17 @@ class Lowering:
 
     def op_jmpf(self):
         f = self.far_operand()
+        if self.c.driver_call:
+            # D9: the driver's retf comes back here; its outermost return
+            # publishes the frame it drew (rt_vdrv_return), then returns to
+            # the thunk's caller
+            if not f:
+                raise LowerError(f"indirect graphics driver thunk {self.i}")
+            self.e("addq.w #1,rt_vdrv_depth")
+            self.goto_far(f[0], f[1], "jsr")
+            self.e("jmp rt_vdrv_return")
+            self.stats["graphics driver call"] += 1
+            return
         if f:
             self.goto_far(f[0], f[1], "jmp")
         else:
@@ -1371,6 +1435,21 @@ def reads(i: Insn, program: bool = False) -> set:
     if op in ("div", "idiv") or op == "aam" and i.operands[0].value == 0:
         return set(STATUS)  # divide error: the handler sees FLAGS
     return set()
+
+
+STRING_OPS = ("movs", "cmps", "stos", "lods", "scas")
+DEST_WRITERS = ("mov", "add", "adc", "sub", "sbb", "and", "or", "xor", "inc", "dec", "neg", "not",
+                "rol", "ror", "rcl", "rcr", "shl", "shr", "sar", "pop")
+
+
+def mem_dests(i: Insn) -> list:
+    """Explicit memory operands an instruction writes (string and stack stores aside)."""
+    ops = i.operands
+    if i.op == "xchg":
+        return [o for o in ops if isinstance(o, Mem)]
+    if i.op in DEST_WRITERS and ops and isinstance(ops[0], Mem):
+        return [ops[0]]
+    return []
 
 
 def fuse_reader(i: Insn) -> bool:

@@ -32,15 +32,16 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     no DOS time/date; table targets added by
     `annotations/tables.csv` that no reference run executed are checked by
     the instruction differential only.
-14a. Display: c2p into the shown screen bitmap every 5th vertical blank
-    (tears; no double buffer) on an Intuition screen while the OS serves
-    dos.library; D9's framework (copper) display needs file I/O that
-    survives the takeover.
+14a. Display: the changed rows of each published frame are converted into
+    the shown screen bitmap (tears; no double buffer) on an Intuition screen
+    while the OS serves dos.library; D9's framework (copper) display needs
+    file I/O that survives the takeover. A double buffer must carry the
+    other buffer's changed rows too (Vette: back buffer inherits the
+    previous update's rectangles).
 14b. Speed: [speed-plan.md](speed-plan.md) (rules, measurement, baseline,
-    steps S0–S4). 68020 + Fast: ≈ 5.3 s per drawn frame vs ≈ 36 ms on the
-    reference; c2p 61%, guest 17%, runtime 14% (`rt_irq` entered while
-    IF = 0), Kickstart 7%. Next: S0, then S1 (present changed rows only).
-    The bar is the user's to set.
+    steps S0, S2–S4). 68020 + Fast: ≈ 0.74 s per drawn frame vs ≈ 36 ms on
+    the reference; guest 80%, runtime 15% (`rt_irq` entered while IF = 0),
+    c2p 2%. Next: S0, then S2. The bar is the user's to set.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/
     `divu.l`, unaligned word/long, `ror.w #8` swap) to replace [arch]
     guesses in `m68k-optimisation.md`.

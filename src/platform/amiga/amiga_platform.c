@@ -38,13 +38,15 @@ struct Screen *amiga_screen = 0;
 uint32_t amiga_colours[1 + 256 * 3 + 1];
 
 /* Kalms c2p (c2p1x1_8_c5_bm.s): d0/d1 chunky width (a multiple of 32) and
- * height, d2/d3 screen offset, a0 chunky, a1 BitMap; saves d2-d7/a2-a6. */
-static void c2p(const void *chunky, struct BitMap *bitmap)
+ * height, d2/d3 screen offset (x a multiple of 8), a0 contiguous chunky
+ * pixels, a1 BitMap; saves d2-d7/a2-a6. */
+static void c2p(const void *chunky, int32_t w, int32_t h, int32_t x, int32_t y,
+                struct BitMap *bitmap)
 {
-    register int32_t d0 __asm("d0") = FRAME_W;
-    register int32_t d1 __asm("d1") = FRAME_H;
-    register int32_t d2 __asm("d2") = 0;
-    register int32_t d3 __asm("d3") = 0;
+    register int32_t d0 __asm("d0") = w;
+    register int32_t d1 __asm("d1") = h;
+    register int32_t d2 __asm("d2") = x;
+    register int32_t d3 __asm("d3") = y;
     register const void *a0 __asm("a0") = chunky;
     register struct BitMap *a1 __asm("a1") = bitmap;
     __asm volatile("jsr c2p1x1_8_c5_bm" : "+r"(d0), "+r"(d1), "+r"(a0), "+r"(a1)
@@ -153,15 +155,11 @@ static void close_screen(void)
     }
 }
 
-/* Mode 13h on a 320x200 8-plane PAL screen: Kalms' c2p converts the chunky
- * frame, the DAC's 6-bit guns are widened to 32 bits for LoadRGB32. */
-void plat_present(const uint8_t *frame, const uint8_t *dac)
+/* Mode 13h on a 320x200 8-plane PAL screen, opened at the first present
+ * or DAC change. */
+static int screen(void)
 {
-    key_script_step();
-    if (!amiga_screen) {
-        if (!IntuitionBase || !GfxBase) {
-            return;
-        }
+    if (!amiga_screen && IntuitionBase && GfxBase) {
         amiga_screen = OpenScreenTags(0, SA_Width, FRAME_W, SA_Height, FRAME_H, SA_Depth, 8,
                                       SA_DisplayID, PAL_MONITOR_ID | LORES_KEY,
                                       SA_Type, CUSTOMSCREEN, SA_Quiet, TRUE,
@@ -169,16 +167,50 @@ void plat_present(const uint8_t *frame, const uint8_t *dac)
                                       SA_Exclusive, TRUE, TAG_DONE);
         if (!amiga_screen) {
             plat_log("SWOTL no 8-plane screen");
-            return;
         }
+    }
+    return amiga_screen != 0;
+}
+
+/* Kalms' c2p converts each changed rectangle into the shown bitmap: a
+ * full-width band in one call, a narrower one row by row (the chunky rows
+ * of a rectangle are not contiguous). */
+void plat_present(const uint8_t *frame, const struct plat_rect *rects, int32_t n)
+{
+    if (!screen()) {
+        return;
+    }
+    struct BitMap *bitmap = amiga_screen->RastPort.BitMap;
+    for (int32_t k = 0; k < n; ++k) {
+        const struct plat_rect *r = &rects[k];
+        int32_t w = r->x1 - r->x0;
+        if (w == FRAME_W) {
+            c2p(frame + r->y0 * FRAME_W, w, r->y1 - r->y0, 0, r->y0, bitmap);
+            continue;
+        }
+        for (int32_t y = r->y0; y < r->y1; ++y) {
+            c2p(frame + y * FRAME_W + r->x0, w, 1, r->x0, y, bitmap);
+        }
+    }
+}
+
+/* The DAC's 6-bit guns widened to 32 bits for LoadRGB32. */
+void plat_palette(const uint8_t *dac)
+{
+    if (!screen()) {
+        return;
     }
     amiga_colours[0] = 256u << 16;
     for (int k = 0; k < 256 * 3; ++k) {
         amiga_colours[1 + k] = (dac[k] & 0x3f) * 0x04104104u;
     }
     amiga_colours[1 + 256 * 3] = 0;
-    c2p(frame, amiga_screen->RastPort.BitMap);
     LoadRGB32(&amiga_screen->ViewPort, (ULONG *)amiga_colours);
+}
+
+void plat_service(void)
+{
+    key_script_step();
 }
 
 /* PIT channel 0 on a CIA-B timer (D8): one CIA period per PIT period, the
@@ -247,22 +279,17 @@ void plat_timer_rate(uint32_t divisor)
     }
 }
 
-/* Periodic present (14a): every PRESENT_FRAMES vertical blanks the frame is
- * due again; the runtime shows it at the next poll point. */
-#define PRESENT_FRAMES 5
+/* Each vertical blank: a published frame is due (D9); the runtime presents
+ * its changed rows at the next poll point. */
 static struct Interrupt vblank_interrupt;
 static int vblank_added = 0;
-static UWORD vblank_count = 0;
 volatile ULONG amiga_frames = 0;   /* vertical blanks since start (debug fixtures) */
 
 static ULONG vblank_tick(void)
 {
     ++amiga_frames;
-    if (++vblank_count >= PRESENT_FRAMES) {
-        vblank_count = 0;
-        rt_present_due = 1;
-        G_IRQ = 1;
-    }
+    rt_present_due = 1;
+    G_IRQ = 1;
     return 0;
 }
 

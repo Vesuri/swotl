@@ -1,5 +1,5 @@
 /* Platform services the runtime needs: the game's files and their directory, the timer, the
- * mouse, the display of the mode 13h frame, a log line and exit. Implemented by src/platform/host (Unicorn harness) and
+ * mouse, the display of the mode 13h frame (changed rectangles, DAC), a log line and exit. Implemented by src/platform/host (Unicorn harness) and
  * src/platform/amiga (dos.library). */
 #ifndef SWOTL_PLATFORM_H
 #define SWOTL_PLATFORM_H
@@ -26,11 +26,17 @@ int32_t plat_dir_entry(const char *dir, uint32_t index, char *name, uint32_t *si
 /* PIT channel 0 now fires every `divisor` input clocks (1..65536, 1193182 Hz):
  * per period the platform posts vector 08h (runtime.h rt_irq_ring). */
 void plat_timer_rate(uint32_t divisor);
-/* Show the 320x200 chunky frame with its DAC (256 x 6-bit R, G, B). */
 /* Mouse counts since the last call (right and down positive) and the
  * buttons held (bit 0 left, 1 right, 2 middle). */
 uint32_t plat_mouse(int32_t *dx, int32_t *dy);
-void plat_present(const uint8_t *frame, const uint8_t *dac);
+/* Show rectangles of the 320x200 chunky frame (pixels, ends exclusive, x0
+ * and x1 multiples of 32); the rest of the shown frame is unchanged. */
+struct plat_rect { uint16_t x0, y0, x1, y1; };
+void plat_present(const uint8_t *frame, const struct plat_rect *rects, int32_t n);
+/* The DAC changed (256 x 6-bit R, G, B). */
+void plat_palette(const uint8_t *dac);
+/* The platform's own work from the main program at a vertical blank. */
+void plat_service(void);
 void plat_log(const char *line);
 void plat_exit(int32_t code) __attribute__((noreturn));
 

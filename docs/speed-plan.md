@@ -37,9 +37,10 @@ Breaking any of these voids the step, whatever it measures.
    so `make test-sabotage` fails if the guard is removed.
 6. **Never compare the port with itself as correctness evidence.** Oracles:
    Unicorn x86, the host run against DOSBox references, the reference
-   framebuffer. The one permitted self-check is S1's display audit (shown
-   bitplanes vs the guest's own A0000h at the same instant), which checks
-   the platform's presentation, not the game.
+   framebuffer. The display checks (host run: guest stores to A0000h vs the
+   present's rectangles; `amiga/display_audit.gdb`: shown bitplanes vs guest
+   A0000h) check the presentation, not the game; run the audit after any
+   display change.
 7. **Measure as §1 says** or the number does not count: emulated fields,
    never wall time; the 68020 model (`AMIGA_CPU` unset), never the 68030
    for a claim; no warp, no `cpu_speed=max`; control = the parent commit,
@@ -49,8 +50,9 @@ Breaking any of these voids the step, whatever it measures.
    `docs/open-work.md` 14b and §2 here updated in the same commit. A step
    that delivers less than half its priced prize is reverted and gets one
    line in §4. Do not start the next step on an unproven one.
-9. **Out of bounds**: presenting less often than every 5th field or
-   skipping guest frames; changing the PIT or timer rate or the order of
+9. **Out of bounds**: presenting a frame before the game publishes it
+   (D9: the outermost graphics driver call returns), reading the frame to
+   find changes, or skipping published frames; changing the PIT or timer rate or the order of
    interrupt delivery; removing or thinning poll points or return checks;
    shortening the guest's own delay loops (SPAZ OPL waits are guest
    semantics); a double buffer or copper display (open-work 14a); symbol
@@ -72,7 +74,7 @@ Breaking any of these voids the step, whatever it measures.
   plat_present`. A capture is 1.1 GB: delete it after the report.
 - **Counts.** `tools/host_census.py MILESTONE --strops --vram --labels …`
   (host run, exact, free; never timing) before pricing a loop.
-- **S0, once, before S1:** prove a gdb stop costs no emulated time. Take
+- **S0, once, before S2:** prove a gdb stop costs no emulated time. Take
   the field delta from `rt_run_guest` to the m1b-logo label twice: with no
   stop between, and with a stop at a label hit ≥ 500 times in that span.
   The deltas must agree within 1 field. If they do not, P must come from a
@@ -84,21 +86,20 @@ Reference (DOSBox-X, `cycles=fixed 12000`, m4): a drawn frame every 9 PIT
 ticks ≈ 36 ms, ≈ 408K x86 instructions per frame. Whether that is CPU-bound
 at 12000 cycles or paced is not measured.
 
-**A1200 model: P ≈ 5.3 s per drawn frame** (12 frames over fields
-4319–7499; intervals 205–550 fields). Guest instructions per drawn frame
-≈ 740K (≈ 2.5 `FLT_15E82` simulation steps per frame vs 1 on the
-reference: the game catches up on elapsed time, so a slower frame also does
-more work).
+**A1200 model: P ≈ 0.74 s per drawn frame** (display of changed rows of
+published frames, D9; three runs, frame 4–11 intervals 33–44 fields,
+median 37; demo flight starts at field ≈ 1290). Before it, with the whole
+frame converted every 5th field: ≈ 4.2 s (median 210 fields).
 
 Steady flight window (100 fields after frame 11):
 
 | Class | Share | Note |
 |---|---|---|
-| c2p | 61.4% | whole 320×200 every 5th field: ≈ 872K cycles ≈ 61 ms per present; the screen changes once per ≈ 5 s |
-| generated guest code | 16.6% | 13–26 cycles per guest instruction; cell walk `SWOTL+06A4D` 2.8% |
-| runtime / platform | 13.7% | `rt_irq` entered 4989×, 474 deliveries: ≈ 4500 entries deliver nothing |
-| Kickstart | 7.0% | the same in every window |
-| IRQ transitions | 1.3% | |
+| generated guest code | 79.6% | SWOTL 46% (cell walk `SWOTL+06A4D` 11%), FLIGHT 19%, RTSVGA 8% (`repe cmpsw` 4.9%); 13–18 cycles per guest instruction |
+| runtime / platform | 14.7% | `rt_irq` entered 6878×, 474 deliveries: ≈ 6400 entries deliver nothing |
+| Kickstart | 2.8% | |
+| c2p | 1.8% | 3 presents |
+| IRQ transitions | 1.1% | |
 
 Other windows: SPAZ loading OPL registers inside CLI (attract): `rt_irq`
 12,895× for 502 deliveries, ≈ 17% of the CPU in `save_regs`, `rt_irq_c`,
@@ -111,9 +112,9 @@ Per drawn frame (m4 host census): `repe cmpsw` `VGA_03BE9` 19,290 words
 (≈ 300 bytes, median 6 rows). m5: A0000h also from `rep stosb`
 (`VGA_03E7A` 38%, `VGA_04085` 20% of bytes) and `rep movsb`.
 
-**Ceiling.** At ≈ 15 cycles per guest instruction, 740K guest instructions
-are ≈ 0.8 s of a 14 MHz 68020 with nothing else running. S1–S3 attack the
-overhead around the guest; reaching the reference needs far fewer cycles
+**Ceiling.** The frame is now almost all guest work: ≈ 650K guest
+instructions per drawn frame at 13–18 cycles each. S2–S3 remove most of the
+remaining ≈ 18% overhead; reaching the reference needs far fewer cycles
 per guest instruction, and the user sets the bar (perf-method §1.3) before
 work past S4.
 
@@ -121,34 +122,11 @@ work past S4.
 
 Re-measure after each step and reprice the rest before starting the next.
 
-### S1. Present only changed rows (platform)
-
-- **Prize.** Up to ≈ 61% of the CPU: between drawn frames the screen does
-  not change, and a drawn frame changes a few rows.
-- **Shape.** `plat_present` keeps the last presented frame (64000 bytes,
-  Fast RAM, allocated when the screen opens). Per present: compare row by
-  row (longwords, early exit per row), merge changed rows into runs, call
-  `c2p1x1_8_c5_bm` per run (`d1` rows, `d3` first row, `a0` frame + first
-  row × 320), copy those rows to the shadow. Palette changes still go
-  through `LoadRGB32` every time. Screen open and mode set convert the whole
-  frame and refill the shadow. `plat_present(frame, dac)` keeps its
-  signature; nothing about the guest enters the platform.
-- **Not allowed here:** tracking writes in generated code, reading the
-  guest's back buffer, changing the cadence.
-- **Price first.** Build an arm that compares but still converts the whole
-  frame: its extra cost is the compare. Expected ≈ 150K cycles per present;
-  if above 250K, report before continuing.
-- **Gate.** §0.4, plus a display audit fixture (commit it): at `shot`
-  marks on the title, the U.S. menu and in flight (`KEYS=` as in
-  [translator-design.md](translator-design.md) Interrupts), decode the 8
-  bitplanes and compare every pixel with guest A0000h; any difference
-  fails. Include marks where a present lands while RTSVGA is mid-update.
-
 ### S2. Poll points skip `rt_irq` while IF = 0 (runtime + translator)
 
-- **Prize.** ≈ 4500 empty `rt_irq` entries per 100 fields in flight
-  (≈ 6% of the CPU now, a larger share after S1); ≈ 17% while SPAZ writes
-  OPL registers under CLI.
+- **Prize.** ≈ 6400 empty `rt_irq` entries per 100 fields in flight
+  (`rt_irq_c`, `load_regs`, `save_regs`, `rt_irq` ≈ 9% of the CPU);
+  ≈ 17% while SPAZ writes OPL registers under CLI.
 - **Cause.** `rt_irq_c` delivers nothing while `G_IF` = 0 but leaves
   `G_IRQ` set, so every poll point (each pass of SPAZ's `loop` delay loops)
   saves registers, calls C and reloads them.
@@ -196,3 +174,8 @@ swaps).
 ## 4. Rejected
 
 (One line per rejected arm: step, change, measured, reason.)
+
+- S1 shape "compare each present against a shadow copy to find changed
+  rows": rejected by the user before building; every present would read
+  the whole 64000-byte frame. Replaced by marks at the driver's stores
+  (D9, translator-design Display).

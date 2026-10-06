@@ -32,7 +32,12 @@ TAG = {"SWOTL.EXE": "R", "SPAZ.OVL": "SPZ", "RTSVGA.OVL": "VGA", "FRONTEND.OVL":
 RET, UNKNOWN, SMC = "ret", "unknown", "smc"
 TERMINAL = {"jmp", "jmpf", "ret", "retf", "iret", "hlt"}
 RUNTIME = ("rt_int", "rt_irq", "rt_fault", "rt_halt", "rt_in8", "rt_in16", "rt_out8", "rt_out16",
-           "rt_ret_mismatch", "rt_dispatch_near", "rt_dispatch_far", "rt_stop_unknown")
+           "rt_ret_mismatch", "rt_dispatch_near", "rt_dispatch_far", "rt_stop_unknown",
+           "rt_vram_mark", "rt_vdrv_depth", "rt_vdrv_return")
+# D9: the graphics driver in scope. Only it writes video memory
+# (docs/external-surface.md); a return from a call into it through its PLINK
+# thunks publishes a frame.
+GRAPHICS_DRIVER = "RTSVGA.OVL"
 
 
 def label(mod: str, off: int) -> str:
@@ -91,6 +96,9 @@ class Program:
         self.int0 = (int0[0]["module"], int(int0[0]["offset"], 16)) if int0 else None
         # D16: self-modified regions, each lowered as one cell walk
         self.smc_forms = image.smc_forms()
+        # D9: the `jmp far` of each PLINK thunk into the graphics driver
+        # (thunk: call far manager, dw id, jmp far)
+        self.driver_jumps = {at + 7 for at, mod, _ in M.thunks(image.load()) if mod == GRAPHICS_DRIVER}
         self.build_edges()
         # D8 poll points: targets of backward branches in the same module
         # (loop heads); a pending hardware interrupt is taken there
@@ -350,7 +358,8 @@ class Program:
                    near_targets=near_t, complete=bool(sw), far_targets=far_t,
                    smc_targets=tuple(sorted((u.ip_of(lo), u.ip_of(hi), walk_label(mod, lo))
                                             for lo, hi in smc_t)),
-                   manager=off in u.manager_calls, program=True)
+                   manager=off in u.manager_calls, program=True, vram=mod == GRAPHICS_DRIVER,
+                   driver_call=mod == M.ROOT and off in self.driver_jumps)
 
     def runs(self, mod: str) -> list[list[int]]:
         u = self.units[mod]

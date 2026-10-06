@@ -78,8 +78,10 @@ extern uint16_t rt_entry_cs, rt_entry_ip;
 void rt_int21(uint16_t cs, uint16_t ip);
 void rt_int10(void);
 extern uint8_t rt_dac[768];      /* video.c: 6-bit R, G, B */
-/* video.c: set by the platform (with G_IRQ) when the frame is due to be
- * shown again; taken at the next poll point (14a) */
+/* video.c: set to 1 by the platform (with G_IRQ) at each vertical blank;
+ * a published frame's changed rows are presented at the next poll point
+ * outside the graphics driver, or when the driver returns (D9); 2: due,
+ * the platform's per-blank work done */
 extern volatile uint8_t rt_present_due;
 void rt_video_refresh(void);
 void rt_int67(void);

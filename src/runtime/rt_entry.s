@@ -25,6 +25,8 @@ G_DS	equ	-16
 	xdef	rt_dispatch_far
 	xdef	rt_stop_unknown
 	xdef	rt_run_guest
+	xdef	rt_vram_mark
+	xdef	rt_vdrv_return
 
 	xref	rt_r
 	xref	rt_guest
@@ -42,6 +44,12 @@ G_DS	equ	-16
 	xref	rt_lookup
 	xref	rt_ret_mismatch_c
 	xref	rt_stop_unknown_c
+	xref	rt_vram_rows
+	xref	rt_vram_top
+	xref	rt_vram_bottom
+	xref	rt_vdrv_depth
+	xref	rt_vram_stray
+	xref	rt_video_publish
 
 	section	.text,code
 
@@ -245,3 +253,86 @@ rt_run_guest:
 	jsr	rt_dispatch_far
 	movem.l	(a7)+,d2-d7/a2-a6
 	rts
+
+; D9 display. Before a graphics driver store to segment A000h: bytes
+; [d7.w, d7.w + d6.l) (the offset wraps at 64 KiB) widen the changed rows,
+; clipped to the 320x200 frame. Per row (rt_vram_rows) the changed columns
+; [lo, hi), hi = 0 for none; a store spanning rows marks them whole.
+; d6/d7/a0 clobbered.
+rt_vram_mark:
+	tst.w	rt_vdrv_depth
+	beq.l	rt_vram_stray		; video memory outside a driver call
+	movem.l	d0-d2,-(a7)
+	and.l	#$ffff,d7
+	move.l	d7,d0
+	add.l	d6,d0			; end, exclusive
+	cmp.l	#$10000,d0
+	bls.s	.last
+	sub.l	#$10000,d0		; wrapped: [d7, 64 KiB), then [0, d0)
+	move.l	d0,-(a7)
+	move.l	#$10000,d0
+	bsr.s	vram_span
+	moveq	#0,d7
+	move.l	(a7)+,d0
+.last:	bsr.s	vram_span
+	movem.l	(a7)+,d0-d2
+	rts
+
+; [d7, d0) with d0 <= 64 KiB
+vram_span:
+	cmp.l	#64000,d0
+	bls.s	.clip
+	move.l	#64000,d0
+.clip:	cmp.l	d0,d7
+	bhs.s	.done
+	subq.l	#1,d0			; last byte
+	divu.w	#320,d7			; column << 16 | row
+	divu.w	#320,d0
+	cmp.w	rt_vram_top,d7
+	bhs.s	.top
+	move.w	d7,rt_vram_top
+.top:	cmp.w	rt_vram_bottom,d0
+	blo.s	.bottom
+	move.w	d0,d1
+	addq.w	#1,d1
+	move.w	d1,rt_vram_bottom
+.bottom:
+	moveq	#0,d1
+	move.w	d7,d1
+	lsl.l	#2,d1
+	lea	rt_vram_rows,a0
+	add.l	d1,a0			; row entry: lo.w, hi.w
+	cmp.w	d7,d0
+	bne.s	.rows
+	swap	d7			; first column
+	swap	d0
+	addq.w	#1,d0			; column end
+	tst.w	2(a0)
+	beq.s	.new
+	cmp.w	(a0),d7
+	bhs.s	.lo
+	move.w	d7,(a0)
+.lo:	cmp.w	2(a0),d0
+	bls.s	.done
+	move.w	d0,2(a0)
+.done:	rts
+.new:	move.w	d7,(a0)+
+	move.w	d0,(a0)
+	rts
+.rows:	sub.w	d7,d0			; rows - 1
+.row:	move.l	#320,(a0)+		; lo 0, hi 320
+	dbf	d0,.row
+	rts
+
+; D9: the `jmp far` of a PLINK thunk into the graphics driver called the
+; entry; its retf returns here (d6/d7 = the popped CS:IP for the caller's
+; return check). The outermost return publishes what the driver drew.
+rt_vdrv_return:
+	subq.w	#1,rt_vdrv_depth
+	bne.s	.inner
+	tst.w	rt_vram_bottom
+	beq.s	.inner
+	movem.l	d0-d1/a0-a1,-(a7)
+	jsr	rt_video_publish
+	movem.l	(a7)+,d0-d1/a0-a1
+.inner:	rts

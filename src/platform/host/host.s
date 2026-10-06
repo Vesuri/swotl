@@ -14,6 +14,8 @@
 	xdef	plat_timer_rate
 	xdef	plat_mouse
 	xdef	plat_present
+	xdef	plat_palette
+	xdef	plat_service
 	xdef	plat_log
 	xdef	plat_exit
 	xdef	host_stubs
@@ -48,6 +50,10 @@ plat_timer_rate:	nop
 plat_mouse:	nop
 	rts
 plat_present:	nop
+	rts
+plat_palette:	nop
+	rts
+plat_service:	nop
 	rts
 plat_log:	nop
 	rts

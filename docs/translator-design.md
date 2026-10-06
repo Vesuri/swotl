@@ -137,12 +137,24 @@ check, read by the sweep), `data.csv` (ranges),
   test-amiga`: the same at m1b-logo on the A1200 model (FS-UAE,
   `amiga/milestone.gdb.in`), plus the shown screen (bitplanes, LoadRGB32
   table) decoded against the reference framebuffer and DAC.
-- Display (D9 slice): the runtime presents guest A0000h and the DAC at each
-  mode set and DAC block set (`plat_present`) and at the poll point after
-  the platform sets `rt_present_due` (Amiga: every 5th vertical blank); on
-  the Amiga an 8-plane Intuition screen (Kalms `c2p1x1_8_c5_bm` into the
-  shown bitmap, LoadRGB32; 2 frames on the 68030 model, 3–4 on the 68020;
-  WritePixelArray8 took 27), the OS staying up for dos.library.
+- Display (D9 slice): only the graphics driver (`emit.GRAPHICS_DRIVER`,
+  RTSVGA) writes video memory. Before each of its memory stores the
+  lowering checks the segment for A000h and calls `rt_vram_mark` (offset,
+  bytes; `rep stos/movs` once for the whole run), which widens per-row
+  changed columns; a store with no driver call in progress stops. The `jmp
+  far` of each PLINK thunk into the driver is a `jsr` counted in
+  `rt_vdrv_depth`; the outermost return publishes the frame
+  (`rt_vdrv_return`). A published frame's changed rows go to `plat_present`
+  as 32-pixel-aligned rectangles at the first vertical blank after it
+  (`rt_present_due`) while no driver call runs; mode set marks the whole
+  frame; DAC block sets go to `plat_palette` at once. No frame is read to
+  find changes. Amiga: an 8-plane Intuition screen, Kalms
+  `c2p1x1_8_c5_bm` per rectangle (one call per full-width band, per row
+  otherwise) into the shown bitmap, LoadRGB32 per DAC change, the OS staying
+  up for dos.library. Checked by the host run (every byte the guest stores
+  to A0000h lies in the next present's rectangles; sabotage `vram`) and
+  `amiga/display_audit.gdb` + `tests/display_audit.py` (after a present the
+  shown bitplanes equal guest A0000h).
 - Interrupts (D8): poll points at loop heads (targets of backward branches,
   all block leaders, so live flags are in the state block): `tst.b G_IRQ(a6)`
   then `rt_irq` (d6 = CS << 16, d7 = IP). With guest IF set posted interrupts
