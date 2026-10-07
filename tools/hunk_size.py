@@ -82,8 +82,16 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("files", nargs="+", type=Path)
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--release-of", type=Path, help="require stripped files with identical loadable records")
     args = ap.parse_args()
     reports = {str(p): inspect(p.read_bytes()) for p in args.files}
+    if args.release_of:
+        original = inspect(args.release_of.read_bytes())
+        for path, report in reports.items():
+            if report["sections"].get("symbols", 0) or report["sections"].get("debug", 0):
+                ap.error(f"{path}: release contains symbol/debug records")
+            if report["loadable_sha256"] != original["loadable_sha256"]:
+                ap.error(f"{path}: loadable records differ from {args.release_of}")
     if args.json:
         print(json.dumps(reports, indent=2))
         return

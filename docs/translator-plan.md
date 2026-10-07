@@ -204,7 +204,15 @@ bytes. `make size` exposes the full file breakdown for subsequent steps.
 
 Keep code bytes and file bytes visible separately. Symbol removal addresses
 file overhead; it does not compact generated instructions. A separate release
-artifact requires the user's §0.9 approval; the measurement build stays fixed.
+artifact was authorized by the user under §0.9. `make amiga-release` now
+produces 1,406,660 bytes (2,407,116 fewer, 63.12% smaller than the debug file),
+with zero symbols/debug records. Code/data/relocation/allocation records are
+identical; the debug executable and ELF hashes are unchanged. No speed gain
+claimed. Code payload remains 1,364,372 bytes including runtime/platform;
+stripping does not address that expansion. Release smoke passes on the
+68020 A1200 model with the existing fixture. `make test`,
+`make test-sabotage`, `make test-host-all`, `make test-amiga` and `make smoke`
+also pass for this tooling-only change.
 
 - **Data.** `[bp/bx/si/di(+si/di)+disp]` operands: 19.2%, 307K executions,
   17.7 cyc, 5.1 68k instructions (`[bp]` alone 9.0%, 18.6 cyc). Each access

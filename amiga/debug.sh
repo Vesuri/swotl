@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Source-level debug the Amiga build via FS-UAE's GDB stub.
-#   ./debug.sh [path-to-kickstart] [fixture.gdb]
+#   ./debug.sh [path-to-kickstart] [fixture.gdb] [executable]
 # AMIGA_CPU=68030 (make test-amiga) for the faster development model.
 # Without a fixture: interactive gdb; `continue` runs the program.
 # The stub serves memory reads but silently drops writes: inject inputs from C.
@@ -23,7 +23,7 @@ mkdir -p "$DH0/c" "$DH0/s" "$DH1" "$RUN/state" "$GDBHOME"
 # against the wrong base and no breakpoint is ever hit (Rescue on Fractalus).
 printf 'C:SetPatch QUIET\ncd dh1:\nSwotl %s\n' "${SWOTL_ARGS:-}" > "$DH0/s/startup-sequence"
 cp -f "$SETPATCH" "$DH0/c/SetPatch"
-cp -f out/Swotl.exe "$DH1/Swotl"
+cp -f "${3:-out/Swotl.exe}" "$DH1/Swotl" || exit 1
 # The game's own data files next to the executable (local only, never committed).
 rsync -a --exclude '*.pdf' ../ref/ "$DH1/"
 rm -f "$RUN"/state/*.uss

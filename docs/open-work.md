@@ -45,9 +45,10 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     T1 baseline in this session: run medians 26–30 fields (0.52–0.60 s),
     15.57–16.19 cycles per guest instruction (D16 counted by walk entry).
     T2 block duplication reverted for unacceptable size (+27.14% file,
-    +21.65% generated text); added boundary coverage retained. Current priority:
-    executable size audit and compact release artifact decision, then revise
-    translator work without whole-block duplication. Native replacements only
+    +21.65% generated text); added boundary coverage retained. Separate stripped
+    release: 1,406,660 bytes, identical loadable records; debug/perf unchanged.
+    Continue T3 onward, keeping code size visible and avoiding whole-block
+    duplication. Native replacements only
     when the user authorizes each routine.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/
     `divu.l`, unaligned word/long, `ror.w #8` swap) to replace [arch]
@@ -58,10 +59,6 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     run masks dead stack (below SS:SP at a service or hardware interrupt, not rewritten by the
     guest); decide whether lockstep needs more (dead flag bits in pushed
     images under the remaining `annotations/flags.csv` pair).
-25. `Swotl.exe`: 3,813,776 bytes; 2,407,116 are embedded symbol records
-    (120,146 symbols). Add a separate compact release artifact after the
-    user approves symbol stripping (§0.9); preserve the debug/perf build.
-    `make size` reports the breakdown.
 
 ## Amiga platform
 

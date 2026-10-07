@@ -22,6 +22,16 @@ commit a0d16a2), `RoF` Rescue on Fractalus, `SDK` `~/.local/share/amiga/WHDLoad`
 - Checker asserts all of them match `VERSION` and date; no build-time date stamping → reproducible (Sl, Po, RoF §5).
 - First public = 0.90; earlier numbers internal only (Po, Sl).
 
+## Local executable
+
+`make amiga-release` writes `amiga/out/Swotl-release.exe` using the installed
+converter's `elf2hunk input.elf output.exe -s`. It verifies no symbol/debug
+records remain and every loadable record matches `Swotl.exe`, including
+relocations and allocation headers. The debug executable and ELF remain
+unchanged; perf continues to use them. `make smoke-release` boots the separate
+artifact using the same smoke fixture and emulator options. This target builds
+an executable only; packaging below remains planned.
+
 ## Make targets (Slicks shape)
 
 | Target | Does | Prov |

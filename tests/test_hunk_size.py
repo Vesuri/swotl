@@ -1,6 +1,8 @@
 """Independent synthetic hunk records for the read-only size audit."""
 from pathlib import Path
 import struct
+import subprocess
+import tempfile
 import sys
 import unittest
 
@@ -35,6 +37,25 @@ class HunkSize(unittest.TestCase):
         code_changed = base.replace(bytes.fromhex("4e714e75"), bytes.fromhex("4e714e71"))
         self.assertEqual(inspect(base)["loadable_sha256"], inspect(renamed)["loadable_sha256"])
         self.assertNotEqual(inspect(base)["loadable_sha256"], inspect(code_changed)["loadable_sha256"])
+
+    def test_release_check_rejects_symbols_debug_and_changed_code(self):
+        original = fixture()
+        symbols = words(0x3f0, 1) + b"name" + words(0, 0)
+        debug = words(0x3f1, 1, 0)
+        stripped = original.replace(symbols, b"").replace(debug, b"")
+        with tempfile.TemporaryDirectory() as tmp:
+            source, release = Path(tmp) / "source", Path(tmp) / "release"
+            source.write_bytes(original)
+            for data, passes in ((stripped, True), (original, False),
+                                 (original.replace(symbols, b""), False),
+                                 (stripped.replace(bytes.fromhex("4e714e75"),
+                                                   bytes.fromhex("4e714e71")), False)):
+                with self.subTest(passes=passes, data=data):
+                    release.write_bytes(data)
+                    result = subprocess.run([sys.executable,
+                        str(Path(__file__).resolve().parents[1] / "tools/hunk_size.py"),
+                        "--release-of", str(source), str(release)], capture_output=True)
+                    self.assertEqual(result.returncode == 0, passes, result.stderr)
 
     def test_truncated_and_missing_end(self):
         for trim in (1, 4, 5, 12, 20):

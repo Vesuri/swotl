@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards host test-host test-host-all test-amiga amiga smoke size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards host test-host test-host-all test-amiga amiga amiga-release smoke smoke-release size clean
 
 PYTHON ?= python3
 REFERENCE_ROOT ?= tmp/pc-root
@@ -34,6 +34,8 @@ help:
 	@echo "  make test-host-all      the same to every milestone, m1-m7, and c6-flight-keys (~6 min)"
 	@echo "  make test-amiga         m1b-logo on the A1200 model (FS-UAE + GDB capture, amiga/milestone.gdb.in; AMIGA_CPU=68030)"
 	@echo "  make amiga   build amiga/out/Swotl.exe"
+	@echo "  make amiga-release  build and verify separate stripped amiga/out/Swotl-release.exe"
+	@echo "  make smoke-release  boot the stripped executable under FS-UAE"
 	@echo "  make size    account for code, data, symbols and relocations in the executable"
 	@echo "  make smoke   boot it under FS-UAE + GDB and check the takeover runs"
 	@echo "  make clean   remove Amiga build output"
@@ -212,6 +214,13 @@ test-amiga: amiga host
 
 amiga: gen-check
 	. amiga/env.sh && $(MAKE) -C amiga
+
+amiga-release: amiga
+	. amiga/env.sh && elf2hunk amiga/out/Swotl.elf amiga/out/Swotl-release.exe -s
+	$(PYTHON) tools/hunk_size.py --release-of amiga/out/Swotl.exe amiga/out/Swotl-release.exe
+
+smoke-release: amiga-release
+	. amiga/env.sh && amiga/debug.sh "" "$(CURDIR)/amiga/diag_smoke.gdb" "$(CURDIR)/amiga/out/Swotl-release.exe" | grep -q '^SWOTL_SMOKE_OK'
 
 size: amiga
 	$(PYTHON) tools/hunk_size.py amiga/out/Swotl.exe
