@@ -17,10 +17,10 @@ this file adds to them and never relaxes them. Open-work item: 14b.
 - **Earlier baseline (commit 6646626):** median 26–27 fields (0.52 s). Guest code 88%:
   13.5 68020 cycles and 3.6 68k instructions per guest instruction (the
   80286: ≈ 5.4 clocks); cell walk 14%; runtime 8%.
-- **After T4-local:** measured medians 26–29.5 fields; 14.73–15.28 cycles
-  and 4.01–4.22 68k instructions per guest instruction. Code payload
-  1,354,532 bytes; stripped executable 1,396,816 bytes. Efficiency/size win;
-  no frame-rate gain established (overlapping timing arms, §4).
+- **After T3 revisit:** candidate run medians 26 fields (520 ms);
+  15.18–15.19 cycles and 4.144–4.146 68k instructions per guest instruction.
+  Code payload 1,335,628 bytes; stripped executable 1,377,892 bytes.
+  Efficiency/size win; timing arms overlap, no frame-rate gain established.
 - **Honest projection:** the steps below are priced at 18–25% of P in
   total, ≈ 0.38–0.42 s. The target needs ≈ 5.5 cycles per guest
   instruction. Translator work is to be completed first anyway (user
@@ -90,7 +90,10 @@ plan's next step is ambiguous.
    (span or median) and the gain is at least half the priced prize.
    **User amendment (2026-10-07):** also keep measured reductions in cycles
    per guest instruction, 68k instructions per guest instruction and code
-   size when frame times overlap. Report those as efficiency/size gains;
+   size when frame times overlap. **No slowdown** (user clarification):
+   smaller code does not excuse increased cycles/instructions or a measured
+   frame-time regression. Overlapping frame times alone establish neither a
+   regression nor an improvement. Report accepted changes as efficiency/size gains;
    do not claim a frame-rate gain. Otherwise revert the code, retain passing
    new tests, and add one line to §5.
 7. **Commit** one step per commit: before/after numbers in the message;
@@ -252,6 +255,58 @@ also pass for this tooling-only change.
 - **Prize.** ≈ 2 instructions per covered access: ≈ 4–6% of P.
 
 ### T3. Byte order kept lazily in registers
+
+- T3 revisit price (parent `48af2d7`, fresh capture and m4 census):
+  **0.933% of P**, 265,087 estimated cycles of 28,420,398. Narrow to
+  consecutive word moves/pushes/pops in AX/BX/CX/DX/BP inside one block;
+  restore before address use, other instructions and block exits. Exclude
+  graphics-driver stores that enter runtime. Static proof only; no annotations.
+  3,582 profitable runs, 358 executed; net 64,991 swaps and 70,242 copies
+  removed in the pricing model. Measured costs: 1.853 cycles/swap and
+  2.060 cycles/data-register copy. Model counts every restoration. No gain
+  claimed before A/B measurements; all gates and no-slowdown rule apply.
+  Coverage first: 880 appended cases pass parent; deliberate wrong byte
+  order gives 528 mismatches. Scratch reports: `tmp/t3-revisit/`.
+
+#### T3 revisit result (kept)
+
+All five gates pass, including all host milestones and c6. Added 880 boundary
+cases and 36 leader-boundary cases pass; the permanent missing-native-store-
+swap fault gives 553 mismatches. Implementation further requires no net added
+swaps in any selected run. Every block entry/exit retains native register
+order; there are no runtime, poll-point, guest-code or reference changes.
+
+Three runs per arm, unchanged 68020 fixture; captures reported and deleted:
+
+| Arm/run | Frames 4–11 intervals (fields) | Median (fields/ms) | Span | Cycles/guest | 68k/guest |
+|---|---|---:|---|---:|---:|
+| parent-1 | 26, 31, 26, 38, 26, 31, 28, 32 | 29.5 / 590 | 26–38 | 15.18 | 4.159 |
+| parent-2 | 24, 29, 24, 31, 24, 29, 24, 25 | 24.5 / 490 | 24–31 | 15.74 | 4.388 |
+| parent-3 | 24, 29, 24, 31, 24, 29, 24, 25 | 24.5 / 490 | 24–31 | 15.39 | 4.280 |
+| candidate-1 | 29, 24, 35, 25, 25, 26, 29, 26 | 26 / 520 | 24–35 | 15.18 | 4.144 |
+| candidate-2 | 28, 25, 35, 25, 25, 26, 29, 26 | 26 / 520 | 25–35 | 15.19 | 4.146 |
+| candidate-3 | 28, 25, 35, 25, 25, 26, 29, 26 | 26 / 520 | 25–35 | 15.19 | 4.145 |
+
+Median cycles/guest 15.39 → 15.19; median 68k/guest 4.280 → 4.145.
+Code payload 1,354,532 → 1,335,628 bytes (−18,904); release executable
+1,396,816 → 1,377,892 (−18,924); debug executable 3,803,932 → 3,785,008.
+Frame run medians 24.5–29.5 → 26 overlap. Median of the 24 frame intervals
+is 26 fields in each arm; median of the three run medians is 24.5 → 26.
+These timings establish neither a frame-rate gain nor a regression under
+§3.6. Kept for reduced cycles/instructions and smaller code under the user
+amendment; no frame-rate gain claimed. Next: revisit T4 cross-block.
+
+Selected forms across the three runs (ranges; counts/bytes are weighted
+static template sizes):
+
+| Form | Parent → candidate cycles/exec | Static 68k/exec | Static bytes/exec |
+|---|---|---|---|
+| `push r16` | 14.8–14.9 → 13.9 | 5.0–5.1 → 4.5 | 14.7–15.2 → 14.0 |
+| `pop r16` | 13.3–13.6 → 12.9–13.0 | 4.5–4.6 → 4.3–4.4 | 12.1–12.2 → 11.8 |
+| `mov r16,m16[disp]` | 11.5–11.6 → 10.8 | 2.5 → 2.3 | 8.4–8.6 → 8.2 |
+| `mov m16[disp],r16` | 12.4–12.5 → 11.6 | 3.0 → 2.7 | 8.9–9.0 → 8.3 |
+
+#### Earlier T3 screening (superseded by the revisit)
 
 - T3 price (2026-10-07 continuation, parent `0710c7d`): **0.958% of P**;
   below the 1% build threshold, not built. Fresh 100-field capture:

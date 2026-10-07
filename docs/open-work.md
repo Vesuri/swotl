@@ -39,26 +39,15 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     check yet (L5, SL `restore_status`); keyboard and mouse input from the
     takeover are untested by any reference (scripted input enters past the
     CIA and JOY0DAT reads).
-14b. Speed: [translator-plan.md](translator-plan.md) (target: a 14 MHz
-    80286's frame rate, median ≤ 12 fields; authority; steps T1–T9) under
-    [speed-plan.md](speed-plan.md) §0–§1 (S0–S6 done). 68020 + Fast:
-    T1 baseline in this session: run medians 26–30 fields (0.52–0.60 s),
-    15.57–16.19 cycles per guest instruction (D16 counted by walk entry).
-    T2 block duplication reverted for unacceptable size (+27.14% file,
-    +21.65% generated text); added boundary coverage retained. Separate stripped
-    release target validates identical loadable records against debug output.
-    T3 priced 0.958% of P from a fresh capture: not built below the 1% bar.
-    T4 cross-block candidate priced 0.0273%: not built. Within-block carry
-    reuse kept under the user's efficiency/size acceptance: cycles/guest
-    15.63–16.18 → 14.73–15.28, 68k/guest 4.25–4.43 → 4.01–4.22;
-    stripped executable 1,396,816 bytes. All gates green; frame medians
-    overlap (26.5–29.5 → 26–29.5 fields), so no frame-rate gain claimed.
-    T5 guarded far-call/return packing priced 0.926% of P: not built.
-    T6 listed encoding/local mask candidates screen at at most 0.593% of P:
-    not built under the former cutoff. User removed the 1% floor for changes
-    expected to reduce cycles, instructions and code size; reprice and revisit
-    T3, T4 cross-block, T5 and T6 before T7–T9. Work resumed with T3.
-    Keep code size visible; avoid block duplication.
+14b. Speed: [translator-plan.md](translator-plan.md), T1–T9 under
+    [speed-plan.md](speed-plan.md) §0–§1. Target ≤12 fields on 68020 + 8 MB Fast.
+    T4-local and T3 revisit kept; current T3 candidate medians 26 fields
+    (520 ms), 15.18–15.19 cycles/guest, 4.144–4.146 68k/guest; code payload
+    1,335,628 bytes, stripped executable 1,377,892 bytes. All gates pass.
+    Timing arms overlap: efficiency/size wins, no frame-rate gain claimed.
+    User removed the 1% floor for smaller efficiency/size wins, retaining
+    no slowdown. Next: revisit T4 cross-block, T5 and T6, then T7–T9.
+    Keep code size visible; T2 block duplication remains rejected for size.
     Native replacements only when the user authorizes each routine.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/
     `divu.l`, unaligned word/long, `ror.w #8` swap) to replace [arch]

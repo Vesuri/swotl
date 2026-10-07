@@ -88,6 +88,16 @@ def trust_x_across_ea(self, out):
     return out
 
 
+def no_native_store_swap(self, out):
+    """T3: a native word source is wrongly stored as raw memory byte order."""
+    from translator.decode import Mem, Reg
+    if self.i.op == "mov" and self.i.width == 16:
+        a, b = self.i.operands
+        if isinstance(a, Mem) and isinstance(b, Reg):
+            return [s for s in out if s != "\tror.w #8,d6"]
+    return out
+
+
 SABOTAGE = [
     ("jb/jae swapped", sub(r"\bbcs\b", "bcc"), "forms,boundary"),
     ("word loads not byte-swapped", drop_after("move.w (a2,d4.l),d7", "ror.w #8,d7"), "boundary"),
@@ -103,6 +113,7 @@ SABOTAGE = [
     ("REP fast path without wrap guard", no_wrap_guard, "boundary"),
     ("REPE/REPNE run-out leaves CX FFFFh", no_runout_fix, "boundary"),
     ("carry X trusted across EA clobber", trust_x_across_ea, "boundary"),
+    ("native word store skips byte swap", no_native_store_swap, "boundary"),
 ]
 
 

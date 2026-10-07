@@ -73,6 +73,7 @@ class Ctx:
     live: set = field(default_factory=lambda: set(STATUS))  # status flags live after
     ccr_in: set = field(default_factory=set)  # flags valid in the CCR at entry
     x_in: bool = False                       # preceding instruction proved X = guest CF
+    byteorder: object = None                  # block-local word representation action
     fuse: bool = False                        # try to leave `need`-free flags in the CCR
     reloc: frozenset = frozenset()            # byte positions of relocated segment words
     near: object = None                       # ip -> label | None (None: test exit)
@@ -375,7 +376,14 @@ class Lowering:
         if self.c.vram and op not in STRING_OPS:
             for m in mem_dests(i):
                 self.vram_mark(m)
+        action = self.c.byteorder
+        if action:
+            for r in sorted(action.before):
+                self.e(f"ror.w #8,{GREG[r]}")
         fn()
+        if action:
+            for r in sorted(action.after):
+                self.e(f"ror.w #8,{GREG[r]}")
         if "CF" in writes(i)[1] and not self.cf_result:
             self.x_cf = False
         return self.out
@@ -830,7 +838,11 @@ class Lowering:
                 return
             if isinstance(b, Mem) and (a.name in GREG and GREG[a.name][0] == "d"):
                 mem = self.ea(b)
-                self.load16(mem, GREG[a.name])
+                if self.c.byteorder and self.c.byteorder.raw_load:
+                    self.e(f"move.w {mem(0)},{GREG[a.name]}")
+                    self.stats["raw word load"] += 1
+                else:
+                    self.load16(mem, GREG[a.name])
                 return
             if isinstance(b, Mem) and a.name in HALF and not HALF[a.name][1]:
                 mem = self.ea(b)
@@ -846,6 +858,15 @@ class Lowering:
             self.write(a, "d6")
             return
         # memory destination
+        action = self.c.byteorder
+        if action and action.raw_store:
+            r = GREG[b.name]
+            if action.swap_store:
+                self.e(f"ror.w #8,{r}")
+            mem = self.ea(a)
+            self.e(f"move.w {r},{mem(0)}")
+            self.stats["raw word store"] += 1
+            return
         if isinstance(b, Imm):
             mem = self.ea(a)
             v = self.imm(b, pos)
@@ -928,6 +949,15 @@ class Lowering:
 
     def op_push(self):
         o = self.i.operands[0]
+        action = self.c.byteorder
+        if action and action.raw_store:
+            r = GREG[o.name]
+            if action.swap_store:
+                self.e(f"ror.w #8,{r}")
+            self.e("subq.w #2,d4")
+            self.e(f"move.w {r},(a2,d4.l)")
+            self.stats["raw word push"] += 1
+            return
         if isinstance(o, Reg) and o.name == "cs":
             self.push(const=self.c.cs)
         elif isinstance(o, Reg) and o.name == "sp":
@@ -945,7 +975,10 @@ class Lowering:
         if isinstance(o, Reg) and o.name in GREG and GREG[o.name][0] == "d":
             self.e("move.w (a2,d4.l),d7")
             self.e("addq.w #2,d4")
-            self.e("ror.w #8,d7")
+            if not (self.c.byteorder and self.c.byteorder.raw_load):
+                self.e("ror.w #8,d7")
+            else:
+                self.stats["raw word pop"] += 1
             self.e(f"move.w d7,{GREG[o.name]}")
             return
         self.e("moveq #0,d6")

@@ -439,6 +439,7 @@ def boundary(h: Harness) -> None:
 
     address_guard_cases(h)
     carry_reuse_cases(h)
+    byteorder_cases(h)
 
 
 def address_guard_cases(h):
@@ -503,6 +504,48 @@ def carry_reuse_cases(h):
         h.case(bytes.fromhex("01d8 11ca 11de 9c"), "b:carry-chain", n=4,
                block=True, overrides={"regs": {"ax": ax, "bx": 1, "dx": 0xffff,
                    "cx": 0, "si": 0xffff, "sp": 0xfffe, "cs": 0x2000}, "ip": 0x100})
+
+
+
+def byteorder_cases(h):
+    """T3: raw word chains, partial reads, EA uses, aliases and stack wrap."""
+    chains = (
+        ("8b07", "894502", "894504"),       # load/store/store, native exit
+        ("8b07", "89c2", "8915", "b80000", "ba0000"),
+        ("58", "50", "50", "b80000"),     # pop and repeated push
+        ("8905", "b80000"),                 # dead store source
+        ("50", "b80000"),                   # dead push source
+        ("8b07", "8905", "b001"),          # AL write must restore AH
+        ("8b07", "8905", "b401"),          # AH write must restore AL
+        ("8b07", "8905", "01d0", "9c"),  # arithmetic flags from native AX
+        ("8b1d", "891d", "8b07"),          # raw BX then address use
+        ("8b6d00", "896d02", "8b4600"),    # raw BP then SS address use
+        ("8b07", "89c2", "8915", "01d0"),
+        ("8b07", "894502", "8b07", "894504", "b80000"),
+        ("8b07", "8905", "9c"),            # flags remain unchanged
+        ("8b07", "8905", "8bd0", "8915"),
+        ("8b07", "50", "5a", "8915"),
+    )
+    for words in chains:
+        for edge in (0, 1, 0x7fff, 0x8000, 0xfffe, 0xffff):
+            for value in (0x0001, 0x0100, 0x80ff, 0xff80):
+                for cf in (0, 1):
+                    regs = dict(cs=0x2000, ds=0x5000, ss=0x7000, es=0x9000,
+                                bx=edge, si=edge, di=edge, bp=edge, sp=edge,
+                                ax=value, dx=value ^ 0xffff)
+                    h.case(bytes.fromhex("".join(words)), "b:byteorder-chain",
+                           n=len(words), block=True, overrides={"regs": regs,
+                           "ip": 0x100, "flags": {"CF": cf}, "mem": [
+                               (0x50000 + edge, value.to_bytes(2, "little"))]})
+    # Both one- and two-register EAs with displacement wrap; source equals base.
+    for rm in range(8):
+        for disp in (-0x8000, -1, 0, 1, 0x7fff):
+            for base in (0, 1, 0xfffe, 0xffff):
+                load = bytes((0x8b, 0x80 | rm)) + (disp & 0xffff).to_bytes(2, "little")
+                store = bytes((0x89, 0x80 | rm)) + (disp & 0xffff).to_bytes(2, "little")
+                h.case(load + store + store + b"\xb8\x00\x00", "b:byteorder-ea",
+                       n=4, block=True, overrides={"regs": dict(cs=0x2000,
+                       ds=0x5000, ss=0x7000, bx=base, bp=base, si=1, di=1), "ip": 0x100})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

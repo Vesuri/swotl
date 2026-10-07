@@ -52,7 +52,8 @@ Breaking any of these voids the step, whatever it measures.
    `docs/open-work.md` 14b and §2 here updated in the same commit. A step
    that misses the acceptance criteria is reverted and gets one line in §4.
    The frame-time bar is half the priced prize; translator-plan §3.6 also
-   allows measured efficiency/size wins under the user's amendment.
+   allows measured efficiency/size wins under the user's amendment, with
+   no slowdown: smaller code does not excuse a measured performance regression.
    Do not start the next step on an unproven one.
 9. **Out of bounds**: presenting a frame before the game publishes it
    (D9: the outermost graphics driver call returns), reading the frame to
