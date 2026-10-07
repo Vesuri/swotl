@@ -236,6 +236,28 @@ also pass for this tooling-only change.
 
 ### T3. Byte order kept lazily in registers
 
+- T3 price (2026-10-07 continuation, parent `0710c7d`): **0.958% of P**;
+  below the 1% build threshold, not built. Fresh 100-field capture:
+  28,420,394 cycles, 1,535,271 guest instructions, 6,798,002 68k instructions;
+  16.18 cycles/guest, 4.43 68k/guest, 11.06 weighted static bytes/guest.
+  Frames 4–11: 25, 30, 26, 32, 25, 31, 26, 26 fields; median 26 (520 ms),
+  span 25–32. One pricing capture only; no optimized arm or speed claim.
+- Pricing follows block-local memory loads/pops, word-register copies,
+  stores/pushes and unconditional overwrites. Native order is restored for
+  address/partial-register/arithmetic uses, runtime/transfer boundaries and
+  block exits. Count both removed swaps and store copies; measured averages
+  1.795 cycles/swap and 2.003 cycles/data-register copy. Address-register
+  restores need two additional moves; address-register dead stores save no
+  copy. Exclude in-place rotations that would change the store's own address.
+  Include the graphics driver and choose the better positive block price
+  with or without address-register propagation: 272,347 priced cycles.
+  This is a candidate estimate, not a measured speedup or an exhaustive
+  bound on other designs. Fresh host m4 census: 49 frames, 19,290 `cmpsw`
+  and 16,075 `stosw` elements/frame. Reports and pricing scripts remain local
+  under `tmp/t3-session/`; the raw capture was reported and deleted.
+- T2 and T3 are consecutive unsuccessful translator steps. Stop under §2
+  and ask the user before proceeding to T4. No lowering or test changed.
+
 - **Data.** Byte swaps 5.9% (893K `ror.w #8` per 100 fields) plus the
   `move.l dN,d6` copies stores make to swap without destroying the
   register (`mov m16,r16` 12.6 cyc / 3 instructions; `push r16`
@@ -320,6 +342,9 @@ of ≥ 1% of P remains.
 
 - T2: guarded block duplication, priced 1.19% of P; executable +27.14%,
   generated text +21.65%; reverted for size before timing, boundary coverage retained.
+
+- T3: block-local lazy byte order, priced 0.958% of P from a fresh capture;
+  not built (below 1%); no generated-code or executable-size change.
 
 ## 6. When the translator work is done
 

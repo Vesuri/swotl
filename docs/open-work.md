@@ -47,9 +47,10 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     T2 block duplication reverted for unacceptable size (+27.14% file,
     +21.65% generated text); added boundary coverage retained. Separate stripped
     release: 1,406,660 bytes, identical loadable records; debug/perf unchanged.
-    Continue T3 onward, keeping code size visible and avoiding whole-block
-    duplication. Native replacements only
-    when the user authorizes each routine.
+    T3 priced 0.958% of P from a fresh capture: not built below the 1% bar.
+    Stopped under translator-plan §2 after consecutive unsuccessful T2/T3;
+    ask the user before T4. Keep code size visible, avoid whole-block duplication.
+    Native replacements only when the user authorizes each routine.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/
     `divu.l`, unaligned word/long, `ror.w #8` swap) to replace [arch]
     guesses in `m68k-optimisation.md`.
