@@ -437,6 +437,39 @@ def boundary(h: Harness) -> None:
                    overrides={"regs": {"cx": 8, "si": 0x100, "di": 0x100 + d,
                                        "ds": 0x5000, "es": 0x5000}, "flags": {"DF": 0}})
 
+    address_guard_cases(h)
+
+
+def address_guard_cases(h):
+    """T2: single/base+index EAs, both guard edges and 16-bit wrapping."""
+    eas = (("bx", "si"), ("bx", "di"), ("bp", "si"), ("bp", "di"),
+           ("si",), ("di",), ("bp",), ("bx",))
+    for rm, names in enumerate(eas):
+        for disp in (-0x8000, -0x7f, -1, 0, 1, 0x7f, 0x7fff):
+            for width in (1, 2):
+                lo = max(0, -disp)
+                hi = min(0xffff * len(names), 0x10000 - width - disp)
+                values = {0, 1, 0x7fff, 0x8000, 0xfffe, 0xffff}
+                values.update(x + delta for x in (lo, hi) for delta in (-1, 0, 1))
+                if len(names) == 2:
+                    values.update((0x10000, 0x10001, 0x1fffe))
+                for value in sorted(v for v in values if 0 <= v <= 0xffff * len(names)):
+                    regs = dict(cs=0x2000, ds=0x5000, ss=0x6000)
+                    regs[names[0]] = min(value, 0xffff)
+                    if len(names) == 2:
+                        regs[names[1]] = value - regs[names[0]]
+                    for store in (False, True):
+                        op = (0x88 if store else 0x8a) + (width == 2)
+                        code = bytes((op, 0x80 | rm)) + (disp & 0xffff).to_bytes(2, "little")
+                        h.case(code * 4, f"b:ea:{rm}:{disp}:{width}:{value}:{store}",
+                               n=4, block=True, overrides={"regs": regs, "ip": 0x100})
+    # A full or partial write ends the corresponding entry-value proof.
+    for change in (b"\x43", b"\xb3\xff", b"\xb7\xff", b"\x46", b"\x47"):
+        load = b"\x8b\x80\xff\xff"  # AX <- [BX+SI-1]
+        h.case(load * 4 + change + load * 4, "b:ea:base-write", n=9, block=True,
+               overrides={"regs": {"bx": 1, "si": 0, "cs": 0x2000,
+                                    "ds": 0x5000}, "ip": 0x100})
+
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:
     ap = argparse.ArgumentParser()

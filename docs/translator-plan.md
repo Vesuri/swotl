@@ -159,6 +159,53 @@ deleted. T1 kept as the explicitly tools-only step.
 
 ### T2. Register-based memory operands without per-access wrap arithmetic
 
+- T2 price (2026-10-07 continuation, parent `2683c89`): fresh capture
+  and host m4 census; 1.19% of P (single-register 1.12%, two-register
+  0.06%, rounded). Measured untaken word-branch cost 4.13 cycles and
+  immediate-register word/long comparisons 4.04/6.36 cycles; account for
+  sum setup and address-register copies. This supersedes the preliminary
+  price using mixed taken/untaken branches. Price assumes guard success;
+  exact fallback remains mandatory. Acceptance requires ≥0.595% of P.
+- User clarification: include two-register operands. Form the full unsigned
+  sum once, check the displacement/width bounds, then keep it in scratch
+  a0 only when lowering proves a0 unused through the last covered access.
+  Both guest registers must retain their entry values through those uses.
+  Other shapes and guard failures use today's exact lowering. No profile
+  observation substitutes for either proof or guard.
+
+- T2 rejected for size after the user's objection: executable 3,813,776 →
+  4,848,664 bytes (+27.14%); generated `.text` 1,337,216 → 1,626,696 bytes
+  (+21.65%). Prototype reverted; its 2,133 appended boundary cases are
+  retained and pass with the original lowering. No optimized-arm timing
+  or speed gain claimed. Local recovery patch stays under `tmp/`.
+
+#### Executable size audit (2026-10-07)
+
+`tools/hunk_size.py` accounts for every byte without modifying the file.
+All nine in-scope original modules total 426,672 bytes; the Amiga executable
+contains their generated code together. SWOTL.EXE and FLIGHT.OVL alone
+are 100,112 and 103,472 bytes. BSS allocation is not file payload.
+
+| File component | Parent | Rejected T2 |
+|---|---:|---:|
+| Code payload | 1,364,372 | 1,653,852 |
+| Data payload | 4,044 | 4,044 |
+| Embedded symbols | 2,407,116 | 3,149,564 |
+| Relocations | 38,128 | 41,088 |
+| Headers | 116 | 116 |
+| Total | 3,813,776 | 4,848,664 |
+
+Restored output: 3,813,776 bytes. Every non-symbol/debug record matches the
+measured parent exactly; eight symbol-name padding bytes differ on rebuild.
+`make test`, `make test-sabotage`, `make test-host-all`, `make test-amiga`
+and `make smoke` all pass after the revert.
+Static label-span code attribution: SWOTL 293,854 bytes, FLIGHT 349,570
+bytes. `make size` exposes the full file breakdown for subsequent steps.
+
+Keep code bytes and file bytes visible separately. Symbol removal addresses
+file overhead; it does not compact generated instructions. A separate release
+artifact requires the user's §0.9 approval; the measurement build stays fixed.
+
 - **Data.** `[bp/bx/si/di(+si/di)+disp]` operands: 19.2%, 307K executions,
   17.7 cyc, 5.1 68k instructions (`[bp]` alone 9.0%, 18.6 cyc). Each access
   forms the 16-bit offset in d7 (`move.l d5,d7` / `add.w #d,d7`) for the
@@ -262,6 +309,9 @@ of ≥ 1% of P remains.
 ## 5. Rejected and not built
 
 (One line each: step, change, priced, measured, reason.)
+
+- T2: guarded block duplication, priced 1.19% of P; executable +27.14%,
+  generated text +21.65%; reverted for size before timing, boundary coverage retained.
 
 ## 6. When the translator work is done
 
