@@ -1,7 +1,9 @@
 # Speed plan (phase 7)
 
 Work order for making the A1200 build faster. Each step has a prize, a
-shape, a gate and a stop rule; do them in order. Method background:
+shape, a gate and a stop rule; do them in order. Steps S0–S6 are done;
+the work continues in [translator-plan.md](translator-plan.md), under §0
+and §1 here. Method background:
 [perf-method.md](perf-method.md). Open-work item: 14b.
 
 ## 0. Hard rules
@@ -150,14 +152,9 @@ it before pricing (SetPatch's RAM patches of Exec calls such as
 
 ### Beyond the plan
 
-Guest code is 88%: SWOTL 17, FLIGHT 13 cycle units per guest
-instruction, with no single instruction outside the walk above 0.6%.
-The rest is the lowering itself (flags, byte swaps at 5.7%, segment
-arithmetic, register traffic): broad translator work, sized only once
-the user sets the bar (§2 Ceiling). The cell walk (12–14%) is bound by
-its per-cell operand reads, byte swaps and stores (S5, §4); only not
-re-matching cells at all (decoded cells kept per region, invalidated on
-writes to it) would cut it, a D16 design change for the user to decide.
+Continued in [translator-plan.md](translator-plan.md) (target, authority,
+steps T1–T9). The cell walk cache is a D16 design change the user has not
+approved.
 
 ## 4. Rejected
 

@@ -39,11 +39,11 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     check yet (L5, SL `restore_status`); keyboard and mouse input from the
     takeover are untested by any reference (scripted input enters past the
     CIA and JOY0DAT reads).
-14b. Speed: [speed-plan.md](speed-plan.md) (rules, measurement, baseline,
-    priced leftovers, beyond-the-plan options). 68020 + Fast: ≈ 0.52 s per
-    drawn frame vs ≈ 36 ms on the reference; guest 88% (cell walk 14%),
-    runtime 8%. The planned steps are done; what follows needs the user's
-    bar and decisions (D16 cell cache, broad lowering work).
+14b. Speed: [translator-plan.md](translator-plan.md) (target: a 14 MHz
+    80286's frame rate, median ≤ 12 fields; authority; steps T1–T9) under
+    [speed-plan.md](speed-plan.md) §0–§1 (S0–S6 done). 68020 + Fast:
+    median 26–27 fields (0.52 s); 13.5 cycles per guest instruction. Next:
+    T1. Native replacements only when the user authorizes each routine.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/
     `divu.l`, unaligned word/long, `ror.w #8` swap) to replace [arch]
     guesses in `m68k-optimisation.md`.
