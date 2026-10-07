@@ -104,6 +104,58 @@ earlier steps change later prices.
 - Record the baseline table (§4 groups below, from `lowering_cost.py`) in
   this file.
 - Gate: tools only; `make test`.
+- T1 price (2026-10-07 session, parent `6e22e70`): tooling only,
+  no generated-code saving claimed; the ≥1% build threshold applies to
+  lowerings. Fresh 100-field capture: 28,420,398 cycles, guest share
+  86.53%; m4 host census: 49 frames, 19,290 `cmpsw` and 16,075 `stosw`
+  elements/frame. Root-directory attribution already finds call targets;
+  the relative default silently loses them when invoked from `amiga/`.
+
+
+#### T1 baseline (2026-10-07, unchanged `6e22e70` executable)
+
+First fresh 100-field capture; grouped from `lowering_cost.py` form rows
+(rounded). Groups overlap; shares are of all CPU cycles. Static instruction
+counts and bytes are weighted by label executions; they include both arms
+of a lowering and are not dynamic instruction-fetch traffic. The D16 walk
+is counted at its generated entry, not as individual interpreted cells.
+
+| Group | CPU share | Executions | Cycles/exec | Static 68k/exec | Static bytes/exec |
+|---|---:|---:|---:|---:|---:|
+| T2 register-based memory | 19.88% | 313,369 | 18.07 | 5.16 | 15.79 |
+| T3 swaps (role) | 6.08% | — | — | — | — |
+| T3 `push r16` | 3.75% | 71,074 | 15.0 | 5.0 | 14.8 |
+| T4 state-block traffic (role) | 8.99% | — | — | — | — |
+| T4 carry readers | 5.86% | 100,041 | 16.61 | 5.08 | 14.37 |
+| T5 calls/returns | 6.04% | 41,326 | 41.57 | 8.75 | 30.63 |
+| T7 multiply/divide | 4.85% | 30,162 | 45.79 | 8.02 | 22.65 |
+| T8 r8 forms | 5.85% | 141,895 | 11.68 | 3.87 | 10.52 |
+| T8 segment forms | 2.06% | 22,908 | 25.64 | 6.09 | 20.79 |
+
+Generated total: 86.53% of 28,420,398 cycles; 1,571,702 label executions,
+6,688,419 executed 68k instructions; 15.65 cycles, 4.26 executed 68k
+instructions and 10.99 execution-weighted static bytes per guest instruction.
+Top call-target regions: SWOTL+06A4D 12.07%, SWOTL+0B54B 6.17%,
+SWOTL+0BFD1 6.10%, FLIGHT+0A8D2 3.42%. These are nearest-call-target
+self-time regions, not a proved source-level routine partition.
+
+Repeated frame timing (interval ending at frame 4 through frame 11):
+
+| Arm/run | Eight intervals (fields) | Median (fields/ms) | Span | Cycles/guest | 68k/guest |
+|---|---|---:|---|---:|---:|
+| parent-1 | 30, 26, 36, 27, 30, 27, 34, 29 | 29.5 / 590 | 26–36 | 15.65 | 4.26 |
+| parent-2 | 24, 31, 25, 33, 25, 30, 26, 27 | 26.5 / 530 | 24–33 | 16.19 | 4.43 |
+| parent-3 | 30, 26, 36, 26, 31, 27, 33, 30 | 30 / 600 | 26–36 | 15.66 | 4.26 |
+| tools-1 | 30, 26, 37, 27, 31, 26, 33, 30 | 30 / 600 | 26–37 | 15.64 | 4.25 |
+| tools-2 | 30, 26, 37, 27, 32, 26, 33, 29 | 29.5 / 590 | 26–37 | 15.57 | 4.23 |
+| tools-3 | 25, 31, 25, 33, 24, 31, 26, 26 | 26 / 520 | 24–33 | 16.16 | 4.42 |
+
+Parent medians 26.5–30 fields (530–600 ms); tooling medians 26–30 fields
+(520–600 ms). The arms overlap, as expected for T1: the executable is
+unchanged (3,813,776 bytes). No speed gain claimed. `make test` and the
+new tooling target pass; deliberately restoring the relative path or
+dropping extension-word sizes is caught. Each capture was reported and
+deleted. T1 kept as the explicitly tools-only step.
 
 ### T2. Register-based memory operands without per-access wrap arithmetic
 

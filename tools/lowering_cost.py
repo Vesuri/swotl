@@ -6,11 +6,13 @@
 From an FS-UAE profile capture (tools/profile_report.py) of the exact ELF
 that ran: every generated guest instruction's self cycles (its label to the
 next symbol), executions (hits of its label) and static 68k instruction
-count, grouped by x86 form (mnemonic and operand kinds, from the comment
+count and encoded byte size (execution-weighted), grouped by x86 form
+(mnemonic and operand kinds, from the comment
 the translator writes after each label). Also the generated code's cycles
 by 68k mnemonic and by role. Cycle units are the capture's (68020 clocks).
 """
 import argparse
+import bisect
 from collections import Counter, defaultdict
 from pathlib import Path
 import re
@@ -77,15 +79,38 @@ def static_counts(gen: Path) -> tuple[dict, dict]:
     return text, count
 
 
-def mnemonics(objdump, elf):
-    out = subprocess.run([objdump, "-d", "--no-show-raw-insn", elf],
-                         capture_output=True, text=True, check=True).stdout
-    mn = {}
+def parse_disassembly(out):
+    """Actual encoded lengths, including extension words (not source estimates)."""
+    mn, sizes = {}, {}
     for line in out.splitlines():
-        m = re.match(r"^\s+([0-9a-f]+):\s+(\S+)\s*(.*)$", line)
+        m = re.match(r"^\s+([0-9a-f]+):\s+((?:[0-9a-f]{4}[ ]*)+)\t(\S+)\s*(.*)$", line)
         if m:
-            mn[int(m.group(1), 16)] = (m.group(2), m.group(3))
-    return mn
+            addr = int(m.group(1), 16)
+            sizes[addr] = len(m.group(2).split()) * 2
+            mn[addr] = (m.group(3), m.group(4))
+    return mn, sizes
+
+
+def mnemonics(objdump, elf):
+    out = subprocess.run([objdump, "-d", "--insn-width=32", elf],
+                         capture_output=True, text=True, check=True).stdout
+    return parse_disassembly(out)
+
+
+def static_bytes(syms, sizes):
+    """Bytes from each guest symbol to the next distinct symbol address.
+
+    Aliases share a span. Local slow-path labels retain their own spans,
+    just as cycle attribution does; these are static, execution-weighted
+    sizes, not dynamic fetch traffic or an instruction-cache simulation.
+    """
+    addrs = sorted({a for a, _ in syms})
+    spans = Counter()
+    for pc, size in sizes.items():
+        i = bisect.bisect_right(addrs, pc) - 1
+        if i >= 0:
+            spans[addrs[i]] += size
+    return {name: spans[addr] for addr, name in syms if P.GUEST.fullmatch(name)}
 
 
 def role(op: str, arg: str) -> str:
@@ -109,7 +134,7 @@ def main():
     ap.add_argument("capture", type=Path)
     ap.add_argument("elf")
     ap.add_argument("--objdump", default="m68k-amiga-elf-objdump")
-    ap.add_argument("--gen", type=Path, default=Path("build/gen"))
+    ap.add_argument("--gen", type=Path, default=P.DEFAULT_GEN)
     ap.add_argument("--top", type=int, default=40)
     args = ap.parse_args()
 
@@ -119,7 +144,8 @@ def main():
     names = [n for _, n in syms]
     by_name = {n: a for a, n in syms}
     text, nstatic = static_counts(args.gen)
-    mn = mnemonics(args.objdump, args.elf)
+    mn, sizes = mnemonics(args.objdump, args.elf)
+    nbytes = static_bytes(syms, sizes)
 
     pc_cycles, pc_count = Counter(), Counter()
     for _, _, pcs, cost in prof["fields"]:
@@ -150,7 +176,7 @@ def main():
         mn_count[op] += pc_count[pc]
         role_cycles[role(op, arg)] += c
 
-    fcyc, fexec, fstatic, flabels = Counter(), Counter(), Counter(), Counter()
+    fcyc, fexec, fstatic, flabels, fbytes = (Counter() for _ in range(5))
     for name, c in lab_cycles.items():
         t = text.get(name)
         f = form(t) if t else ("walk" if name.endswith("_walk") else "?")
@@ -159,19 +185,22 @@ def main():
         fexec[f] += n
         fstatic[f] += nstatic.get(name, 0) * n
         flabels[f] += 1
+        fbytes[f] += nbytes.get(name, 0) * n
     guest_exec = sum(fexec.values())
 
     pct = lambda c: f"{100 * c / total:6.2f}%"
     print(f"{len(prof['fields'])} fields, {total:,} cycles; generated code {pct(gen_total)}, "
           f"{guest_exec:,} guest instructions, {gen_insns:,} 68k instructions "
           f"({gen_insns / max(guest_exec, 1):.1f} per guest instruction, "
-          f"{gen_total / max(gen_insns, 1):.2f} cycles each)")
+          f"{gen_total / max(gen_insns, 1):.2f} cycles each; "
+          f"{gen_total / max(guest_exec, 1):.2f} cycles/guest instruction; "
+          f"{sum(fbytes.values()) / max(guest_exec, 1):.2f} static bytes/guest instruction)")
     print(f"\n## x86 forms by cycles (top {args.top}): share, executions, cycles/exec, "
-          f"68k instructions/exec (static), sites")
+          f"68k instructions/exec (static), code bytes/exec (static), sites")
     for f, c in fcyc.most_common(args.top):
         n = fexec[f]
         print(f"{pct(c)}  {f:34} {n:>10,}  {c / max(n, 1):6.1f}  {fstatic[f] / max(n, 1):5.1f}  "
-              f"{flabels[f]}")
+              f"{fbytes[f] / max(n, 1):6.1f}  {flabels[f]}")
     print("\n## Generated 68k instructions by role")
     for k, c in role_cycles.most_common():
         print(f"{pct(c)}  {k}")

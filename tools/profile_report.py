@@ -29,6 +29,7 @@ PREFIX = {"R": "SWOTL.EXE", "SPZ": "SPAZ.OVL", "VGA": "RTSVGA.OVL", "FE": "FRONT
           "CMP": "CAMPAIGN.OVL", "NCP": "NOTCAMP.OVL", "FLT": "FLIGHT.OVL",
           "RPL": "REPLAY.OVL", "PNL": "PANEL.OVL"}
 GUEST = re.compile(r"^(R|SPZ|VGA|FE|CMP|NCP|FLT|RPL|PNL)_([0-9A-F]{5})(\w*)$")
+DEFAULT_GEN = Path(__file__).resolve().parents[1] / "build/gen"
 IRQ_MARKER = 0x7FFFFFFF
 NO_PC = -1      # record without a PC frame: code outside the profiled ranges
 
@@ -131,12 +132,26 @@ def roles(objdump, elf):
     return role
 
 
+def routine_entries(gen):
+    """Generated direct call targets; never silently report an empty map."""
+    entries = defaultdict(set)
+    for source in Path(gen).glob("*.s"):
+        for line in source.read_text().splitlines():
+            m = re.match(r"^\s*(?:jsr|bsr)(?:\.[swl])?\s+(\w+)\s*(?:;.*)?$", line)
+            g = GUEST.fullmatch(m.group(1)) if m else None
+            if g:
+                entries[PREFIX[g.group(1)]].add(int(g.group(2), 16))
+    if not entries:
+        raise ValueError(f"no generated guest call targets in {gen}")
+    return {k: sorted(v) for k, v in entries.items()}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("capture", type=Path)
     ap.add_argument("elf")
     ap.add_argument("--objdump", default="m68k-amiga-elf-objdump")
-    ap.add_argument("--entries", default="build/gen", help="generated .s directory (call targets)")
+    ap.add_argument("--entries", type=Path, default=DEFAULT_GEN, help="generated .s directory (call targets)")
     ap.add_argument("--top", type=int, default=30)
     ap.add_argument("--count", action="append", default=[],
                     help="label whose executions to report per field (e.g. a per-frame routine)")
@@ -149,14 +164,7 @@ def main():
     role = roles(args.objdump, args.elf)
     by_name = {n: a for a, n in syms}
 
-    # Guest routine entries: generated call targets, per module.
-    entries = defaultdict(set)
-    for s in Path(args.entries).glob("*.s"):
-        for m in re.finditer(r"\b(?:jsr|bsr)\s+(\w+)", s.read_text()):
-            g = GUEST.match(m.group(1))
-            if g:
-                entries[PREFIX[g.group(1)]].add(int(g.group(2), 16))
-    entry_lists = {k: sorted(v) for k, v in entries.items()}
+    entry_lists = routine_entries(args.entries)
 
     pc_cycles, pc_count = Counter(), Counter()
     field_cycles = []

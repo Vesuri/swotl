@@ -42,8 +42,10 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
 14b. Speed: [translator-plan.md](translator-plan.md) (target: a 14 MHz
     80286's frame rate, median ≤ 12 fields; authority; steps T1–T9) under
     [speed-plan.md](speed-plan.md) §0–§1 (S0–S6 done). 68020 + Fast:
-    median 26–27 fields (0.52 s); 13.5 cycles per guest instruction. Next:
-    T1. Native replacements only when the user authorizes each routine.
+    T1 baseline in this session: run medians 26–30 fields (0.52–0.60 s),
+    15.57–16.19 cycles per guest instruction (D16 counted by walk entry).
+    Next: T2, fresh pricing before coverage/code. Native replacements only
+    when the user authorizes each routine.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/
     `divu.l`, unaligned word/long, `ror.w #8` swap) to replace [arch]
     guesses in `m68k-optimisation.md`.
