@@ -42,6 +42,7 @@ extern "C" {
 struct BitMap amiga_bitmap;
 uint32_t amiga_colours[1 + 256 * 3 + 1];
 volatile uint32_t amiga_frames = 0;    // vertical blanks since the takeover (debug fixtures)
+volatile uint32_t amiga_io_frames = 0; // of those, inside I/O windows (host-timed disk I/O)
 }
 
 Swotl* Swotl::application = 0;
@@ -265,7 +266,9 @@ void Swotl::endIO()
     vector->iv_Data = 0;
     vector->iv_Code = (void (*)())vbiHandler;
     vector->iv_Node = &vbiInterrupt.is_Node;
-    amiga_frames += GfxBase->VBCounter - ioFrames;
+    uint32_t fields = GfxBase->VBCounter - ioFrames;
+    amiga_frames += fields;
+    amiga_io_frames += fields;
     AmigaHardware::setDMAChannels(DMAF_DISK | DMAF_BLITTER, false);
     AmigaHardware::setInterrupts(TAKEOVER_INTERRUPTS, true);
     Enable();

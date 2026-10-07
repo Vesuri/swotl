@@ -28,6 +28,7 @@ void amiga_mouse_move(int16_t dx, int16_t dy);
 void amiga_mouse_script_buttons(uint32_t buttons);
 
 extern volatile uint32_t amiga_frames;
+extern volatile uint32_t amiga_io_frames;
 extern volatile uint32_t amiga_mouse_reads;
 
 #ifdef __cplusplus

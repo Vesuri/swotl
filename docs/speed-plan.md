@@ -74,11 +74,11 @@ Breaking any of these voids the step, whatever it measures.
   plat_present`. A capture is 1.1 GB: delete it after the report.
 - **Counts.** `tools/host_census.py MILESTONE --strops --vram --labels …`
   (host run, exact, free; never timing) before pricing a loop.
-- **S0, once, before S2:** prove a gdb stop costs no emulated time. Take
-  the field delta from `rt_run_guest` to the m1b-logo label twice: with no
-  stop between, and with a stop at a label hit ≥ 500 times in that span.
-  The deltas must agree within 1 field. If they do not, P must come from a
-  counter the program keeps and gdb reads once at the end; build that first.
+- **Stops are free (S0).** Fields from `rt_run_guest` to m1b-logo
+  (`VGA_039AD`), 68020: 99–100 with no stop between (3 runs), 99–100 with
+  110, 364 and 731 stops (5 runs). `amiga_io_frames` counts the fields
+  inside I/O windows (host-timed disk I/O, 7–17 here); the total does not
+  move because the guest waits on the PIT.
 
 ## 2. Baseline (commit c69b52b, 68020 + 8 MB Fast)
 
