@@ -48,7 +48,9 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     User removed the 1% floor for smaller efficiency/size wins, retaining
     no slowdown. T4 cross-block reverted: −208 code bytes, but median
     cycles/guest 15.18 → 15.64 and 68k/guest 4.142 → 4.331; timings overlap.
-    New coverage retained. Next: fresh T5 and T6 pricing, then T7–T9.
+    New coverage retained. T5 repriced 0.913%; inline guard/fallback code
+    growth makes it ineligible for the sub-1% size exception. Paused after
+    two unsuccessful steps; ask to leave T5 unbuilt and proceed to T6–T9.
     Keep code size visible; T2 block duplication remains rejected for size.
     Native replacements only when the user authorizes each routine.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/

@@ -501,6 +501,29 @@ execution-weighted, not dynamic fetch traffic):
 
 ### T5. Far and near calls and returns
 
+- T5 revisit (2026-10-08, parent `2a070b5`): fresh capture and m4 census
+  price the specified packing at an optimistic **0.913% of P**, 259,423
+  estimated cycles of 28,420,397. 10,497 far-call pushes and 11,447 far
+  returns; measured compare costs 3.996 word / 6.547 long cycles and 1.309
+  cycles for an untaken short branch (220,166 samples). As in the earlier
+  screen, charge long accesses only word-access cost, assume guard success,
+  omit fallback joins and return-format conversions. This is not a speedup.
+- The specified inline form adds SP guards and exact fallback paths;
+  packing the return check removes less code than those paths add. No
+  smaller exact implementation has been established. It therefore does not
+  qualify for the sub-1% efficiency/size exception. No prototype or test
+  change built; do not infer an exhaustive bound on alternative designs.
+- Capture: 1,612,857 guest instructions, 6,683,316 68k instructions;
+  15.18 cycles/guest, 4.144 68k/guest, 10.37 static bytes/guest. Frames 4–11:
+  29, 24, 35, 25, 25, 26, 29, 26; median 26 fields (520 ms), span 24–35.
+  Host census: 49 frames, 19,290 `cmpsw` and 16,075 `stosw` elements/frame.
+  Reports: `tmp/t5-revisit/`; raw capture reported and deleted. Code payload
+  remains 1,335,628 bytes; release executable 1,377,892 bytes.
+- T4 rejected and T5 not built are two consecutive unsuccessful steps.
+  Pause under §2; ask whether to leave T5 unbuilt and continue to T6.
+  No authority to change return comparisons, references or guest semantics.
+
+
 - T5 price (parent `f7dad4b`, fresh capture and m4 census): **0.926% of P**
   (263,296 estimated cycles of 28,420,398); the specified guarded far-call/
   return packing is not built below 1%. This is an optimistic common-path
@@ -611,6 +634,9 @@ remaining candidate qualifies, including smaller efficiency/size candidates.
 - T4 cross-block revisit: priced 0.03189% of P; code −208 bytes, median
   cycles/guest 15.18 → 15.64 and 68k/guest 4.142 → 4.331, timing arms overlap;
   reverted under the no-slowdown rule, new coverage retained.
+
+- T5 revisit: optimistic fresh price 0.913% of P; specified inline guards/
+  fallbacks grow code, so not eligible for the sub-1% size exception; not built.
 
 ## 6. When the translator work is done
 
