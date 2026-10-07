@@ -101,6 +101,11 @@ deliveries both); `rt_irq_c`/`load_regs`/`save_regs`/`rt_irq` 8.6–11.7%
 → 1.9%; runtime 16.4–18.0% → 9.1%, guest code 86%. Demo flight starts at
 field ≈ 855 instead of ≈ 1270 (SPAZ's OPL loading under CLI).
 
+**S3 (REP fast paths, D11):** frames 4–11 in 196 fields vs 252–253
+(three identical runs; median 26 vs 36–37), **P ≈ 0.52 s**; RTSVGA 8% →
+3.7% (`repe cmpsw` `VGA_03BE9` 1.6%), `rep stosw` `R_0C1CA` 1.2%; guest
+code 87.6%, runtime 7.9%; cell walk `SWOTL+06A4D` 14.1%.
+
 Steady flight window (100 fields after frame 11):
 
 | Class | Share | Note |
@@ -123,31 +128,14 @@ Per drawn frame (m4 host census): `repe cmpsw` `VGA_03BE9` 19,290 words
 (`VGA_03E7A` 38%, `VGA_04085` 20% of bytes) and `rep movsb`.
 
 **Ceiling.** The frame is now almost all guest work: ≈ 650K guest
-instructions per drawn frame at 13–18 cycles each. S3 removes the
-string-op cost and S4 prices the remaining 9% runtime; reaching the reference needs far fewer cycles
+instructions per drawn frame at 13–18 cycles each. S4 prices what
+is left (runtime 8%, the cell walk 14%); reaching the reference needs far fewer cycles
 per guest instruction, and the user sets the bar (perf-method §1.3) before
 work past S4.
 
 ## 3. Steps
 
 Re-measure after each step and reprice the rest before starting the next.
-
-### S3. String-op fast paths (translator, D11)
-
-- **Prize.** Per drawn frame: 19K `repe cmpsw` words (≈ 17 68k
-  instructions each now), 16K `rep stosw` words, plus `rep stosb` and
-  `rep movs` in menus. Price each from the census × the cycles at its label
-  in a capture; skip any form under 2% of P.
-- **Shape.** DF = 0, CX ≠ 0, and the SI/DI ranges cannot wrap 16 bits
-  (`offset + size × CX ≤ 0x10000`); `movs` also needs no harmful overlap.
-  Then: 32-bit pointers formed once from segment base + offset; `cmpm.w`
-  with `dbne`/`dbeq` (big-endian word equality is byte-order independent),
-  `move.l`/`move.w` stores for `stos`, `move` for `movs`, with `dbf`'s 16-bit
-  counter split for CX > 0x8000; SI, DI and CX written back. For
-  `cmps`, recompute the flags of the last compared pair exactly as the
-  existing lowering does (byte-swapped loads, `cmp`). Otherwise the
-  existing per-element body.
-- **Gate.** §0.5, then §0.4.
 
 ### S4. Re-profile and price (no code)
 

@@ -207,5 +207,5 @@ check, read by the sweep), `data.csv` (ranges),
 | D8 | Interrupt delivery | (a) runtime runs translated guest ISRs at safe points (loop back-edges, calls); (b) HLE of the game's ISRs | [external-surface.md](external-surface.md): guest installs INT 00h/05h/08h (SPAZ tick)/23h/24h; INT 09h/1Ch stay BIOS | (a) |
 | D9 | Graphics drivers | (a) HLE at RTSVGA's call table on the dA JoRMaS layer; (b) translate driver + emulate VGA ports/memory | chained mode 13h via INT 10h, no VGA ports, no page flip; entries = PLINK thunks with id 3 | (a), with RTSVGA itself as oracle |
 | D10 | Sound | SPAZ HLE at its table; AdLib music method open (OPL -> Paula) | 2.5; open-work AdLib item | HLE |
-| D11 | String ops | per-element loops, one body per DF (done); `rep movs/stos` fast paths when DF and overlap provable | corpus + profile | fast paths in phase 7 |
+| D11 | String ops | per-element loops, one body per DF; REP with DF = 0, CX ≠ 0 and SI/DI + size × CX < 10000h: linear pointers, `move (a4)+,(a5)+` / `move d,(a5)+` / `cmpm` / `cmp (a5)+` with `db<cc>`, last pair's flags recomputed (done) | boundary corpus (guard and stop edges, overlap), sabotage | done |
 

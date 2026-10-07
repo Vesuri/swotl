@@ -1049,13 +1049,16 @@ class Lowering:
     def string_body(self, step: int, end: str) -> None:
         i = self.i
         op, w = i.op, i.width
-        sz = SZ[w]
         src = self.seg_base(i.seg or "ds") if op in ("movs", "cmps", "lods") else None
         add = f"{'addq' if step > 0 else 'subq'}.w #{abs(step)}"
         top = self.local()
         if self.c.vram and op in ("movs", "stos"):
             self.vram_mark_string(step)
         if i.rep:
+            if step > 0 and op != "lods":
+                self.e("tst.w d1")
+                self.e(f"beq {end}")
+                self.string_fast(src, top, end)
             self.at(top)
             self.e("tst.w d1")
             self.e(f"beq {end}")
@@ -1078,28 +1081,7 @@ class Lowering:
                 self.load16(lambda k: f"{k}({src},a4.l)", "d7")
                 self.e("move.w d7,d0")
         else:  # cmps scas: d7 - d6
-            if op == "cmps":
-                self.load_mem(lambda k: f"{k}({src},a4.l)", w, "d7")
-            else:
-                self.e(f"move.l d0,d7")
-            self.load_mem(lambda k: f"{k}(a1,a5.l)", w, "d6")
-            need = (self.c.need | ({"ZF"} if i.rep else set())) & FLAG_KINDS["sub"][0]
-            if "AF" in need:
-                self.e("move.b d7,G_AF(a6)")
-                self.e("eor.b d6,G_AF(a6)")
-                self.stats["AF store"] += 1
-            self.e(f"cmp.{sz} d6,d7")
-            saved = self.c.need
-            self.c.need = need - {"PF", "AF"}
-            self.store_ccr(self.c.need & ALLC, self.kills("sub"))
-            self.c.need = saved
-            if {"PF", "AF"} & need:
-                self.e(f"sub.{sz} d6,d7")
-                if "PF" in need:
-                    self.e("move.b d7,G_PF(a6)")
-                    self.stats["PF store"] += 1
-                if "AF" in need:
-                    self.e("eor.b d7,G_AF(a6)")
+            self.compare_pair(lambda k: f"{k}({src},a4.l)", lambda k: f"{k}(a1,a5.l)")
         if op in ("movs", "cmps", "lods"):
             self.e("move.l a4,d7")
             self.e(f"{add},d7")
@@ -1114,6 +1096,91 @@ class Lowering:
                 self.e("btst #2,G_FL+1(a6)")
                 self.e(f"{'beq' if i.rep == 'repe' else 'bne'} {end}")
             self.e(f"bra {top}")
+
+    def string_fast(self, src: str | None, slow: str, end: str) -> None:
+        """REP with DF = 0 and CX != 0 (D11): taken when no SI/DI range reaches
+        10000h (offset + size * CX < 10000h: no access wraps and SI/DI end
+        without wrapping), else `slow` (the element body).
+        SI/DI are linear pointers in the loop and offsets again after it; the
+        loop goes element by element in the x86 order (overlapping MOVS
+        included), `db<cc>` on CX - 1. CMPS/SCAS: words compared big-endian
+        (equality is byte-order independent), then the flags of the last pair
+        computed as the element body does."""
+        i = self.i
+        op, w = i.op, i.width
+        sz, n = SZ[w], w // 8
+        uses_si = op in ("movs", "cmps")
+        self.e("moveq #0,d7")
+        self.e("move.w d1,d7")
+        if n == 2:
+            self.e("add.l d7,d7")
+        if uses_si:
+            self.e("move.l d7,d6")
+            self.e("add.l a4,d6")
+            self.e("cmp.l #$10000,d6")
+            self.e(f"bcc {slow}")
+        self.e("add.l a5,d7")
+        self.e("cmp.l #$10000,d7")
+        self.e(f"bcc {slow}")
+        if uses_si:
+            self.e(f"adda.l {src},a4")
+        self.e("adda.l a1,a5")
+        if op == "stos" and n == 2 or op == "scas" and n == 2:
+            self.e("move.w d0,d7")
+            self.e("ror.w #8,d7")
+        loop = self.local()
+        self.e("subq.w #1,d1")
+        self.at(loop)
+        cc = {"repe": "ne", "repne": "eq"}.get(i.rep, "f") if op in ("cmps", "scas") else "f"
+        if op == "movs":
+            self.e(f"move.{sz} (a4)+,(a5)+")
+        elif op == "stos":
+            self.e(f"move.{sz} {'d7' if n == 2 else 'd0'},(a5)+")
+        elif op == "cmps":
+            self.e(f"cmpm.{sz} (a4)+,(a5)+")
+        else:
+            self.e(f"cmp.{sz} (a5)+,{'d7' if n == 2 else 'd0'}")
+        self.e(f"db{cc} d1,{loop}")
+        if cc == "f":
+            self.e("clr.w d1")
+        else:           # ran out (last pair did not stop it): d1 = -1, CX = 0
+            done = self.local()
+            self.e(f"b{cc}.s {done}")
+            self.e("addq.w #1,d1")
+            self.at(done)
+            self.compare_pair(lambda k: f"{k - n}(a4)", lambda k: f"{k - n}(a5)")
+        if uses_si:
+            self.e(f"suba.l {src},a4")
+        self.e("suba.l a1,a5")
+        self.e(f"bra {end}")
+        self.stats["string fast path"] += 1
+
+    def compare_pair(self, src_mem, dst_mem) -> None:
+        """CMPS/SCAS flags: d7 ([SI] or AL/AX) - d6 ([ES:DI])."""
+        i = self.i
+        w, sz = i.width, SZ[i.width]
+        if i.op == "cmps":
+            self.load_mem(src_mem, w, "d7")
+        else:
+            self.e("move.l d0,d7")
+        self.load_mem(dst_mem, w, "d6")
+        need = (self.c.need | ({"ZF"} if i.rep else set())) & FLAG_KINDS["sub"][0]
+        if "AF" in need:
+            self.e("move.b d7,G_AF(a6)")
+            self.e("eor.b d6,G_AF(a6)")
+            self.stats["AF store"] += 1
+        self.e(f"cmp.{sz} d6,d7")
+        saved = self.c.need
+        self.c.need = need - {"PF", "AF"}
+        self.store_ccr(self.c.need & ALLC, self.kills("sub"))
+        self.c.need = saved
+        if {"PF", "AF"} & need:
+            self.e(f"sub.{sz} d6,d7")
+            if "PF" in need:
+                self.e("move.b d7,G_PF(a6)")
+                self.stats["PF store"] += 1
+            if "AF" in need:
+                self.e("eor.b d7,G_AF(a6)")
 
     def load_mem(self, mem, w: int, dst: str) -> None:
         if w == 8:

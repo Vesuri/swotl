@@ -60,6 +60,18 @@ def no_merge(self, out):
     return res
 
 
+def no_wrap_guard(self, out):
+    """REP fast path taken whatever SI/DI (the 16-bit wrap guard removed)."""
+    return [x for k, x in enumerate(out)
+            if not (x.startswith("\tbcc ") and k and out[k - 1].startswith("\tcmp.l #$10000,"))]
+
+
+def no_runout_fix(self, out):
+    """REPE/REPNE fast path: CX left at FFFFh when the count runs out."""
+    return [x for k, x in enumerate(out)
+            if not (x == "\taddq.w #1,d1" and k and out[k - 1].startswith(("\tbne.s ", "\tbeq.s ")))]
+
+
 def drop_fused_store(self, out):
     """A setter that leaves flags in the CCR stores nothing (flags lost across blocks)."""
     if self.ccr:
@@ -79,6 +91,8 @@ SABOTAGE = [
     ("ror for ror.w on memory dest", sub(r"^\tror\.w #8,d6$", "\trol.b #8,d6"), "forms"),
     ("sti does not re-arm G_IRQ", sub(r"^\tmove\.b rt_irq_pending,G_IRQ\(a6\)$", "\tnop"), "boundary"),
     ("popf/iret do not re-arm G_IRQ", "helpers", "boundary"),
+    ("REP fast path without wrap guard", no_wrap_guard, "boundary"),
+    ("REPE/REPNE run-out leaves CX FFFFh", no_runout_fix, "boundary"),
 ]
 
 

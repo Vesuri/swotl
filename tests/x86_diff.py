@@ -8,7 +8,8 @@ Corpora (deterministic seeds):
   space     random encodings of every supported opcode byte
   boundary  explicit edge cases random state misses (shift/rotate counts,
             divide faults and overflow, REP with CX 0/1 and DF=1, SI/DI and
-            SP wrap, word at offset FFFFh, BCD over all AL, flags words, STI/CLI)
+            SP wrap, word at offset FFFFh, BCD over all AL, flags words, STI/CLI,
+            REP fast path guard and stop edges, overlapping MOVS)
   blocks    straight-line runs of 2..8 game instructions ending at the first
             transfer, random states
 Each case runs the same bytes from the same state (registers, flags, 1 MiB+
@@ -396,6 +397,45 @@ def boundary(h: Harness) -> None:
     for code in (b"\xfb", b"\xfa"):
         for _ in range(32):
             h.case(code, f"b:if{code.hex()}")
+    # REP fast path guard (D11): SI/DI ranges ending at FFFFh (fast) or
+    # 10000h (element body: SI/DI wrap), only SI or only DI at the edge, CX
+    # up to FFFFh, either DF.
+    for b in (0xA4, 0xA5, 0xA6, 0xA7, 0xAA, 0xAB, 0xAE, 0xAF):
+        n = 1 + (b & 1)
+        for pre in (b"\xf3", b"\xf2"):
+            for cx in (1, 3, 0x7FFF, 0x8000, 0xFFFF):
+                if cx > 3 and pre != b"\xf3":
+                    continue
+                for slack in (-1, 0):
+                    off = max(0, 0x10000 - n * cx) + slack & 0xFFFF
+                    pairs = ((off, off), (0, off), (off, 0)) if cx <= 3 else ((off, off),)
+                    for si, di in pairs:
+                        for df in ((0, 1) if cx <= 3 else (0,)):
+                            h.case(pre + bytes([b]), f"b:repguard{b:02x}",
+                                   overrides={"regs": {"cx": cx, "si": si, "di": di},
+                                              "flags": {"DF": df}})
+    # REPE/REPNE CMPS/SCAS stopping at the first, a middle, the last or no
+    # element; words differ in both bytes (flags from the little-endian pair).
+    for b in (0xA6, 0xA7, 0xAE, 0xAF):
+        n = 1 + (b & 1)
+        for pre in (b"\xf3", b"\xf2"):
+            for at in (0, 4, 8, None):
+                same, other = b"\x41" * n, b"\x40\x42"[:n] if n == 2 else b"\x40"
+                fill, stop = (same, other) if pre == b"\xf3" else (other, same)
+                dst = [fill] * 9
+                if at is not None:
+                    dst[at] = stop
+                h.case(pre + bytes([b]), f"b:repstop{b:02x}",
+                       overrides={"regs": {"cx": 9, "ax": 0x4141, "si": 0x100, "di": 0x200,
+                                           "ds": 0x5000, "es": 0x5000},
+                                  "flags": {"DF": 0},
+                                  "mem": [(0x50100, same * 9), (0x50200, b"".join(dst))]})
+    # Overlapping REP MOVS (the copy propagates as on the x86).
+    for b in (0xA4, 0xA5):
+        for d in (-1, 1, 2, 3):
+            h.case(b"\xf3" + bytes([b]), f"b:repoverlap{b:02x}",
+                   overrides={"regs": {"cx": 8, "si": 0x100, "di": 0x100 + d,
+                                       "ds": 0x5000, "es": 0x5000}, "flags": {"DF": 0}})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:
