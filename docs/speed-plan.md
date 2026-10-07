@@ -137,21 +137,6 @@ work past S4.
 
 Re-measure after each step and reprice the rest before starting the next.
 
-### S5. Cell walk inner loop (translator, D16)
-
-- **Prize.** The walk is 14.1% after S3. A `mov [bx+w],al` cell (nearly
-  every cell) costs 11 68k instructions: bound check, opcode compare,
-  `moveq`/`move.w`/`ror.w`/`add.w`, store, `addq`, `bra`. Target ≈ 6 per
-  cell: ≈ 5% of P.
-- **Shape.** `smc.walk` only: d7's upper word cleared once per entry and
-  after any form that writes d7 as a long; the mov form reads its opcode
-  and operand through `(a0)+`; runs of mov cells unrolled by 4 under one
-  bound check (`a0 + 16 <= end`), each cell's opcode still compared, a
-  mismatch going to the full form dispatch at that cell. Every byte is
-  still matched at run time; nothing is cached.
-- **Gate.** `make test-blocks` (walks over every snapshot image vs x86),
-  §0.4; a sabotage plant that skips one cell's opcode compare must fail.
-
 ### S6. Interrupt delivery (runtime)
 
 - **Prize.** ≈ 3.6% for 474 deliveries per 100 fields (`rt_irq_c` 0.9,
@@ -183,3 +168,8 @@ the user sets the bar (§2 Ceiling).
   rows": rejected by the user before building; every present would read
   the whole 64000-byte frame. Replaced by marks at the driver's stores
   (D9, translator-design Display).
+- S5 "cell walk: mov cells four at a time under one bound check, opcode
+  of each still compared" (27% fewer 68k instructions per cell): walk
+  14.1% → 12.0%, frames 4–11 191–201 fields vs 196 (P unchanged); priced
+  5% of P. The cells' operand reads and stores, not the loop overhead,
+  carry the walk's cost.
