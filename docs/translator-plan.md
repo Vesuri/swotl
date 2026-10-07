@@ -406,6 +406,30 @@ execution-weighted, not dynamic fetch traffic):
 
 ### T6. Code bytes and addressing modes
 
+- T6 screening (parent `47379e9`, fresh capture and m4 census): the listed
+  encoding candidates total at most **0.593% of P** in the local analysis
+  (168,532 of 28,420,384 cycles), even charging replacements zero cycles.
+  Not built under the current 1% rule. This is a candidate screen, not an
+  exhaustive bound on all possible code-size work or a measured saving.
+- Assembled-code audit: no remaining small `move.l` immediates that fit
+  `moveq`, or word branches that fit byte displacements. 223 long branches
+  fit word displacements but have zero executions in this capture. Local
+  upper-word tracking finds 2,052 mask sites (27,464 executions); their
+  complete captured cost is 168,532 cycles. Actual removal also requires
+  preserving CCR effects, so the screen intentionally overstates the prize.
+  Guest-register zero-extension is the existing translator contract; scratch
+  values are tracked conservatively and invalidated at control transfers.
+  Constant word pushes already use immediate stores. No alternative built
+  or microbenchmark result claimed; replacement-cost measurements are deferred
+  because even a zero-cost replacement falls below the current screen.
+- Capture: 1,651,478 guest instructions, 6,655,788 executed 68k instructions;
+  14.78 cycles/guest, 4.03 68k/guest, 10.12 weighted static bytes/guest.
+  Frames 4–11: 31, 26, 37, 26, 32, 27, 32, 29 fields; median 30
+  (600 ms), span 26–37. One pricing run; no speed claim. Host census:
+  49 frames, 19,290 `cmpsw` and 16,075 `stosw` elements/frame. Local reports:
+  `tmp/t6-session/`; raw capture reported and deleted. No code/test change.
+  T5 and T6 are consecutive not-built steps: pause before T7 under §2.
+
 - **Data.** After T1: bytes per guest instruction by form. Known waste:
   `move.l #0,d6` (6 bytes) for `moveq`, `and.l #$ffff` where the upper
   word is known clear, `bne.l` where `bne.w` reaches, word-immediate
@@ -451,6 +475,9 @@ of ≥ 1% of P remains.
 
 - T5: guarded far-call/return packing, optimistic price 0.926% of P; not
   built below 1%; no code or executable-size change.
+
+- T6: listed encoding/local mask candidates screened at at most 0.593%
+  of P with zero-cost replacements; not built below 1%; code unchanged.
 
 ## 6. When the translator work is done
 
