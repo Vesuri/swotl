@@ -64,6 +64,9 @@ Emulator driving: [headless-fsuae.md](headless-fsuae.md). Process rules:
   window) to class, module, guest routine/instruction (generated labels) and
   runtime shares; records without a PC are code outside the first hunk and
   ROM (today the Kalms c2p in hunk `code`).
+- **SWOTL lowering cost**: `tools/lowering_cost.py CAPTURE ELF` groups the
+  same capture by x86 form (executions, cycles and 68k instructions per
+  execution) and the generated code by 68k mnemonic and role.
 - **SWOTL counts**: `tools/host_census.py MILESTONE [--labels L…] [--strops]
   [--vram]` (host run between milestone snapshots: label executions, string-op
   elements, A0000h writers and rows per frame); `amiga/perf_frames.gdb` (frame
