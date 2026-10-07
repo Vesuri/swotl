@@ -48,7 +48,9 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     User removed the 1% floor for smaller efficiency/size wins and authorized
     autonomous continuation (2026-10-08), retaining no slowdown and hard stops.
     T4 cross-block rejected; T5 left unbuilt for guarded inline code growth.
-    Next: T7 live multiply/divide results, then T8–T9.
+    T7 reverted: code −500 bytes, but median cycles/guest 14.94 → 15.01
+    and 68k/guest 4.145103 → 4.161331; timings overlap. New coverage retained; all five restored-build gates pass.
+    Next: T8 byte/segment forms, then T9 re-profile.
     Keep code size visible; T2 block duplication remains rejected for size.
     Native replacements only when the user authorizes each routine.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/

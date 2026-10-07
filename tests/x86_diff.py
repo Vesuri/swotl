@@ -442,6 +442,9 @@ def boundary(h: Harness) -> None:
     byteorder_cases(h)
     crossflag_cases(h)
     compact_mask_cases(h)
+    dead_dx_cases(h)
+    dead_dx_memory_cases(h)
+    dead_dx_flag_cases(h)
 
 
 def address_guard_cases(h):
@@ -582,6 +585,61 @@ def compact_mask_cases(h):
         for count in (0, 1, 16, 31):
             h.case(bytes.fromhex("d3e0 8ed8 9c"), "b:compact-shift-segment", n=3,
                    block=True, overrides={"regs": {**regs, "cx": count}, "ip": 0x100})
+
+
+def dead_dx_cases(h):
+    """T7: normal/fault results, live flags, aliases, partial and full writes."""
+    tails = (("ba3412 050100", 2), ("ba3412 9c", 2),
+             ("89d1 ba3412 050100", 3), ("b234 b656 050100", 3),
+             ("f7e3 ba3412 050100", 3), ("f7e2 ba3412 050100", 3),
+             ("99 050100", 2))
+    for op in ("f7e3", "f7eb", "f7f3", "f7fb"):
+        for ax in (0, 1, 0x7fff, 0x8000, 0xffff):
+            for dx in (0, 1, 0x7fff, 0xffff):
+                for bx in (0, 1, 2, 0xffff):
+                    for tail, n in tails:
+                        h.case(bytes.fromhex(op + tail), "b:dead-dx", n=n+1,
+                               block=True, overrides={"regs": dict(cs=0x2000,
+                               ss=0x7000, sp=0xfffe, ax=ax, dx=dx, bx=bx), "ip": 0x100})
+    # A byte multiply preserves DX, but DL/DH sources still consume it.
+    for byte_mul in ("f6e3", "f6e2", "f6e6"):
+        for value in (0, 1, 0x8000, 0xffff):
+            h.case(bytes.fromhex("f7e3"+byte_mul+"ba3412 050100"),
+                   "b:dead-dx-byte", n=4, block=True, overrides={"regs":
+                   dict(cs=0x2000, ax=value, dx=value, bx=0xffff), "ip": 0x100})
+
+
+def dead_dx_memory_cases(h):
+    """T7: every word memory form, two-register sums and FFFFh accesses."""
+    eas = (("bx", "si"), ("bx", "di"), ("bp", "si"), ("bp", "di"),
+           ("si",), ("di",), ("bp",), ("bx",))
+    for operation in (4, 5, 6, 7):
+        for rm, names in enumerate(eas):
+            for edge in (0, 0xffff):
+                for disp in (-1, 1):
+                    regs = dict(cs=0x2000, ds=0x5000, ss=0x7000, ax=0x8000,
+                                dx=0 if edge else 1, cx=0, sp=0xfffe)
+                    regs.update({name: edge for name in names})
+                    offset = (sum(regs[name] for name in names) + disp) & 0xffff
+                    segment = regs["ss" if "bp" in names else "ds"]
+                    code = bytes((0xf7, 0x80 | operation << 3 | rm)) + (disp & 0xffff).to_bytes(2, "little")
+                    for tail, count in (("ba3412 050100", 3), ("89d1 ba3412 050100", 4)):
+                        h.case(code + bytes.fromhex(tail), "b:dead-dx-memory", n=count,
+                               block=True, overrides={"regs": regs, "ip": 0x100,
+                               "mem": [(segment * 16 + offset, edge.to_bytes(2, "little"))]})
+
+
+def dead_dx_flag_cases(h):
+    """T7: consume only defined MUL flags while DX is overwritten first."""
+    for op in ("f7e3", "f7eb"):
+        for ax in (0, 1, 0x7fff, 0x8000, 0xffff):
+            for bx in (0, 1, 0x8000, 0xffff):
+                for dx in (0, 0xffff):
+                    # ADC reads CF; CLC kills CF before JO reads only OF.
+                    for tail, n in (("ba3412 83d100", 3), ("ba3412 f8 7002", 4)):
+                        h.case(bytes.fromhex(op+tail), "b:dead-dx-live-flags", n=n,
+                               block=True, overrides={"regs": dict(cs=0x2000,
+                               ax=ax, bx=bx, dx=dx, cx=1), "ip": 0x100})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

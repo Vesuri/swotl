@@ -110,6 +110,24 @@ def trust_dirty_upper_word(self, out):
     return [re.sub(r"^\tand\.l #\$ffff,(d[0-7])$", r"\ttst.l \1", line) for line in out]
 
 
+def drop_live_dx(self, out):
+    """T7: discard every word high/remainder result without a liveness proof."""
+    if self.i.width != 16:
+        return out
+    if self.i.op in ("mul", "imul"):
+        return [s for s in out if s not in ("\tmove.l d0,d2", "\tclr.w d2", "\tswap d2")]
+    if self.i.op in ("div", "idiv"):
+        result = []
+        for line in out:
+            if line == "\tmove.w d7,d2":
+                assert result[-1] == "\tswap d7"
+                result.pop()
+            else:
+                result.append(line)
+        return result
+    return out
+
+
 SABOTAGE = [
     ("jb/jae swapped", sub(r"\bbcs\b", "bcc"), "forms,boundary"),
     ("word loads not byte-swapped", drop_after("move.w (a2,d4.l),d7", "ror.w #8,d7"), "boundary"),
@@ -128,6 +146,7 @@ SABOTAGE = [
     ("native word store skips byte swap", no_native_store_swap, "boundary"),
     ("predecessor drops successor flag store", no_predecessor_store, "cross-block"),
     ("mask trusts dirty upper word", trust_dirty_upper_word, "boundary"),
+    ("DX result dropped while live", drop_live_dx, "boundary"),
 ]
 
 

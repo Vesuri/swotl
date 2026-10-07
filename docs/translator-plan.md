@@ -661,6 +661,63 @@ Next: T7, fresh pricing of live multiply/divide results.
 
 ### T7. Multiply and divide results only where live
 
+- T7 price (2026-10-08, parent `fd8ed6e`): fresh capture and m4 census;
+  **0.00546% of P**, 1,553 captured cycles of 28,420,398. Narrow to word
+  multiply/divide DX results proven dead before a full overwrite within the
+  same block. 89 static sites: 56 `mul`, 14 `imul`, 14 `div`, five `idiv`;
+  603 executed instructions and 496 static code bytes removable in the
+  pricing model. Fourteen sites active in this capture. This is eligible
+  under the user's removed floor for smaller efficiency/size candidates.
+- Keep unsigned multiply's DX extraction when CF/OF computation needs it.
+  Keep all AX masks, divide guards and fault paths. Unknown instructions,
+  runtime boundaries, branches, block exits and leaders make DX live.
+  Prove full writes and all explicit/implicit DX reads, including DH/DL;
+  multiplication's implicit overwrite is safe, division remains a barrier
+  on input because its fault handler can observe the old registers.
+- Baseline capture: 14.99 cycles/guest, 1,680,697 guest instructions and
+  6,991,027 68k instructions; fresh census 49 frames, 19,290 `cmpsw` and
+  16,075 `stosw` elements/frame. Reports: `tmp/t7-session/`. No gain claimed
+  before coverage, all gates and the three-run measurements.
+
+
+#### T7 result (reverted)
+
+All five candidate gates passed. Retain 2,458 appended oracle cases: register
+and every word-memory addressing form, wrap edges, normal/fault division,
+DX/DH/DL reads, partial/full overwrites, implicit multiply writes and defined
+CF/OF readers. Parent and candidate both pass; blindly dropping DX gives 330
+mismatches in these cases and 412 in the full boundary sabotage gate.
+
+Three runs per arm, unchanged 68020 fixture; captures reported and deleted:
+
+| Arm/run | Frames 4–11 intervals (fields) | Median (fields/ms) | Span | Cycles/guest | 68k/guest |
+|---|---|---:|---|---:|---:|
+| parent-1 | 28, 24, 34, 25, 25, 24, 29, 25 | 25 / 500 | 24–34 | 14.99 | 4.159600 |
+| parent-2 | 28, 24, 34, 23, 25, 24, 29, 25 | 25 / 500 | 23–34 | 14.94 | 4.145103 |
+| parent-3 | 28, 24, 34, 23, 25, 24, 29, 25 | 25 / 500 | 23–34 | 14.94 | 4.144098 |
+| candidate-1 | 29, 24, 35, 25, 25, 24, 30, 24 | 25 / 500 | 24–35 | 15.06 | 4.164762 |
+| candidate-2 | 23, 29, 23, 31, 23, 29, 23, 26 | 24.5 / 490 | 23–31 | 15.00 | 4.159346 |
+| candidate-3 | 23, 29, 23, 30, 24, 28, 24, 25 | 24.5 / 490 | 23–30 | 15.01 | 4.161331 |
+
+Selected forms across the runs (static counts/bytes are execution-weighted):
+
+| Form | Parent → candidate cycles/exec | Static 68k/exec | Static bytes/exec |
+|---|---|---|---|
+| `mul r16` | 37.0 → 36.8 | 6.0 → 5.9 | 16.0 → 15.9 |
+| `div r16` | 68.8 → 68.5 | 16.0 → 15.9 | 44.0 → 43.9 |
+| `mul m16[disp]` | 42.9 → 42.8–42.9 | 7.0 → 7.0 | 20.0 → 20.0 |
+| `div m16[disp]` | 72.0 → 72.0 | 17.0 → 17.0 | 48.1 → 48.1 |
+
+Median cycles/guest 14.94 → 15.01 and 68k/guest 4.145103 → 4.161331.
+Frame run-median ranges overlap at 25 fields; interval spans overlap too.
+Candidate code payload 1,325,612 → 1,325,112 bytes, release 1,367,868 →
+1,367,368, debug 3,774,984 → 3,774,484. The 500-byte saving does not excuse
+these results under §3.6. Revert the implementation; retain the appended
+oracle corpus and permanent live-DX fault. Recovery patch and reports:
+`tmp/t7-session/`. All five restored-build gates pass; the live-DX plant
+still gives 412 mismatches. Restored code/release/debug sizes are
+1,325,612 / 1,367,868 / 3,774,984 bytes. Next: T8.
+
 - **Data.** `mul`/`imul`/`div`/`idiv` 4.8%, 45.7 cyc / 8.0 instructions
   (DX extraction, CF/OF from DX ≠ 0, AX masking) with `mulu.w` itself 22.
 - **Shape.** DX and flag extraction only when live (register liveness from
@@ -705,6 +762,10 @@ remaining candidate qualifies, including smaller efficiency/size candidates.
 
 - T5 revisit: optimistic fresh price 0.913% of P; specified inline guards/
   fallbacks grow code, so not eligible for the sub-1% size exception; not built.
+
+- T7: dead word DX results, priced 0.00546% of P; code −500 bytes, median
+  cycles/guest 14.94 → 15.01 and 68k/guest 4.145103 → 4.161331; timing arms
+  overlap. Reverted; oracle cases and live-DX sabotage retained.
 
 ## 6. When the translator work is done
 
