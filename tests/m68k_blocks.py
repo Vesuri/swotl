@@ -183,6 +183,12 @@ def walks(p: emit.Program, h, m, addr, stop_names, cases: int) -> tuple[int, lis
     return count, bad
 
 
+def cross_entry_cases():
+    from cross_flags_cases import run
+    n, bad, _stats = run()
+    return n, bad
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=1)
@@ -386,6 +392,9 @@ def main(argv=None) -> int:
         n, wbad = walks(p, h, m, addr, stop_names, args.walks)
         count["walks"] += n
         bad += wbad
+    n, failures = cross_entry_cases()
+    count["cross predecessors"] += n
+    bad += failures
     total = sum(v for k, v in count.items() if k != "return checks")
     print(f"blocks {len(picks)} of {len(allb)} executed; cases {total}", dict(count))
     print("exits", dict(exits))

@@ -346,24 +346,70 @@ static template sizes):
 
 ### T4. Flags across block boundaries
 
+- T4 implementation price (parent `a8d1591`, fresh capture and m4 census):
+  **0.03189% of P**, 9,062 of 28,420,386 cycles. Narrow to conditional
+  branch entries whose every predecessor already establishes all four CCR
+  bits. Keep every flag store and the original memory-flag liveness. Exclude
+  runtime/indirect entries, calls, returns and polls. 52 static candidates,
+  five active sites. Coverage before code: 192 predecessor graph cases pass;
+  dropping a predecessor's flag store produces 183 mismatches. Appended
+  branch corpus covers all 16 conditions, 32 flag combinations and signed
+  displacement edges. Authorized harness change only initializes proved
+  entry bits; all comparisons remain. Local reports: `tmp/t4-cross/`.
+
+#### T4 cross-block result (reverted)
+
+All five candidate gates passed. Added 1,536 branch cases and 192 predecessor
+graph cases; the missing-predecessor-store plant gives 183 mismatches. The
+candidate removed 52 full CCR reloads, retaining every memory flag definition.
+Three runs per arm, unchanged 68020 fixture; raw captures reported and deleted:
+
+| Arm/run | Frames 4–11 intervals (fields) | Median (fields/ms) | Span | Cycles/guest | 68k/guest |
+|---|---|---:|---|---:|---:|
+| parent-1 | 29, 24, 35, 25, 25, 26, 29, 26 | 26 / 520 | 24–35 | 15.18 | 4.144 |
+| parent-2 | 29, 25, 35, 25, 25, 25, 30, 25 | 25 / 500 | 25–35 | 15.18 | 4.142 |
+| parent-3 | 29, 24, 36, 25, 25, 25, 30, 25 | 25 / 500 | 24–36 | 15.17 | 4.142 |
+| candidate-1 | 24, 29, 23, 31, 24, 28, 24, 25 | 24.5 / 490 | 23–31 | 15.64 | 4.331 |
+| candidate-2 | 26, 30, 27, 37, 26, 32, 27, 32 | 28.5 / 570 | 26–37 | 14.96 | 4.067 |
+| candidate-3 | 24, 29, 23, 31, 24, 28, 24, 25 | 24.5 / 490 | 23–31 | 15.72 | 4.346 |
+
+Selected branch forms across the three runs (ranges; instruction and byte
+columns are execution-weighted static template sizes):
+
+| Form | Parent → candidate cycles/exec | Static 68k/exec | Static bytes/exec |
+|---|---|---|---|
+| `jne near` | 6.9 → 6.3–6.8 | 1.2 → 1.1–1.2 | 3.2 → 2.8–3.1 |
+| `je near` | 5.0 → 4.9–5.1 | 1.1 → 1.1 | 3.0 → 2.9–3.0 |
+| `jg near` | 7.3–7.4 → 5.8–7.9 | 1.6 → 1.3 | 4.9 → 3.9–4.1 |
+
+Median cycles/guest 15.18 → 15.64 and 68k/guest 4.142 → 4.331 do not
+support an efficiency win. Frame arms overlap; no frame-rate gain established.
+Code payload 1,335,628 → 1,335,420 bytes; release 1,377,892 → 1,377,684;
+debug executable 3,785,008 → 3,784,800. Revert the optimization and its
+entry-state harness setup under the no-slowdown rule; retain the added
+branch/predecessor corpus and permanent sabotage plant. Local reports and
+recovery patch: `tmp/t4-cross/`. All five gates also pass after the revert;
+restored code payload 1,335,628 bytes and release 1,377,892 bytes verified.
+Next: fresh T5 pricing.
+
 - T4 revisit (parent `8f963c1`): fresh capture prices cross-block flag reuse
   at **0.03196% of P**, 9,082 of 28,420,397 cycles; 62 static eligible
   readers, six sites with captured savings. Eligible under amended §3.1;
-  no lowering implemented yet. Host m4 census: 49 frames, 19,290 `cmpsw`
+  initial pricing only. Host m4 census: 49 frames, 19,290 `cmpsw`
   and 16,075 `stosw` elements/frame. Capture: 1,612,795 guest instructions,
   6,683,102 68k instructions; 15.18 cycles/guest, 4.144 68k/guest,
   10.37 weighted static bytes/guest. Frames 4–11: 29, 24, 35, 25, 25,
   26, 29, 26; median 26 fields (520 ms), span 24–35. Pricing run only.
   Reports: `tmp/t4-revisit/`; raw capture reported and deleted.
-- **Clarification before implementation:** T4's Tests paragraph requires
+- **Authorized harness change (user, 2026-10-07):** T4's Tests paragraph requires
   CCR-aware block-entry setup, but §2.5/user instructions prohibit edits to
   existing tests to make a step pass. `tests/m68k_diff.py` currently clears
   SR before every run; `tests/m68k_blocks.py` uses that for every entry.
   Proposed narrow change: initialize only proved entry CCR bits from the
   oracle input flags, preserve all existing comparisons, samples and references,
   and add every-predecessor cases plus the missing-store sabotage fault.
-  No test or translator change for this revisit until the user resolves this
-  scope conflict. T3 remains kept; this is not a rejected T4 implementation.
+  The user authorized this input-setup change. Preserve every existing
+  comparison and reference. Resume T4; T3 remains kept.
 
 - T4 price (2026-10-07 continuation, parent `4d94654`): **0.0273% of P**
   (7,760 captured cycles); cross-block candidate not built below the 1% bar.
@@ -561,6 +607,10 @@ remaining candidate qualifies, including smaller efficiency/size candidates.
 
 - T6: listed encoding/local mask candidates screened at at most 0.593%
   of P with zero-cost replacements; not built below 1%; code unchanged.
+
+- T4 cross-block revisit: priced 0.03189% of P; code −208 bytes, median
+  cycles/guest 15.18 → 15.64 and 68k/guest 4.142 → 4.331, timing arms overlap;
+  reverted under the no-slowdown rule, new coverage retained.
 
 ## 6. When the translator work is done
 

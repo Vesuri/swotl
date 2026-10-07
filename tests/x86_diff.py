@@ -440,6 +440,7 @@ def boundary(h: Harness) -> None:
     address_guard_cases(h)
     carry_reuse_cases(h)
     byteorder_cases(h)
+    crossflag_cases(h)
 
 
 def address_guard_cases(h):
@@ -546,6 +547,17 @@ def byteorder_cases(h):
                 h.case(load + store + store + b"\xb8\x00\x00", "b:byteorder-ea",
                        n=4, block=True, overrides={"regs": dict(cs=0x2000,
                        ds=0x5000, ss=0x7000, bx=base, bp=base, si=1, di=1), "ip": 0x100})
+
+
+def crossflag_cases(h):
+    """T4: every branch condition, flag combination and displacement edge."""
+    for cc in range(16):
+        for bits in range(32):
+            flags = dict(zip(("CF", "ZF", "SF", "OF", "PF"),
+                             ((bits >> k) & 1 for k in range(5))))
+            for disp in (-128, 0, 127):
+                h.case(bytes((0x70 + cc, disp & 0xff)), "b:cross-flag-reader",
+                       overrides={"regs": {"cs": 0x2000}, "ip": 0x100, "flags": flags})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

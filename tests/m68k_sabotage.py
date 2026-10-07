@@ -98,6 +98,13 @@ def no_native_store_swap(self, out):
     return out
 
 
+def no_predecessor_store(self, out):
+    """T4: skip a predecessor store needed by another successor's reload."""
+    if self.i.op == "cmp":
+        return [s for s in out if "ccr,G_FL" not in s]
+    return out
+
+
 SABOTAGE = [
     ("jb/jae swapped", sub(r"\bbcs\b", "bcc"), "forms,boundary"),
     ("word loads not byte-swapped", drop_after("move.w (a2,d4.l),d7", "ror.w #8,d7"), "boundary"),
@@ -114,6 +121,7 @@ SABOTAGE = [
     ("REPE/REPNE run-out leaves CX FFFFh", no_runout_fix, "boundary"),
     ("carry X trusted across EA clobber", trust_x_across_ea, "boundary"),
     ("native word store skips byte swap", no_native_store_swap, "boundary"),
+    ("predecessor drops successor flag store", no_predecessor_store, "cross-block"),
 ]
 
 
@@ -126,7 +134,10 @@ def main() -> int:
         else:
             L.Lowering.run = text(fn)
         try:
-            if corpus == "program":
+            if corpus == "cross-block":
+                total, failures = B.cross_entry_cases()
+                bad = len(failures)
+            elif corpus == "program":
                 out = io.StringIO()
                 with contextlib.redirect_stdout(out):
                     B.main(["--blocks", "1500", "--states", "1"])
