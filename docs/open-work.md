@@ -53,7 +53,8 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     15.63–16.18 → 14.73–15.28, 68k/guest 4.25–4.43 → 4.01–4.22;
     stripped executable 1,396,816 bytes. All gates green; frame medians
     overlap (26.5–29.5 → 26–29.5 fields), so no frame-rate gain claimed.
-    Continue T5. Keep code size visible; avoid block duplication.
+    T5 guarded far-call/return packing priced 0.926% of P: not built.
+    Continue T6. Keep code size visible; avoid block duplication.
     Native replacements only when the user authorizes each routine.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/
     `divu.l`, unaligned word/long, `ror.w #8` swap) to replace [arch]

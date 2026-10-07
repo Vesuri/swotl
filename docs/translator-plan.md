@@ -372,6 +372,27 @@ execution-weighted, not dynamic fetch traffic):
 
 ### T5. Far and near calls and returns
 
+- T5 price (parent `f7dad4b`, fresh capture and m4 census): **0.926% of P**
+  (263,296 estimated cycles of 28,420,398); the specified guarded far-call/
+  return packing is not built below 1%. This is an optimistic common-path
+  screen, not a measured speedup: charge long memory operations only the
+  measured word-access cost, omit cold-arm joins and return-format conversion,
+  and assume every guard succeeds. Near calls/returns are unchanged by this
+  four-byte packing shape. No wrap case is removed or assumed impossible.
+- The capture contains 10,571 far-call pushes and 11,553 far returns.
+  Measured immediate compare costs: word 3.994, long 6.599 cycles;
+  short untaken branches 1.399 cycles (220,514 samples, checked against the
+  next executed PC). Estimated savings: pushes 55,700, pops 126,126,
+  exact two-word check replaced by long check 81,470 cycles. Additional
+  implementation costs can only reduce this estimate under this cost model.
+- Capture: 1,593,422 guest instructions, 6,745,673 executed 68k instructions;
+  15.32 cycles/guest, 4.23 68k/guest, 10.50 weighted static bytes/guest.
+  Frames 4–11: 29, 24, 36, 25, 25, 26, 30, 27 fields; median 26.5
+  (530 ms), span 24–36. One pricing run; no candidate or speed claim.
+  Host census: 49 frames, 19,290 `cmpsw` and 16,075 `stosw` elements/frame.
+  Reports and pricing script: `tmp/t5-session/`; raw capture deleted after
+  reporting. No code/test change; code payload remains 1,354,532 bytes.
+
 - **Data.** `callf`/`retf`/`call`/`ret` 5.6%, 41.7 cyc / 8.8 instructions:
   two separate word pushes, then the callee pops IP and CS into d7/d6 with
   swaps and the caller compares both (return check).
@@ -427,6 +448,9 @@ of ≥ 1% of P remains.
   not built (below 1%); no generated-code or executable-size change.
 
 - T4 cross-block candidate: priced 0.0273% of P; not built below 1%.
+
+- T5: guarded far-call/return packing, optimistic price 0.926% of P; not
+  built below 1%; no code or executable-size change.
 
 ## 6. When the translator work is done
 
