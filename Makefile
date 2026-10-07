@@ -120,7 +120,7 @@ JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc)
 RUN = @mkdir -p tmp/test; if $(2) > tmp/test/$(1).log 2>&1; then echo "ok    $(1)"; \
 	else echo "FAIL  $(1) (tmp/test/$(1).log)"; tail -n 15 tmp/test/$(1).log; exit 1; fi
 SHARDS = forms.0/4 forms.1/4 forms.2/4 forms.3/4 space.0/1 boundary.0/1 blocks.0/1
-TESTS = t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
+TESTS = t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
 	t-blocks t-guards $(HOST_MILESTONES:%=t-host-%)
 
 test: host
@@ -128,6 +128,9 @@ test: host
 
 t-sab-carry-entries:
 	$(call RUN,sabotage-carry-entries,$(PYTHON) tests/test_carry_entries.py --sabotage)
+
+t-compact:
+	$(call RUN,compact,$(PYTHON) tests/test_compact.py)
 
 t-byteorder-entries:
 	$(call RUN,byteorder-entries,$(PYTHON) tests/test_byteorder_entries.py)

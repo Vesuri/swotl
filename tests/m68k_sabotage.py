@@ -105,6 +105,11 @@ def no_predecessor_store(self, out):
     return out
 
 
+def trust_dirty_upper_word(self, out):
+    """T6: replace every word mask even when its upper word is unknown."""
+    return [re.sub(r"^\tand\.l #\$ffff,(d[0-7])$", r"\ttst.l \1", line) for line in out]
+
+
 SABOTAGE = [
     ("jb/jae swapped", sub(r"\bbcs\b", "bcc"), "forms,boundary"),
     ("word loads not byte-swapped", drop_after("move.w (a2,d4.l),d7", "ror.w #8,d7"), "boundary"),
@@ -122,6 +127,7 @@ SABOTAGE = [
     ("carry X trusted across EA clobber", trust_x_across_ea, "boundary"),
     ("native word store skips byte swap", no_native_store_swap, "boundary"),
     ("predecessor drops successor flag store", no_predecessor_store, "cross-block"),
+    ("mask trusts dirty upper word", trust_dirty_upper_word, "boundary"),
 ]
 
 

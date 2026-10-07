@@ -41,16 +41,14 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     CIA and JOY0DAT reads).
 14b. Speed: [translator-plan.md](translator-plan.md), T1–T9 under
     [speed-plan.md](speed-plan.md) §0–§1. Target ≤12 fields on 68020 + 8 MB Fast.
-    T4-local and T3 revisit kept; current T3 candidate medians 26 fields
-    (520 ms), 15.18–15.19 cycles/guest, 4.144–4.146 68k/guest; code payload
-    1,335,628 bytes, stripped executable 1,377,892 bytes. All gates pass.
-    Timing arms overlap: efficiency/size wins, no frame-rate gain claimed.
-    User removed the 1% floor for smaller efficiency/size wins, retaining
-    no slowdown. T4 cross-block reverted: −208 code bytes, but median
-    cycles/guest 15.18 → 15.64 and 68k/guest 4.142 → 4.331; timings overlap.
-    New coverage retained. T5 repriced 0.913%; inline guard/fallback code
-    growth makes it ineligible for the sub-1% size exception. Paused after
-    two unsuccessful steps; ask to leave T5 unbuilt and proceed to T6–T9.
+    T6 kept under the run-median timing criterion: 25.5–26 → 24.5–25 fields
+    (490–500 ms candidate); cycles/guest median 15.19 → 14.94. Instruction
+    ratio 4.145716 → 4.145894; no instruction-ratio gain claimed. Code payload
+    1,325,612 bytes; stripped executable 1,367,868 bytes. All gates pass.
+    User removed the 1% floor for smaller efficiency/size wins and authorized
+    autonomous continuation (2026-10-08), retaining no slowdown and hard stops.
+    T4 cross-block rejected; T5 left unbuilt for guarded inline code growth.
+    Next: T7 live multiply/divide results, then T8–T9.
     Keep code size visible; T2 block duplication remains rejected for size.
     Native replacements only when the user authorizes each routine.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/

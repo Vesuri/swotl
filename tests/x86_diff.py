@@ -441,6 +441,7 @@ def boundary(h: Harness) -> None:
     carry_reuse_cases(h)
     byteorder_cases(h)
     crossflag_cases(h)
+    compact_mask_cases(h)
 
 
 def address_guard_cases(h):
@@ -558,6 +559,29 @@ def crossflag_cases(h):
             for disp in (-128, 0, 127):
                 h.case(bytes((0x70 + cc, disp & 0xff)), "b:cross-flag-reader",
                        overrides={"regs": {"cs": 0x2000}, "ip": 0x100, "flags": flags})
+
+
+def compact_mask_cases(h):
+    """T6: zero-extended sources, dirty scratch/results, and preserved flags."""
+    for value in (0, 1, 0x7fff, 0x8000, 0xfffe, 0xffff):
+        regs = dict(cs=0x2000, ds=0x5000, ss=0x7000, es=0x9000,
+                    ax=value, cx=value, dx=value, bx=value, bp=value,
+                    si=value, di=value, sp=0xfffe)
+        # Every data/address register as a segment source and a move source.
+        for src in range(8):
+            for op in (bytes((0x8e, 0xd8 | src)), bytes((0x8e, 0xc0 | src)),
+                       bytes((0x89, 0xc0 | src << 3)), bytes((0x87, 0xc0 | src << 3))):
+                h.case(op + b"\x9c", "b:compact-source", n=2, block=True,
+                       overrides={"regs": regs, "ip": 0x100})
+        # Multiplication and signed extension must not inherit a stale zero proof.
+        for op in ("f7e3", "f7eb", "69c3ffff", "69c30080", "98", "99",
+                   "c1e010", "c1e810", "c1f810", "c1c008", "c1c808"):
+            h.case(bytes.fromhex(op), "b:compact-dirty", overrides={"regs": regs, "ip": 0x100})
+        for op in ("8cc6", "8cd7", "5e", "5f", "d1e0", "d1e8", "d1f8", "d1c0", "d1c8"):
+            h.case(bytes.fromhex(op), "b:compact-ccr", overrides={"regs": regs, "ip": 0x100})
+        for count in (0, 1, 16, 31):
+            h.case(bytes.fromhex("d3e0 8ed8 9c"), "b:compact-shift-segment", n=3,
+                   block=True, overrides={"regs": {**regs, "cx": count}, "ip": 0x100})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

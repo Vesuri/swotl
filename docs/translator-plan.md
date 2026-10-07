@@ -17,10 +17,11 @@ this file adds to them and never relaxes them. Open-work item: 14b.
 - **Earlier baseline (commit 6646626):** median 26–27 fields (0.52 s). Guest code 88%:
   13.5 68020 cycles and 3.6 68k instructions per guest instruction (the
   80286: ≈ 5.4 clocks); cell walk 14%; runtime 8%.
-- **After T3 revisit:** candidate run medians 26 fields (520 ms);
-  15.18–15.19 cycles and 4.144–4.146 68k instructions per guest instruction.
-  Code payload 1,335,628 bytes; stripped executable 1,377,892 bytes.
-  Efficiency/size win; timing arms overlap, no frame-rate gain established.
+- **After T6 revisit:** run medians 24.5–25 fields (490–500 ms);
+  14.94–14.97 cycles/guest; median 68k/guest 4.145894 (parent 4.145716).
+  Code payload 1,325,612 bytes; stripped executable 1,367,868 bytes.
+  Kept under the non-overlapping run-median timing criterion; individual
+  frame interval spans overlap. No instruction-ratio reduction claimed.
 - **Honest projection:** the steps below are priced at 18–25% of P in
   total, ≈ 0.38–0.42 s. The target needs ≈ 5.5 cycles per guest
   instruction. Translator work is to be completed first anyway (user
@@ -520,7 +521,8 @@ execution-weighted, not dynamic fetch traffic):
   Reports: `tmp/t5-revisit/`; raw capture reported and deleted. Code payload
   remains 1,335,628 bytes; release executable 1,377,892 bytes.
 - T4 rejected and T5 not built are two consecutive unsuccessful steps.
-  Pause under §2; ask whether to leave T5 unbuilt and continue to T6.
+  User authorized leaving T5 unbuilt and continuing autonomously through
+  T6–T9 (2026-10-08). Other hard stops remain.
   No authority to change return comparisons, references or guest semantics.
 
 
@@ -557,6 +559,72 @@ execution-weighted, not dynamic fetch traffic):
 - **Prize.** ≈ 2–3% of P.
 
 ### T6. Code bytes and addressing modes
+
+- T6 revisit price (2026-10-08, parent `3561bd5`): fresh 100-field capture
+  and m4 census; **0.443% of P**, 125,954 estimated cycles of 28,420,399.
+  Local upper-word proof screens 2,052 masks: 753 with CCR overwritten
+  before use (11,910 executions), 1,299 requiring an exact `tst.l`
+  replacement (14,259 executions). Model includes replacement costs;
+  implementation may narrow eligibility. No guest values/flags, guards,
+  wrapping, poll points or entry conventions change.
+- Isolated synthetic microbenchmarks on the default 68020 + 8 MB Fast model:
+  `and.l #$ffff,d0` 6.125 cycles / 6 bytes (444,764 executions), `tst.l d0`
+  2.125 cycles / 2 bytes (1,233,964 executions). These are instruction-cost
+  probes, not game speed measurements; the game fixture is unchanged.
+  Static screen estimates 9,714 fewer code bytes. Unknown native effects,
+  labels and control transfers invalidate facts; removing a mask additionally
+  requires proof that a later instruction overwrites all its CCR results
+  before any read. Otherwise keep those flags through `tst.l`.
+- Fresh m4 census: 49 frames, 19,290 `cmpsw` and 16,075 `stosw` elements/frame.
+  Local captures/reports/pricing: `tmp/t6-revisit/`; three parent runs complete,
+  raw game and microbenchmark captures reported and deleted. Coverage first,
+  sabotage and all five gates required before candidate timing.
+
+
+#### T6 revisit result (kept)
+
+All five gates pass. Initial coverage: 222 cases pass the parent, six fail
+with a deliberately blind mask-to-TST replacement. Expanded coverage: 276
+cases pass the candidate; the permanent fault is caught in 45 cases of the
+full boundary corpus. Proof tests include dirty scratch, arithmetic, labels,
+control flow, CCR readers, address auto-update, unsized MOVE and MOVEQ sign
+extension. Final guard refinements leave every allocated ELF section exactly
+identical to the candidate used for host/Amiga/smoke validation.
+
+The generated code removes 798 masks and replaces 1,299 with `tst.l`.
+Three runs per arm, unchanged fixture/model; captures reported and deleted:
+
+| Arm/run | Frames 4–11 intervals (fields) | Median (fields/ms) | Span | Cycles/guest | 68k/guest |
+|---|---|---:|---|---:|---:|
+| parent-1 | 29, 24, 35, 25, 25, 26, 29, 26 | 26 / 520 | 24–35 | 15.18 | 4.144538 |
+| parent-2 | 28, 25, 35, 25, 25, 25, 30, 26 | 25.5 / 510 | 25–35 | 15.19 | 4.145716 |
+| parent-3 | 29, 25, 35, 25, 25, 25, 29, 26 | 25.5 / 510 | 25–35 | 15.20 | 4.146322 |
+| candidate-1 | 28, 24, 34, 24, 24, 24, 29, 25 | 24.5 / 490 | 24–34 | 14.94 | 4.145894 |
+| candidate-2 | 28, 24, 33, 24, 25, 24, 29, 25 | 25 / 500 | 24–33 | 14.94 | 4.144618 |
+| candidate-3 | 28, 25, 34, 25, 24, 24, 30, 25 | 25 / 500 | 24–34 | 14.97 | 4.158969 |
+
+Kept under §3.6's non-overlapping **run-median** timing criterion: 25.5–26
+→ 24.5–25 fields; median of run medians 25.5 → 25 (1.96% reduction), above
+half the 0.443% price. Individual interval spans overlap; no span separation
+claimed. Median cycles/guest 15.19 → 14.94, with non-overlapping ranges.
+Median 68k/guest rises slightly, 4.145716 → 4.145894 (0.0043%); no instruction-
+ratio improvement claimed, and the three-metric efficiency exception is not
+the acceptance basis. Measured frame time and cycles improve; smaller code
+is not being used to excuse slower execution.
+
+Code payload 1,335,628 → 1,325,612 (−10,016 bytes); release executable
+1,377,892 → 1,367,868 (−10,024); debug 3,785,008 → 3,774,984.
+Selected forms across the runs (static instruction/byte counts are weighted):
+
+| Form | Parent → candidate cycles/exec | Static 68k/exec | Static bytes/exec |
+|---|---|---|---|
+| `mov sreg,r16` | 21.9 → 14.8 | 5.0 → 4.0 | 18.0 → 12.0 |
+| `pop r16` | 12.9–13.2 → 11.9 | 4.3–4.4 → 4.3 | 11.8–11.9 → 10.7 |
+| `mov r16,m16[bp]` | 15.5 → 15.1–15.2 | 4.3 → 4.2 | 13.0 → 12.6–12.7 |
+
+Next: T7, fresh pricing of live multiply/divide results.
+
+#### Earlier T6 screening
 
 - T6 screening (parent `47379e9`, fresh capture and m4 census): the listed
   encoding candidates total at most **0.593% of P** in the local analysis

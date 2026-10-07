@@ -23,6 +23,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 
+from .compact import compact
 from .decode import Far, Imm, Insn, Mem, Reg, Rel
 from .ir import FLAG_KINDS, STATUS
 
@@ -386,6 +387,8 @@ class Lowering:
                 self.e(f"ror.w #8,{GREG[r]}")
         if "CF" in writes(i)[1] and not self.cf_result:
             self.x_cf = False
+        self.out, compact_stats = compact(self.out)
+        self.stats.update(compact_stats)
         return self.out
 
     # -- D9 display: the graphics driver's stores to video memory ------------
