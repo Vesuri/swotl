@@ -137,17 +137,43 @@ work past S4.
 
 Re-measure after each step and reprice the rest before starting the next.
 
-### S4. Re-profile and price (no code)
+### S5. Cell walk inner loop (translator, D16)
 
-Price each in §2 before building; each becomes its own step here:
-interrupt delivery per real interrupt (`save_regs`/`load_regs`,
-`push_frame`, `rt_flags_word`, `guest_vector`); `rt_lookup` (binary search
-per indirect transfer: a direct-mapped cache keyed by CS:IP, flushed at
-overlay load); the cell walk (open-work 14, D16 specialisation); the
-the "no PC" 2% after the takeover (outside the executable and ROM: Exec's
-interrupt dispatch? find it); generated-code shape (the role table's
-"other" split finer: flag materialisation, segment arithmetic, byte
-swaps).
+- **Prize.** The walk is 14.1% after S3. A `mov [bx+w],al` cell (nearly
+  every cell) costs 11 68k instructions: bound check, opcode compare,
+  `moveq`/`move.w`/`ror.w`/`add.w`, store, `addq`, `bra`. Target ≈ 6 per
+  cell: ≈ 5% of P.
+- **Shape.** `smc.walk` only: d7's upper word cleared once per entry and
+  after any form that writes d7 as a long; the mov form reads its opcode
+  and operand through `(a0)+`; runs of mov cells unrolled by 4 under one
+  bound check (`a0 + 16 <= end`), each cell's opcode still compared, a
+  mismatch going to the full form dispatch at that cell. Every byte is
+  still matched at run time; nothing is cached.
+- **Gate.** `make test-blocks` (walks over every snapshot image vs x86),
+  §0.4; a sabotage plant that skips one cell's opcode compare must fail.
+
+### S6. Interrupt delivery (runtime)
+
+- **Prize.** ≈ 3.6% for 474 deliveries per 100 fields (`rt_irq_c` 0.9,
+  `load_regs`/`save_regs` 0.8, `push_frame` 0.4, `deliver` 0.4,
+  `rt_flags_word` 0.4, `guest_vector` 0.35, glue 0.4). Price the shape
+  (vector bounds once per IVT write instead of per delivery, the flags
+  word without C) before building; skip if under 2% of P.
+
+### Priced, below 2% of P (not planned)
+
+`rt_lookup` + dispatch 1.3% (a CS:IP cache); port output 0.8% (SPAZ OPL);
+VRAM marks 0.85%. "No PC" 2.4% (outside the executable and ROM): find
+it before pricing (SetPatch's RAM patches of Exec calls such as
+`Disable`/`Enable`?).
+
+### Beyond S6
+
+Guest code is 88%: SWOTL 17, FLIGHT 13 cycle units per guest
+instruction, with no single instruction outside the walk above 0.6%.
+The rest is the lowering itself (flags, byte swaps at 5.7%, segment
+arithmetic, register traffic): broad translator work, sized only once
+the user sets the bar (§2 Ceiling).
 
 ## 4. Rejected
 
