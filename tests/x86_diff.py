@@ -438,6 +438,7 @@ def boundary(h: Harness) -> None:
                                        "ds": 0x5000, "es": 0x5000}, "flags": {"DF": 0}})
 
     address_guard_cases(h)
+    carry_reuse_cases(h)
 
 
 def address_guard_cases(h):
@@ -469,6 +470,39 @@ def address_guard_cases(h):
         h.case(load * 4 + change + load * 4, "b:ea:base-write", n=9, block=True,
                overrides={"regs": {"bx": 1, "si": 0, "cs": 0x2000,
                                     "ds": 0x5000}, "ip": 0x100})
+
+
+
+def carry_reuse_cases(h):
+    """T4: carry reuse, X-clobbering operand setup and live non-carry flags."""
+    producers = ("01d8", "29d8", "f7d8", "d1e0", "d1e8", "d1f8",
+                 "10d8", "18d8", "d1d0", "d1d8")
+    consumers = ("11ca", "19ca", "10ec", "18ec", "1317", "1b17",
+                 "1300", "134001", "1380ff7f", "1108", "114801",
+                 "d1d2", "d1da", "d15001", "d158ff")
+    for producer in producers:
+        for consumer in consumers:
+            for ax, bx, dx in ((0, 0, 0), (0xffff, 1, 0), (0, 1, 0xffff),
+                               (0x7fff, 1, 0x7fff), (0x8000, 0xffff, 0x8000),
+                               (0xff, 1, 0xff)):
+                for cf in (0, 1):
+                    h.case(bytes.fromhex(producer + consumer), "b:carry-pair",
+                           n=2, block=True, overrides={"regs": {
+                               "ax": ax, "bx": bx, "dx": dx, "cx": 0,
+                               "si": 0xffff, "ds": 0x5000, "ss": 0x6000,
+                               "cs": 0x2000}, "ip": 0x100, "flags": {"CF": cf}})
+    for count in (0, 1, 8, 16, 17, 31, 32, 255):
+        for consumer in ("d3d2", "d3da", "d35001", "d358ff"):
+            for ax in (0, 0x8000, 0xffff):
+                h.case(bytes.fromhex("d1e0" + consumer + "11d8"),
+                       "b:carry-variable", n=3, block=True, overrides={"regs": {
+                           "ax": ax, "bx": 0xffff, "dx": 0x8000, "cx": count,
+                           "si": 1, "cs": 0x2000, "ds": 0x5000}, "ip": 0x100})
+    # A live carry consumer's result feeds another one, then PUSHF observes flags.
+    for ax in (0, 1, 0x7fff, 0x8000, 0xffff):
+        h.case(bytes.fromhex("01d8 11ca 11de 9c"), "b:carry-chain", n=4,
+               block=True, overrides={"regs": {"ax": ax, "bx": 1, "dx": 0xffff,
+                   "cx": 0, "si": 0xffff, "sp": 0xfffe, "cs": 0x2000}, "ip": 0x100})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

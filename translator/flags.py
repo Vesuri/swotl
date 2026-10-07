@@ -46,14 +46,33 @@ def plan(insns, lives, leaders, ctx_for, program: bool = False) -> list[Lowering
     fresh Ctx for insns[k]."""
     out = []
     ccr_in: set = set()
+    x_in = False
     for k, i in enumerate(insns):
+        if k in leaders:
+            ccr_in, x_in = set(), False
         must, may = writes(i)
         lw = None
         nxt = insns[k + 1] if k + 1 < len(insns) else None
-        if nxt is not None and k + 1 not in leaders and fuse_reader(nxt):
+        if nxt is not None and k + 1 not in leaders and nxt.op in ("adc", "sbb", "rcl", "rcr"):
+            c = ctx_for(k)
+            c.live, c.ccr_in, c.x_in = set(lives[k]), ccr_in, x_in
+            c.need = may & set(lives[k])
+            if "CF" not in set(lives[k + 1]) - writes(nxt)[0]:
+                c.need.discard("CF")
+            candidate = lower(i, c)
+            if candidate.cf_result and candidate.x_cf:
+                reader = ctx_for(k + 1)
+                reader.live, reader.need = set(lives[k + 1]), writes(nxt)[1] & set(lives[k + 1])
+                reader.x_in = True
+                # Prove the reader's real EA/source setup preserves incoming X.
+                if lower(nxt, reader).stats["carry X reused"]:
+                    lw = candidate
+                    lw.stats["carry pair"] += 1
+        if lw is None and nxt is not None and k + 1 not in leaders and fuse_reader(nxt):
             r = reads(nxt, program)
             if r and r <= ccr_static(i):
                 c = ctx_for(k)
+                c.x_in = x_in
                 c.live, c.ccr_in, c.fuse = set(lives[k]), ccr_in, True
                 c.need = may & (set(lives[k + 1]) - writes(nxt)[0])
                 lw = lower(i, c)
@@ -63,10 +82,12 @@ def plan(insns, lives, leaders, ctx_for, program: bool = False) -> list[Lowering
                     lw.stats["CCR fused"] += 1
         if lw is None:
             c = ctx_for(k)
+            c.x_in = x_in
             c.live, c.ccr_in, c.fuse = set(lives[k]), ccr_in, False
             c.need = may & set(lives[k])
             lw = lower(i, c)
             lw.ccr = set()
         ccr_in = lw.ccr
+        x_in = lw.cf_result and lw.x_cf
         out.append(lw)
     return out

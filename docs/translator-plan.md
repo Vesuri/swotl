@@ -14,9 +14,13 @@ this file adds to them and never relaxes them. Open-work item: 14b.
   drawn frame) at Intel 80286 real-mode timings: 2.7M clocks = 194 ms at 0
   wait states, 242 ms at 1 wait state (+25%), 271 ms with prefetch stalls.
   **Target: frames 4–11 median ≤ 12 fields (0.24 s); stretch ≤ 10 (0.20 s).**
-- **Now (commit 6646626):** median 26–27 fields (0.52 s). Guest code 88%:
+- **Earlier baseline (commit 6646626):** median 26–27 fields (0.52 s). Guest code 88%:
   13.5 68020 cycles and 3.6 68k instructions per guest instruction (the
   80286: ≈ 5.4 clocks); cell walk 14%; runtime 8%.
+- **After T4-local:** measured medians 26–29.5 fields; 14.73–15.28 cycles
+  and 4.01–4.22 68k instructions per guest instruction. Code payload
+  1,354,532 bytes; stripped executable 1,396,816 bytes. Efficiency/size win;
+  no frame-rate gain established (overlapping timing arms, §4).
 - **Honest projection:** the steps below are priced at 18–25% of P in
   total, ≈ 0.38–0.42 s. The target needs ≈ 5.5 cycles per guest
   instruction. Translator work is to be completed first anyway (user
@@ -79,9 +83,13 @@ plan's next step is ambiguous.
    session; three `amiga/perf_frames.gdb` runs per arm; report frames 4–11
    intervals, median and span, and the `lowering_cost.py` totals (cycles and
    68k instructions per guest instruction, the step's forms).
-6. **Keep or revert:** keep if the arms do not overlap (span or median) and
-   the gain is at least half the priced prize; otherwise revert the code,
-   keep any new tests that pass on the reverted code, and add one line to §5.
+6. **Keep or revert:** keep a frame-time win if the arms do not overlap
+   (span or median) and the gain is at least half the priced prize.
+   **User amendment (2026-10-07):** also keep measured reductions in cycles
+   per guest instruction, 68k instructions per guest instruction and code
+   size when frame times overlap. Report those as efficiency/size gains;
+   do not claim a frame-rate gain. Otherwise revert the code, retain passing
+   new tests, and add one line to §5.
 7. **Commit** one step per commit: before/after numbers in the message;
    §4 and open-work 14b updated in the same commit (speed-plan §0.8).
 8. **Report** to the user after each step in a few lines: step, numbers,
@@ -291,10 +299,60 @@ also pass for this tooling-only change.
 - The same analysis including **within-block** carry reuse estimates 4.903%
   (1,393,557 captured cycles). This is preliminary pricing, not a measured
   speedup or a proved exhaustive bound; implementation may narrow eligibility.
-  It extends the stated cross-block shape. Ask the user to authorize that
-  extension or proceed to T5 before writing lowering code. No translator,
-  runtime, test or measurement change. Local reports: `tmp/t4-session/`;
-  raw capture reported and deleted.
+  The user subsequently authorized the within-block extension (below).
+  Local reports: `tmp/t4-session/`; raw capture reported and deleted.
+
+- User authorized the within-block extension. T4-local price (parent
+  `8f41976`, fresh 2026-10-07 capture and m4 census): **4.191% of P**
+  (1,191,109 of 28,420,399 cycles; 970 static eligible readers, 606 sites
+  with captured savings). Narrow to adjacent producers/readers inside a
+  block: hardware X must equal guest CF and survive reader operand setup.
+  Reuse for `adc`/`sbb`/`rcl`/`rcr`; retire a producer's CF store only when
+  the next reader definitely replaces CF or the old CF is dead afterward.
+  Preserve every block entry's memory-flags contract and all poll points.
+  Original frame-time bar: at least 2.096% of P and non-overlapping arms;
+  the user's later §3.6 amendment also accepts efficiency/size gains.
+  Baseline code payload 1,364,372 bytes; stripped executable 1,406,660 bytes.
+- Coverage before implementation: 1,901 appended carry cases pass on the
+  parent; deliberately clearing X gives 1,055 mismatches. Candidate passes
+  all 1,901; bypassing its EA preservation check gives 468 mismatches.
+  Another 32 cases poison X at a block entry: all pass; deliberately ignoring
+  the entry boundary gives 12 mismatches. Both faults are permanent sabotage
+  checks. The 1,901 carry cases and 32 entry cases remain. No block's entry
+  convention changes.
+
+#### T4-local result (kept under revised acceptance)
+
+All five gates passed on the candidate. Three runs per arm, same session and
+unchanged 68020 fixture; each capture reported and deleted:
+
+| Arm/run | Frames 4–11 intervals (fields) | Median (fields/ms) | Span | Cycles/guest | 68k/guest |
+|---|---|---:|---|---:|---:|
+| parent-1 | 30, 26, 36, 27, 30, 27, 34, 29 | 29.5 / 590 | 26–36 | 15.65 | 4.26 |
+| parent-2 | 29, 26, 36, 27, 31, 26, 34, 29 | 29 / 580 | 26–36 | 15.63 | 4.25 |
+| parent-3 | 25, 30, 25, 33, 25, 30, 26, 27 | 26.5 / 530 | 25–33 | 16.18 | 4.43 |
+| candidate-1 | 30, 26, 38, 26, 31, 27, 33, 28 | 29 / 580 | 26–38 | 14.73 | 4.01 |
+| candidate-2 | 29, 25, 35, 25, 26, 25, 30, 26 | 26 / 520 | 25–35 | 15.28 | 4.22 |
+| candidate-3 | 31, 26, 37, 27, 31, 27, 33, 28 | 29.5 / 590 | 26–37 | 14.75 | 4.02 |
+
+Parent medians 26.5–29.5 fields; candidate 26–29.5: frame times overlap,
+so no frame-rate gain is established. Cycles/guest fall from 15.63–16.18 to
+14.73–15.28; 68k instructions/guest from 4.25–4.43 to 4.01–4.22. Code payload
+1,364,372 → 1,354,532 bytes; stripped executable 1,406,660 → 1,396,816 bytes;
+debug executable 3,813,776 → 3,803,932 bytes. Kept by the user's revised §3.6
+rule: fewer cycles/instructions and smaller code count as a win even without
+an observed frame-rate increase. The kept rebuild's loadable records match
+exactly the executable used for the successful gates and measurements.
+Reports in `tmp/t4-local/`. Next: T5.
+
+Selected carry forms across the three runs (ranges; static counts/bytes are
+execution-weighted, not dynamic fetch traffic):
+
+| Form | Parent → candidate cycles/exec | Static 68k/exec | Static bytes/exec |
+|---|---|---|---|
+| `adc r16,r16` | 15.2 → 5.4–5.5 | 4.1 → 2.0 | 12.4 → 6.0 |
+| `rcl r16,imm` | 11.9–12.0 → 4.8–5.1 | 3.5 → 1.4 | 10.0–10.1 → 3.4–3.6 |
+| `rcr r16,imm` | 8.7–8.8 → 3.2 | 3.4 → 1.4 | 8.9–9.0 → 2.8–2.9 |
 
 - **Data.** State-block traffic 8.9% (`move.w ccr,G_FL(a6)` and reloads);
   CF readers `adc`/`sbb`/`rcl`/`rcr` 5.9%, 16.6 cyc / 5.0 instructions
@@ -368,8 +426,7 @@ of ≥ 1% of P remains.
 - T3: block-local lazy byte order, priced 0.958% of P from a fresh capture;
   not built (below 1%); no generated-code or executable-size change.
 
-- T4 cross-block candidate: priced 0.0273% of P; not built below 1%;
-  broader within-block carry candidate awaits a scope decision.
+- T4 cross-block candidate: priced 0.0273% of P; not built below 1%.
 
 ## 6. When the translator work is done
 

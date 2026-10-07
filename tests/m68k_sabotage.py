@@ -79,6 +79,15 @@ def drop_fused_store(self, out):
     return out
 
 
+def trust_x_across_ea(self, out):
+    """T4: bypass the proof that operand setup preserves incoming carry in X."""
+    if getattr(self.c, "x_in", False):
+        for reg in ("d6", "d7"):
+            out = drop_after(f"move.b G_FL+1(a6),{reg}", f"lsr.b #1,{reg}")(self, out)
+            out = [s for s in out if s != f"\tmove.b G_FL+1(a6),{reg}"]
+    return out
+
+
 SABOTAGE = [
     ("jb/jae swapped", sub(r"\bbcs\b", "bcc"), "forms,boundary"),
     ("word loads not byte-swapped", drop_after("move.w (a2,d4.l),d7", "ror.w #8,d7"), "boundary"),
@@ -93,6 +102,7 @@ SABOTAGE = [
     ("popf/iret do not re-arm G_IRQ", "helpers", "boundary"),
     ("REP fast path without wrap guard", no_wrap_guard, "boundary"),
     ("REPE/REPNE run-out leaves CX FFFFh", no_runout_fix, "boundary"),
+    ("carry X trusted across EA clobber", trust_x_across_ea, "boundary"),
 ]
 
 

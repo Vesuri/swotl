@@ -72,6 +72,7 @@ class Ctx:
     need: set = field(default_factory=set)    # status flags to store in the state block
     live: set = field(default_factory=lambda: set(STATUS))  # status flags live after
     ccr_in: set = field(default_factory=set)  # flags valid in the CCR at entry
+    x_in: bool = False                       # preceding instruction proved X = guest CF
     fuse: bool = False                        # try to leave `need`-free flags in the CCR
     reloc: frozenset = frozenset()            # byte positions of relocated segment words
     near: object = None                       # ip -> label | None (None: test exit)
@@ -93,10 +94,19 @@ class Lowering:
         self.ccr: set = set()      # flags valid in the CCR at the end
         self.stats = Counter()
         self.nl = 0
+        self.x_cf = ctx.x_in
+        self.cf_result = False
         self.af = insn.op in ("add", "adc", "sub", "sbb", "cmp", "inc", "dec", "neg")
 
     # -- emission ---------------------------------------------------------
     def e(self, line: str) -> None:
+        # A closed whitelist proves X preservation; unknown instructions kill it.
+        op = line.split()[0].split(".")[0]
+        preserves = {"move", "movea", "moveq", "lea", "ror", "rol", "and", "or",
+                     "eor", "not", "cmp", "cmpa", "cmpi", "tst", "btst", "bset",
+                     "bclr", "ext", "exg", "swap", "nop", "sne", "seq", "smi", "spl"}
+        if op not in preserves or "ccr" in line and not line.startswith("move.w ccr,"):
+            self.x_cf = False
         self.out.append("\t" + line)
 
     def local(self) -> str:
@@ -292,6 +302,8 @@ class Lowering:
         """After the 68k op: store `need` ∩ defined; leave the CCR as `ok` if fusable.
         `res`: data register holding the result (for PF); `extra`: needed flags the
         caller computes itself."""
+        self.x_cf = "X" in ok
+        self.cf_result = self.x_cf
         defined = self.kills(kind)
         need = self.c.need & FLAG_KINDS[kind][0]
         self.ccr = set(ok)
@@ -364,6 +376,8 @@ class Lowering:
             for m in mem_dests(i):
                 self.vram_mark(m)
         fn()
+        if "CF" in writes(i)[1] and not self.cf_result:
+            self.x_cf = False
         return self.out
 
     # -- D9 display: the graphics driver's stores to video memory ------------
@@ -527,9 +541,12 @@ class Lowering:
         if s.startswith("#"):
             self.e(f"move.l {s},d6")
             s = "d6"
-        self.e("move.b G_FL+1(a6),d7")
-        self.e("lsr.b #1,d7")
-        self.stats["flag load"] += 1
+        if self.x_cf:
+            self.stats["carry X reused"] += 1
+        else:
+            self.e("move.b G_FL+1(a6),d7")
+            self.e("lsr.b #1,d7")
+            self.stats["flag load"] += 1
         r = self.dest_reg(a)
         if r is None:
             r = "d7"
@@ -627,9 +644,12 @@ class Lowering:
         if isinstance(a, Mem):
             self.lea(a)
         if op in ("rcl", "rcr"):
-            self.e("move.b G_FL+1(a6),d6")
-            self.e("lsr.b #1,d6")  # X := CF; moveq, and.b, move, ror keep X
-            self.stats["flag load"] += 1
+            if self.x_cf:
+                self.stats["carry X reused"] += 1
+            else:
+                self.e("move.b G_FL+1(a6),d6")
+                self.e("lsr.b #1,d6")  # X := CF; subsequent operand moves keep X
+                self.stats["flag load"] += 1
         if isinstance(cnt, Reg):
             skip = self.local()
             self.e("moveq #$1f,d7")
@@ -642,6 +662,8 @@ class Lowering:
         if r == "d6":
             self.load_dest(a, "d6")
         self.e(f"{m68}.{sz} {count},{r}")
+        self.x_cf = isinstance(cnt, Imm) and op in ("shl", "shr", "sar", "rcl", "rcr")
+        self.cf_result = self.x_cf
         computed = {"OF"} & need if op not in ("shl", "sar") else set()
         if rot or computed or isinstance(cnt, Reg):
             self.c.fuse = False
