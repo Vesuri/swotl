@@ -66,7 +66,10 @@ plan's next step is ambiguous.
 1. **Price** with data from this session: `tools/lowering_cost.py` on a
    fresh capture (speed-plan §1 Shares) and `tools/host_census.py` counts.
    Write the step's priced prize (% of P) into §4 before writing code. A
-   step priced under 1% of P is not built; it gets a line in §5.
+   step priced under 1% of P may be built when it is expected to reduce
+   cycles, executed instruction count and code size (user amendment,
+   2026-10-07). There is no minimum percentage for those candidates.
+   Pricing still ranks work; acceptance still requires measured results (§3.6).
 2. **Coverage first** (speed-plan §0.5): the new lowering's forms and its
    guard edges in the x86 corpora (`tests/x86_diff.py`, appended at the end
    of a corpus so earlier cases keep their random states), the change seen
@@ -94,6 +97,12 @@ plan's next step is ambiguous.
    §4 and open-work 14b updated in the same commit (speed-plan §0.8).
 8. **Report** to the user after each step in a few lines: step, numbers,
    kept or reverted. Then the next step.
+
+The user authorized revisiting candidates excluded by the former 1% cutoff.
+Resume with fresh pricing of T3, then revisit T4 cross-block, T5 and T6 before
+T7–T9. Earlier below-threshold entries are historical screening decisions,
+not rejections under the amended rule. This authorization resumes work after
+the T5/T6 stop; all correctness, size-growth and measurement rules remain.
 
 ## 4. Steps
 
@@ -453,13 +462,13 @@ execution-weighted, not dynamic fetch traffic):
   forms (`mov`/`push`/`pop` sreg, `les`/`lds`) 2.0%, 24.8 cyc.
 - **Shape.** Price per form; shorter AH/BH access sequences; segment base
   recomputation only when the base register is used before the next load.
-- **Prize.** Price per form; build only forms ≥ 1% of P.
+- **Prize.** Price per form; apply the amended eligibility rule in §3.1.
 
 ### T9. Re-profile
 
 After T2–T8: fresh capture, re-price every group of §4 and any new
-candidate ≥ 1% of P as a new step here (T10 …). Repeat until no candidate
-of ≥ 1% of P remains.
+candidate eligible under §3.1 as a new step here (T10 …). Repeat until no
+remaining candidate qualifies, including smaller efficiency/size candidates.
 
 ## 5. Rejected and not built
 
@@ -481,7 +490,7 @@ of ≥ 1% of P remains.
 
 ## 6. When the translator work is done
 
-When T9 finds no candidate ≥ 1% of P: write the final numbers into §1,
+When T9 finds no remaining candidate eligible under §3.1: write the final numbers into §1,
 update open-work 14b, and report to the user with the remaining gap and
 the profile's top routines (T1 attribution). Then **stop**. Native
 replacement of hot routines (§2.1) is the user's decision, routine by

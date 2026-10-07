@@ -55,7 +55,9 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     overlap (26.5–29.5 → 26–29.5 fields), so no frame-rate gain claimed.
     T5 guarded far-call/return packing priced 0.926% of P: not built.
     T6 listed encoding/local mask candidates screen at at most 0.593% of P:
-    not built. T5/T6 are consecutive not-built steps; ask before T7.
+    not built under the former cutoff. User removed the 1% floor for changes
+    expected to reduce cycles, instructions and code size; reprice and revisit
+    T3, T4 cross-block, T5 and T6 before T7–T9. Work resumed with T3.
     Keep code size visible; avoid block duplication.
     Native replacements only when the user authorizes each routine.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/
