@@ -137,28 +137,27 @@ work past S4.
 
 Re-measure after each step and reprice the rest before starting the next.
 
-### S6. Interrupt delivery (runtime)
-
-- **Prize.** ≈ 3.6% for 474 deliveries per 100 fields (`rt_irq_c` 0.9,
-  `load_regs`/`save_regs` 0.8, `push_frame` 0.4, `deliver` 0.4,
-  `rt_flags_word` 0.4, `guest_vector` 0.35, glue 0.4). Price the shape
-  (vector bounds once per IVT write instead of per delivery, the flags
-  word without C) before building; skip if under 2% of P.
-
 ### Priced, below 2% of P (not planned)
 
+Interrupt delivery 3.6% for 474 deliveries per 100 fields (`rt_irq_c`
+0.9, `load_regs`/`save_regs` 0.8 (any C call), `push_frame` 0.4,
+`deliver` 0.4, `rt_flags_word` 0.4, `guest_vector` 0.35, glue 0.4): vector
+bounds cached per IVT write and the flags word in asm would save ≈ 1–1.5%;
 `rt_lookup` + dispatch 1.3% (a CS:IP cache); port output 0.8% (SPAZ OPL);
 VRAM marks 0.85%. "No PC" 2.4% (outside the executable and ROM): find
 it before pricing (SetPatch's RAM patches of Exec calls such as
 `Disable`/`Enable`?).
 
-### Beyond S6
+### Beyond the plan
 
 Guest code is 88%: SWOTL 17, FLIGHT 13 cycle units per guest
 instruction, with no single instruction outside the walk above 0.6%.
 The rest is the lowering itself (flags, byte swaps at 5.7%, segment
 arithmetic, register traffic): broad translator work, sized only once
-the user sets the bar (§2 Ceiling).
+the user sets the bar (§2 Ceiling). The cell walk (12–14%) is bound by
+its per-cell operand reads, byte swaps and stores (S5, §4); only not
+re-matching cells at all (decoded cells kept per region, invalidated on
+writes to it) would cut it, a D16 design change for the user to decide.
 
 ## 4. Rejected
 
