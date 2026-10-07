@@ -274,6 +274,28 @@ also pass for this tooling-only change.
 
 ### T4. Flags across block boundaries
 
+- T4 price (2026-10-07 continuation, parent `4d94654`): **0.0273% of P**
+  (7,760 captured cycles); cross-block candidate not built below the 1% bar.
+  Fresh capture: 28,420,396 cycles, 1,567,672 guest instructions, 6,690,952
+  68k instructions; 15.68 cycles/guest, 4.27 68k/guest, 10.99 weighted static
+  bytes/guest. Frames 4–11: 30, 26, 36, 26, 31, 27, 33, 30 fields;
+  median 30 (600 ms), span 26–36. Pricing capture only; no speed claim.
+- Analysis intersects predecessor flag availability; excludes actual runtime
+  dispatch entries, call targets, return sites, interrupt entries and poll
+  points. CFG branch-target seeds are not all runtime entries. Check emitted
+  CCR effects, direct jumps (near/far), preserving address-register moves,
+  and X preservation before carry consumption. Retain state stores demanded
+  by another successor. Candidate: 62 static cross-boundary readers, six
+  sites with captured savings. Fresh host m4 census: 49 frames, 19,290
+  `cmpsw` and 16,075 `stosw` elements/frame.
+- The same analysis including **within-block** carry reuse estimates 4.903%
+  (1,393,557 captured cycles). This is preliminary pricing, not a measured
+  speedup or a proved exhaustive bound; implementation may narrow eligibility.
+  It extends the stated cross-block shape. Ask the user to authorize that
+  extension or proceed to T5 before writing lowering code. No translator,
+  runtime, test or measurement change. Local reports: `tmp/t4-session/`;
+  raw capture reported and deleted.
+
 - **Data.** State-block traffic 8.9% (`move.w ccr,G_FL(a6)` and reloads);
   CF readers `adc`/`sbb`/`rcl`/`rcr` 5.9%, 16.6 cyc / 5.0 instructions
   (CF reloaded from `G_FL` through `lsr.b`/`ori #4,ccr`).
@@ -345,6 +367,9 @@ of ≥ 1% of P remains.
 
 - T3: block-local lazy byte order, priced 0.958% of P from a fresh capture;
   not built (below 1%); no generated-code or executable-size change.
+
+- T4 cross-block candidate: priced 0.0273% of P; not built below 1%;
+  broader within-block carry candidate awaits a scope decision.
 
 ## 6. When the translator work is done
 
