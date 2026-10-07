@@ -428,6 +428,7 @@ class Host:
         tail = self.mem(self.syms["rt_irq_tail"], 1)[0]
         self.e.write(self.syms["rt_irq_ring"] + tail % 32, bytes([vector]))
         self.e.write(self.syms["rt_irq_tail"], bytes([(tail + 1) & 0xFF]))
+        self.e.write(self.syms["rt_irq_pending"], b"\1")  # RT_RAISE_IRQ
         self.e.write(GUEST - 8, b"\1")
 
     def guest_vector(self, vector: int) -> bool:
@@ -736,6 +737,28 @@ def main(argv=None) -> int:
     return 1 if problems else 0
 
 
+def rearm_problems() -> list[str]:
+    """runtime.h poll-point contract on the C path the replay never reaches (it
+    posts only where the reference took the interrupt, so with IF set):
+    rt_set_flags_word with IF set re-arms G_IRQ from rt_irq_pending."""
+    h, problems = Host(image.M.REF), []
+    ret = h.syms["plat_exit"]  # stop address, never executed
+    h.e.write(h.syms["rt_guest"], GUEST.to_bytes(4, "big"))
+    for flags in (0x0002, 0x0202):
+        for pending in (0, 1):
+            h.e.write(GUEST - 8, b"\0")
+            h.e.write(h.syms["rt_irq_pending"], bytes([pending]))
+            h.e.write(STACK_TOP - 8, ret.to_bytes(4, "big") + flags.to_bytes(4, "big"))
+            h.e.reg_write(U.M68K["sr"], 0x2700)  # first: it selects which a7
+            h.e.reg_write(U.M68K["a7"], STACK_TOP - 8)
+            h.e.start(h.syms["rt_set_flags_word"], ret, timeout_us=1_000_000)
+            got, want = h.mem(GUEST - 8, 1)[0], int(bool(flags & 0x200) and pending)
+            if h.r("pc") != ret or got != want:
+                problems.append(f"rt_set_flags_word({flags:04x}) with rt_irq_pending {pending}: "
+                                f"G_IRQ {got}, want {want} (pc={h.r('pc'):x})")
+    return problems
+
+
 def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None) -> list[str]:
     class args:  # noqa: N801
         pass
@@ -748,7 +771,7 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
     label = script["snapshots"][-1][0]
     script["irqs"], script["releases"] = reference_inputs(trace)
     summary = dict(kv.split("=", 1) for kv in (trace / "summary.txt").read_text().split())
-    problems = []
+    problems = rearm_problems()
     if int(summary.get("polls", "0"), 16) != fnv(POLLS.read_bytes()):
         problems.append("reference recorded with other poll points: rerun make reference")
     h.run(script, args.timeout)

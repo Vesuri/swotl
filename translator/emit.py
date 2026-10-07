@@ -33,7 +33,7 @@ RET, UNKNOWN, SMC = "ret", "unknown", "smc"
 TERMINAL = {"jmp", "jmpf", "ret", "retf", "iret", "hlt"}
 RUNTIME = ("rt_int", "rt_irq", "rt_fault", "rt_halt", "rt_in8", "rt_in16", "rt_out8", "rt_out16",
            "rt_ret_mismatch", "rt_dispatch_near", "rt_dispatch_far", "rt_stop_unknown",
-           "rt_vram_mark", "rt_vdrv_depth", "rt_vdrv_return")
+           "rt_vram_mark", "rt_vdrv_depth", "rt_vdrv_return", "rt_irq_pending")
 # D9: the graphics driver in scope. Only it writes video memory
 # (docs/external-surface.md); a return from a call into it through its PLINK
 # thunks publishes a frame.

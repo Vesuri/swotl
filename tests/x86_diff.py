@@ -8,7 +8,7 @@ Corpora (deterministic seeds):
   space     random encodings of every supported opcode byte
   boundary  explicit edge cases random state misses (shift/rotate counts,
             divide faults and overflow, REP with CX 0/1 and DF=1, SI/DI and
-            SP wrap, word at offset FFFFh, BCD over all AL, flags words)
+            SP wrap, word at offset FFFFh, BCD over all AL, flags words, STI/CLI)
   blocks    straight-line runs of 2..8 game instructions ending at the first
             transfer, random states
 Each case runs the same bytes from the same state (registers, flags, 1 MiB+
@@ -392,6 +392,10 @@ def boundary(h: Harness) -> None:
                 for of in (0, 1):
                     h.case(code, f"b:loop{code.hex()}",
                            overrides={"regs": {"cx": cx}, "flags": {"ZF": zf, "OF": of}})
+    # STI, CLI from either IF (the 68k side's G_IRQ re-arm, runtime.h).
+    for code in (b"\xfb", b"\xfa"):
+        for _ in range(32):
+            h.case(code, f"b:if{code.hex()}")
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

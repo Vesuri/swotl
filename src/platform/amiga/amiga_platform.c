@@ -150,7 +150,7 @@ static ULONG cia_tick(void)
 {
     rt_irq_ring[rt_irq_tail % RT_IRQ_RING] = 8;
     ++rt_irq_tail;
-    G_IRQ = 1;
+    RT_RAISE_IRQ();
     return 0;
 }
 

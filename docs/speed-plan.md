@@ -94,6 +94,13 @@ takeover (copper display, own VERTB/keyboard, DOS in I/O windows): same
 period (medians 34, 35, 40 fields; demo flight from field ≈ 1280–1380);
 Kickstart 2.8% → 1.0%, "no PC" 2.0%, runtime 16.3%.
 
+**S2 (poll points skip `rt_irq` while IF = 0):** frames 4–11 in 252–253
+fields vs 256–271 (control, same session; medians 36–37 vs 35–40), P ≈
+0.73 s; `rt_irq` entries per 100 flight fields 6752–9343 → ≈ 1030 (474
+deliveries both); `rt_irq_c`/`load_regs`/`save_regs`/`rt_irq` 8.6–11.7%
+→ 1.9%; runtime 16.4–18.0% → 9.1%, guest code 86%. Demo flight starts at
+field ≈ 855 instead of ≈ 1270 (SPAZ's OPL loading under CLI).
+
 Steady flight window (100 fields after frame 11):
 
 | Class | Share | Note |
@@ -116,34 +123,14 @@ Per drawn frame (m4 host census): `repe cmpsw` `VGA_03BE9` 19,290 words
 (`VGA_03E7A` 38%, `VGA_04085` 20% of bytes) and `rep movsb`.
 
 **Ceiling.** The frame is now almost all guest work: ≈ 650K guest
-instructions per drawn frame at 13–18 cycles each. S2–S3 remove most of the
-remaining ≈ 18% overhead; reaching the reference needs far fewer cycles
+instructions per drawn frame at 13–18 cycles each. S3 removes the
+string-op cost and S4 prices the remaining 9% runtime; reaching the reference needs far fewer cycles
 per guest instruction, and the user sets the bar (perf-method §1.3) before
 work past S4.
 
 ## 3. Steps
 
 Re-measure after each step and reprice the rest before starting the next.
-
-### S2. Poll points skip `rt_irq` while IF = 0 (runtime + translator)
-
-- **Prize.** ≈ 6400 empty `rt_irq` entries per 100 fields in flight
-  (`rt_irq_c`, `load_regs`, `save_regs`, `rt_irq` ≈ 9% of the CPU);
-  ≈ 17% while SPAZ writes OPL registers under CLI.
-- **Cause.** `rt_irq_c` delivers nothing while `G_IF` = 0 but leaves
-  `G_IRQ` set, so every poll point (each pass of SPAZ's `loop` delay loops)
-  saves registers, calls C and reloads them.
-- **Shape.** Keep "something is pending" separately from `G_IRQ` (a state
-  byte the platform sets with `G_IRQ`; the ring is unchanged). `rt_irq_c`
-  with `G_IF` = 0 runs a due present, then clears `G_IRQ`. Every path that
-  can set IF re-arms it: the `sti` lowering, `__set_flags` (POPF, IRET),
-  and every runtime path that writes IF (`rt_set_flags_word`, delivery and
-  service returns). Re-arming copies the pending byte into `G_IRQ` in one
-  `move.b` (atomic with respect to the platform's interrupts). Delivery
-  points do not move: with IF = 0 nothing was delivered before either.
-- **Gate.** §0.4 (`test-host-all` replays interrupts at the reference's
-  poll-point visits and must still match); a sabotage plant that drops one
-  re-arm path must fail. If the change moves a delivery, stop and report.
 
 ### S3. String-op fast paths (translator, D11)
 

@@ -976,6 +976,7 @@ class Lowering:
 
     def op_sti(self):
         self.e("move.b #1,G_IF(a6)")
+        self.e("move.b rt_irq_pending,G_IRQ(a6)")  # re-arm (runtime.h: one move, atomic)
 
     def op_lahf(self):
         self.e("jsr __flags_word")

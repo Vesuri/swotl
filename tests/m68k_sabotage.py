@@ -19,6 +19,7 @@ import m68k_diff as D  # noqa: E402
 from translator import lower as L  # noqa: E402
 
 real_run = L.Lowering.run
+real_helpers = D.HELPERS
 
 
 def text(fn):
@@ -76,13 +77,19 @@ SABOTAGE = [
     ("shift count mod 16", sub(r"moveq #\$1f,d7", "moveq #$f,d7"), "boundary"),
     ("fused setter stores nothing", drop_fused_store, "program"),
     ("ror for ror.w on memory dest", sub(r"^\tror\.w #8,d6$", "\trol.b #8,d6"), "forms"),
+    ("sti does not re-arm G_IRQ", sub(r"^\tmove\.b rt_irq_pending,G_IRQ\(a6\)$", "\tnop"), "boundary"),
+    ("popf/iret do not re-arm G_IRQ", "helpers", "boundary"),
 ]
 
 
 def main() -> int:
     missed = []
     for name, fn, corpus in SABOTAGE:
-        L.Lowering.run = text(fn)
+        if fn == "helpers":     # __set_flags (translator/support.py)
+            D.HELPERS = real_helpers.replace("\tmove.b\trt_irq_pending,G_IRQ(a6)", "\tnop")
+            assert D.HELPERS != real_helpers
+        else:
+            L.Lowering.run = text(fn)
         try:
             if corpus == "program":
                 out = io.StringIO()
@@ -97,6 +104,7 @@ def main() -> int:
                 bad, total = len(h.bad), sum(h.count.values())
         finally:
             L.Lowering.run = real_run
+            D.HELPERS = real_helpers
         print(f"{name:36} {corpus:15} mismatches {bad} of {total}")
         if not bad:
             missed.append(name)

@@ -57,7 +57,7 @@ static void post(uint16_t scan)
     ++rt_key_tail;
     rt_irq_ring[rt_irq_tail % RT_IRQ_RING] = (scan & 0x80) ? 0x89 : 0x09;
     ++rt_irq_tail;
-    G_IRQ = 1;
+    RT_RAISE_IRQ();
     Enable();
 }
 

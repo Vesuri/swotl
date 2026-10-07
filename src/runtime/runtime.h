@@ -29,7 +29,7 @@ extern uint8_t *rt_guest;          /* a6: guest linear 0; state block below */
 #define G_DF   (rt_guest[-5])
 #define G_IF   (rt_guest[-6])
 #define G_TF   (rt_guest[-7])
-#define G_IRQ  (rt_guest[-8])      /* hardware interrupt pending: poll points call rt_irq */
+#define G_IRQ  (rt_guest[-8])      /* poll points call rt_irq (RT_RAISE_IRQ, machine.c) */
 #define G_FX   (*(uint16_t *)(rt_guest - 10))
 #define G_ES   (*(uint16_t *)(rt_guest - 12))
 #define G_SS   (*(uint16_t *)(rt_guest - 14))
@@ -78,7 +78,7 @@ extern uint16_t rt_entry_cs, rt_entry_ip;
 void rt_int21(uint16_t cs, uint16_t ip);
 void rt_int10(void);
 extern uint8_t rt_dac[768];      /* video.c: 6-bit R, G, B */
-/* video.c: set to 1 by the platform (with G_IRQ) at each vertical blank;
+/* video.c: set to 1 by the platform (with RT_RAISE_IRQ) at each vertical blank;
  * a published frame's changed rows are presented at the next poll point
  * outside the graphics driver, or when the driver returns (D9); 2: due,
  * the platform's per-blank work done */
@@ -89,10 +89,15 @@ void rt_dos_init(void);
 uint16_t rt_psp(void);
 
 /* hardware interrupts (machine.c): the platform appends a vector (08h tick,
- * 09h key make, 89h key break) at rt_irq_tail and sets G_IRQ */
+ * 09h key make, 89h key break) at rt_irq_tail, then RT_RAISE_IRQ. While the
+ * guest has IF = 0, rt_irq clears G_IRQ but keeps rt_irq_pending; every path
+ * that sets IF copies rt_irq_pending into G_IRQ (sti, __set_flags,
+ * rt_set_flags_word), so G_IRQ is never set without rt_irq_pending. */
 #define RT_IRQ_RING 32
 extern volatile uint8_t rt_irq_ring[RT_IRQ_RING];
 extern volatile uint8_t rt_irq_tail;
+extern volatile uint8_t rt_irq_pending;
+#define RT_RAISE_IRQ() (rt_irq_pending = 1, *(volatile uint8_t *)&G_IRQ = 1)
 void rt_bios_int08(void);
 
 /* input.c: the platform appends keyboard events (PC set 1 scan code, bit 7

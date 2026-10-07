@@ -41,6 +41,7 @@ from translator.support import HELPERS, equates  # noqa: E402
 M = image.M
 STUBS = emit.RUNTIME + ("T_RET",)
 STUB_AT = {n: D.STUB + 4 * k for k, n in enumerate(STUBS)}
+STUB_AT["rt_irq_pending"] = D.PENDING  # data, clear (no interrupt posted)
 TRANSFER = {"jmp", "jmpf", "jcc", "call", "callf", "ret", "retf", "iret", "int", "int3", "into",
             "loop", "loope", "loopne", "jcxz", "hlt"}
 
@@ -153,10 +154,11 @@ def walks(p: emit.Program, h, m, addr, stop_names, cases: int) -> tuple[int, lis
                     continue  # stores over the cells or the return word
                 m.inside, m.extra_stops = set(), stop_names
                 mo, mf, mfx, mmem, mouts, mwrites, info = m.run(
-                    addr[emit.walk_label(mod, lo)], case, h.rng, init={"d7": ip})
+                    addr[emit.walk_label(mod, lo)], case, h.rng, init={"d7": ip}, irq=False)
                 diffs = []
                 if info["err"] or info["stop"] != "T_RET":
                     diffs.append(f"stop {info['stop']} err {info['err']}")
+                diffs += info["irq"]
                 if info["d7"] != out["ip"]:
                     diffs.append(f"ip 68k={info['d7']:04x} x86={out['ip']:04x}")
                 for r in D.REGS:
@@ -274,7 +276,7 @@ def main(argv=None) -> int:
             h.oracle.restore(uwrites | {a for a0, d in patches for a in range(a0, a0 + len(d))})
             entry = addr[emit.label(mod, run[0])]
             mo, mf, mfx, mmem, mouts, mwrites, info = m.run(entry, case, h.rng,
-                                                            skip_entry=not empty)
+                                                            skip_entry=not empty, irq=False)
             stop = info["stop"]
             pc = m.r("pc")
             if stop in node_of:  # labels sharing the address: take the one x86 reached
@@ -287,6 +289,7 @@ def main(argv=None) -> int:
             diffs = []
             if info["err"]:
                 diffs.append(f"68k error {info['err']} stop={stop} pc={pc:x}")
+            diffs += info["irq"]
             # successor reached
             exc = ints[0] if ints else None
             live: set = set()

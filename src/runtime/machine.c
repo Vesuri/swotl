@@ -182,6 +182,9 @@ void rt_set_flags_word(uint16_t f)
     G_IF = (f & 0x200) != 0;
     G_DF = (f & 0x400) != 0;
     G_FX = f & 0xf000;
+    if (G_IF && rt_irq_pending) {
+        *(volatile uint8_t *)&G_IRQ = 1;
+    }
 }
 
 /* The CPU's interrupt frame below SS:SP (IP, CS, FLAGS), SP unchanged for a
@@ -240,6 +243,7 @@ uint32_t rt_int_c(uint32_t d6, uint32_t ip)
  * 89h key break), taken in order at poll points while the guest has IF set. */
 volatile uint8_t rt_irq_ring[RT_IRQ_RING];
 volatile uint8_t rt_irq_tail;
+volatile uint8_t rt_irq_pending;
 static uint8_t irq_head;
 
 #define BIOS_TICKS 0x46c
@@ -284,7 +288,18 @@ uint32_t rt_irq_c(uint32_t d6, uint32_t ip)
         }
         bios_tick();
     }
-    G_IRQ = irq_head != rt_irq_tail;
+    /* Cleared before the ring is read: a post in between raises both again.
+     * With IF = 0 nothing is taken, so G_IRQ waits for IF (S2). */
+    volatile uint8_t *irq = &G_IRQ;
+    *irq = 0;
+    rt_irq_pending = 0;
+    if (irq_head != rt_irq_tail) {
+        rt_irq_pending = 1;
+        *irq = G_IF;
+    }
+    if (rt_present_due == 1) {      /* a vertical blank since the check above */
+        RT_RAISE_IRQ();
+    }
     return 0;
 }
 

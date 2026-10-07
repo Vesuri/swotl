@@ -8,7 +8,9 @@ reports CS:IP; flags live at the end of the case), assembled with vasm in
 batches and run on the 68020 core over the same guest RAM (byte-exact,
 little-endian, at a6). Compared: registers, segment registers, CS:IP, defined
 flags (undefined ones masked by the IR), FLAGS bits 12-14, every written byte,
-the OUT sequence and the raised interrupt/fault.
+the OUT sequence and the raised interrupt/fault. Checked on the 68k side alone:
+the poll-point contract of runtime.h (G_IRQ never set without rt_irq_pending;
+once IF is set, a pending interrupt re-arms G_IRQ).
 
 Shared by both sides: the case bytes and state; the 68k side never sees the
 x86 results or the IR (the IR only supplies the undefined-flag mask).
@@ -16,6 +18,7 @@ x86 results or the IR (the IR only supplies the undefined-flag mask).
 
 from __future__ import annotations
 
+import random
 import subprocess
 import sys
 import tempfile
@@ -39,6 +42,7 @@ STATE = GUEST - 0x1000      # state block page
 CODE = 0x400000
 STUB = 0x300000
 STACK = 0x380000
+PENDING = STATE + 0x800     # rt_irq_pending
 STUBS = ("T_JUMP", "T_CALL", "T_JUMPF", "T_CALLF", "T_INT", "T_FAULT", "T_HALT", "T_END",
          "rt_in8", "rt_in16", "rt_out8", "rt_out16", "T_RET")
 STUB_AT = {n: STUB + 4 * k for k, n in enumerate(STUBS)}
@@ -79,6 +83,15 @@ def lower_case(insns, cs: int, tag: str, end_ip: int) -> tuple[list[str], Counte
     return lines, stats
 
 
+def irq_diffs(f: dict, irq: int, pending: int) -> list[str]:
+    """runtime.h: G_IRQ only with rt_irq_pending; with IF set, pending means G_IRQ."""
+    if irq and not pending:
+        return [f"G_IRQ {irq} without rt_irq_pending"]
+    if f["IF"] and pending and not irq:
+        return ["IF set, G_IRQ not re-armed"]
+    return []
+
+
 class M68k:
     """Unicorn 68020 with guest RAM, state block, stubs and native stack."""
 
@@ -96,6 +109,7 @@ class M68k:
         self.writes: set[int] = set()
         self.outs: list = []
         self.stop: str | None = None
+        self.irq_rng = random.Random(1)
 
         @U.MEM_CB
         def write(h, kind, addr, size, value, user):
@@ -143,7 +157,10 @@ class M68k:
         self.e.write(CODE, image)
         self.e.flush()
 
-    def run(self, entry: int, case, rng, skip_entry: bool = True, init: dict | None = None):
+    def run(self, entry: int, case, rng, skip_entry: bool = True, init: dict | None = None,
+            irq: bool = True):
+        """irq: rt_irq_pending mostly set, G_IRQ as rt_irq leaves it (IF ? pending : 0);
+        otherwise both clear (code with poll points)."""
         regs, flags, flagsx, ip, patches = case
         e = self.e
         for a, data in patches:
@@ -165,6 +182,9 @@ class M68k:
         st[16 - 10:16 - 8] = flagsx.to_bytes(2, "big")
         for s, at in (("es", 12), ("ss", 14), ("ds", 16)):
             st[16 - at:16 - at + 2] = regs[s].to_bytes(2, "big")
+        pending = int(irq and self.irq_rng.randrange(4) != 0)
+        st[16 - 8] = pending & flags["IF"]
+        e.write(PENDING, bytes([pending]))
         e.write(GUEST - 16, bytes(st))
         sp = STACK - 0x100
         e.write(sp, self.stub_at["T_RET"].to_bytes(4, "big"))
@@ -184,6 +204,7 @@ class M68k:
         fx = int.from_bytes(st[16 - 10:16 - 8], "big")
         d6, d7 = self.r("d6") & 0xFFFF, self.r("d7") & 0xFFFF
         info = {"stop": self.stop, "err": err, "d6": d6, "d7": d7, "d6.l": self.r("d6"),
+                "irq": irq_diffs(f, st[16 - 8], e.read(PENDING, 1)[0]),
                 "upper": {r: out[r] >> 16 for r in REGS},
                 "a7": self.r("a7"), "segbase": {a: self.r(a) for a in ("a1", "a2", "a3")}}
         mem = {a: b for a, b in zip(sorted(self.writes), (e.read(GUEST + a, 1)[0]
@@ -278,6 +299,7 @@ class Harness(X.Harness):
             return
         src = [equates()]
         src += [f"{n}\tequ\t${a:x}" for n, a in STUB_AT.items()]
+        src.append(f"rt_irq_pending\tequ\t${PENDING:x}")
         src.append(f"\torg\t${CODE:x}")
         src.append("table:")
         src += [f"\tdc.l\tc{k}" for k in range(len(self.pending))]
@@ -300,6 +322,7 @@ class Harness(X.Harness):
             diffs.append(f"unicorn x86 error {err}")
         if info["err"]:
             diffs.append(f"unicorn 68k error {info['err']} stop={info['stop']}")
+        diffs += info["irq"]
         stop = info["stop"]
         exc = ints[0] if ints else None
         if exc is not None and exc in X.EXCEPTIONS:

@@ -159,8 +159,12 @@ check, read by the sweep), `data.csv` (ranges),
   shown bitplanes equal guest A0000h).
 - Interrupts (D8): poll points at loop heads (targets of backward branches,
   all block leaders, so live flags are in the state block): `tst.b G_IRQ(a6)`
-  then `rt_irq` (d6 = CS << 16, d7 = IP). With guest IF set posted interrupts
-  run in order: a guest handler (`annotations/entries.csv`) on a pushed
+  then `rt_irq` (d6 = CS << 16, d7 = IP). The platform raises `G_IRQ` and
+  `rt_irq_pending` together (`RT_RAISE_IRQ`); with IF clear `rt_irq` clears
+  `G_IRQ` only, and `sti`, `__set_flags` (POPF, IRET) and
+  `rt_set_flags_word` re-arm it from `rt_irq_pending` when they set IF
+  (checked in the 68020 differential and `host_run.py rearm_problems`;
+  sabotage plants). With guest IF set posted interrupts run in order: a guest handler (`annotations/entries.csv`) on a pushed
   frame, else the BIOS one (INT 08h ticks; INT 09h takes the next
   `rt_key_ring` event, a set 1 scan code with break bit and E0 flag, as
   DOSBox-X's IRQ1 handler does: its scan-code table, shift and lock flags,

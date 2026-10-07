@@ -231,7 +231,7 @@ void Swotl::verticalBlank()
     ++amiga_frames;
     Input::verticalBlank();
     rt_present_due = 1;
-    G_IRQ = 1;
+    RT_RAISE_IRQ();
 }
 
 // Hand back interrupts and multitasking, not the display (L7): Exec's VERTB

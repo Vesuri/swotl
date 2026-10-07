@@ -112,7 +112,9 @@ __set_flags:
 	sne	d6
 	neg.b	d6
 	move.b	d6,G_IF(a6)
-	btst	#10,d7
+	beq	.2
+	move.b	rt_irq_pending,G_IRQ(a6)	; re-arm (runtime.h)
+.2:	btst	#10,d7
 	sne	d6
 	neg.b	d6
 	move.b	d6,G_DF(a6)

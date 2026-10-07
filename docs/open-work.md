@@ -40,9 +40,9 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     takeover are untested by any reference (scripted input enters past the
     CIA and JOY0DAT reads).
 14b. Speed: [speed-plan.md](speed-plan.md) (rules, measurement, baseline,
-    steps S2–S4). 68020 + Fast: ≈ 0.74 s per drawn frame vs ≈ 36 ms on
-    the reference; guest 80%, runtime 15% (`rt_irq` entered while IF = 0),
-    c2p 2%. Next: S2. The bar is the user's to set.
+    steps S3–S4). 68020 + Fast: ≈ 0.73 s per drawn frame vs ≈ 36 ms on
+    the reference; guest 86%, runtime 9%, c2p 2%. Next: S3. The bar is the
+    user's to set.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/
     `divu.l`, unaligned word/long, `ror.w #8` swap) to replace [arch]
     guesses in `m68k-optimisation.md`.
