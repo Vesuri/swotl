@@ -46,7 +46,9 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     1,335,628 bytes, stripped executable 1,377,892 bytes. All gates pass.
     Timing arms overlap: efficiency/size wins, no frame-rate gain claimed.
     User removed the 1% floor for smaller efficiency/size wins, retaining
-    no slowdown. Next: revisit T4 cross-block, T5 and T6, then T7–T9.
+    no slowdown. T4 cross-block repriced at 0.03196%; clarification pending
+    on CCR-aware harness input setup versus the no-test-edits rule. Then
+    revisit T5 and T6, followed by T7–T9.
     Keep code size visible; T2 block duplication remains rejected for size.
     Native replacements only when the user authorizes each routine.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/

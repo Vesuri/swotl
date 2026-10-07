@@ -346,6 +346,25 @@ static template sizes):
 
 ### T4. Flags across block boundaries
 
+- T4 revisit (parent `8f963c1`): fresh capture prices cross-block flag reuse
+  at **0.03196% of P**, 9,082 of 28,420,397 cycles; 62 static eligible
+  readers, six sites with captured savings. Eligible under amended §3.1;
+  no lowering implemented yet. Host m4 census: 49 frames, 19,290 `cmpsw`
+  and 16,075 `stosw` elements/frame. Capture: 1,612,795 guest instructions,
+  6,683,102 68k instructions; 15.18 cycles/guest, 4.144 68k/guest,
+  10.37 weighted static bytes/guest. Frames 4–11: 29, 24, 35, 25, 25,
+  26, 29, 26; median 26 fields (520 ms), span 24–35. Pricing run only.
+  Reports: `tmp/t4-revisit/`; raw capture reported and deleted.
+- **Clarification before implementation:** T4's Tests paragraph requires
+  CCR-aware block-entry setup, but §2.5/user instructions prohibit edits to
+  existing tests to make a step pass. `tests/m68k_diff.py` currently clears
+  SR before every run; `tests/m68k_blocks.py` uses that for every entry.
+  Proposed narrow change: initialize only proved entry CCR bits from the
+  oracle input flags, preserve all existing comparisons, samples and references,
+  and add every-predecessor cases plus the missing-store sabotage fault.
+  No test or translator change for this revisit until the user resolves this
+  scope conflict. T3 remains kept; this is not a rejected T4 implementation.
+
 - T4 price (2026-10-07 continuation, parent `4d94654`): **0.0273% of P**
   (7,760 captured cycles); cross-block candidate not built below the 1% bar.
   Fresh capture: 28,420,396 cycles, 1,567,672 guest instructions, 6,690,952
