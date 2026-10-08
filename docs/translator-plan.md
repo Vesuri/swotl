@@ -1131,6 +1131,100 @@ Selected forms (execution-weighted static counts/bytes):
 | `mov r16,m16[disp]` | 10.7 → 11.1 | 2.3 → 2.3 | 8.1 → 8.1–8.2 |
 
 
+### T15. Fewer swaps in exchange for address-register restoration copies
+
+- Fresh post-T14 capture/census, parent `cb9249a`: **0.000720% of P**,
+  205 estimated cycles, 140 executed instructions and two static instruction
+  bytes. One generic group, active in this capture. Reports: `tmp/t9-after-t14/`.
+  Measured swap/data-copy/address-to-scratch/scratch-to-address costs:
+  1.776012 / 1.951829 / 2.028757 / 1.932973 cycles.
+- Consider only previously untried groups that add net restoration copies
+  while removing more swaps than the added copies. Require fewer total
+  instructions/bytes and no net added swaps. T13's rejected no-added-copy
+  groups remain excluded. All decisions use operand/dataflow properties,
+  with native order at leaders, runtime boundaries, address uses and exits.
+- Three swaps removed, two store copies removed, four restoration copies
+  added: one fewer instruction. Parent code ends at 0x141276 before a
+  two-byte `cnop 0,4`; the two-byte instruction cut is expected to remove
+  that padding too (four payload bytes). This is a size projection, not a
+  candidate measurement. No guard, poll, wrap, flag or entry contract changes.
+- Fresh census: 49 frames, 19,290 `cmpsw` and 16,075 `stosw` elements/frame.
+  Coverage, planted fault, five gates and three candidate runs required.
+- Coverage: 768 appended comparisons pass parent and candidate; deliberately
+  copying stale scratch gives 768 mismatches in each. Added 24 leader-entry
+  cases pass (240 total). The generic selector changes exactly one run.
+  Built code/release sizes: 1,325,160 / 1,367,416 bytes, four fewer each.
+  Measured result below.
+
+Fresh parent runs, unchanged model/fixture; raw captures reported/deleted:
+
+| Run | Frames 4–11 intervals | Median fields/ms | Span | Cycles/guest | 68k/guest |
+|---|---|---:|---|---:|---:|
+| 1 | 28, 24, 35, 25, 25, 24, 30, 24 | 25 / 500 | 24–35 | 15.03 | 4.162515 |
+| 2 | 30, 25, 37, 25, 31, 27, 32, 28 | 29 / 580 | 25–37 | 14.68 | 4.011482 |
+| 3 | 28, 24, 34, 24, 25, 24, 29, 25 | 25 / 500 | 24–34 | 14.96 | 4.156838 |
+
+Median cycles/guest 14.96, 68k/guest 4.156838, run median 25 fields.
+All three runs retained, including the slower second run. Code/release/debug
+remain 1,325,164 / 1,367,420 / 3,774,536 bytes.
+
+T9 re-screen on this capture (shares overlap):
+
+| Group | CPU share | Remaining screen |
+|---|---:|---|
+| T2 register-based memory | 19.58% | Guarded duplication 1.250973%; still rejected for size |
+| T3 register push/pop | 5.51% | Broader data-only propagation has zero remaining groups; T13/T14 rejected; T15 qualifies |
+| T4 carry readers | 3.91% | Cross-block candidate 0.037667%, previously rejected; no dead-flag/self-TEST sites |
+| T5 calls/returns | 5.89% | Optimistic guarded packing 0.915339%; code growth excludes the small-candidate exception |
+| T6 encodings/masks | — | No known-clear masks/MOVEQ/short-branch candidates; 223 word-reachable long branches have zero executions |
+| T7 multiply/divide | 5.94% | Dead-DX candidate 0.005109%, previously rejected |
+| T8 byte registers/segments | 5.56% / 1.96% | BFINS writes 0.285330%, previously rejected; BFEXTU reads 0.029998% save no bytes; zero conservative dead-base sites |
+
+All 45 low and six high same-position byte-copy sites already use T10.
+Rejected T12/T13/T14 re-price at 0.015911% / 0.013373% / 0.062620%.
+Nearest-call-target regions: SWOTL+06A4D 16.55%, SWOTL+0BFD1 6.99%,
+SWOTL+0B54B 6.86%, SWOTL+04DAE 4.60%, FLIGHT+0A8D2 3.47%.
+This was not a final no-candidate audit; T15 was the remaining untried
+restoration tradeoff (result below).
+
+
+#### T15 result (reverted)
+
+All five candidate gates pass. Retain 768 appended oracle comparisons, 24
+leader-entry cases and the new stale-scratch fault, caught in 1,578 full-corpus
+cases. Three candidate runs paired with the fresh parent runs above, unchanged
+68020 model/fixture; raw captures reported and deleted:
+
+| Run | Frames 4–11 intervals | Median fields/ms | Span | Cycles/guest | 68k/guest |
+|---|---|---:|---|---:|---:|
+| candidate-1 | 28, 25, 34, 25, 25, 25, 29, 25 | 25 / 500 | 25–34 | 15.04 | 4.164740 |
+| candidate-2 | 23, 29, 23, 30, 24, 28, 24, 26 | 25 / 500 | 23–30 | 15.01 | 4.159626 |
+| candidate-3 | 28, 24, 35, 25, 25, 25, 29, 24 | 25 / 500 | 24–35 | 15.05 | 4.163983 |
+
+Neither acceptance route passes: parent run medians 25–29 fields overlap
+candidate medians of 25, with equal 25-field arm medians. Cycles/guest
+14.96 → 15.04 and 68k/guest 4.156838 → 4.163983. Code payload
+1,325,164 → 1,325,160, release 1,367,420 → 1,367,416, debug
+3,774,536 → 3,774,532 bytes. The four-byte saving does not excuse these
+results. Lowering reverted; all five restored gates pass. The new fault
+still gives 1,578 mismatches. Restored code/release/debug sizes verified:
+1,325,164 / 1,367,420 / 3,774,536 bytes. Recovery patch and reports:
+`tmp/t15-session/`.
+
+Selected forms (execution-weighted static counts/bytes):
+
+| Form | Parent → candidate cycles/exec | Static 68k/exec | Static bytes/exec |
+|---|---|---|---|
+| `push r16` | 13.8–13.9 → 14.0 | 4.5–4.6 → 4.5–4.6 | 13.6–14.1 → 13.9–14.1 |
+| `pop r16` | 11.8–12.2 → 11.9–12.0 | 4.3–4.4 → 4.3–4.4 | 10.7–10.9 → 10.7 |
+| `mov r16,m16[disp]` | 10.7–10.8 → 10.7–10.8 | 2.3 → 2.3 | 8.2–8.3 → 8.1–8.2 |
+| `mov m16[disp],r16` | 11.5–11.7 → 11.6 | 2.7 → 2.7 | 8.3–8.5 → 8.3 |
+
+T14 and T15 are consecutive rejections. Pause under §2 and ask the user
+before the final T9 re-profile/audit. The no-candidate audit is incomplete;
+no native routine is authorized.
+
+
 ## 5. Rejected and not built
 
 (One line each: step, change, priced, measured, reason.)
@@ -1175,6 +1269,10 @@ Selected forms (execution-weighted static counts/bytes):
 - T14: SP byte-order propagation, priced 0.071903% of P; code −1,508
   bytes, cycles/guest 14.97 → 15.01 and 68k/guest 4.155529 → 4.152599;
   overlapping frame medians 24.5 → 25 fields. Reverted; coverage/oracle retained.
+
+- T15: address-restoration copy tradeoff, priced 0.000720% of P; code −4
+  bytes, cycles/guest 14.96 → 15.04 and 68k/guest 4.156838 → 4.163983;
+  overlapping frame medians 25 → 25 fields. Reverted; coverage retained.
 
 ## 6. When the translator work is done
 

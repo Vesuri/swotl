@@ -42,15 +42,15 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
 14b. Speed: [translator-plan.md](translator-plan.md), T1–T9 under
     [speed-plan.md](speed-plan.md) §0–§1. Target ≤12 fields on 68020 + 8 MB Fast.
     T11 remains the latest kept lowering: 24.5 fields (490 ms), code payload
-    1,325,164 bytes; release 1,367,420 bytes. T14 rejected: code −1,508 bytes
-    and 68k/guest 4.155529 → 4.152599, but cycles/guest 14.97 → 15.01;
-    frame times overlap. Lowering reverted; all five restored gates pass. Retain
-    new SP/entry coverage and the user-authorized live DOSBox RETF oracle.
-    User authorized resuming after T12/T13; all hard stops remain. Continue
-    T9's fresh audit and reprice the remaining restoration tradeoff. The
-    no-candidate audit is incomplete. Keep code size visible; T2 block
-    duplication remains rejected for size. Native replacements require
-    authorization for each routine.
+    1,325,164 bytes; release 1,367,420 bytes. Fresh parent arm median is
+    25 fields (500 ms). T15 rejected: code −4 bytes, cycles/guest
+    14.96 → 15.04 and 68k/guest 4.156838 → 4.163983; frame medians overlap
+    at 25 fields. Lowering reverted; all five restored gates pass. Retain 768 new
+    oracle comparisons, 24 entry cases and the stale-scratch sabotage plant.
+    T14/T15 are consecutive rejections: pause under translator-plan §2 and
+    ask before the final T9 re-profile/audit. The no-candidate audit remains
+    incomplete. Keep code size visible; T2 duplication stays rejected for size.
+    Native replacements require authorization for each routine.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/
     `divu.l`, unaligned word/long, `ror.w #8` swap) to replace [arch]
     guesses in `m68k-optimisation.md`.

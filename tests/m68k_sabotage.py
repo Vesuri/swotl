@@ -228,6 +228,11 @@ def linear_retf_stack(self, out):
     return out
 
 
+def address_copy_from_stale_scratch(self, out):
+    """T15: copy the address/result scratch instead of the restored word."""
+    return [re.sub(r"^\tmovea\.l d6,(a[45])$", r"\tmovea.l d7,\1", line) for line in out]
+
+
 SABOTAGE = [
     ("jb/jae swapped", sub(r"\bbcs\b", "bcc"), "forms,boundary"),
     ("word loads not byte-swapped", drop_after("move.w (a2,d4.l),d7", "ror.w #8,d7"), "boundary"),
@@ -254,6 +259,7 @@ SABOTAGE = [
     ("address word not restored", address_word_not_restored, "boundary"),
     ("stack pointer not restored", unrestored_stack_pointer, "boundary"),
     ("RETF CS pop uses linear SP", linear_retf_stack, "boundary"),
+    ("address restoration copies stale scratch", address_copy_from_stale_scratch, "boundary"),
 ]
 
 

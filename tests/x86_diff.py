@@ -469,6 +469,7 @@ def boundary(h: Harness) -> None:
     repeated_offset_cases(h)
     address_byteorder_cases(h)
     stack_byteorder_cases(h)
+    restoration_tradeoff_cases(h)
 
 
 def address_guard_cases(h):
@@ -939,6 +940,41 @@ def stack_byteorder_cases(h):
                    overrides={"regs": dict(cs=0x2000, ds=0x5000,
                    ss=0x7000, sp=0xfffe), "ip": 0x100,
                    "mem": [(0x50400, value.to_bytes(2, "little"))]})
+
+
+def restoration_tradeoff_code(first, rm, disp, middle=b""):
+    """Generic two-address-register load/store/reload and address uses."""
+    second = 13 - first  # SI/DI in either order
+    code = bytes((0x50 + second, 0x50 + first))
+    code += bytes((0x8b, 6 | first << 3, 0, 4))
+    code += bytes((0x89, 6 | first << 3, 0x20, 4))
+    code += bytes((0x8b, 6 | second << 3, 2, 4))
+    code += bytes((0x89, 6 | second << 3, 0x22, 4))
+    code += bytes.fromhex("8b0e2204")
+    code += bytes((0x8b, 6 | first << 3, 0x20, 4)) + middle
+    code += bytes((0x8b, 0x80 | rm)) + (disp & 0xffff).to_bytes(2, "little")
+    code += bytes((0x8b, 0x90 | rm)) + (-disp & 0xffff).to_bytes(2, "little")
+    return code + bytes.fromhex("83d500")
+
+
+def restoration_tradeoff_cases(h):
+    """T15: charge both restoration copies; preserve partial/address uses."""
+    for first in (6, 7):
+        # Single-register, BX+index and BP+index address inputs.
+        for rm in ((4, 0, 2) if first == 6 else (5, 1, 3)):
+            for disp in (-1, 1):
+                for value in (0, 1, 0x7fff, 0x8000, 0xfffe, 0xffff, 0x420, 0x422):
+                    # Arithmetic use, partial CX write and implicit stack/runtime
+                    # barrier, in addition to the uninterrupted profitable form.
+                    for middle in (b"", bytes((0x40 + first,)), b"\xb1\x80", b"\x9c"):
+                        for cf in (0, 1):
+                            h.case(restoration_tradeoff_code(first, rm, disp, middle),
+                                   "b:restoration-tradeoff", n=11+bool(middle), block=True,
+                                   overrides={"regs": dict(cs=0x2000, ds=0x5000,
+                                   ss=0x7000, sp=value, bp=0xffff, bx=0xffff), "ip": 0x100,
+                                   "flags": {"CF": cf}, "mem": [(0x50400,
+                                   value.to_bytes(2, "little")
+                                   + (value ^ 0xa55a).to_bytes(2, "little"))]})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

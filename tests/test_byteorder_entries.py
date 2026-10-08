@@ -100,6 +100,25 @@ def main():
             bad += len(h.bad)
             for failure in h.bad[:3]:
                 print(failure)
+        # T15: every entry sees native address registers, never a raw word.
+        for leader in (1, 3, 6):
+            def entry_plan(insns, lives, leaders, ctx_for, program=False):
+                return real_plan(insns, lives, set(leaders) | {leader}, ctx_for, program)
+            D.F.plan = entry_plan
+            h = D.Harness(61)
+            for first in (6, 7):
+                for value in (0, 1, 0xfffe, 0xffff):
+                    h.case(D.X.restoration_tradeoff_code(first, first-2, 1),
+                           "restoration-tradeoff-entry", n=11, block=True,
+                           overrides={"regs": dict(cs=0x2000, ds=0x5000,
+                           ss=0x7000, sp=value), "ip": 0x100,
+                           "mem": [(0x50400, value.to_bytes(2, "little")
+                                    + (value ^ 0xa55a).to_bytes(2, "little"))]})
+            h.flush()
+            total += sum(h.count.values())
+            bad += len(h.bad)
+            for failure in h.bad[:3]:
+                print(failure)
         print(f"byteorder entries: {total} cases, {bad} mismatches")
         return bool(bad)
     finally:
