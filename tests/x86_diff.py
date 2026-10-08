@@ -445,6 +445,8 @@ def boundary(h: Harness) -> None:
     dead_dx_cases(h)
     dead_dx_memory_cases(h)
     dead_dx_flag_cases(h)
+    high_byte_write_cases(h)
+    high_byte_write_cases(h, bytes.fromhex("83d500"))
 
 
 def address_guard_cases(h):
@@ -640,6 +642,52 @@ def dead_dx_flag_cases(h):
                         h.case(bytes.fromhex(op+tail), "b:dead-dx-live-flags", n=n,
                                block=True, overrides={"regs": dict(cs=0x2000,
                                ax=ax, bx=bx, dx=dx, cx=1), "ip": 0x100})
+
+
+def high_byte_write_cases(h, tail=bytes.fromhex("9c")):
+    """T8: all high-byte destinations, source aliases, flags and memory EAs."""
+    def case(code, regs, memory=()):
+        h.case(code + tail, "b:high-byte-write", n=2,
+               block=True, overrides={"regs": dict(cs=0x2000, ds=0x5000,
+               ss=0x7000, sp=0xfffe, **regs), "ip": 0x100, "mem": list(memory)})
+    for dest in range(4, 8):
+        for value in (0, 1, 0x7f, 0x80, 0xff):
+            regs = dict(ax=0xa55a, cx=0x5aa5, dx=0xff00, bx=0x00ff,
+                        bp=0xffff, si=1, di=0)
+            case(bytes((0xb0 + dest, value)), regs)
+            for src in range(8):
+                for op in (0x88, 0x86, 0x00, 0x10, 0x18, 0x28, 0x20, 0x08, 0x30):
+                    changed = dict(regs)
+                    name = ("ax", "cx", "dx", "bx")[src % 4]
+                    shift = 8 if src >= 4 else 0
+                    changed[name] = (changed[name] & ~(255 << shift)) | value << shift
+                    case(bytes((op, 0xc0 | src << 3 | dest)), changed)
+            for op, ext in ((0xfe, 0), (0xfe, 1), (0xf6, 2), (0xf6, 3)):
+                case(bytes((op, 0xc0 | ext << 3 | dest)), regs)
+            for ext in range(8):
+                if ext != 6:
+                    case(bytes((0xd0, 0xc0 | ext << 3 | dest)), regs)
+        for rm, names in enumerate((("bx", "si"), ("bx", "di"), ("bp", "si"),
+                                   ("bp", "di"), ("si",), ("di",), ("bp",), ("bx",))):
+            for edge in (0, 0x7fff, 0xffff):
+                regs = dict(ax=0xa55a, cx=0x5aa5, dx=0xff00, bx=1,
+                            bp=1, si=1, di=1)
+                regs[names[0]] = (edge - sum(regs[n] for n in names[1:])) & 0xffff
+                for override in (b"", b"\x2e"):
+                    segment = 0x2000 if override else 0x7000 if "bp" in names else 0x5000
+                    for op in (0x8a, 0x86, 0x02, 0x12, 0x1a, 0x2a, 0x22, 0x0a, 0x32):
+                        case(override + bytes((op, 0x80 | dest << 3 | rm, 0, 0)),
+                             regs, ((segment * 16 + edge, b"\x80"),))
+    for flags in (0x202, 0x203, 0x2d7, 0xad7):
+        h.case(bytes.fromhex("9f 9c"), "b:high-byte-lahf", n=2, block=True,
+               overrides={"regs": dict(cs=0x2000, ss=0x7000, sp=0xfffe,
+               ax=0xa55a), "flags": {f: flags >> FLAG_BIT[f] & 1 for f in FLAGS}, "ip": 0x100})
+    # A high-byte destination must keep X available for a following CF reader.
+    for dest in range(4, 8):
+        for value in (0, 0x7f, 0x80, 0xff):
+            h.case(bytes((0x80, 0xc0 | dest, value, 0x83, 0xd1, 0)),
+                   "b:high-byte-carry", n=2, block=True, overrides={"regs":
+                   dict(cs=0x2000, ax=0xffff, cx=0xffff, dx=0xffff, bx=0xffff), "ip": 0x100})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

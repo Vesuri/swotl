@@ -128,6 +128,19 @@ def drop_live_dx(self, out):
     return out
 
 
+def high_byte_written_low(self, out):
+    """T8: corrupt the neighboring byte instead of writing the high byte."""
+    result = list(out)
+    for reg in ("d0", "d1", "d2", "d3"):
+        for src in ("d6", "d7"):
+            old = [f"\tror.w #8,{reg}", f"\tmove.b {src},{reg}", f"\trol.w #8,{reg}"]
+            k = 0
+            while k + 2 < len(result):
+                if result[k:k+3] == old:
+                    result[k:k+3] = [f"\tmove.b {src},{reg}"]
+                k += 1
+    return [line.replace("{16:8}", "{24:8}") if line.startswith("\tbfins ") else line for line in result]
+
 SABOTAGE = [
     ("jb/jae swapped", sub(r"\bbcs\b", "bcc"), "forms,boundary"),
     ("word loads not byte-swapped", drop_after("move.w (a2,d4.l),d7", "ror.w #8,d7"), "boundary"),
@@ -147,6 +160,7 @@ SABOTAGE = [
     ("predecessor drops successor flag store", no_predecessor_store, "cross-block"),
     ("mask trusts dirty upper word", trust_dirty_upper_word, "boundary"),
     ("DX result dropped while live", drop_live_dx, "boundary"),
+    ("high-byte write corrupts low byte", high_byte_written_low, "boundary"),
 ]
 
 

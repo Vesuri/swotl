@@ -726,6 +726,65 @@ still gives 412 mismatches. Restored code/release/debug sizes are
 
 ### T8. 8-bit register and segment register forms
 
+- T8 price (2026-10-08, parent `2acc1be`): fresh capture and m4 census;
+  **0.278745% of P**, 79,220 estimated cycles of 28,420,398. Replace only
+  high-byte register writes with `bfins src,dN{16:8}`: 2,396 static sites,
+  38,007 executions, 76,014 fewer executed instructions and 4,792 fewer
+  static bytes in the pricing model. All AH/CH/DH/BH sources and addressing
+  forms remain supported. Preserve X, all guest flags and register bits.
+- Isolated unchanged-model probes: three-instruction rotate/move/rotate
+  write 6.375 cycles / 6 bytes; BFINS 4.125 cycles / 4 bytes. High-byte reads
+  price separately at 0.039392% with no byte saving; leave them unchanged.
+  Conservative block-local segment-base overwrite screen finds zero sites;
+  unknown instructions/runtime/control boundaries keep every base live.
+- Fresh baseline: 14.94 cycles/guest, 1,686,348 guest instructions and
+  6,991,489 68k instructions. Census: 49 frames, 19,290 `cmpsw` and 16,075
+  `stosw` elements/frame. Reports/pricing/probes: `tmp/t8-session/`.
+  No gain claimed before coverage, gates and three-run candidate measurements.
+- Coverage: 5,740 new comparisons pass both parent and candidate; the
+  deliberately wrong byte offset gives 5,680 mismatches. Include CF-only
+  consumers for logical/shift forms whose undefined flags make PUSHF an
+  unsuitable full-flag oracle. All existing comparisons remain unchanged.
+  The candidate preserves all 1,560 exercised carry-reuse pairs. Preliminary
+  built sizes: code 1,320,788 bytes; release 1,363,044 bytes (−4,824 each).
+
+#### T8 result (reverted)
+
+All five candidate gates pass. Retain 5,740 appended comparisons and the
+permanent wrong-byte-insertion fault, caught in 6,379 full-corpus cases.
+Three runs per arm, unchanged 68020 fixture; captures reported and deleted:
+
+| Arm/run | Frames 4–11 intervals (fields) | Median (fields/ms) | Span | Cycles/guest | 68k/guest |
+|---|---|---:|---|---:|---:|
+| parent-1 | 28, 24, 34, 24, 24, 24, 29, 25 | 24.5 / 490 | 24–34 | 14.94 | 4.145935 |
+| parent-2 | 28, 24, 34, 24, 24, 24, 29, 25 | 24.5 / 490 | 24–34 | 14.94 | 4.145665 |
+| parent-3 | 29, 24, 34, 25, 25, 24, 29, 25 | 25 / 500 | 24–34 | 14.98 | 4.160922 |
+| candidate-1 | 23, 29, 23, 30, 24, 28, 24, 24 | 24 / 480 | 23–30 | 15.44 | 4.261203 |
+| candidate-2 | 24, 28, 23, 31, 23, 29, 23, 25 | 24.5 / 490 | 23–31 | 15.43 | 4.258929 |
+| candidate-3 | 25, 31, 26, 36, 26, 31, 28, 31 | 29.5 / 590 | 25–36 | 14.82 | 4.019370 |
+
+Selected forms across the three runs (execution-weighted static counts/bytes):
+
+| Form | Parent → candidate cycles/exec | Static 68k/exec | Static bytes/exec |
+|---|---|---|---|
+| `sub r8,r8` | 17.6 → 15.7–16.1 | 8.0 → 6.1–6.2 | 16.8 → 15.1–15.6 |
+| `mov r8,r8` | 6.8 → 5.9–6.3 | 3.2 → 2.4 | 6.5 → 5.6–5.8 |
+| `mov r8,imm` | 4.2 → 3.9–4.0 | 1.3 → 1.1 | 4.2 → 4.0 |
+
+Median cycles/guest 14.94 → 15.43; 68k/guest 4.145935 → 4.258929.
+Frame medians and spans overlap; candidate run-median range 24–29.5 fields
+is wider than the parent's 24.5–25. Neither acceptance route passes.
+Code payload 1,325,612 → 1,320,788, release 1,367,868 → 1,363,044,
+debug 3,774,984 → 3,770,160: 4,824 bytes saved in each, insufficient under
+the no-slowdown rule. Implementation reverted; local recovery patch/reports
+in `tmp/t8-session/`. All five restored-build gates pass; the new fault
+still gives 6,379 mismatches. Restored code/release/debug sizes are
+1,325,612 / 1,367,868 / 3,774,984 bytes.
+
+T7 and T8 are consecutive rejections. Stop under §2 before T9 and request
+user authorization to continue; the earlier authorization resumed after
+T4/T5 and did not remove this hard stop.
+
 - **Data.** r8 forms 5.3%, 11.4 cyc (`sub r8,r8` 17.6 cyc / 8.0); segment
   forms (`mov`/`push`/`pop` sreg, `les`/`lds`) 2.0%, 24.8 cyc.
 - **Shape.** Price per form; shorter AH/BH access sequences; segment base
@@ -766,6 +825,10 @@ remaining candidate qualifies, including smaller efficiency/size candidates.
 - T7: dead word DX results, priced 0.00546% of P; code −500 bytes, median
   cycles/guest 14.94 → 15.01 and 68k/guest 4.145103 → 4.161331; timing arms
   overlap. Reverted; oracle cases and live-DX sabotage retained.
+
+- T8: high-byte BFINS writes, priced 0.278745% of P; code −4,824 bytes,
+  median cycles/guest 14.94 → 15.43 and 68k/guest 4.145935 → 4.258929;
+  timings overlap. Reverted, coverage retained; stop after two rejections.
 
 ## 6. When the translator work is done
 
