@@ -114,6 +114,9 @@ provenance is in brackets.
   `make test-host-all` (m1–m7 and coverage c6-flight-keys, ~6 min). Checks run in parallel (`JOBS`, default all cores; the
   differentials in `--shard K/N` pieces), each logging to `tmp/test/<name>.log`. Unicorn x86
   quirks the harness works around: [x86-notes.md](x86-notes.md#unicorn-x86-16-as-oracle).
+  Multi-instruction RETF wrap checks and `tests/test_dosbox_retf.py` also need
+  the existing heavy-debug DOSBox-X binary (`make reference-emulator`).
+  They single-step through its debugger; no saved reference is generated.
 - Phase 5 link: `make host` assembles `build/gen/program.s` (one unit, `vasm -m68020 -Felf -x`,
   default optimisations; external branches are emitted `.l`), compiles `src/runtime/*.c` with
   `-ffreestanding` (the Amiga sys-include has no hosted `stdint.h`; the framework's `Util.h`

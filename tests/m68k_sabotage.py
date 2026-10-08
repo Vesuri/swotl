@@ -212,6 +212,22 @@ def address_word_not_restored(self, out):
     return result
 
 
+def unrestored_stack_pointer(self, out):
+    """T14: expose a byte-swapped SP to an implicit stack access or exit."""
+    from translator.decode import Reg
+    result = [line for line in out if line != "\tror.w #8,d4"]
+    if self.i.op == "pop" and isinstance(self.i.operands[0], Reg) and self.i.operands[0].name == "sp":
+        result = [line for line in result if line != "\tror.w #8,d7"]
+    return result
+
+
+def linear_retf_stack(self, out):
+    """Independent-oracle plant: lose 16-bit SP wrap between RETF pops."""
+    if self.i.op == "retf":
+        return [line.replace("addq.w #2,d4", "addq.l #2,d4") for line in out]
+    return out
+
+
 SABOTAGE = [
     ("jb/jae swapped", sub(r"\bbcs\b", "bcc"), "forms,boundary"),
     ("word loads not byte-swapped", drop_after("move.w (a2,d4.l),d7", "ror.w #8,d7"), "boundary"),
@@ -236,6 +252,8 @@ SABOTAGE = [
     ("native byte-order restoration omitted", drop_native_order_restore, "boundary"),
     ("wrapped offset trusted without proof", stale_address_offset, "boundary"),
     ("address word not restored", address_word_not_restored, "boundary"),
+    ("stack pointer not restored", unrestored_stack_pointer, "boundary"),
+    ("RETF CS pop uses linear SP", linear_retf_stack, "boundary"),
 ]
 
 

@@ -156,7 +156,23 @@ class Oracle:
         for _ in range(n):
             self.limit, self.done, self.prev = 1, 0, None
             begin = self.e.reg_read(U.X86["cs"]) * 16 + self.e.reg_read(U.X86["ip"])
-            err = self.e.start(begin, 0xFFFFFFFFFFFF)
+            raw = self.e.read(begin, 16)
+            k = 0
+            while k < len(raw) and raw[k] in (0x26, 0x2e, 0x36, 0x3e):
+                k += 1
+            # User-authorized independent oracle for multi-instruction RETF
+            # wrap cases. Keep every comparison; do not predict/correct CS.
+            if n > 1 and k < len(raw) and raw[k] in (0xca, 0xcb) and self.e.reg_read(U.X86["sp"]) >= 0xfffd:
+                import dosbox_retf
+                current = {r: self.e.reg_read(U.X86[r]) for r in REGS + SEGS + ("ip",)}
+                size = k + (3 if raw[k] == 0xca else 1)
+                result, result_flags = dosbox_retf.run(current,
+                    self.e.reg_read(U.X86["flags"]), raw[:size], self.e.read)
+                for r, value in result.items():
+                    self.e.reg_write(U.X86[r], value)
+                self.e.reg_write(U.X86["flags"], result_flags)
+            else:
+                err = self.e.start(begin, 0xFFFFFFFFFFFF)
             if err or self.ints:
                 break
         out = {r: self.e.reg_read(U.X86[r]) & 0xFFFF for r in REGS + SEGS}
@@ -452,6 +468,7 @@ def boundary(h: Harness) -> None:
     broad_byteorder_operand_edges(h)
     repeated_offset_cases(h)
     address_byteorder_cases(h)
+    stack_byteorder_cases(h)
 
 
 def address_guard_cases(h):
@@ -882,6 +899,46 @@ def address_byteorder_cases(h):
                    ss=0x7000, sp=0xfffe, bx=value, bp=value), "ip": 0x100,
                    "mem": [(0x50400, value.to_bytes(2, "little")
                             + (value ^ 0xffff).to_bytes(2, "little"))]})
+
+
+def stack_byteorder_cases(h):
+    """T14: SP representation, implicit stack inputs, copies and wrap edges."""
+    stores = bytes.fromhex("89262004 89262204 89262404")
+    middles = (("50", 1), ("54", 1), ("58", 1), ("5c", 1),
+               ("9c", 1), ("9d", 1), ("89e5", 1), ("89ec", 1),
+               ("44", 1), ("83ec02", 1), ("94", 1), ("8d6301", 1),
+               ("8b5600", 1), ("8b842301", 1), ("90", 1), ("", 0))
+    for value in (0, 1, 0xff, 0x100, 0x7fff, 0x8000, 0xfffe, 0xffff):
+        for middle, count in middles:
+            for load in (bytes.fromhex("8b260004"), b"\x5c"):
+                for cf in (0, 1):
+                    h.case(load + stores + bytes.fromhex(middle) + stores
+                           + bytes.fromhex("83d200"), "b:stack-byteorder",
+                           n=8+count, block=True, overrides={"regs": dict(
+                           cs=0x2000, ds=0x5000, ss=0x7000, sp=0xfffe,
+                           bp=0x400, bx=0xffff, si=1, di=0xffff), "ip": 0x100,
+                           "flags": {"CF": cf}, "mem": [
+                           (0x50400, value.to_bytes(2, "little")),
+                           (0x7fffe, value.to_bytes(2, "little")),
+                           (0x70000+value, bytes.fromhex("0202"))]})
+    # Generic push/overwrite sequences; BP can instead be read, partly
+    # changed, copied to SP, or exposed as an address before an overwrite.
+    for sp in (0, 1, 2, 0x7fff, 0x8000, 0xfffe, 0xffff):
+        for bp in (0, 1, 0xa55a, 0xffff):
+            for middle, count in (("89e5", 1), ("89ec", 1), ("89e8", 1),
+                                  ("45", 1), ("8b4600", 1), ("bd1234", 1)):
+                h.case(b"\x55" + bytes.fromhex(middle) + bytes.fromhex("58 9c"),
+                       "b:stack-byteorder-overwrite", n=3+count, block=True,
+                       overrides={"regs": dict(cs=0x2000, ds=0x5000,
+                       ss=0x7000, sp=sp, bp=bp), "ip": 0x100})
+    # Control/runtime boundaries must observe native SP and saved stack words.
+    for value in (0, 1, 0x8000, 0xfffe, 0xffff):
+        for tail in ("c3", "cb", "e80000", "cd10", "9c"):
+            h.case(bytes.fromhex("8b260004") + stores + bytes.fromhex(tail),
+                   "b:stack-byteorder-exit", n=5, block=True,
+                   overrides={"regs": dict(cs=0x2000, ds=0x5000,
+                   ss=0x7000, sp=0xfffe), "ip": 0x100,
+                   "mem": [(0x50400, value.to_bytes(2, "little"))]})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

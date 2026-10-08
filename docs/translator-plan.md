@@ -1054,6 +1054,81 @@ T12 and T13 are consecutive rejections. Pause under §2 and request user
 permission before further T9 work. This is not the final no-candidate audit;
 remaining forms, including SP representation and other restoration tradeoffs,
 have not been exhaustively screened. No native routine is authorized.
+User authorized resuming T9 after T12/T13 (2026-10-08); all hard stops remain.
+
+
+### T14. SP word operands with native order before implicit stack accesses
+
+- Fresh post-T13 capture/census, parent `7232c18`: **0.071903% of P**,
+  20,435 estimated cycles, 10,494 executed instructions and 1,506 static bytes.
+  753 groups, 141 active. Fresh swap/copy costs 1.773260 / 1.947315 cycles.
+  Reports: `tmp/t9-after-t13/`; census 49 frames, 19,290 `cmpsw` and
+  16,075 `stosw` elements/frame.
+- Include SP word moves/pops in block-local representation tracking. Treat
+  SP as an implicit address input of every push/pop and restore before it.
+  Never perform an in-place source swap on SP. Keep native SP at leaders,
+  runtime/control boundaries and exits, with all original wrap arithmetic.
+  This also permits generic overwrite proof across word copies involving SP.
+- Retain the original data-register plan unless the new group adds neither
+  swaps nor copies and strictly reduces their total. No native routine,
+  D16, poll, guard, reference, fixture or annotation change. Coverage, all
+  gates and three-run timing acceptance remain required.
+- Separate restoration-tradeoff screen: one untried group excluded from T13,
+  estimated 0.000634% of P / 180 cycles / 125 instructions / two bytes.
+  Re-price after T14; this does not retry T13's rejected selected groups.
+- Coverage blocked before implementation: 705 new parent comparisons produce
+  two CS mismatches at a trailing `RETF` after SP becomes FFFEh/FFFFh.
+  This matches the documented Unicorn deviation (`docs/x86-notes.md`): its
+  CS read does not wrap SP. Existing `oracle_deviation` handling applies only
+  to single-instruction cases, so these multi-instruction cases expose it.
+  Stop under §2: this is an oracle issue, not a translator/runtime bug.
+  No tests masked, references changed or T14 implementation written. New
+  cases remain uncommitted for review; evidence `tmp/t14-session/parent-coverage.txt`.
+  User authorized independent DOSBox coverage of these wrap cases (2026-10-08).
+  Add live instruction execution through the existing debugger; no reference
+  re-recording, masked comparisons or emulator/measurement changes.
+- Oracle resolved: all 705 parent comparisons pass. Fifteen live DOSBox
+  checks cover wrapped/nonwrapped RETF, immediate cleanup and unchanged
+  registers/flags/memory. New linear-SP RETF fault gives two mismatches;
+  missing-SP-restoration fault gives 349. Both plants are permanent.
+- Candidate passes all 705 comparisons and 216 leader-entry cases (24 new);
+  missing-SP restoration still gives 349 mismatches. Code/release/debug:
+  1,323,656 / 1,365,912 / 3,773,028 bytes, 1,508 fewer each.
+  All five gates pass; full sabotage catches missing SP restoration in 369
+  cases and linear-SP RETF in two. Measured result below.
+
+
+#### T14 result (reverted)
+
+All five candidate gates pass. Three runs per arm on the unchanged
+68020 model/fixture; raw captures reported and deleted:
+
+| Arm/run | Frames 4–11 intervals | Median fields/ms | Span | Cycles/guest | 68k/guest |
+|---|---|---:|---|---:|---:|
+| parent-1 | 23, 29, 23, 30, 24, 28, 24, 25 | 24.5 / 490 | 23–30 | 14.97 | 4.156023 |
+| parent-2 | 23, 29, 23, 31, 23, 29, 23, 26 | 24.5 / 490 | 23–31 | 14.96 | 4.153118 |
+| parent-3 | 24, 28, 24, 30, 24, 28, 24, 25 | 24.5 / 490 | 24–30 | 14.97 | 4.155529 |
+| candidate-1 | 29, 24, 35, 24, 25, 25, 30, 24 | 25 / 500 | 24–35 | 15.03 | 4.152599 |
+| candidate-2 | 28, 24, 34, 24, 25, 24, 29, 25 | 25 / 500 | 24–34 | 15.00 | 4.143391 |
+| candidate-3 | 24, 28, 23, 31, 24, 28, 24, 25 | 24.5 / 490 | 23–31 | 15.01 | 4.154314 |
+
+Neither acceptance route passes. Run medians overlap at 24.5 fields;
+arm medians 24.5 → 25. Median cycles/guest rise 14.97 → 15.01, despite
+68k/guest falling 4.155529 → 4.152599 and code/release/debug shrinking by
+1,508 bytes each. Revert the lowering under the no-slowdown rule. Retain
+705 new comparisons, 24 entry cases, both new plants and the authorized
+live DOSBox RETF oracle. All five restored-build gates pass; both new
+plants still give 369 / two mismatches. Restored code/release/debug sizes:
+1,325,164 / 1,367,420 / 3,774,536 bytes. Recovery patch and reports: `tmp/t14-session/`. Next: T9 fresh audit and restoration-tradeoff
+re-pricing; no native routine is authorized.
+
+Selected forms (execution-weighted static counts/bytes):
+
+| Form | Parent → candidate cycles/exec | Static 68k/exec | Static bytes/exec |
+|---|---|---|---|
+| `push r16` | 13.8 → 13.6–13.7 | 4.5 → 4.4 | 13.8 → 13.6–13.8 |
+| `pop r16` | 11.9 → 11.8–11.9 | 4.4 → 4.3–4.4 | 10.7–10.8 → 10.7 |
+| `mov r16,m16[disp]` | 10.7 → 11.1 | 2.3 → 2.3 | 8.1 → 8.1–8.2 |
 
 
 ## 5. Rejected and not built
@@ -1096,6 +1171,10 @@ have not been exhaustively screened. No native routine is authorized.
 - T13: SI/DI byte-order propagation, priced 0.012828% of P; code −460
   bytes, cycles/guest 14.97 → 15.03 and 68k/guest 4.153597 → 4.155287;
   overlapping frame medians 24.5 → 25 fields. Reverted; pause after two rejections.
+
+- T14: SP byte-order propagation, priced 0.071903% of P; code −1,508
+  bytes, cycles/guest 14.97 → 15.01 and 68k/guest 4.155529 → 4.152599;
+  overlapping frame medians 24.5 → 25 fields. Reverted; coverage/oracle retained.
 
 ## 6. When the translator work is done
 

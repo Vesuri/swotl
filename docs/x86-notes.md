@@ -180,7 +180,7 @@ probed on this host):
 | `count=1` runs one `REP` iteration | stop from a code hook at the next instruction boundary |
 | Interrupt hook skips QEMU delivery: `old_exception` stays set, the next exception becomes #DF (8), then a silent triple fault | reopen the engine after every exception |
 | `REP` string right after a flag setter in one translation block recomputes OF/AF wrongly (e.g. `add cx,3636h; rep movsb` clears OF) | one instruction per `uc_emu_start` |
-| `RETF` at SP ≥ `FFFDh` reads CS at `SS:SP+2` without 16-bit wrap (Intel/DOSBox wrap) | counted as an oracle deviation, not compared |
+| `RETF` at SP ≥ `FFFDh` reads CS at `SS:SP+2` without 16-bit wrap (Intel/DOSBox wrap) | single-instruction cases retain the existing deviation count; multi-instruction cases execute the affected instruction in live DOSBox-X (`tests/dosbox_retf.py`), comparing full registers/flags and checking the 1 MiB memory window unchanged |
 | Self-overwriting `REP` refetches the modified instruction | case discarded |
 | A store into the 4 KiB page of the executing instruction makes QEMU restart it; stopped after one instruction it has not run (IP unchanged, no store) | counted as an oracle deviation (only when IP did not move) |
 | Software `INT n` on an exception vector (0, 1, 5, 6, 8, 13) goes through QEMU's exception path (intno indistinguishable from the fault, sometimes `UC_ERR_EXCEPTION`) | counted as an oracle deviation, not compared |

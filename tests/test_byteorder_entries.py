@@ -81,6 +81,25 @@ def main():
             bad += len(h.bad)
             for failure in h.bad[:3]:
                 print(failure)
+        # T14: SP is native at every leader, including after a POP SP.
+        for leader in (1, 2, 3):
+            def entry_plan(insns, lives, leaders, ctx_for, program=False):
+                return real_plan(insns, lives, set(leaders) | {leader}, ctx_for, program)
+            D.F.plan = entry_plan
+            h = D.Harness(59)
+            for load in ("8b260004", "5c"):
+                for value in (0, 1, 0xfffe, 0xffff):
+                    code = bytes.fromhex(load + " 89262004 89262204 89262404")
+                    h.case(code, "stack-byteorder-entry", n=4, block=True,
+                           overrides={"regs": dict(cs=0x2000, ds=0x5000,
+                           ss=0x7000, sp=0xfffe), "ip": 0x100,
+                           "mem": [(0x50400, value.to_bytes(2, "little")),
+                                   (0x7fffe, value.to_bytes(2, "little"))]})
+            h.flush()
+            total += sum(h.count.values())
+            bad += len(h.bad)
+            for failure in h.bad[:3]:
+                print(failure)
         print(f"byteorder entries: {total} cases, {bad} mismatches")
         return bool(bad)
     finally:
