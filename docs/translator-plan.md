@@ -783,7 +783,8 @@ still gives 6,379 mismatches. Restored code/release/debug sizes are
 
 T7 and T8 are consecutive rejections. Stop under §2 before T9 and request
 user authorization to continue; the earlier authorization resumed after
-T4/T5 and did not remove this hard stop.
+T4/T5 and did not remove this hard stop. User authorized resuming T9
+(2026-10-08); all other hard stops remain.
 
 - **Data.** r8 forms 5.3%, 11.4 cyc (`sub r8,r8` 17.6 cyc / 8.0); segment
   forms (`mov`/`push`/`pop` sreg, `les`/`lds`) 2.0%, 24.8 cyc.
@@ -796,6 +797,54 @@ T4/T5 and did not remove this hard stop.
 After T2–T8: fresh capture, re-price every group of §4 and any new
 candidate eligible under §3.1 as a new step here (T10 …). Repeat until no
 remaining candidate qualifies, including smaller efficiency/size candidates.
+
+#### T9 first pass (2026-10-08, parent `9446e5e`)
+
+Fresh three-run baseline, unchanged 68020 fixture; captures reported and
+deleted. Code/release sizes remain 1,325,612 / 1,367,868 bytes.
+
+| Run | Frames 4–11 intervals | Median fields/ms | Span | Cycles/guest | 68k/guest |
+|---|---|---:|---|---:|---:|
+| 1 | 28, 25, 34, 25, 24, 24, 30, 25 | 25 / 500 | 24–34 | 14.97 | 4.159059 |
+| 2 | 28, 24, 35, 24, 25, 24, 30, 25 | 25 / 500 | 24–35 | 14.97 | 4.157952 |
+| 3 | 29, 24, 34, 25, 25, 24, 29, 25 | 25 / 500 | 24–34 | 14.98 | 4.161243 |
+
+First capture: 28,420,399 cycles. Fresh m4 census: 49 frames, 19,290
+`cmpsw` and 16,075 `stosw` elements/frame. Group shares overlap; sums of
+rounded form rows, not savings:
+
+| Group | CPU share | Remaining screen |
+|---|---:|---|
+| T2 register-based memory | 19.62% | Guarded duplication re-priced 1.26351%; remains rejected for size |
+| T3 byte swaps / register push-pop | 5.94% / 5.53% | Existing eligible data-register runs already transformed; broader propagation still to screen |
+| T4 state traffic / carry readers | 5.09% / 4.14% | Rejected cross-block candidate re-priced 0.037269% |
+| T5 calls/returns | 5.86% | Optimistic guarded packing 0.910342%; code growth still excludes sub-1% exception |
+| T6 listed encodings/masks | — | No remaining known-clear masks, MOVEQ or short-branch candidates; 223 word-reachable long branches have zero executions |
+| T7 multiply/divide | 5.86% | Rejected dead-DX candidate re-priced 0.005556% |
+| T8 byte registers / segments | 5.60% / 1.98% | Rejected BFINS writes 0.280673%; BFEXTU reads 0.038754% with no size reduction; zero conservative dead-base sites |
+
+Nearest-call-target self-time regions: SWOTL+06A4D 16.20%, SWOTL+0B54B
+6.69%, SWOTL+0BFD1 6.09%, SWOTL+04DAE 4.84%, FLIGHT+0A8D2 4.31%.
+These are not proved source-routine boundaries or native-replacement approval.
+Reports/scripts: `tmp/t9-session/`. This is not the final no-candidate audit:
+T10 qualifies; continue re-profiling after it and screen broader T3 variants.
+
+### T10. Byte register copies without redundant scratch work
+
+- Fresh T9 capture price: **0.023223% of P**, 6,600 estimated cycles.
+  Low-to-low copies: 45 sites, 3,054 executions, 90 static bytes and 3,054
+  dynamic instructions removable. High-to-high copies: six sites, 270
+  executions, 24 static bytes and 540 dynamic instructions removable.
+- Low copies become one byte move. High copies save the destination's low
+  byte in scratch, copy the source word, then restore the saved low byte.
+  Keep all surrounding register bits, X and guest flags. Mixed byte positions
+  and memory operands keep their existing exact lowering. No block contract,
+  poll, wrap path, runtime or annotation changes.
+- Model uses fresh measured register-copy costs: byte 2.186734 cycles,
+  word 2.221192. Expected total reduction: 114 bytes / 3,594 instructions
+  per capture. Coverage, deliberate fault, five gates and three-run A/B
+  measurements still required. T9's three baseline runs may serve as the
+  parent arm because this documentation-only commit changes no executable.
 
 ## 5. Rejected and not built
 
