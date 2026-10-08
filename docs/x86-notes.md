@@ -2,7 +2,7 @@
 
 Facts the decoder, IR and 68020 lowering must get right. Source tags:
 
-- **[SL]** measured or documented in `~/Documents/Slicks` (file named).
+- **[SL]** measured or documented in `~/Projects/Slicks` (file named).
 - **[SW]** measured here on `ref/` (command or method named).
 - **[K]** general architecture knowledge (Intel/Motorola manuals). Not yet
   checked against our oracle; every [K] row needs a differential case before

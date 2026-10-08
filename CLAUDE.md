@@ -29,7 +29,7 @@ audio the game has; RTSEGA, RTSTANDY and SFXA (PC speaker) are out.
 - Tests settle correctness: x86 semantics vs Unicorn, generated 68k on the
   host 68k core, whole game in lockstep with DOSBox. Never compare the port
   with itself.
-- Reuse the sibling ports (`~/Documents/Slicks`, `Revs`, `Vette`, `Pokeri`,
+- Reuse the sibling ports (`~/Projects/Slicks`, `Revs`, `Vette`, `Pokeri`,
   `Rescue on Fractalus`) and their lessons in `docs/`; do not re-derive.
 
 ## Pointers

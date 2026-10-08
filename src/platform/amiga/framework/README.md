@@ -1,7 +1,7 @@
 # dA JoRMaS Amiga framework
 
 These sources come from `dA JoRMaS/Productions/DanceDiverse3/Source`, by way
-of the Slicks 'N' Slide port (`~/Documents/Slicks`, commit `a09987d`, the last
+of the Slicks 'N' Slide port (`~/Projects/Slicks`, commit `a09987d`, the last
 revision carrying the complete set). The port uses the framework's
 `AmigaHardware`, `Bitmap`, `CopperList`, and `Palette24Bit` classes for its AGA
 display; `Palette`, `Sprite`, and `Util` come with them because those classes
