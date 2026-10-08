@@ -41,23 +41,15 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     CIA and JOY0DAT reads).
 14b. Speed: [translator-plan.md](translator-plan.md), T1–T9 under
     [speed-plan.md](speed-plan.md) §0–§1. Target ≤12 fields on 68020 + 8 MB Fast.
-    T6 kept under the run-median timing criterion: 25.5–26 → 24.5–25 fields
-    (490–500 ms candidate); cycles/guest median 15.19 → 14.94. Instruction
-    ratio 4.145716 → 4.145894; no instruction-ratio gain claimed. Code payload
-    1,325,612 bytes; stripped executable 1,367,868 bytes. All gates pass.
-    User removed the 1% floor for smaller efficiency/size wins and authorized
-    autonomous continuation (2026-10-08), retaining no slowdown and hard stops.
-    T4 cross-block rejected; T5 left unbuilt for guarded inline code growth.
-    T7 reverted: code −500 bytes, but median cycles/guest 14.94 → 15.01
-    and 68k/guest 4.145103 → 4.161331; timings overlap. New coverage retained; all five restored-build gates pass.
-    T8 reverted: high-byte BFINS saved 4,824 code bytes, but median
-    cycles/guest 14.94 → 15.43 and 68k/guest 4.145935 → 4.258929;
-    timings overlap. New coverage retained; all five restored gates pass.
-    User authorized resuming T9 after the T7/T8 stop (2026-10-08).
-    T9 fresh baseline: three medians of 25 fields (500 ms), cycles/guest
-    median 14.97, 68k/guest 4.159059. T10 byte-copy candidate priced 0.023223%
-    of P, expected −114 code bytes; coverage and full protocol next.
-    Continue T9 afterward, including broader T3 propagation screening.
+    T10 kept by the frame-time criterion: parent run medians 25 fields,
+    candidate 24–24.5 (480–490 ms); individual interval spans overlap.
+    Whole-profile median cycles/guest rise 14.97 → 15.45 and 68k/guest
+    4.159059 → 4.304991; no efficiency-ratio gain claimed. Code payload
+    1,325,496 bytes; release 1,367,752 bytes (both −116). All five gates pass.
+    User removed the floor for smaller efficiency/size wins, retaining no
+    slowdown/exactness, and authorized continuing after T7/T8 (2026-10-08).
+    T4 cross-block, T7 and T8 rejected; T5 guarded packing remains unbuilt.
+    Next: continue T9 with fresh profile/census and broader T3 screening.
     Keep code size visible; T2 block duplication remains rejected for size.
     Native replacements only when the user authorizes each routine.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/

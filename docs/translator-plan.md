@@ -17,11 +17,11 @@ this file adds to them and never relaxes them. Open-work item: 14b.
 - **Earlier baseline (commit 6646626):** median 26–27 fields (0.52 s). Guest code 88%:
   13.5 68020 cycles and 3.6 68k instructions per guest instruction (the
   80286: ≈ 5.4 clocks); cell walk 14%; runtime 8%.
-- **After T6 revisit:** run medians 24.5–25 fields (490–500 ms);
-  14.94–14.97 cycles/guest; median 68k/guest 4.145894 (parent 4.145716).
-  Code payload 1,325,612 bytes; stripped executable 1,367,868 bytes.
-  Kept under the non-overlapping run-median timing criterion; individual
-  frame interval spans overlap. No instruction-ratio reduction claimed.
+- **After T10:** run medians 24–24.5 fields (480–490 ms);
+  cycles/guest median 15.45 and 68k/guest 4.304991 (parent 14.97 / 4.159059).
+  Code payload 1,325,496 bytes; stripped executable 1,367,752 bytes.
+  Kept under the non-overlapping run-median frame-time criterion; individual
+  intervals overlap. No whole-profile cycles/instruction-ratio gain claimed.
 - **Honest projection:** the steps below are priced at 18–25% of P in
   total, ≈ 0.38–0.42 s. The target needs ≈ 5.5 cycles per guest
   instruction. Translator work is to be completed first anyway (user
@@ -845,6 +845,41 @@ T10 qualifies; continue re-profiling after it and screen broader T3 variants.
   per capture. Coverage, deliberate fault, five gates and three-run A/B
   measurements still required. T9's three baseline runs may serve as the
   parent arm because this documentation-only commit changes no executable.
+- Coverage before implementation: 1,544 appended comparisons pass parent;
+  deliberate wrong-source copy gives 480 mismatches. Candidate passes all
+  1,544 and catches the same fault. Includes every byte-register pair,
+  aliases, surrounding-byte preservation, live flags/CF, memory and word
+  operand guard cases. Built code/release sizes 1,325,496 / 1,367,752 bytes,
+  both 116 bytes smaller. Reports: `tmp/t10-session/`; all five gates pass.
+
+#### T10 result (kept for measured frame time)
+
+All five gates pass. New wrong-source sabotage gives 588 mismatches in the
+full boundary corpus. Three runs per arm, unchanged model and fixture;
+raw captures reported and deleted:
+
+| Arm/run | Frames 4–11 intervals | Median fields/ms | Span | Cycles/guest | 68k/guest |
+|---|---|---:|---|---:|---:|
+| parent-1 | 28, 25, 34, 25, 24, 24, 30, 25 | 25 / 500 | 24–34 | 14.97 | 4.159059 |
+| parent-2 | 28, 24, 35, 24, 25, 24, 30, 25 | 25 / 500 | 24–35 | 14.97 | 4.157952 |
+| parent-3 | 29, 24, 34, 25, 25, 24, 29, 25 | 25 / 500 | 24–34 | 14.98 | 4.161243 |
+| candidate-1 | 23, 29, 23, 30, 24, 28, 24, 25 | 24.5 / 490 | 23–30 | 15.45 | 4.304450 |
+| candidate-2 | 23, 29, 23, 31, 23, 28, 24, 25 | 24.5 / 490 | 23–31 | 15.45 | 4.304991 |
+| candidate-3 | 24, 28, 23, 31, 24, 28, 24, 24 | 24 / 480 | 23–31 | 15.46 | 4.306707 |
+
+Kept under §3.6's frame-time route: run medians 25 → 24–24.5 fields,
+median 25 → 24.5 (2% reduction), above half the 0.023223% price.
+Individual interval spans overlap. Median cycles/guest rise 14.97 → 15.45
+and 68k/guest 4.159059 → 4.304991; no whole-profile efficiency gain claimed.
+Acceptance rests on measured faster frame time, not on using smaller code
+to excuse slower frame time or claiming the three-metric efficiency exception.
+
+Code payload 1,325,612 → 1,325,496, release 1,367,868 → 1,367,752,
+debug 3,774,984 → 3,774,868 bytes. The `mov r8,r8` form's cycles/exec
+6.8 → 6.2, weighted static instructions 3.2 → 3.0 and bytes 6.5 → 5.9.
+No poll, guard, guest-state contract, runtime, fixture or reference changes.
+Next: continue T9 with a fresh profile and broader byte-order screening.
+
 
 ## 5. Rejected and not built
 

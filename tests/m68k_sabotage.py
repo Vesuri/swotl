@@ -141,6 +141,23 @@ def high_byte_written_low(self, out):
                 k += 1
     return [line.replace("{16:8}", "{24:8}") if line.startswith("\tbfins ") else line for line in result]
 
+def byte_copy_uses_destination(self, out):
+    """T10: copy the old destination instead of the source byte."""
+    from translator.decode import Reg
+    if self.i.op != "mov" or self.i.width != 8:
+        return out
+    a, b = self.i.operands
+    if not all(isinstance(o, Reg) and o.name in L.HALF for o in (a, b)):
+        return out
+    ar, ah = L.HALF[a.name]
+    br, bh = L.HALF[b.name]
+    if ah != bh:
+        return out
+    ar, br = L.GREG[ar], L.GREG[br]
+    return [re.sub(r"^(\tmove\.[bwl] )" + br + r",(d6|" + ar + r")$",
+                   lambda m: m[1] + ar + "," + m[2], line) for line in out]
+
+
 SABOTAGE = [
     ("jb/jae swapped", sub(r"\bbcs\b", "bcc"), "forms,boundary"),
     ("word loads not byte-swapped", drop_after("move.w (a2,d4.l),d7", "ror.w #8,d7"), "boundary"),
@@ -161,6 +178,7 @@ SABOTAGE = [
     ("mask trusts dirty upper word", trust_dirty_upper_word, "boundary"),
     ("DX result dropped while live", drop_live_dx, "boundary"),
     ("high-byte write corrupts low byte", high_byte_written_low, "boundary"),
+    ("byte copy uses destination", byte_copy_uses_destination, "boundary"),
 ]
 
 

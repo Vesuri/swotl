@@ -827,6 +827,18 @@ class Lowering:
             self.write(a, "d6")
             return
         if isinstance(a, Reg):
+            if (w == 8 and isinstance(b, Reg) and a.name in HALF and b.name in HALF
+                    and HALF[a.name][1] == HALF[b.name][1]):
+                dest, src = GREG[HALF[a.name][0]], GREG[HALF[b.name][0]]
+                if HALF[a.name][1]:
+                    # MOV exports no native CCR flags. Preserve X and the low
+                    # byte while copying the high byte, including source aliases.
+                    self.e(f"move.b {dest},d6")
+                    self.e(f"move.w {src},{dest}")
+                    self.e(f"move.b d6,{dest}")
+                else:
+                    self.e(f"move.b {src},{dest}")
+                return
             if isinstance(b, Imm):
                 v = self.imm(b, pos)
                 if a.name in HALF or GREG[a.name][0] == "d":

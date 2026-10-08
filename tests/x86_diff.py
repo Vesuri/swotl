@@ -447,6 +447,7 @@ def boundary(h: Harness) -> None:
     dead_dx_flag_cases(h)
     high_byte_write_cases(h)
     high_byte_write_cases(h, bytes.fromhex("83d500"))
+    byte_copy_cases(h)
 
 
 def address_guard_cases(h):
@@ -688,6 +689,45 @@ def high_byte_write_cases(h, tail=bytes.fromhex("9c")):
             h.case(bytes((0x80, 0xc0 | dest, value, 0x83, 0xd1, 0)),
                    "b:high-byte-carry", n=2, block=True, overrides={"regs":
                    dict(cs=0x2000, ax=0xffff, cx=0xffff, dx=0xffff, bx=0xffff), "ip": 0x100})
+
+
+def byte_copy_cases(h):
+    """T10: every byte-register pair, aliases, preserved neighbors and flags."""
+    names = ("ax", "cx", "dx", "bx")
+    for dest in range(8):
+        for src in range(8):
+            for value in (0, 1, 0x7f, 0x80, 0xff):
+                for word in (0x202, 0x203, 0x2d7, 0xad7):
+                    regs = dict(cs=0x2000, ss=0x7000, sp=0xfffe, ax=0xa55a,
+                                cx=0x5aa5, dx=0xff00, bx=0x00ff, bp=0x1234)
+                    shift = 8 if src >= 4 else 0
+                    name = names[src % 4]
+                    regs[name] = (regs[name] & ~(255 << shift)) | value << shift
+                    code = bytes((0x88, 0xc0 | src << 3 | dest))
+                    flags = {f: word >> FLAG_BIT[f] & 1 for f in FLAGS}
+                    h.case(code + b"\x9c", "b:byte-copy", n=2, block=True,
+                           overrides={"regs": regs, "flags": flags, "ip": 0x100})
+            for cf in (0, 1):
+                code = bytes((0xf9 if cf else 0xf8, 0x88, 0xc0 | src << 3 | dest, 0x83, 0xd5, 0))
+                h.case(code, "b:byte-copy-carry", n=3, block=True, overrides={
+                       "regs": dict(cs=0x2000, ax=0xa55a, cx=0x5aa5,
+                       dx=0xff00, bx=0x00ff, bp=0xffff), "ip": 0x100})
+    # The byte-register optimization must not consume memory or word forms.
+    for reg in range(8):
+        for rm, bases in enumerate((("bx", "si"), ("bx", "di"), ("bp", "si"),
+                                   ("bp", "di"), ("si",), ("di",), ("bp",), ("bx",))):
+            regs = dict(cs=0x2000, ds=0x5000, ss=0x7000, sp=0xfffe,
+                        ax=0xa55a, cx=0x5aa5, dx=0xff00, bx=0xffff,
+                        bp=0xffff, si=1, di=1)
+            offset = (sum(regs[n] for n in bases) + 1) & 0xffff
+            segment = regs["ss" if "bp" in bases else "ds"]
+            for op in (0x88, 0x8a):
+                h.case(bytes((op, 0x80 | reg << 3 | rm, 1, 0, 0x9c)),
+                       "b:byte-copy-memory-guard", n=2, block=True, overrides={
+                       "regs": regs, "ip": 0x100,
+                       "mem": [(segment * 16 + offset, b"\x80")]})
+        h.case(bytes((0x89, 0xc0 | reg << 3 | reg, 0x9c)), "b:byte-copy-word-guard",
+               n=2, block=True, overrides={"regs": dict(cs=0x2000, ss=0x7000, sp=0xfffe), "ip": 0x100})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:
