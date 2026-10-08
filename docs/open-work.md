@@ -26,9 +26,9 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     With `KEYS=` the model goes from the logo through the menus into flight
     and moves and clicks the menu pointer. INT 33h motion and buttons are
     transcribed from DOSBox-X but untested: no reference has mouse input
-    (needs scripted motion in the DOSBox-X mouse patch). Next: the D16
-    cell walk is a per-cell form match (perf:
-    specialise once the shape is fixed); find-first gives platform files
+    (needs scripted motion in the DOSBox-X mouse patch). The D16
+    cell walk is a per-cell form match (perf: translator-plan R7, R7b);
+    find-first gives platform files
     no DOS time/date; table targets added by
     `annotations/tables.csv` that no reference run executed are checked by
     the instruction differential only.
@@ -42,13 +42,13 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
 14b. Speed: [translator-plan.md](translator-plan.md) round 2 (M1, Q, R1–R11)
     under [speed-plan.md](speed-plan.md) §0. Target ≤12 fields on 68020 + 8 MB
     Fast; HEAD run medians 24.5–28.5 fields (trajectory noise), 14.64
-    cycles/guest, code payload 1,325,164 bytes. Next: M1 deterministic meter.
-    Pending user decisions D0–D4 (meter acceptance, R1 harness conversion and
-    plant replacement, R6 size budget, cell cache, frame bench). Projection
-    ≈ 18–20 fields from translation; native work needs per-routine authorization.
-15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/
-    `divu.l`, unaligned word/long, `ror.w #8` swap) to replace [arch]
-    guesses in `m68k-optimisation.md`.
+    cycles/guest, code payload 1,325,164 bytes. User decisions D0–D4 approved
+    (meter acceptance, memory model v2 with harness conversion, R6 growth,
+    cell cache, frame bench). Next: M1 deterministic meter, M2 frame bench.
+    Projection ≈ 16–18 fields; native work needs per-routine authorization.
+15. Microbenchmark the remaining [arch] 68020 costs on the A1200 model
+    (`mulu.l`/`divu.l`, unaligned word/long); shifts, swaps, loads, stores and
+    branches are measured (`m68k-optimisation.md` §1–2).
 16. Lookup-table policy with no Fast RAM (tables are Chip reads).
 24. Lockstep RAM compare (phase 6): undefined flags and FLAGS words pushed
     below SP (PUSHF, interrupt frames) differ from DOSBox by design. The host

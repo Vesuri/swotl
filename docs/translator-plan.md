@@ -96,32 +96,34 @@ Hard rules; breaking one voids the step:
 3. **The frame fixture is unchanged:** CPU model, Fast RAM, FS-UAE options,
    fixture, game data and settings, warp and speed.
 4. **D16:** every cell is matched at run time against the writer forms
-   from the guest RAM bytes. A cell cache or decoded-cell reuse is the
-   user's decision D3.
-5. **No test edits that make a step pass.** A representation change the
-   user approved (D1) may change how the harness maps memory and registers,
+   from the guest RAM bytes, except through R7b's cache (D3), which is used
+   only while its exact validity condition holds.
+5. **No test edits that make a step pass.** R1's representation change
+   (D1) may change how the harness maps memory and registers,
    never what is compared; every corpus case, reference and comparison
    stays. A plant is retired only with the template it targets, after an
    equivalent plant on the new template is in place and caught.
 6. **No unmeasured claims.** Numbers in commits and docs come from runs in
    the same session.
 
-**Acceptance (user, 2026-10-08: any speed or size improvement is welcome;
-decision D0):**
+**Acceptance (D0, user 2026-10-08: any speed or size improvement is
+welcome):**
 
 - Gates green: `make test`, `make test-sabotage`, `make test-host-all`,
   `make test-amiga`, `make smoke`.
 - **Meter (M1) on the m4 window:** model cycles lower; or equal
   (|Δ| < 0.001%) with a smaller code payload. Report Δ model cycles,
   Δ executed code bytes, Δ data reads/writes, Δ code payload. No minimum gain.
-- **Code growth** only with lower model cycles. Cumulative growth above
-  1,325,164 bytes beyond +5% needs the user (D2).
-- **FS-UAE check** after every third kept step and after R1, R6 and R7:
-  one frames-fixture capture; the meter's Δ must have the sign of the
-  FS-UAE mix-adjusted per-label Δ of the changed labels. If they disagree,
-  stop: fix the meter, never tune lowerings to FS-UAE noise.
-- **Frame-rate claims:** frames fixture, three runs, with the interval
-  lists; never a per-step gate.
+- **Code growth** only with lower model cycles (D2). Stop and ask before
+  the payload exceeds 1,325,164 bytes by more than 25% (open-work 19).
+- **FS-UAE check** after every third kept step and after R1, R6, R7 and
+  R7b: an M2 bench run per arm with a capture; the meter's Δ must have the
+  sign of `ab_labels.py`'s mix-adjusted Δ over the changed labels. If they
+  disagree, stop: fix the meter, never tune lowerings to FS-UAE noise.
+  Report the bench's cycles per drawn frame (it includes layout effects).
+- **Frame-rate claims:** M2 bench for build-to-build progress; the target
+  itself is the frames fixture (three runs, with the interval lists),
+  measured after R1, R6, R7b and R11. Neither is a per-step gate.
 
 **Stop and ask the user** when: a gate fails for a reason that is not a
 plain bug; a step needs any of 1–5 beyond what was approved; references
@@ -162,13 +164,36 @@ commit with the numbers, §5 and open-work 14b updated; report in a few lines.
   execution, weighted by the meter's counts) for the §4 checks and R8.
 - Gate: `make test` with unit tests for both tools.
 
+### M2. Deterministic frame bench (D4)
+
+- **What it is:** a bench mode of the Amiga runtime, selected at startup
+  and never active in release or fixture runs. PIT ticks are posted on a
+  fixed schedule tied to guest progress, not to the CIA timer, so every
+  build does the same guest work. Ticks are still delivered at poll points
+  as today.
+- **Schedule:** follow the reference cadence (m4: a drawn frame every 9 PIT
+  ticks at the guest's programmed rate). Disk I/O must not leak host time
+  into the window.
+- **Output:**
+  - Emulated cycles (fields and beam position) for drawn frames 4–11 and
+    for a 100-field capture window.
+  - A guest-RAM hash at the end. Equal hashes prove both arms did the same
+    work (perf-method §4).
+- **Checks:**
+  - Two runs give identical numbers.
+  - The bench is independent of the start field.
+  - The guest never waits for a tick that cannot come. If it would, stop
+    and report the schedule problem; never patch the guest.
+- Guest semantics are unchanged; only the timing of interrupts moves
+  (speed-plan §0.9 exception).
+
 ### Q. Round-1 candidates under the meter
 
 T8 (BFINS high-byte writes; patch `tmp/t8-session/rejected-lowering.patch`)
 and T7 (dead DX; `tmp/t7-session/`): re-apply, gates, meter. Their coverage
 and plants are already in the tree. T12–T15 are superseded by R1 and R6.
 
-### R1. Memory model v2 (needs D1)
+### R1. Memory model v2 (D1)
 
 Exact by construction:
 
@@ -232,6 +257,10 @@ Exact by construction:
 - **Price:** ≈ 9–11% of CPU (swaps 5.7, copies 0.7, SI/DI shuffles ≈ 1.5,
   masks ≈ 0.8, `bd.l` ≈ 0.7, folding ≈ 0.8, spills ≈ 0.4, minus
   conversions ≈ 1). Static code shrinks by ≈ 10–15%.
+- Precedent for the biased base and `.w` index: Vette's C2P tables
+  addressed from their midpoint ([m68k-optimisation.md](m68k-optimisation.md) §2).
+- R1b updates `translator-design.md` (register contract, D11) in the same
+  commit.
 
 ### R2. Poll points: same points, cheaper form
 
@@ -268,7 +297,7 @@ operations, runtime entries) and cleans the register there. The remaining
   vector, invalidated on IVT writes and module loads (runtime surface).
 - Price ≈ 1.5–2%.
 
-### R6. Wrap-free register-relative accesses under region guards (D2 if > 5% growth)
+### R6. Wrap-free register-relative accesses under region guards (D2)
 
 - **Region:** a function body after `mov bp,sp` for BP, or a loop for
   SI/DI/BX, over which the register is unchanged.
@@ -293,6 +322,37 @@ operations, runtime entries) and cleans the register there. The remaining
 - This is S5's direction, now judged by the meter. Price ≈ 3–4% (13.2%
   now, ≈ 32 cycles per cell).
 
+### R7b. Cell cache (D3)
+
+- **What is cached:** each decoded cell (kind and operand) at its walk
+  position. Walks reuse it while no write can have reached the walk region
+  since decoding. A dirty or bypassed cache runs R7's matching walk, which
+  decodes again.
+- **Exact invalidation covers every write path:**
+  - generated stores through DS, ES and SS, including string ops and
+    interrupt frames;
+  - runtime writes (DOS reads, EMS copies, all R1a accessors);
+  - the walk's own DS reload cells.
+- **Candidate mechanism, segment-window gating:**
+  - Loading a writable segment register whose 64 KiB window overlaps the
+    region marks the cache dirty.
+  - The cache is bypassed while any writable segment register overlaps it.
+  - Runtime accessors mark writes that overlap the region.
+  - A segment load proven not to overlap (a constant, or a copy of a
+    checked register) skips the check.
+  - Any other mechanism must cover the same paths.
+- **Price:** walk ≈ 9–10% of CPU after R7 → ≈ 3%, minus the gating cost
+  on segment loads (≈ 45K per 100 fields): ≈ 5–7% net. Re-price with M1,
+  gating included.
+- **Coverage:**
+  - Walk snapshots (`make test-blocks`) hitting the cache.
+  - Writes into the region between walks, through each segment register
+    and through the runtime.
+  - DS reload cells whose window overlaps the region.
+  - Plants: the gating check skipped on one segment load; an accessor
+    that doesn't mark.
+- Update `translator-design.md` D16 in the same commit.
+
 ### R8. Branch-target alignment
 
 Price it from a capture's PC sequence: taken branches by target alignment
@@ -308,35 +368,40 @@ Price ≈ 0.5%.
 
 ### R10. Runtime surface
 
-VRAM marks (`vram_span`, `rt_vram_mark`: 1.85%) and the interrupt path
-(`rt_irq_c`, `push_frame`, `deliver`, `guest_vector`, flags words ≈ 2.5%).
-Price ≈ 1–2%.
+- VRAM marks (`vram_span`, `rt_vram_mark`: 1.85%).
+- The interrupt path (`rt_irq_c`, `push_frame`, `deliver`, `guest_vector`,
+  flags words ≈ 2.5%): vector bounds cached per IVT write, the flags word
+  in asm.
+- Port output (SPAZ OPL ≈ 0.75%).
+- "No PC" (2.72%, outside the executable and ROM): identify it before
+  pricing.
+- Price ≈ 1–2%.
 
 ### R11. Re-profile
 
 Fresh capture and recalibration, then re-price every row of §3. Repeat
 from the top while the meter finds a gain.
 
-## 6. User decisions (no step that needs one starts before the user decides)
+## 6. User decisions (approved 2026-10-08)
 
-- **D0.** Per-step acceptance by the meter (§4) instead of FS-UAE frame A/B.
-- **D1.** R1's harness representation conversion. Retiring and replacing
-  the plants whose templates R1/R4 remove: "word loads not byte-swapped",
-  "ror for ror.w on memory dest", "native word store skips byte swap",
-  "native byte-order restoration omitted", "address word not restored",
-  "stack pointer not restored", "address restoration copies stale scratch",
-  "SP not 16-bit", "RETF CS pop uses linear SP", "mask trusts dirty upper word".
-- **D2.** R6's code-growth budget beyond +5%.
-- **D3.** Cell cache (a D16 change): decoded cells are reused until a store
-  into the walk region invalidates them. Worth ≈ 6–8% on top of R7. Not
-  authorized.
-- **D4 (optional).** A deterministic FS-UAE frame bench (PIT ticks from
-  the reference schedule) to remove trajectory noise from frame-rate claims.
+- **D0.** Per-step acceptance by the meter (§4), instead of FS-UAE frame A/B.
+- **D1.** R1's memory model, with the harness converting memory and
+  registers. Plants whose templates R1/R4 remove are replaced first, then
+  retired: "word loads not byte-swapped", "ror for ror.w on memory dest",
+  "native word store skips byte swap", "native byte-order restoration
+  omitted", "address word not restored", "stack pointer not restored",
+  "address restoration copies stale scratch", "SP not 16-bit", "RETF CS
+  pop uses linear SP", "mask trusts dirty upper word".
+- **D2.** R6 may grow the code beyond +5% when each guarded copy lowers
+  model cycles; the +25% stop in §4 remains.
+- **D3.** Cell cache (R7b) with exact invalidation.
+- **D4.** Deterministic frame bench (M2).
+- Native replacement is not part of this plan (§4.1).
 
 ## 7. Projection
 
-R1–R10 ≈ 22–26% of CPU: from 24.5 fields to ≈ 18–20 (360–400 ms); with
-D3 ≈ 17. The 12-field target needs ≈ 50% less time than today.
+R1–R10 with R7b ≈ 28–34% of CPU: from 24.5 fields to ≈ 16–18
+(320–360 ms). The 12-field target needs ≈ 50% less time than today.
 Translation alone is not expected to get there: the remaining generated
 code would still cost ≈ 10 cycles per guest instruction (≈ 6–7 code bytes
 and ≈ 1.3 data accesses each), against the 80286's ≈ 6 clocks. At R11,
