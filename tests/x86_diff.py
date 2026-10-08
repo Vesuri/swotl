@@ -450,6 +450,7 @@ def boundary(h: Harness) -> None:
     byte_copy_cases(h)
     broad_byteorder_cases(h)
     broad_byteorder_operand_edges(h)
+    repeated_offset_cases(h)
 
 
 def address_guard_cases(h):
@@ -800,6 +801,44 @@ def broad_byteorder_operand_edges(h):
                    "regs": dict(cs=0x2000, ds=0x5000, ss=0x7000,
                                 sp=0xfffe, si=1, di=0xffff), "ip": 0x100,
                    "mem": [(0x50400, b"".join(v.to_bytes(2, "little") for v in values))]})
+
+
+def repeated_offset_cases(h):
+    """T12: repeated offsets, changed inputs/scratch, segments and wrap edges."""
+    addresses = (("bx", "si"), ("bx", "di"), ("bp", "si"), ("bp", "di"),
+                 ("si",), ("di",), ("bp",), ("bx",))
+    numbers = {"bx": 3, "bp": 5, "si": 6, "di": 7}
+    for rm, inputs in enumerate(addresses):
+        for disp in (1, 0xffff, 0x7fff, 0x8000):
+            for edge in (0, 1, 0x7fff, 0x8000, 0xfffe, 0xffff):
+                for seg, pre in (("ds", 0x3e), ("es", 0x26), ("ss", 0x36), ("cs", 0x2e)):
+                    ea = bytes((0x80 | rm,)) + disp.to_bytes(2, "little")
+                    load = bytes((pre, 0x8b)) + ea
+                    again = bytes((pre, 0x8b, ea[0] | 8)) + ea[1:]
+                    mids = [(b"", 0), (bytes.fromhex("8b5602"), 1),
+                            (bytes.fromhex("8a0700c0"), 2), (b"\x90", 1)]
+                    mids += [(bytes((0xb8 | numbers[r], 0x23, 1)), 1) for r in inputs]
+                    for middle, count in mids:
+                        regs = dict(cs=0x2000, ds=0x5000, es=0x6000, ss=0x7000,
+                                    sp=0xfffe, bx=edge, bp=edge, si=1, di=0xffff)
+                        offset = (sum(regs[r] for r in inputs) + disp) & 0xffff
+                        # CS data stays away from the executing test bytes.
+                        if seg == "cs" and 0xf0 <= offset <= 0x140:
+                            continue
+                        h.case(load + middle + again + bytes.fromhex("83d200"),
+                               "b:repeated-offset", n=3+count, block=True,
+                               overrides={"regs": regs, "ip": 0x100,
+                               "mem": [(regs[seg]*16 + offset, bytes.fromhex("a55a"))]})
+    # Repeated stores, and changes to either input while the other remains live.
+    for rm, inputs in enumerate(addresses):
+        ea = bytes((0x80 | rm, 0xff, 0xff))
+        for r in inputs:
+            for value in (0, 1, 0x8000, 0xffff):
+                code = b"\x89" + ea + bytes((0xb8 | numbers[r], value & 255, value >> 8))
+                code += b"\x89" + ea + b"\x9c"
+                h.case(code, "b:repeated-offset-store", n=4, block=True,
+                       overrides={"regs": dict(cs=0x2000, ds=0x5000, ss=0x7000,
+                       sp=0xfffe, bx=0xffff, bp=0xffff, si=1, di=1), "ip": 0x100})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

@@ -43,6 +43,24 @@ def main():
             bad += len(h.bad)
             for failure in h.bad[:3]:
                 print(failure)
+        # T12: an internal entry cannot inherit the predecessor's offset fact.
+        for leader in (1, 2):
+            def entry_plan(insns, lives, leaders, ctx_for, program=False):
+                return real_plan(insns, lives, set(leaders) | {leader}, ctx_for, program)
+            D.F.plan = entry_plan
+            h = D.Harness(43)
+            for rm in range(8):
+                for edge in (0, 1, 0x7fff, 0x8000, 0xfffe, 0xffff):
+                    code = b"".join(bytes((0x8b, 0x80 | rm | reg << 3, 0xff, 0xff))
+                                    for reg in (0, 1, 2))
+                    h.case(code, "offset-reuse-entry", n=3, block=True,
+                           overrides={"regs": dict(cs=0x2000, ds=0x5000,
+                           ss=0x7000, bx=edge, bp=edge, si=1, di=0xffff), "ip": 0x100})
+            h.flush()
+            total += sum(h.count.values())
+            bad += len(h.bad)
+            for failure in h.bad[:3]:
+                print(failure)
         print(f"byteorder entries: {total} cases, {bad} mismatches")
         return bool(bad)
     finally:

@@ -940,6 +940,61 @@ No block entry, runtime, poll, reference or guest-state contract changed.
 Next: T9 re-profile and screen remaining addressing/register forms.
 
 
+### T12. Reuse an identical wrapped offset inside a block
+
+- Fresh post-T11 capture and m4 census, parent `3f22776`: **0.011830% of P**,
+  3,362 measured cycles in removable instructions, 1,264 executed instructions
+  and 76 static bytes. Thirteen sites, two active. Reports: `tmp/t9-after-t11/`.
+  Census: 49 frames, 19,290 `cmpsw` and 16,075 `stosw` elements/frame.
+- Within word MOV sequences only, reuse d7 when the exact base/index/displacement
+  computation and every input register version match. Require d7 and native X
+  unchanged, and prove NZVC overwritten before any reader. A closed native
+  instruction whitelist tracks all register writes; unknown effects, leaders,
+  runtime stores and other guest instructions discard the fact. Both one- and
+  two-register addresses retain their original word-wrap arithmetic.
+- This reuses an offset value, never memory contents or decoded cells. No D16,
+  poll, guard, runtime, reference, annotation or block-entry contract changes.
+  Eligible under the smaller efficiency/size rule; no gain claimed before
+  coverage, planted fault, all five gates and three-run A/B measurements.
+- Coverage: 4,272 appended oracle comparisons pass parent and candidate;
+  candidate exercises 768 reuses. Unproved scratch reuse breaks all 4,272.
+  Added 96 leader-boundary cases pass both arms (168 total with earlier cases).
+  Built code/release/debug: 1,325,088 / 1,367,344 / 3,774,460 bytes,
+  76 fewer each. Reports: `tmp/t12-session/`; measured result below.
+
+
+#### T12 result (reverted)
+
+All five candidate gates pass. The permanent unproved-offset fault is caught
+in 5,753 full-corpus cases. Three runs per arm on the unchanged model/fixture;
+raw captures reported and deleted:
+
+| Arm/run | Frames 4–11 intervals | Median fields/ms | Span | Cycles/guest | 68k/guest |
+|---|---|---:|---|---:|---:|
+| parent-1 | 23, 29, 23, 30, 24, 28, 24, 25 | 24.5 / 490 | 23–30 | 14.98 | 4.158791 |
+| parent-2 | 23, 29, 23, 31, 23, 29, 23, 26 | 24.5 / 490 | 23–31 | 14.96 | 4.153570 |
+| parent-3 | 23, 29, 23, 31, 23, 29, 23, 25 | 24 / 480 | 23–31 | 14.98 | 4.159539 |
+| candidate-1 | 23, 29, 24, 30, 24, 28, 24, 25 | 24.5 / 490 | 23–30 | 15.09 | 4.167038 |
+| candidate-2 | 28, 25, 34, 25, 25, 26, 29, 25 | 25.5 / 510 | 25–34 | 15.07 | 4.148650 |
+| candidate-3 | 24, 29, 23, 30, 24, 29, 23, 26 | 25 / 500 | 23–30 | 15.07 | 4.162624 |
+
+Neither acceptance route passes: frame run-median ranges overlap at 24.5
+fields (arm medians 24.5 → 25), cycles/guest 14.98 → 15.07 and 68k/guest
+4.158791 → 4.162624. Code/release/debug each shrink by 76 bytes, which does
+not excuse the measured results. Revert the implementation; retain all new
+oracle/entry cases and the permanent fault. Recovery files and reports:
+`tmp/t12-session/`. All five restored-build gates pass; the retained fault
+still gives 5,753 mismatches. Restored code/release/debug sizes are
+1,325,164 / 1,367,420 / 3,774,536 bytes. Next: continue T9 screening.
+
+Selected forms (execution-weighted static counts/bytes):
+
+| Form | Parent → candidate cycles/exec | Static 68k/exec | Static bytes/exec |
+|---|---|---|---|
+| `mov m16[bx],r16` | 15.4 → 15.1–16.1 | 4.6 → 4.5–5.3 | 14.4 → 14.1–17.2 |
+| `mov m16[bp],r16` | 16.5 → 16.4–16.5 | 4.5 → 4.5 | 13.1 → 13.1 |
+
+
 ## 5. Rejected and not built
 
 (One line each: step, change, priced, measured, reason.)
@@ -972,6 +1027,10 @@ Next: T9 re-profile and screen remaining addressing/register forms.
 - T8: high-byte BFINS writes, priced 0.278745% of P; code −4,824 bytes,
   median cycles/guest 14.94 → 15.43 and 68k/guest 4.145935 → 4.258929;
   timings overlap. Reverted, coverage retained; stop after two rejections.
+
+- T12: identical wrapped-offset reuse, priced 0.011830% of P; code −76
+  bytes, cycles/guest 14.98 → 15.07 and 68k/guest 4.158791 → 4.162624;
+  overlapping frame medians 24.5 → 25 fields. Reverted; coverage retained.
 
 ## 6. When the translator work is done
 

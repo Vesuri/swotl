@@ -179,6 +179,23 @@ def drop_native_order_restore(self, out):
     return out
 
 
+def stale_address_offset(self, out):
+    """T12: trust scratch d7 without proving its value or address inputs."""
+    if self.i.op != "mov" or self.i.width != 16:
+        return out
+    result = []
+    skipping = False
+    for line in out:
+        if re.fullmatch(r"\tmove.l [ad][0-7],d7", line):
+            skipping = True
+            continue
+        if skipping and line.startswith("\tadd.w ") and line.endswith(",d7"):
+            continue
+        skipping = False
+        result.append(line)
+    return result
+
+
 SABOTAGE = [
     ("jb/jae swapped", sub(r"\bbcs\b", "bcc"), "forms,boundary"),
     ("word loads not byte-swapped", drop_after("move.w (a2,d4.l),d7", "ror.w #8,d7"), "boundary"),
@@ -201,6 +218,7 @@ SABOTAGE = [
     ("high-byte write corrupts low byte", high_byte_written_low, "boundary"),
     ("byte copy uses destination", byte_copy_uses_destination, "boundary"),
     ("native byte-order restoration omitted", drop_native_order_restore, "boundary"),
+    ("wrapped offset trusted without proof", stale_address_offset, "boundary"),
 ]
 
 
