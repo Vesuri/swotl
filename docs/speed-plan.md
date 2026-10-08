@@ -14,6 +14,9 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   24.5, 24.5, 24.5 (round-1 final audit) and 28.5 (replan capture
   2026-10-08: intervals 29, 26, 36, 26, 31, 26, 32, 28). One executable;
   the spread is trajectory noise (§5.1).
+- **Meter at `88b0038`** (m4, 49 frames): 284,644,758 model cycles
+  (generated 214.8M, cell walk 66.8M, runtime 3.1M); 17,976,252 guest
+  instructions, 15.66 model cycles each.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -90,7 +93,7 @@ Breaking any of these voids the step, whatever it measures.
 ## 3. Acceptance (D0, user 2026-10-08: any speed or size improvement is welcome)
 
 - Gates green (§2.5).
-- **Meter (M1) on the m4 window:** model cycles lower; or equal
+- **Meter (§4) on the m4 window:** model cycles lower; or equal
   (|Δ| < 0.001%) with a smaller code payload. Report Δ model cycles,
   Δ executed code bytes, Δ data reads/writes, Δ code payload. No minimum gain.
 - **Code growth** only with lower model cycles (D2). Stop and ask before
@@ -109,7 +112,7 @@ plain bug; a step needs any of §2 beyond what was approved; references
 need re-recording or an interrupt delivery moves; two consecutive steps
 are rejected by the meter; meter and FS-UAE disagree; a step is ambiguous.
 
-**Per step:** price from M1 counts (write the price in §7 before coding);
+**Per step:** price from meter counts (write the price in §7 before coding);
 coverage first (§2.6; cases appended at the end of corpora, `m68k_blocks`
 cases for multi-block changes); implement in `translator/` or
 `src/runtime/`, `make gen`; gates; meter; keep or revert (revert keeps the
@@ -142,8 +145,16 @@ lines.
   `VGA_03C2D` 151 words to A0000h (median 6 rows).
 - **Reference cadence** (DOSBox-X `cycles=fixed 12000`, m4): a drawn frame
   every 9 PIT ticks ≈ 36 ms, ≈ 408K x86 instructions per frame.
-- **Meter and bench:** M1 (deterministic cost meter, the per-step
-  acceptance) and M2 (deterministic frame bench).
+- **Meter** (`tools/cost_meter.py`, ≈ 40 s, deterministic): `--out
+  tmp/meter/ARM.json` per arm, `--compare A B` for the §3 deltas. Weights
+  `tools/cost_model.json`, fit on a 100-field capture of `781975e`: per code
+  byte 0.91 cycles (0.73 inside a loop of ≤ 256 bytes), read 3.41, write
+  4.14, taken transfer outside such a loop 6.42, mul/div 21.7 (R² 0.961,
+  model −2.9% of measured). Recalibrate (`--calibrate CAPTURE ELF --write`,
+  then `--plant-check`) after R1 and R11 or when the FS-UAE check
+  disagrees. Retro-check on round 1: T6 −0.39%, T4-local −6.05% (FS-UAE
+  mix-adjusted −2.2%, −6.2%). `tools/ab_labels.py` serves the FS-UAE check.
+- **Bench:** M2.
 - **Stops are free (S0).** Fields from `rt_run_guest` to m1b-logo
   (`VGA_039AD`), 68020: 99–100 with no stop between (3 runs), 99–100 with
   110, 364 and 731 stops (5 runs). `amiga_io_frames` counts the fields
@@ -206,31 +217,7 @@ Guest register use (executions per 100 fields): SP 243K (92% implicit
 push/pop/call/ret), BP 236K (65% base+disp), BX 242K (33% ALU destination,
 32% base), SI 216K and DI 131K (34–41% base, 30–36% ALU).
 
-## 7. Steps (in order; prices are replan estimates, re-price with M1)
-
-### M1. Deterministic cost meter (tooling)
-
-- `tools/cost_meter.py MILESTONE`: host run (`tests/host_run.py`,
-  reference interrupt replay) over the m4 window. Unicorn block hooks count
-  executions per translated block and the taken transfers; expand to
-  per-instruction counts from the disassembly of the image that ran.
-  Features per instruction: encoded bytes, data reads, data writes, taken
-  branch, inside an innermost loop of ≤ 256 bytes, mul/div. Output: guest
-  instructions, executed 68k instructions, executed code bytes, reads,
-  writes, taken branches, model cycles; per x86 form and per label; code
-  payload (`make size`). Deterministic and layout-blind by design.
-- `--calibrate CAPTURE ELF`: fit the coefficients on an FS-UAE capture of
-  the same build (per-PC cycles); print R² and model vs measured
-  generated-code total. Commit the coefficients (`tools/cost_model.json`)
-  with the capture's commit.
-- Before use: two meter runs identical; model total within 3% of the
-  capture; retro-check on round 1: meter Δ for T6 (`fd8ed6e`) and
-  T4-local (`f7dad4b`) against their parents has the sign and order of
-  the mix-adjusted FS-UAE results (−2.2%, −6.2%); a flag-neutral doubling
-  plant (each `ror.w #8` → three) moves the model by its predicted amount.
-- `tools/ab_labels.py`: FS-UAE mix-adjusted A/B (per-label cycles per
-  execution, weighted by the meter's counts) for the §3 checks and R8.
-- Gate: `make test` with unit tests for both tools.
+## 7. Steps (in order; prices are replan estimates, re-price with the meter)
 
 ### M2. Deterministic frame bench (D4)
 
@@ -410,7 +397,7 @@ operations, runtime entries) and cleans the register there. The remaining
     checked register) skips the check.
   - Any other mechanism must cover the same paths.
 - **Price:** walk ≈ 9–10% of CPU after R7 → ≈ 3%, minus the gating cost
-  on segment loads (≈ 45K per 100 fields): ≈ 5–7% net. Re-price with M1,
+  on segment loads (≈ 45K per 100 fields): ≈ 5–7% net. Re-price with the meter,
   gating included.
 - **Coverage:**
   - Walk snapshots (`make test-blocks`) hitting the cache.

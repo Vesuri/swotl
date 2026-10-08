@@ -120,7 +120,7 @@ JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc)
 RUN = @mkdir -p tmp/test; if $(2) > tmp/test/$(1).log 2>&1; then echo "ok    $(1)"; \
 	else echo "FAIL  $(1) (tmp/test/$(1).log)"; tail -n 15 tmp/test/$(1).log; exit 1; fi
 SHARDS = forms.0/4 forms.1/4 forms.2/4 forms.3/4 space.0/1 boundary.0/1 blocks.0/1
-TESTS = t-dosbox-retf t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
+TESTS = t-dosbox-retf t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
 	t-blocks t-guards $(HOST_MILESTONES:%=t-host-%)
 
 test: host
@@ -145,6 +145,8 @@ t-hunk-size:
 	$(call RUN,hunk-size,$(PYTHON) tests/test_hunk_size.py)
 t-profile-tools:
 	$(call RUN,profile-tools,$(PYTHON) tests/test_profile_tools.py)
+t-cost-tools:
+	$(call RUN,cost-tools,$(PYTHON) tests/test_cost_meter.py)
 t-lint:
 	$(call RUN,lint,$(PYTHON) -m translator.check lint)
 t-decode:
