@@ -995,6 +995,67 @@ Selected forms (execution-weighted static counts/bytes):
 | `mov m16[bp],r16` | 16.5 → 16.4–16.5 | 4.5 → 4.5 | 13.1 → 13.1 |
 
 
+### T13. Byte-order propagation through SI/DI word operands
+
+- Fresh post-T12 capture/census, parent `d516310`: **0.012828% of P**,
+  3,646 estimated cycles, 1,964 executed instructions and 456 static bytes.
+  201 candidate groups, 19 active. Reports: `tmp/t9-after-t12/`.
+- Include SI/DI word moves/pushes/pops in block-local representation tracking.
+  Restore each raw address register through scratch before any address or
+  arithmetic use and at group exits: copy, swap, copy back. Charge both extra
+  copies; never rotate an address register in place. Keep the existing plan
+  unless the new group adds neither swaps nor net copies and removes at least
+  one instruction. Preserve zero upper words, flags and every entry contract.
+- Fresh measured swap/data-copy/address-to-scratch/scratch-to-address costs:
+  1.770612 / 1.948671 / 2.011539 / 1.935314 cycles. Census: 49 frames,
+  19,290 `cmpsw` and 16,075 `stosw` elements/frame. No poll, runtime, D16,
+  guard, fixture or annotation change. Coverage and all gates precede timing.
+- Coverage: 880 appended comparisons pass parent and candidate; deliberately
+  omitting address-word restoration gives 662 mismatches in both. Added 24
+  leader-entry cases pass both arms (192 total). Existing plants are unchanged.
+  Built code/release/debug: 1,324,704 / 1,366,960 / 3,774,076 bytes (−460 each).
+  Reports: `tmp/t13-session/`; measured result below.
+
+
+#### T13 result (reverted)
+
+All five candidate gates pass. The permanent address-word restoration fault
+is caught in 674 full-corpus cases. Three runs per arm on the unchanged
+68020 model/fixture; raw captures reported and deleted:
+
+| Arm/run | Frames 4–11 intervals | Median fields/ms | Span | Cycles/guest | 68k/guest |
+|---|---|---:|---|---:|---:|
+| parent-1 | 23, 29, 23, 30, 24, 28, 24, 25 | 24.5 / 490 | 23–30 | 14.97 | 4.152432 |
+| parent-2 | 24, 28, 24, 30, 24, 28, 24, 25 | 24.5 / 490 | 24–30 | 14.97 | 4.156359 |
+| parent-3 | 23, 29, 24, 30, 23, 29, 23, 26 | 25 / 500 | 23–30 | 14.96 | 4.153597 |
+| candidate-1 | 28, 25, 34, 25, 25, 25, 29, 25 | 25 / 500 | 25–34 | 15.06 | 4.162807 |
+| candidate-2 | 28, 24, 35, 24, 25, 24, 30, 25 | 25 / 500 | 24–35 | 15.03 | 4.155287 |
+| candidate-3 | 28, 25, 34, 25, 25, 25, 29, 25 | 25 / 500 | 25–34 | 15.01 | 4.123367 |
+
+Neither acceptance route passes. Parent run medians 24.5–25 fields overlap
+candidate medians of 25; arm medians 24.5 → 25 fields. Median cycles/guest
+14.97 → 15.03 and 68k/guest 4.153597 → 4.155287. Code/release/debug each
+shrink by 460 bytes, insufficient under the no-slowdown rule. Implementation
+reverted; retain all 880 new comparisons, 24 entry cases and the permanent
+fault. Recovery patch/reports: `tmp/t13-session/`. All five restored gates
+pass; the new fault still gives 674 mismatches. Restored code/release/debug:
+1,325,164 / 1,367,420 / 3,774,536 bytes.
+
+Selected forms (execution-weighted static counts/bytes):
+
+| Form | Parent → candidate cycles/exec | Static 68k/exec | Static bytes/exec |
+|---|---|---|---|
+| `push r16` | 13.8 → 13.9–14.0 | 4.5 → 4.5 | 13.6–13.9 → 13.9–14.1 |
+| `pop r16` | 11.9–12.1 → 11.9–12.1 | 4.4 → 4.3–4.4 | 10.7–10.8 → 10.7 |
+| `mov r16,m16[bp]` | 15.5 → 15.1–15.4 | 4.3 → 4.2–4.3 | 12.8 → 12.7–13.0 |
+| `mov r16,m16[disp]` | 10.7 → 10.7–10.8 | 2.3 → 2.3 | 8.1 → 8.2 |
+
+T12 and T13 are consecutive rejections. Pause under §2 and request user
+permission before further T9 work. This is not the final no-candidate audit;
+remaining forms, including SP representation and other restoration tradeoffs,
+have not been exhaustively screened. No native routine is authorized.
+
+
 ## 5. Rejected and not built
 
 (One line each: step, change, priced, measured, reason.)
@@ -1031,6 +1092,10 @@ Selected forms (execution-weighted static counts/bytes):
 - T12: identical wrapped-offset reuse, priced 0.011830% of P; code −76
   bytes, cycles/guest 14.98 → 15.07 and 68k/guest 4.158791 → 4.162624;
   overlapping frame medians 24.5 → 25 fields. Reverted; coverage retained.
+
+- T13: SI/DI byte-order propagation, priced 0.012828% of P; code −460
+  bytes, cycles/guest 14.97 → 15.03 and 68k/guest 4.153597 → 4.155287;
+  overlapping frame medians 24.5 → 25 fields. Reverted; pause after two rejections.
 
 ## 6. When the translator work is done
 

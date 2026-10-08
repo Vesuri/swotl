@@ -196,6 +196,22 @@ def stale_address_offset(self, out):
     return result
 
 
+def address_word_not_restored(self, out):
+    """T13: omit the swap when loading/restoring a word in SI or DI."""
+    from translator.decode import Reg
+    address_load = (self.i.op in ("mov", "pop") and
+                    isinstance(self.i.operands[0], Reg) and
+                    self.i.operands[0].name in ("si", "di"))
+    result = list(out)
+    if address_load:
+        result = [line for line in result if line != "\tror.w #8,d6"]
+    for k in range(len(result)-1, 0, -1):
+        if (result[k] == "\tror.w #8,d6" and
+                result[k-1] in ("\tmove.l a4,d6", "\tmove.l a5,d6")):
+            result.pop(k)
+    return result
+
+
 SABOTAGE = [
     ("jb/jae swapped", sub(r"\bbcs\b", "bcc"), "forms,boundary"),
     ("word loads not byte-swapped", drop_after("move.w (a2,d4.l),d7", "ror.w #8,d7"), "boundary"),
@@ -219,6 +235,7 @@ SABOTAGE = [
     ("byte copy uses destination", byte_copy_uses_destination, "boundary"),
     ("native byte-order restoration omitted", drop_native_order_restore, "boundary"),
     ("wrapped offset trusted without proof", stale_address_offset, "boundary"),
+    ("address word not restored", address_word_not_restored, "boundary"),
 ]
 
 

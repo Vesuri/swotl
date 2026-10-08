@@ -451,6 +451,7 @@ def boundary(h: Harness) -> None:
     broad_byteorder_cases(h)
     broad_byteorder_operand_edges(h)
     repeated_offset_cases(h)
+    address_byteorder_cases(h)
 
 
 def address_guard_cases(h):
@@ -839,6 +840,48 @@ def repeated_offset_cases(h):
                 h.case(code, "b:repeated-offset-store", n=4, block=True,
                        overrides={"regs": dict(cs=0x2000, ds=0x5000, ss=0x7000,
                        sp=0xfffe, bx=0xffff, bp=0xffff, si=1, di=1), "ip": 0x100})
+
+
+def address_byteorder_cases(h):
+    """T13: raw SI/DI, source/destination copies, stack wrap and EA exposure."""
+    for reg in (6, 7):
+        other = 13 - reg
+        load = bytes((0x8b, 0x06 | reg << 3, 0, 4))
+        stores = b"".join(bytes((0x89, 0x06 | reg << 3, at, 4)) for at in (0x20, 0x22, 0x24))
+        expose = [(b"", 0), (bytes((0x40 | reg,)), 1),
+                  (bytes((0x89, 0xc0 | reg << 3)), 1),
+                  (bytes((0x89, 0xc0 | reg << 3 | other)), 1),
+                  (bytes((0x89, 0xc0 | other << 3 | reg)), 1),
+                  (bytes((0xb8 | reg, 0x12, 0x34)), 1),
+                  (bytes.fromhex("99"), 1), (bytes.fromhex("fc"), 1)]
+        expose += [(bytes((0x8b, 0x90 | rm, 0xff, 0xff)), 1) for rm in range(8)]
+        for value in (0, 1, 0xff, 0x100, 0x7fff, 0x8000, 0xfffe, 0xffff):
+            for middle, count in expose:
+                for pre in (b"", b"\x26", b"\x36"):
+                    h.case(load + stores + pre + middle + stores + bytes.fromhex("83d500"),
+                           "b:address-byteorder", n=8+count, block=True,
+                           overrides={"regs": dict(cs=0x2000, ds=0x5000,
+                           es=0x6000, ss=0x7000, sp=0xfffe, bx=0xffff,
+                           bp=1, si=1, di=0xffff), "ip": 0x100,
+                           "mem": [(0x50400, value.to_bytes(2, "little"))]})
+            for sp in (0, 1, 0xfffe, 0xffff):
+                h.case(bytes((0x58 | reg, 0x50 | reg, 0x50 | reg, 0x50 | reg))
+                       + stores + bytes.fromhex("83d500"), "b:address-byteorder-stack",
+                       n=8, block=True, overrides={"regs": dict(cs=0x2000,
+                       ds=0x5000, ss=0x7000, sp=sp), "ip": 0x100,
+                       "mem": [(0x70000+sp, value.to_bytes(2, "little"))]})
+    # Both address inputs can be raw simultaneously; every two-register EA
+    # must expose the correct native values before calculating its offset.
+    for rm in range(8):
+        for value in (0, 1, 0x7fff, 0x8000, 0xfffe, 0xffff):
+            code = bytes.fromhex("8b360004 8b3e0204 89362004 893e2204")
+            code += bytes((0x8b, 0x80 | rm, 0xff, 0xff))
+            code += bytes.fromhex("89362404 893e2604 83d500")
+            h.case(code, "b:address-byteorder-pair", n=8, block=True,
+                   overrides={"regs": dict(cs=0x2000, ds=0x5000,
+                   ss=0x7000, sp=0xfffe, bx=value, bp=value), "ip": 0x100,
+                   "mem": [(0x50400, value.to_bytes(2, "little")
+                            + (value ^ 0xffff).to_bytes(2, "little"))]})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

@@ -61,6 +61,26 @@ def main():
             bad += len(h.bad)
             for failure in h.bad[:3]:
                 print(failure)
+        # T13: raw address-register groups end at every possible entry.
+        for leader in (1, 2, 3):
+            def entry_plan(insns, lives, leaders, ctx_for, program=False):
+                return real_plan(insns, lives, set(leaders) | {leader}, ctx_for, program)
+            D.F.plan = entry_plan
+            h = D.Harness(53)
+            for reg in (6, 7):
+                for value in (0, 1, 0x8000, 0xffff):
+                    code = bytes((0x8b, 0x06 | reg << 3, 0, 4))
+                    code += b"".join(bytes((0x89, 0x06 | reg << 3, at, 4))
+                                     for at in (0x20, 0x22, 0x24))
+                    h.case(code, "address-byteorder-entry", n=4, block=True,
+                           overrides={"regs": dict(cs=0x2000, ds=0x5000,
+                           ss=0x7000, sp=0xfffe), "ip": 0x100,
+                           "mem": [(0x50400, value.to_bytes(2, "little"))]})
+            h.flush()
+            total += sum(h.count.values())
+            bad += len(h.bad)
+            for failure in h.bad[:3]:
+                print(failure)
         print(f"byteorder entries: {total} cases, {bad} mismatches")
         return bool(bad)
     finally:

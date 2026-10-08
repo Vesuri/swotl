@@ -42,14 +42,14 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
 14b. Speed: [translator-plan.md](translator-plan.md), T1–T9 under
     [speed-plan.md](speed-plan.md) §0–§1. Target ≤12 fields on 68020 + 8 MB Fast.
     T11 remains the latest kept lowering: 24.5 fields (490 ms), code payload
-    1,325,164 bytes; release 1,367,420 bytes. T12 offset reuse rejected:
-    code −76 bytes but median cycles/guest 14.98 → 15.07 and 68k/guest
-    4.158791 → 4.162624; frame timings overlap. Implementation reverted,
-    new oracle/entry coverage and sabotage retained; all five restored gates pass.
-    User removed the floor for smaller efficiency/size wins, retaining no
-    slowdown/exactness, and authorized continuing after T7/T8 (2026-10-08).
-    T4 cross-block, T7 and T8 rejected; T5 guarded packing remains unbuilt.
-    Next: T9 fresh profile/census and remaining address-register forms.
+    1,325,164 bytes; release 1,367,420 bytes. T12 and T13 rejected under the
+    no-slowdown rule. T13 saved 460 bytes, but median cycles/guest rose
+    14.97 → 15.03 and 68k/guest 4.153597 → 4.155287; frame timings overlap.
+    Both implementations reverted; added oracle/entry coverage and sabotage
+    retained. All five restored gates pass. Pause after two consecutive rejections;
+    user authorization is required before further T9 work. The earlier T7/T8
+    continuation did not remove this hard stop. T9's no-candidate audit is not
+    complete: remaining SP/representation and restoration tradeoffs need screening.
     Keep code size visible; T2 block duplication remains rejected for size.
     Native replacements only when the user authorizes each routine.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/
