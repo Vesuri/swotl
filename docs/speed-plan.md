@@ -3,7 +3,7 @@
 Work order for making the A1200 build faster. Each step has a prize, a
 shape, a gate and a stop rule; do them in order. Steps S0–S6 are done;
 the work continues in [translator-plan.md](translator-plan.md), under §0
-and §1 here. Method background:
+here; its §4 replaces the per-step acceptance in §0.7–0.8. Method background:
 [perf-method.md](perf-method.md). Open-work item: 14b.
 
 ## 0. Hard rules
@@ -47,14 +47,13 @@ Breaking any of these voids the step, whatever it measures.
    never wall time; the 68020 model (`AMIGA_CPU` unset), never the 68030
    for a claim; no warp, no `cpu_speed=max`; control = the parent commit,
    built and run in the same session with the same fixture; three runs per
-   arm; quote ms per drawn frame.
+   arm; quote ms per drawn frame. This holds for frame-rate claims; per-step
+   acceptance is translator-plan §4 (deterministic meter).
 8. **One step, one commit**, before/after numbers in the message,
    `docs/open-work.md` 14b and §2 here updated in the same commit. A step
    that misses the acceptance criteria is reverted and gets one line in §4.
-   The frame-time bar is half the priced prize; translator-plan §3.6 also
-   allows measured efficiency/size wins under the user's amendment, with
-   no slowdown: smaller code does not excuse a measured performance regression.
-   Do not start the next step on an unproven one.
+   Acceptance: translator-plan §4. Do not start the next step on an
+   unproven one.
 9. **Out of bounds**: presenting a frame before the game publishes it
    (D9: the outermost graphics driver call returns), reading the frame to
    find changes, or skipping published frames; changing the PIT or timer rate or the order of
@@ -71,8 +70,8 @@ Breaking any of these voids the step, whatever it measures.
   P = median of the frame-4…11 intervals × 20 ms. Run it three times per
   arm: the start field varies run to run (4299, 4334, 5274 seen: the
   hard-drive folder completes I/O on host time). Claim a frame-rate gain only when
-  the arms' ranges do not overlap. Efficiency/size acceptance follows the
-  user amendment in translator-plan §3.6.
+  the arms' ranges do not overlap. Frame times fall into trajectory modes
+  (translator-plan §2.1); per-step acceptance is translator-plan §4.
 - **Shares.** The same fixture then captures 100 fields
   (`monitor profile` stops at 100) into `tmp/prof/frames.bin`;
   `tools/profile_report.py tmp/prof/frames.bin amiga/out/Swotl.elf
@@ -157,7 +156,7 @@ it before pricing (SetPatch's RAM patches of Exec calls such as
 ### Beyond the plan
 
 Continued in [translator-plan.md](translator-plan.md) (target, authority,
-steps T1–T9). The cell walk cache is a D16 design change the user has not
+round 2 steps M1–R11). The cell walk cache is a D16 design change the user has not
 approved.
 
 ## 4. Rejected
