@@ -22,10 +22,19 @@ this file adds to them and never relaxes them. Open-work item: 14b.
   Code payload 1,325,164 bytes; stripped executable 1,367,420 bytes.
   Kept for lower measured cycles/instructions and smaller code; frame times
   overlap, with the same 24.5-field arm median. No frame-rate gain claimed.
-- **Honest projection:** the steps below are priced at 18–25% of P in
-  total, ≈ 0.38–0.42 s. The target needs ≈ 5.5 cycles per guest
-  instruction. Translator work is to be completed first anyway (user
-  decision); §6 says what happens when it is.
+- **Final T9 audit (2026-10-08, executable at `596b337`):** all three run
+  medians 24.5 fields (490 ms), combined interval span 23–31 fields.
+  Median 14.97 cycles/guest and 4.155045 executed 68k instructions/guest.
+  Code payload 1,325,164 bytes; stripped executable 1,367,420 bytes;
+  debug executable 3,774,536 bytes. No lowering changed in this audit.
+  Target unmet: 12.5 fields / 250 ms remain, requiring a further 51.02%
+  frame-period reduction (2.04× frame rate). Stretch gap: 290 ms.
+  No remaining untried eligible candidate was identified in the plan's
+  groups and screened extensions; final audit table below. Stop under §6.
+- **Original projection (not reached):** the steps were priced at 18–25% of P in
+  total, ≈ 0.38–0.42 s. At the original instruction mix, the target was
+  estimated at ≈ 5.5 cycles per guest instruction. Final measurements above
+  supersede this projection; §6 defines the stop.
 
 ## 2. Authority (hard; breaking one voids the step)
 
@@ -1220,9 +1229,71 @@ Selected forms (execution-weighted static counts/bytes):
 | `mov r16,m16[disp]` | 10.7–10.8 → 10.7–10.8 | 2.3 → 2.3 | 8.2–8.3 → 8.1–8.2 |
 | `mov m16[disp],r16` | 11.5–11.7 → 11.6 | 2.7 → 2.7 | 8.3–8.5 → 8.3 |
 
-T14 and T15 are consecutive rejections. Pause under §2 and ask the user
-before the final T9 re-profile/audit. The no-candidate audit is incomplete;
-no native routine is authorized.
+T14 and T15 triggered the consecutive-rejection stop under §2. The user
+authorized finishing the final T9 audit (2026-10-08); result below.
+
+
+### T9 final audit (2026-10-08, `596b337`)
+
+User authorized the final audit after T14/T15. Three fresh runs on the
+unchanged 68020 + 8 MB Fast model, original fixture and game settings.
+Every capture was processed by lowering_cost/profile_report and deleted.
+No optimization arm or additional speed gain is claimed.
+
+| Run | Frames 4–11 intervals | Median fields/ms | Span | Cycles/guest | 68k/guest |
+|---|---|---:|---|---:|---:|
+| 1 | 24, 28, 24, 30, 24, 28, 24, 25 | 24.5 / 490 | 24–30 | 14.97 | 4.155045 |
+| 2 | 23, 29, 23, 31, 23, 29, 23, 26 | 24.5 / 490 | 23–31 | 14.96 | 4.153354 |
+| 3 | 24, 28, 24, 30, 24, 28, 24, 25 | 24.5 / 490 | 24–30 | 14.97 | 4.156228 |
+
+First capture: 28,420,399 cycles, 1,684,957 guest instructions and 7,001,072
+executed 68k instructions; 10.07 execution-weighted static bytes/guest.
+Generated code 88.72%, runtime/platform 7.52%. Fresh m4 census: 49 frames,
+19,290 `cmpsw` and 16,075 `stosw` elements/frame, 301 VRAM bytes/frame,
+median six rows. Code/release/debug: 1,325,164 / 1,367,420 / 3,774,536 bytes.
+
+Re-priced groups (shares overlap; prices are estimates, not measured gains):
+
+| Group | CPU share | Remaining candidate / disposition |
+|---|---:|---|
+| T2 register-based memory | 19.74% | Single/two-register guards: 1.146200% / 0.054312%, total 1.200512%; duplication remains rejected for size |
+| T3 register push/pop | 5.90% | Broader data-only propagation has zero remaining groups; SI/DI, SP and copy-tradeoff variants already rejected (T13–T15) |
+| T4 carry readers | 3.81% | Cross-block 0.040221%, previously rejected; zero dead-flag/self-TEST candidates |
+| T5 calls/returns | 6.30% | Optimistic 1.024204%, refined 0.939745% after measured long-access costs; code growth excludes sub-1% exception |
+| T6 encodings/masks | — | Zero remaining known-clear masks/MOVEQ/short-branch candidates; 223 word-reachable long branches have zero executions |
+| T7 multiply/divide | 5.66% | Dead-DX 0.005493%, previously rejected |
+| T8 byte registers/segments | 5.60% / 1.90% | BFINS writes 0.295616%, previously rejected; BFEXTU reads 0.030410% save no bytes; zero conservative dead-base sites |
+
+All 45 low and six high same-position byte-copy sites already use T10.
+Rejected T12/T13/T14/T15 re-price at 0.011822% / 0.012826% / 0.071596% /
+0.000637%. These estimates refer to already tested and rejected shapes.
+No untried eligible candidate remains in this screen; this does
+not prove that every possible future translator design is exhausted.
+
+T5 refinement: separate synthetic probes, same 68020/Fast RAM model, aligned
+indexed Fast RAM accesses. Immediate word/long stores measure 6.220713 /
+8.283544 cycles (444,767 / 319,979 executions); word/long loads 4.157884 /
+4.157913 (653,658 / 653,646 executions). Charge the 2.062830 extra store
+cycles to 11,636 calls and the measured load difference to 12,710 returns:
+291,082.86 → 267,079.40 estimated cycles, 1.024204% → 0.939745% of P.
+This still omits return-format conversion and cold-arm joins and assumes
+successful guards/alignment. Guards plus exact fallbacks grow code, so the
+specified shape remains ineligible. Probes do not replace the game timing
+fixture; game artifacts unchanged, all four raw probe captures deleted.
+
+Top nearest-call-target self-time regions (share of all CPU cycles):
+SWOTL+06A4D 16.15%, SWOTL+0B54B 6.30%, SWOTL+0BFD1 6.21%,
+SWOTL+04DAE 4.14%, RTSVGA+03B9A 3.13%, FLIGHT+0A8D2 3.12%.
+These are attribution regions, not proved source-routine boundaries.
+
+Completion: T1 tooling/baseline, T2–T8 decisions, T10–T15 follow-ups and
+T9's fresh re-price are recorded. The unchanged code/tests passed all five
+restored gates in T15; the final measured executable is byte-identical to
+that Amiga/smoke artifact. Only documentation changes in this audit.
+Reports/pricers/probes: `tmp/t9-final/`; gate evidence: `tmp/t15-session/`.
+The translator work order is complete; the 240 ms target is not achieved.
+Stop here under §6. No native replacement, D16 cache or fidelity change is
+authorized by this result.
 
 
 ## 5. Rejected and not built
