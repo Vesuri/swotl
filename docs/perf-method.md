@@ -70,7 +70,7 @@ Emulator driving: [headless-fsuae.md](headless-fsuae.md). Process rules:
 - **SWOTL counts**: `tools/host_census.py MILESTONE [--labels L…] [--strops]
   [--vram]` (host run between milestone snapshots: label executions, string-op
   elements, A0000h writers and rows per frame); `amiga/perf_frames.gdb` (frame
-  period and a capture, [speed-plan.md](speed-plan.md) §1).
+  period and a capture, [speed-plan.md](speed-plan.md) §4).
 - **Phase brackets** (beam stamps) for shares; mandatory sanity lines printed
   each run: accounted ≈100%, body ticks/field ≈1. Use a monotonic epoch, not
   `beam − beam` (wrap drops the longest phases). (Revs `perf-method.md` L68–114, §Lessons — measurement.)
@@ -171,9 +171,9 @@ retry" at the code. (Slicks `docs/performance.md` §Rejected; Pokeri experiment 
 | Oracle reading ISR-written state raced (1 bad of 284) | snapshot before the change; run oracle on both sides, discard disagreeing calls | RoF `flight-perf-log.md` §12.4, §13.2 |
 | Run stopped doing work while the vblank counter ran (crash/death cinematic in window) | short windows; discard rows not in the measured state | RoF `perf-budget.md` |
 | Estimates over-read (1/3 to 6× high) | estimate is an upper bound | Revs `perf-method.md` L913, L1290, Rule 1b; Pokeri register ("estimated … not met") |
-| Same executable, run medians 24.5 and 28.5 fields: frame times fall into trajectory modes; cycles per guest instruction follow the window's mix | per-step decisions on a deterministic fixed-workload meter; frame bench with a fixed tick schedule | SWOTL `translator-plan.md` §2 |
-| Layout shift moved untouched forms by up to ±0.7%; keep/revert on that noise selected lucky layouts | layout-blind meter for lowering steps; layout changes judged by mix-adjusted per-label A/B | SWOTL `translator-plan.md` §2 |
-| Priced in instructions; the 68020 model charged ≈ 1.1 cycles per code byte plus data accesses | price in executed bytes, data accesses and taken branches | SWOTL `translator-plan.md` §3 |
+| Same executable, run medians 24.5 and 28.5 fields: frame times fall into trajectory modes; cycles per guest instruction follow the window's mix | per-step decisions on a deterministic fixed-workload meter; frame bench with a fixed tick schedule | SWOTL `speed-plan.md` §5 |
+| Layout shift moved untouched forms by up to ±0.7%; keep/revert on that noise selected lucky layouts | layout-blind meter for lowering steps; layout changes judged by mix-adjusted per-label A/B | SWOTL `speed-plan.md` §5 |
+| Priced in instructions; the 68020 model charged ≈ 1.1 cycles per code byte plus data accesses | price in executed bytes, data accesses and taken branches | SWOTL `speed-plan.md` §6 |
 
 ### Pricing rules
 

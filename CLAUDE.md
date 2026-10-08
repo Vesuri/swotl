@@ -37,8 +37,8 @@ audio the game has; RTSEGA, RTSTANDY and SFXA (PC speaker) are out.
 - Method: `docs/architecture.md`, `docs/phases.md`,
   `docs/plan-reference-map.md`, `docs/translator-design.md`,
   `docs/translation-lessons.md`, `docs/x86-notes.md`
-- Process: `docs/method-lessons.md`, `docs/perf-method.md`, `docs/speed-plan.md`,
-  `docs/translator-plan.md` (speed work: authority rules bind every agent)
+- Process: `docs/method-lessons.md`, `docs/perf-method.md`,
+  `docs/speed-plan.md` (speed work: its rules bind every agent)
 - Amiga: `docs/amiga-arch.md`, `docs/amiga-lessons.md`,
   `docs/m68k-optimisation.md`, `src/platform/amiga/framework/README.md`
 - Tools: `docs/toolchain.md`, `docs/headless-fsuae.md`,

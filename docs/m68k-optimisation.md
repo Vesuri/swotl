@@ -30,9 +30,9 @@ Revs `docs/m68k-optimisation.md`, `docs/perf-method.md`.
 | Reduce the number of memory accesses; never justify a buffer as "cheaper RAM" | [both] | RoF/Revs `CLAUDE.md`; on this target true by construction |
 | Blitter shares the bus; it pays only when it **replaces** CPU work (D-only clear), not beside it | [000] | Revs `m68k-optimisation.md` §MODE 7 |
 | A500 cycle→ms needs a ~1.6 contention factor; not measured on A1200 | [000] | Revs §EIGHT ADDRESS REGISTERS |
-| SWOTL measurement model (68020 + 8 MB Fast, FS-UAE): generated code costs ≈ 1.09 cycles per code byte + 2.27 per data read + 3.07 per data write (per-PC fit, R² 0.83); bytes inside cached loops are nearly free | [020] | SWOTL `translator-plan.md` §3 |
-| Probes on that model: indexed Fast word/long load 4.16/4.16 cycles, immediate word/long store 6.22/8.28; `and.l #$ffff,dN` 6.1 vs `tst.l` 2.1; high-byte write `ror`/`move.b`/`ror` 6.4 vs `BFINS` 4.1; untaken short branch 1.3–1.4; immediate word/long compare 4.0/6.4–6.6 | [020] | SWOTL round 1 (git `781975e`, translator-plan T2–T8) |
-| Moving code shifts the cost of untouched instructions by up to ±0.7% (branch-target alignment, i-cache placement) | [020] | SWOTL `translator-plan.md` §2 |
+| SWOTL measurement model (68020 + 8 MB Fast, FS-UAE): generated code costs ≈ 1.09 cycles per code byte + 2.27 per data read + 3.07 per data write (per-PC fit, R² 0.83); bytes inside cached loops are nearly free | [020] | SWOTL `speed-plan.md` §6 |
+| Probes on that model: indexed Fast word/long load 4.16/4.16 cycles, immediate word/long store 6.22/8.28; `and.l #$ffff,dN` 6.1 vs `tst.l` 2.1; high-byte write `ror`/`move.b`/`ror` 6.4 vs `BFINS` 4.1; untaken short branch 1.3–1.4; immediate word/long compare 4.0/6.4–6.6 | [020] | SWOTL round 1 (git `781975e`, speed plan T2–T8) |
+| Moving code shifts the cost of untouched instructions by up to ±0.7% (branch-target alignment, i-cache placement) | [020] | SWOTL `speed-plan.md` §5 |
 
 ## 2. 68000 vs 68020 — what changes
 
@@ -46,7 +46,7 @@ Revs `docs/m68k-optimisation.md`, `docs/perf-method.md`.
 | Word/long at odd address | address-error fault | permitted, extra bus cycles | Revs/RoF [000]; [arch] for 68020 |
 | Longword at addr ≡ 2 mod 4 | — | extra bus cycle; 101 hot globals misaligned → ~8% slower cold start, 0.65% gameplay; fix `alignas(4)` + build audit | Pokeri §Alignment [020] |
 | 32-bit `mul`/`div` | none: GCC emits `__mulsi3` etc. (~200–600 cycles); hard ban + objdump audit | `mulu.l`/`divu.l`/`divs.l` exist [arch]; Slicks uses direct 68020 constant division and found `DIVS` faster than a reciprocal table | RoF/Revs `CLAUDE.md` [000]; Slicks [020] |
-| Shifts | `lsl.l #8` 24, `ror.w #8` 22 cycles (2n+8): byte-swaps and pair builds are expensive | barrel shifter; `ror.w #8` ≈ 1.8 cycles on the SWOTL model, i.e. its 2 code bytes | RoF `m68k-optimisation.md` [000]; SWOTL `translator-plan.md` §3 [020] |
+| Shifts | `lsl.l #8` 24, `ror.w #8` 22 cycles (2n+8): byte-swaps and pair builds are expensive | barrel shifter; `ror.w #8` ≈ 1.8 cycles on the SWOTL model, i.e. its 2 code bytes | RoF `m68k-optimisation.md` [000]; SWOTL `speed-plan.md` §6 [020] |
 | `(d16,An,Xn)` / 32-bit displacements | only `(d8,An,Xn)`; far table needs its own An | full-format EA with 16/32-bit displacements [arch] | Revs §WRITING A HAND-ASM ROUTINE [000] |
 | Published cycle tables (abs.l 16, d16(An) 12, (An)+ 8, `bne.s` 8/10, `bne.w` 12) | valid | **do not use**; price by memory accesses + code bytes fetched outside the cache, then measure | RoF/Revs [000]; Slicks [020] |
 | `movem` prologue cost | 10 regs ≈180 vs 3 regs ≈68 cycles; can exceed a whole win | still scales with registers × Chip accesses (derived) | RoF §pointer-walk [000] |
@@ -99,7 +99,7 @@ Revs `docs/m68k-optimisation.md`, `docs/perf-method.md`.
 
 ### Endianness and byte swaps
 - **GEN Guest RAM stays byte-exact; every native word/long access states its endian
-  and alignment rule.** — Slicks `CLAUDE.md`. SWOTL translator-plan R1 (user,
+  and alignment rule.** — Slicks `CLAUDE.md`. SWOTL speed-plan R1 (user,
   2026-10-08) moves guest memory to a byte-reversed layout (guest byte at linear L
   at host TOP − L): a little-endian guest word is then a native big-endian word one
   byte below.
