@@ -448,6 +448,8 @@ def boundary(h: Harness) -> None:
     high_byte_write_cases(h)
     high_byte_write_cases(h, bytes.fromhex("83d500"))
     byte_copy_cases(h)
+    broad_byteorder_cases(h)
+    broad_byteorder_operand_edges(h)
 
 
 def address_guard_cases(h):
@@ -728,6 +730,76 @@ def byte_copy_cases(h):
                        "mem": [(segment * 16 + offset, b"\x80")]})
         h.case(bytes((0x89, 0xc0 | reg << 3 | reg, 0x9c)), "b:byte-copy-word-guard",
                n=2, block=True, overrides={"regs": dict(cs=0x2000, ss=0x7000, sp=0xfffe), "ip": 0x100})
+
+
+def broad_byteorder_cases(h):
+    """T11: independent/exposed arithmetic, partial writes, flags and barriers."""
+    middles = (("83c301", 1), ("83d100", 1), ("83eb01", 1), ("83d900", 1),
+               ("83e301", 1), ("83cb01", 1), ("31db", 1), ("83fb01", 1),
+               ("85db", 1), ("43", 1), ("4b", 1), ("f7db", 1), ("f7d3", 1),
+               ("d1c3", 1), ("d1cb", 1), ("d1d3", 1), ("d1db", 1),
+               ("d1e3", 1), ("d1eb", 1), ("d1fb", 1), ("90", 1),
+               ("f8", 1), ("f9", 1), ("f5", 1), ("fc", 1), ("fd", 1),
+               ("fec0", 1), ("fec4", 1), ("d1fa d1d9", 2),
+               ("99", 1), ("98", 1), ("9f", 1), ("9e", 1))
+    for reg in (0, 1, 2, 3, 5):
+        for value in (0, 1, 0xff, 0x100, 0x7fff, 0x8000, 0xffff):
+            for middle, count in middles:
+                load = bytes((0x8b, 0x06 | reg << 3, 0, 4))
+                store = bytes((0x89, 0x06 | reg << 3, 2, 4))
+                regs = dict(cs=0x2000, ds=0x5000, es=0x6000, ss=0x7000,
+                            sp=0xfffe, ax=0xa55a, cx=1, dx=0xff00,
+                            bx=0x100, bp=0x200, si=0xffff, di=0xffff)
+                # CF is defined for all tested middles; other undefined flags
+                # are not consumed. ADC after the final store tests restoration.
+                h.case(load + bytes.fromhex(middle) + store + bytes.fromhex("83d500"),
+                       "b:broad-byteorder", n=count+3, block=True, overrides={
+                       "regs": regs, "ip": 0x100,
+                       "mem": [(0x50400, value.to_bytes(2, "little"))]})
+    # Keep a second value raw while restoring the first before an actual use.
+    for first in (0, 1, 2, 3, 5):
+        for second in (0, 1, 2, 3, 5):
+            if first == second:
+                continue
+            for value in (1, 0xff, 0x100, 0x8000, 0xffff):
+                for offset in (0x400, 0xffff):
+                    load = bytes((0x8b, 0x06 | first << 3)) + offset.to_bytes(2, "little")
+                    load += bytes((0x8b, 0x06 | second << 3, 0x10, 4))
+                    use = bytes((0x83, 0xc0 | first, 1))
+                    stores = bytes((0x89, 0x06 | second << 3, 0x20, 4,
+                                    0x89, 0x06 | first << 3, 0x22, 4))
+                    h.case(load + use + stores + b"\x9c", "b:broad-byteorder-exposed",
+                           n=6, block=True, overrides={"regs": dict(cs=0x2000,
+                           ds=0x5000, ss=0x7000, sp=0xfffe), "ip": 0x100,
+                           "mem": [(0x50000 + offset, value.to_bytes(2, "little")),
+                                   (0x50410, (value ^ 0x55aa).to_bytes(2, "little"))]})
+    # A final arithmetic/branch flag pair must run after native restoration.
+    for cc in range(16):
+        for value in (0, 1, 0xffff):
+            h.case(bytes.fromhex("a10004 43 a30204 83fb01") + bytes((0x70 | cc, 2)),
+                   "b:broad-byteorder-ccr-exit", n=5, block=True, overrides={
+                   "regs": dict(cs=0x2000, ds=0x5000, bx=value), "ip": 0x100,
+                   "mem": [(0x50400, bytes.fromhex("0080"))]})
+
+
+def broad_byteorder_operand_edges(h):
+    """T11: multiple raw values force optimization around an exposed operand."""
+    middles = [bytes((0xfe, 0xc0 | reg)) for reg in range(8)]
+    middles += [bytes.fromhex("d3e3"), bytes.fromhex("d3ca")]
+    middles += [bytes((0x80, 0x80 | rm, 1, 0, 1)) for rm in range(8)]
+    regs = (0, 1, 2, 3, 5)
+    loads = b"".join(bytes((0x8b, 0x06 | reg << 3)) + (0x400 + 2*k).to_bytes(2, "little")
+                     for k, reg in enumerate(regs))
+    stores = b"".join(bytes((0x89, 0x06 | reg << 3)) + (0x420 + 2*k).to_bytes(2, "little")
+                      for k, reg in enumerate(regs))
+    for value in (0, 1, 8, 15, 0x120, 0x1ff, 0xffff):
+        for middle in middles:
+            values = [value ^ 0xa55a, value, value ^ 0x55aa, value ^ 0xff00, value ^ 0xff]
+            h.case(loads + middle + stores + bytes.fromhex("f8 83d500"),
+                   "b:broad-byteorder-operand-edge", n=13, block=True, overrides={
+                   "regs": dict(cs=0x2000, ds=0x5000, ss=0x7000,
+                                sp=0xfffe, si=1, di=0xffff), "ip": 0x100,
+                   "mem": [(0x50400, b"".join(v.to_bytes(2, "little") for v in values))]})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

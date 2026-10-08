@@ -17,11 +17,11 @@ this file adds to them and never relaxes them. Open-work item: 14b.
 - **Earlier baseline (commit 6646626):** median 26–27 fields (0.52 s). Guest code 88%:
   13.5 68020 cycles and 3.6 68k instructions per guest instruction (the
   80286: ≈ 5.4 clocks); cell walk 14%; runtime 8%.
-- **After T10:** run medians 24–24.5 fields (480–490 ms);
-  cycles/guest median 15.45 and 68k/guest 4.304991 (parent 14.97 / 4.159059).
-  Code payload 1,325,496 bytes; stripped executable 1,367,752 bytes.
-  Kept under the non-overlapping run-median frame-time criterion; individual
-  intervals overlap. No whole-profile cycles/instruction-ratio gain claimed.
+- **After T11:** median 24.5 fields (490 ms), run medians 24.5–25;
+  cycles/guest median 14.97 and 68k/guest 4.156193 (parent 15.45 / 4.304954).
+  Code payload 1,325,164 bytes; stripped executable 1,367,420 bytes.
+  Kept for lower measured cycles/instructions and smaller code; frame times
+  overlap, with the same 24.5-field arm median. No frame-rate gain claimed.
 - **Honest projection:** the steps below are priced at 18–25% of P in
   total, ≈ 0.38–0.42 s. The target needs ≈ 5.5 cycles per guest
   instruction. Translator work is to be completed first anyway (user
@@ -879,6 +879,65 @@ debug 3,774,984 → 3,774,868 bytes. The `mov r8,r8` form's cycles/exec
 6.8 → 6.2, weighted static instructions 3.2 → 3.0 and bytes 6.5 → 5.9.
 No poll, guard, guest-state contract, runtime, fixture or reference changes.
 Next: continue T9 with a fresh profile and broader byte-order screening.
+
+
+### T11. Byte order across unrelated arithmetic inside a block
+
+- Fresh post-T10 capture and m4 census, parent `f2bf24e`: **0.004728% of P**,
+  1,344 estimated cycles. 73 static groups, five active; pricing predicts
+  334 fewer code bytes and 761 fewer executed instructions. Fresh swap/copy
+  costs 1.747250 / 1.928342 cycles. Reports: `tmp/t9-after-t10/`.
+- Extend T3 only across a closed set of arithmetic/flag instructions whose
+  explicit operands describe all guest-register accesses. Restore any raw
+  register mentioned by an operand, including partial registers and memory
+  address components. Unknown/implicit-register instructions, runtime and
+  leader boundaries remain barriers. Keep every group entry/exit native.
+- Trim each group to end on an eligible move/push/pop, so restoration never
+  invalidates arithmetic CCR exported to a following reader. Accept a group
+  only when it removes at least one swap/copy relative to T3 and adds neither
+  kind. Keep the old in-place-store proof limited to consecutive word moves.
+  No control-flow, poll, wrap, annotation, runtime or entry-contract changes.
+- Fresh census: 49 frames, 19,290 `cmpsw` and 16,075 `stosw` elements/frame.
+  Coverage, planted fault, five gates and three-run measurements required.
+- Coverage: 1,529 new comparisons pass parent and candidate, plus 36 new
+  leader-entry cases (72 total). Deliberately omitted native restoration
+  gives 475 mismatches in the candidate's new cases and 571 in the full
+  corpus. Includes simultaneous raw values exposed by partial registers,
+  CL shift counts and each memory-address form. All five candidate gates pass.
+  Built code/release sizes 1,325,164 / 1,367,420 bytes (−332 each).
+
+
+#### T11 result (kept for efficiency/size)
+
+All five gates pass. Three runs per arm, unchanged model/fixture; captures
+reported and deleted. The new fault is caught in 571 full-corpus comparisons.
+
+| Arm/run | Frames 4–11 intervals | Median fields/ms | Span | Cycles/guest | 68k/guest |
+|---|---|---:|---|---:|---:|
+| parent-1 | 23, 29, 23, 31, 23, 28, 24, 25 | 24.5 / 490 | 23–31 | 15.45 | 4.305057 |
+| parent-2 | 23, 29, 23, 30, 24, 28, 24, 25 | 24.5 / 490 | 23–30 | 15.45 | 4.304764 |
+| parent-3 | 23, 29, 23, 30, 24, 28, 24, 25 | 24.5 / 490 | 23–30 | 15.44 | 4.304954 |
+| candidate-1 | 23, 29, 23, 30, 24, 28, 24, 25 | 24.5 / 490 | 23–30 | 14.97 | 4.156193 |
+| candidate-2 | 23, 29, 23, 30, 24, 28, 24, 25 | 24.5 / 490 | 23–30 | 14.98 | 4.158873 |
+| candidate-3 | 23, 29, 24, 30, 23, 29, 23, 26 | 25 / 500 | 23–30 | 14.96 | 4.153929 |
+
+Kept by the efficiency/size exception: median cycles/guest 15.45 → 14.97,
+68k/guest 4.304954 → 4.156193, code payload 1,325,496 → 1,325,164.
+Frame timings overlap; both arm medians are 24.5 fields. No frame-rate gain
+claimed. Release 1,367,752 → 1,367,420, debug 3,774,868 → 3,774,536 bytes.
+The whole-window instruction mix differs; these ratios are the specified
+capture measurements, not an attribution of every saved cycle to T11.
+
+Selected forms (execution-weighted static counts/bytes):
+
+| Form | Parent → candidate cycles/exec | Static 68k/exec | Static bytes/exec |
+|---|---|---|---|
+| `push r16` | 13.8 → 13.8 | 4.5 → 4.5 | 13.9–14.0 → 13.8–13.9 |
+| `pop r16` | 11.9–12.0 → 11.9 | 4.3–4.4 → 4.4 | 10.7 → 10.7–10.8 |
+| `mov r16,m16[disp]` | 10.7 → 10.7 | 2.3 → 2.3 | 8.2 → 8.1 |
+
+No block entry, runtime, poll, reference or guest-state contract changed.
+Next: T9 re-profile and screen remaining addressing/register forms.
 
 
 ## 5. Rejected and not built

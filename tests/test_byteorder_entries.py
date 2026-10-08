@@ -24,6 +24,25 @@ def main():
             bad += len(h.bad)
             for failure in h.bad[:3]:
                 print(failure)
+        # T11: append independent-arithmetic and exposed-register boundaries.
+        for leader in (1, 2, 3):
+            def entry_plan(insns, lives, leaders, ctx_for, program=False):
+                return real_plan(insns, lives, set(leaders) | {leader}, ctx_for, program)
+            D.F.plan = entry_plan
+            h = D.Harness(37)
+            for code, count in (("8b07 83c101 8905 b80000", 4),
+                                ("8b07 8b17 83c001 8915 8905", 5),
+                                ("8b07 43 8905 83fb01 7402", 5)):
+                for edge in (0, 1, 0xfffe, 0xffff):
+                    h.case(bytes.fromhex(code), "broad-byteorder-entry", n=count,
+                           block=True, overrides={"regs": dict(cs=0x2000,
+                           ds=0x5000, ss=0x7000, bx=edge, di=edge,
+                           sp=edge, cx=1), "ip": 0x100})
+            h.flush()
+            total += sum(h.count.values())
+            bad += len(h.bad)
+            for failure in h.bad[:3]:
+                print(failure)
         print(f"byteorder entries: {total} cases, {bad} mismatches")
         return bool(bad)
     finally:

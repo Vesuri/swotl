@@ -41,15 +41,14 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     CIA and JOY0DAT reads).
 14b. Speed: [translator-plan.md](translator-plan.md), T1–T9 under
     [speed-plan.md](speed-plan.md) §0–§1. Target ≤12 fields on 68020 + 8 MB Fast.
-    T10 kept by the frame-time criterion: parent run medians 25 fields,
-    candidate 24–24.5 (480–490 ms); individual interval spans overlap.
-    Whole-profile median cycles/guest rise 14.97 → 15.45 and 68k/guest
-    4.159059 → 4.304991; no efficiency-ratio gain claimed. Code payload
-    1,325,496 bytes; release 1,367,752 bytes (both −116). All five gates pass.
+    T11 kept for efficiency/size: median cycles/guest 15.45 → 14.97,
+    68k/guest 4.304954 → 4.156193; overlapping frame timings, both arm
+    medians 24.5 fields (490 ms). No frame-rate gain claimed. Code payload
+    1,325,164 bytes; release 1,367,420 bytes (both −332). All five gates pass.
     User removed the floor for smaller efficiency/size wins, retaining no
     slowdown/exactness, and authorized continuing after T7/T8 (2026-10-08).
     T4 cross-block, T7 and T8 rejected; T5 guarded packing remains unbuilt.
-    Next: continue T9 with fresh profile/census and broader T3 screening.
+    Next: T9 fresh profile/census and remaining addressing/register forms.
     Keep code size visible; T2 block duplication remains rejected for size.
     Native replacements only when the user authorizes each routine.
 15. Microbenchmark 68020 costs on the A1200 model (barrel shift, `mulu.l`/

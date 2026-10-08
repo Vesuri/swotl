@@ -158,6 +158,27 @@ def byte_copy_uses_destination(self, out):
                    lambda m: m[1] + ar + "," + m[2], line) for line in out]
 
 
+def drop_native_order_restore(self, out):
+    """T11: expose raw bytes to an instruction that needs native register order."""
+    from translator.decode import Reg, Mem
+    action = self.c.byteorder
+    if action and action.before:
+        result = list(out)
+        for reg in action.before:
+            result.remove(f"\tror.w #8,{L.GREG[reg]}")
+        return result
+    if self.i.op == "mov" and self.i.width == 16:
+        a, b = self.i.operands
+        if (isinstance(a, Reg) and a.name in L.GREG and L.GREG[a.name].startswith("d")
+                and isinstance(b, Mem) and not (action and action.raw_load)):
+            result = list(out)
+            restore = f"\tror.w #8,{L.GREG[a.name]}"
+            if restore in result:
+                result.remove(restore)
+            return result
+    return out
+
+
 SABOTAGE = [
     ("jb/jae swapped", sub(r"\bbcs\b", "bcc"), "forms,boundary"),
     ("word loads not byte-swapped", drop_after("move.w (a2,d4.l),d7", "ror.w #8,d7"), "boundary"),
@@ -179,6 +200,7 @@ SABOTAGE = [
     ("DX result dropped while live", drop_live_dx, "boundary"),
     ("high-byte write corrupts low byte", high_byte_written_low, "boundary"),
     ("byte copy uses destination", byte_copy_uses_destination, "boundary"),
+    ("native byte-order restoration omitted", drop_native_order_restore, "boundary"),
 ]
 
 
