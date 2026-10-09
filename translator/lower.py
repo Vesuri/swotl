@@ -74,6 +74,7 @@ class Ctx:
     live: set = field(default_factory=lambda: set(STATUS))  # status flags live after
     ccr_in: set = field(default_factory=set)  # flags valid in the CCR at entry
     x_in: bool = False                       # preceding instruction proved X = guest CF
+    dead_dx: bool = False                    # proved overwritten before read in this block
     byteorder: object = None                  # block-local word representation action
     fuse: bool = False                        # try to leave `need`-free flags in the CCR
     reloc: frozenset = frozenset()            # byte positions of relocated segment words
@@ -759,9 +760,12 @@ class Lowering:
                     self.mul_flags(["move.b d0,d7", "ext.w d7", "cmp.w d0,d7"])
             else:
                 self.e(f"{'muls' if signed else 'mulu'}.w d6,d0")
-                self.e("move.l d0,d2")
-                self.e("clr.w d2")
-                self.e("swap d2")
+                if not self.c.dead_dx or op == "mul" and self.c.need & {"CF", "OF"}:
+                    self.e("move.l d0,d2")
+                    self.e("clr.w d2")
+                    self.e("swap d2")
+                else:
+                    self.stats["dead DX result omitted"] += 1
                 if op == "mul":
                     self.mul_flags(["tst.w d2"])
                 else:
@@ -804,8 +808,11 @@ class Lowering:
             self.e(f"{div}.w d6,d7")
             self.e(f"bvs {fault}")
             self.e("move.w d7,d0")
-            self.e("swap d7")
-            self.e("move.w d7,d2")
+            if not self.c.dead_dx:
+                self.e("swap d7")
+                self.e("move.w d7,d2")
+            else:
+                self.stats["dead DX result omitted"] += 1
         self.e(f"bra {end}")
         self.at(fault)
         self.exit_fault(0)
