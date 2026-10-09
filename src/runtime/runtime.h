@@ -39,10 +39,25 @@ extern uint8_t *rt_guest;          /* a6: guest linear 0; state block below */
 #define CCR_Z 4
 
 static inline uint32_t lin(uint16_t seg, uint16_t off) { return ((uint32_t)seg << 4) + off; }
+
+/* Guest memory: the runtime reaches it only through these (docs/speed-plan.md
+ * R1). A span is the host bytes holding guest a..a+n-1, for platform I/O and
+ * opaque page copies; rt_span_order puts a span in guest order and back (the
+ * same call both ways; nothing to do while host order is guest order). */
 static inline uint8_t rd8(uint32_t a) { return rt_guest[a]; }
 static inline void wr8(uint32_t a, uint8_t v) { rt_guest[a] = v; }
 static inline uint16_t rd16(uint32_t a) { return rt_guest[a] | (uint16_t)rt_guest[a + 1] << 8; }
 static inline void wr16(uint32_t a, uint16_t v) { rt_guest[a] = (uint8_t)v; rt_guest[a + 1] = (uint8_t)(v >> 8); }
+static inline uint32_t rd32(uint32_t a) { return rd16(a) | (uint32_t)rd16(a + 2) << 16; }
+static inline void wr32(uint32_t a, uint32_t v) { wr16(a, (uint16_t)v); wr16(a + 2, (uint16_t)(v >> 16)); }
+static inline uint8_t *rt_span(uint32_t a, uint32_t n) { (void)n; return rt_guest + a; }
+static inline void rt_span_order(uint8_t *span, uint32_t n) { (void)span; (void)n; }
+static inline void rt_fill(uint32_t a, uint8_t v, uint32_t n)
+{
+    for (uint8_t *p = rt_span(a, n); n--; ) {
+        *p++ = v;
+    }
+}
 
 static inline void set_cf(int on) { G_CCR = on ? (G_CCR | CCR_C) : (G_CCR & ~CCR_C); }
 static inline void set_zf(int on) { G_CCR = on ? (G_CCR | CCR_Z) : (G_CCR & ~CCR_Z); }

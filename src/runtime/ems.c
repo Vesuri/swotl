@@ -8,7 +8,7 @@
 
 /* Logical pages live in the store after guest RAM (RT_EMS_BYTES); a mapped
  * page is copied into the frame and back out when its frame page is
- * remapped. A page mapped at two frame pages is two copies (writes through
+ * remapped, as host bytes of a frame page span (runtime.h). A page mapped at two frame pages is two copies (writes through
  * one are not seen through the other): the game's only map site (SWOTL+04918)
  * slides a 4-page window, which aliases one page only until the next call. */
 static uint16_t ems_free = RT_EMS_PAGES;
@@ -19,6 +19,11 @@ static struct { uint16_t handle, page; } mapped[EMS_PHYS];
 static uint8_t *store(uint16_t handle, uint16_t page)
 {
     return rt_guest + RT_GUEST_BYTES + (uint32_t)(first_page[handle] + page) * RT_EMS_PAGE;
+}
+
+static uint8_t *frame_page(uint8_t phys)
+{
+    return rt_span(lin(EMS_FRAME, 0) + phys * RT_EMS_PAGE, RT_EMS_PAGE);
 }
 
 static void copy(uint8_t *d, const uint8_t *s)
@@ -39,7 +44,7 @@ static uint8_t map(uint8_t phys, uint16_t page, uint16_t handle)
     if (page != 0xffff && page >= pages[handle]) {
         return 0x8a;
     }
-    uint8_t *frame = rt_guest + lin(EMS_FRAME, 0) + phys * RT_EMS_PAGE;
+    uint8_t *frame = frame_page(phys);
     if (mapped[phys].handle) {
         copy(store(mapped[phys].handle, mapped[phys].page), frame);
         mapped[phys].handle = 0;
@@ -49,7 +54,7 @@ static uint8_t map(uint8_t phys, uint16_t page, uint16_t handle)
     }
     for (int k = 0; k < EMS_PHYS; ++k) {
         if (mapped[k].handle == handle && mapped[k].page == page) {
-            copy(store(handle, page), rt_guest + lin(EMS_FRAME, 0) + k * RT_EMS_PAGE);
+            copy(store(handle, page), frame_page(k));
         }
     }
     copy(frame, store(handle, page));

@@ -128,7 +128,7 @@ static void present(void)
     published = 0;
     rt_present_due = 0;
     if (n && rd8(BDA_MODE) == 0x13) {
-        plat_present(rt_guest + 0xa0000, rects, n);
+        plat_present(rt_span(0xa0000, 64000), rects, n);   /* host order is guest order */
     }
 }
 

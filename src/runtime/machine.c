@@ -107,7 +107,9 @@ static void exec_root(uint16_t psp_seg)
     }
     uint32_t size = HW(4) * 512u - (HW(2) ? 512u - HW(2) : 0) - HW(8) * 16u;
     plat_seek(f, HW(8) * 16, 0);
-    fail_read(plat_read(f, rt_guest + lin(load, 0), size), (int32_t)size);
+    uint8_t *image = rt_span(lin(load, 0), size);
+    fail_read(plat_read(f, image, size), (int32_t)size);
+    rt_span_order(image, size);
     plat_seek(f, HW(0x18), 0);
     for (uint16_t k = 0; k < HW(6); ++k) {
         uint8_t r[4];
@@ -132,9 +134,7 @@ void rt_start(uint8_t *guest)
     for (uint32_t k = 0; k < RT_STATE_BYTES; ++k) {
         guest[(int32_t)k - (int32_t)RT_STATE_BYTES] = 0;
     }
-    for (uint32_t k = 0; k < RT_GUEST_BYTES; ++k) {
-        guest[k] = 0;
-    }
+    rt_fill(0, 0, RT_GUEST_BYTES);
     for (uint32_t k = 0; k < sizeof vectors / sizeof vectors[0]; ++k) {
         wr16(vectors[k].vector * 4, vectors[k].off);
         wr16(vectors[k].vector * 4 + 2, vectors[k].seg);
@@ -329,13 +329,12 @@ static void bench_poll(uint32_t at)
  * have no effect here: the vector is the BIOS IRET, the PIC is not modelled). */
 static void bios_tick(void)
 {
-    uint32_t t = rd16(BIOS_TICKS) | (uint32_t)rd16(BIOS_TICKS + 2) << 16;
+    uint32_t t = rd32(BIOS_TICKS);
     if (++t >= 0x1800b0) {
         wr8(BIOS_MIDNIGHT, rd8(BIOS_MIDNIGHT) + 1);
         t = 0;
     }
-    wr16(BIOS_TICKS, (uint16_t)t);
-    wr16(BIOS_TICKS + 2, (uint16_t)(t >> 16));
+    wr32(BIOS_TICKS, t);
 }
 
 /* Posted interrupts in order until one runs a guest handler (returned as

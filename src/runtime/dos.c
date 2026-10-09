@@ -140,7 +140,10 @@ static void write_file(uint16_t cs, uint16_t ip)
     if (a + rt_r.cx > RT_GUEST_BYTES) {
         rt_stop("write past guest memory", a, rt_r.cx);
     }
-    int32_t put = plat_write(f, rt_guest + a, rt_r.cx);
+    uint8_t *span = rt_span(a, rt_r.cx);
+    rt_span_order(span, rt_r.cx);
+    int32_t put = plat_write(f, span, rt_r.cx);
+    rt_span_order(span, rt_r.cx);
     if (put < 0) {
         fail(5);
         return;
@@ -174,7 +177,9 @@ static void read_file(void)
     if (a + rt_r.cx > RT_GUEST_BYTES) {
         rt_stop("read past guest memory", a, rt_r.cx);
     }
-    int32_t got = plat_read(f, rt_guest + a, rt_r.cx);
+    uint8_t *span = rt_span(a, rt_r.cx);
+    int32_t got = plat_read(f, span, rt_r.cx);
+    rt_span_order(span, rt_r.cx);
     if (got < 0) {
         fail(5);
         return;
@@ -325,7 +330,7 @@ static void resize(uint16_t cs, uint16_t ip)
  * start-up), hundredths = ticks * 100 * 65536 / 1193182, exact. */
 static void get_time(void)
 {
-    uint32_t ticks = rd16(0x46c) | (uint32_t)rd16(0x46e) << 16;
+    uint32_t ticks = rd32(0x46c);
     uint32_t a = ticks * 100, q = a / 1193182, r = a % 1193182;
     uint32_t t = q * 65536;
     r *= 256;
@@ -447,8 +452,7 @@ static int find_next_entry(void)
         wr8(dta + DTA_ATTR, 0x20);  /* archive, as AH=43h */
         wr16(dta + DTA_TIME, 0);    /* platform files carry no DOS time */
         wr16(dta + DTA_DATE, 0);
-        wr16(dta + DTA_SIZE, (uint16_t)size);
-        wr16(dta + DTA_SIZE + 2, (uint16_t)(size >> 16));
+        wr32(dta + DTA_SIZE, size);
         for (int k = 0; k <= n; ++k) {
             wr8(dta + DTA_NAME + k, (uint8_t)name[k]);
         }

@@ -16,10 +16,11 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   the spread is trajectory noise (§5.1).
 - **Bench** (§4, generated code of `b9b6374`): frames 4–11 mean 37.74
   fields (5.36M cycles), window 2.20M guest instructions, SPAZ 0.22%.
-- **Meter after Q** (m4, 49 frames): 283,989,778 model cycles
+- **Meter after R1a** (m4, 49 frames): 283,989,397 model cycles
   (generated 214.1M, cell walk 66.8M, runtime 3.1M); 17,976,252 guest
   instructions, 15.63 model cycles each. Round 2 kept: T8 −0.242%, T7
-  −0.005% (two kept steps: the FS-UAE check is due after the next).
+  −0.005%, R1a −0.0001% (runtime only, no generated label changed: the
+  FS-UAE check comes with R1b).
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -284,7 +285,9 @@ Exact by construction:
   - DOSBox reference comparisons read through the same conversion.
   - No comparison is weakened.
 - **Sub-steps, each kept on its own meter result:**
-  - R1a: runtime accessors only (generated code unchanged; gates).
+  - R1a: runtime accessors only (generated code unchanged; gates). Price:
+    meter Δ ≈ 0 (runtime code only), payload unchanged. Kept: −381 model
+    cycles (−0.0001%), runtime +16 bytes.
   - R1b: reversed memory with biased bases and mirrored SP/BP. This is
     the switch itself and cannot be split further.
   - R1c: SI/DI mirrored, if the census prices it positive.
