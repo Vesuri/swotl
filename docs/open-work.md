@@ -39,13 +39,13 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     check yet (L5, SL `restore_status`); keyboard and mouse input from the
     takeover are untested by any reference (scripted input enters past the
     CIA and JOY0DAT reads).
-14b. Speed: [speed-plan.md](speed-plan.md) round 2, R1b–R11 left (next: R1b,
-    reversed guest memory, biased bases, mirrored SP/BP). Target ≤12 fields on 68020 + 8 MB
+14b. Speed: [speed-plan.md](speed-plan.md) round 2, R1d–R11 left (next: R1d,
+    folded memory operands; R1c skipped by its census). Target ≤12 fields on 68020 + 8 MB
     Fast; run medians 24.5–28.5 fields at `781975e` (trajectory noise);
-    meter 283,989,397 model cycles, code payload 1,320,572 bytes. User
+    meter 278,547,911 model cycles, static generated code 1,127,352 bytes. User
     decisions D0–D4 approved (meter acceptance, memory model v2 with harness
     conversion, R6 growth, cell cache, frame bench). Meter and frame bench in
-    place (§4); kept: T8 −0.24%, T7 −0.005%, R1a −0.0001%. Projection ≈ 16–18 fields;
+    place (§4); kept: T8 −0.24%, T7 −0.005%, R1a −0.0001%, R1b −1.92%. Projection ≈ 16–18 fields;
     native work needs per-routine authorization.
 15. Microbenchmark the remaining [arch] 68020 costs on the A1200 model
     (`mulu.l`/`divu.l`, unaligned word/long); shifts, swaps, loads, stores and

@@ -6,7 +6,7 @@
 #define EMS_HANDLES 16
 #define EMS_PHYS 4
 
-/* Logical pages live in the store after guest RAM (RT_EMS_BYTES); a mapped
+/* Logical pages live in the store after the state block (RT_EMS_BYTES); a mapped
  * page is copied into the frame and back out when its frame page is
  * remapped, as host bytes of a frame page span (runtime.h). A page mapped at two frame pages is two copies (writes through
  * one are not seen through the other): the game's only map site (SWOTL+04918)
@@ -18,7 +18,7 @@ static struct { uint16_t handle, page; } mapped[EMS_PHYS];
 
 static uint8_t *store(uint16_t handle, uint16_t page)
 {
-    return rt_guest + RT_GUEST_BYTES + (uint32_t)(first_page[handle] + page) * RT_EMS_PAGE;
+    return rt_guest + 1 + RT_STATE_BYTES + (uint32_t)(first_page[handle] + page) * RT_EMS_PAGE;
 }
 
 static uint8_t *frame_page(uint8_t phys)

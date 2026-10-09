@@ -13,7 +13,7 @@ struct rt_regs {
 };
 
 extern struct rt_regs rt_r;
-extern uint8_t *rt_guest;          /* a6: guest linear 0; state block below */
+extern uint8_t *rt_guest;          /* a6: TOP, guest linear 0 (reversed); state block above */
 
 #define RT_GUEST_BYTES 0x110000u   /* 1 MiB + HMA (A20 on) */
 #define RT_STATE_BYTES 16u
@@ -23,17 +23,17 @@ extern uint8_t *rt_guest;          /* a6: guest linear 0; state block below */
 #define RT_EMS_BYTES (RT_EMS_PAGES * RT_EMS_PAGE)
 
 /* State block (translator/lower.py STATE_EQU), native big-endian. */
-#define G_CCR  (rt_guest[-1])      /* C=CF V=OF Z=ZF N=SF */
-#define G_PF   (rt_guest[-3])
-#define G_AF   (rt_guest[-4])
-#define G_DF   (rt_guest[-5])
-#define G_IF   (rt_guest[-6])
-#define G_TF   (rt_guest[-7])
-#define G_IRQ  (rt_guest[-8])      /* poll points call rt_irq (RT_RAISE_IRQ, machine.c) */
-#define G_FX   (*(uint16_t *)(rt_guest - 10))
-#define G_ES   (*(uint16_t *)(rt_guest - 12))
-#define G_SS   (*(uint16_t *)(rt_guest - 14))
-#define G_DS   (*(uint16_t *)(rt_guest - 16))
+#define G_CCR  (rt_guest[16])      /* C=CF V=OF Z=ZF N=SF */
+#define G_PF   (rt_guest[14])
+#define G_AF   (rt_guest[13])
+#define G_DF   (rt_guest[12])
+#define G_IF   (rt_guest[11])
+#define G_TF   (rt_guest[10])
+#define G_IRQ  (rt_guest[9])       /* poll points call rt_irq (RT_RAISE_IRQ, machine.c) */
+#define G_FX   (*(uint16_t *)(rt_guest + 7))
+#define G_ES   (*(uint16_t *)(rt_guest + 5))
+#define G_SS   (*(uint16_t *)(rt_guest + 3))
+#define G_DS   (*(uint16_t *)(rt_guest + 1))
 
 #define CCR_C 1
 #define CCR_Z 4
@@ -41,17 +41,25 @@ extern uint8_t *rt_guest;          /* a6: guest linear 0; state block below */
 static inline uint32_t lin(uint16_t seg, uint16_t off) { return ((uint32_t)seg << 4) + off; }
 
 /* Guest memory: the runtime reaches it only through these (docs/speed-plan.md
- * R1). A span is the host bytes holding guest a..a+n-1, for platform I/O and
- * opaque page copies; rt_span_order puts a span in guest order and back (the
- * same call both ways; nothing to do while host order is guest order). */
-static inline uint8_t rd8(uint32_t a) { return rt_guest[a]; }
-static inline void wr8(uint32_t a, uint8_t v) { rt_guest[a] = v; }
-static inline uint16_t rd16(uint32_t a) { return rt_guest[a] | (uint16_t)rt_guest[a + 1] << 8; }
-static inline void wr16(uint32_t a, uint16_t v) { rt_guest[a] = (uint8_t)v; rt_guest[a + 1] = (uint8_t)(v >> 8); }
+ * R1). It is reversed (translator/lower.py): the byte at linear a lives at
+ * rt_guest - a. A span is the host bytes holding guest a..a+n-1 (in reverse),
+ * for platform I/O and opaque page copies; rt_span_order puts a span in guest
+ * order and back (the same call both ways). */
+static inline uint8_t rd8(uint32_t a) { return *(rt_guest - a); }
+static inline void wr8(uint32_t a, uint8_t v) { *(rt_guest - a) = v; }
+static inline uint16_t rd16(uint32_t a) { return rd8(a) | (uint16_t)rd8(a + 1) << 8; }
+static inline void wr16(uint32_t a, uint16_t v) { wr8(a, (uint8_t)v); wr8(a + 1, (uint8_t)(v >> 8)); }
 static inline uint32_t rd32(uint32_t a) { return rd16(a) | (uint32_t)rd16(a + 2) << 16; }
 static inline void wr32(uint32_t a, uint32_t v) { wr16(a, (uint16_t)v); wr16(a + 2, (uint16_t)(v >> 16)); }
-static inline uint8_t *rt_span(uint32_t a, uint32_t n) { (void)n; return rt_guest + a; }
-static inline void rt_span_order(uint8_t *span, uint32_t n) { (void)span; (void)n; }
+static inline uint8_t *rt_span(uint32_t a, uint32_t n) { return rt_guest - a - n + 1; }
+static inline void rt_span_order(uint8_t *span, uint32_t n)
+{
+    for (uint8_t *lo = span, *hi = span + n; hi - lo > 1; ) {
+        uint8_t t = *lo;
+        *lo++ = *--hi;
+        *hi = t;
+    }
+}
 static inline void rt_fill(uint32_t a, uint8_t v, uint32_t n)
 {
     for (uint8_t *p = rt_span(a, n); n--; ) {
@@ -86,7 +94,9 @@ extern const uint32_t overlay_table;
 /* machine.c */
 uint16_t rt_flags_word(void);
 void rt_set_flags_word(uint16_t f);
-void rt_start(uint8_t *guest);     /* machine model, EXEC of SWOTL.EXE; returns the entry */
+/* Machine model, EXEC of SWOTL.EXE. `mem`: RT_GUEST_BYTES + RT_STATE_BYTES +
+ * RT_EMS_BYTES (guest RAM reversed, the state block, the EMS store). */
+void rt_start(uint8_t *mem);
 extern uint16_t rt_entry_cs, rt_entry_ip;
 
 /* services */

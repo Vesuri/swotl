@@ -16,8 +16,8 @@ while $k < 40
     finish
     set $bm = &amiga_bitmap
     set $q = $bm->BytesPerRow * 200
-    set $g = *(unsigned char **)&rt_guest + 0xa0000
-    eval "dump binary memory ../tmp/display-audit/%02d-chunky.bin %u %u", $k, $g, $g + 64000
+    set $g = *(unsigned char **)&rt_guest - 0xa0000
+    eval "dump binary memory ../tmp/display-audit/%02d-chunky.bin %u %u", $k, $g - 63999, $g + 1
     set $i = 0
     while $i < 8
       set $p = (unsigned char *)$bm->Planes[$i]

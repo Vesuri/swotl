@@ -1,8 +1,8 @@
 # Frame bench (docs/speed-plan.md §4): PIT ticks follow guest progress
 # (runtime.h rt_bench), so every build does the same guest work. Emulated
 # time (field and beam line) at frames 0-12 of the attract demo flight (one
-# stop per frame at the frame loop R_044E2), the guest RAM at frame 12 (its
-# hash proves equal work), then a 100-field profile into
+# stop per frame at the frame loop R_044E2), the guest RAM at frame 12
+# (reversed, as it lies below rt_guest; its hash proves equal work), then a 100-field profile into
 # ../tmp/bench/frames.bin.
 #   AMIGA_CPU unset (68020): SWOTL_ARGS=BENCH ./debug.sh "" bench_frames.gdb
 # A PAL line is 454 68020 cycles; VPOSR/VHPOSR at $dff004 give the line.
@@ -21,7 +21,7 @@ while $n < 13
 end
 delete breakpoints
 set $g = *(unsigned char **)&rt_guest
-dump binary memory ../tmp/bench/ram.bin $g $g+0x100000
+dump binary memory ../tmp/bench/ram.bin $g-0xfffff $g+1
 printf "WINDOW_START field %d\n", amiga_frames
 monitor profile 100 "" "../tmp/bench/frames.bin"
 printf "WINDOW_END field %d\n", amiga_frames

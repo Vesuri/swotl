@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Display audit (D9): each capture of amiga/display_audit.gdb, taken right
 after a present returned, must show exactly the guest's A0000h frame.
-Planes: bit k of a pixel in plane k, MSB first, BytesPerRow from the log.
+Planes: bit k of a pixel in plane k, MSB first, BytesPerRow from the log;
+the chunky dump is reversed (guest RAM lies reversed below rt_guest).
 
   display_audit.py tmp/display-audit GDB_LOG
 """
@@ -30,7 +31,7 @@ def main() -> int:
     for k, n, field, bpr in caps:
         k = int(k)
         planes = [(d / f"{k:02d}-plane{i}.bin").read_bytes() for i in range(8)]
-        want = (d / f"{k:02d}-chunky.bin").read_bytes()
+        want = (d / f"{k:02d}-chunky.bin").read_bytes()[::-1]
         got = shown(planes, int(bpr))
         diff = [o for o in range(64000) if got[o] != want[o]]
         state = "ok" if not diff else \

@@ -27,7 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import host_run  # noqa: E402
-from host_run import GUEST, REPO, Host, U, image, milestone_script, reference_inputs  # noqa: E402
+from host_run import REPO, TOP, Host, U, image, milestone_script, reference_inputs  # noqa: E402
 
 LABEL = re.compile(r"^[A-Z]+_[0-9A-F]{5}$")
 REP = re.compile(r"; [0-9A-F]{4}:[0-9A-F]{4} rep[a-z]* (movs|stos|cmps|scas|lods|ins|outs)[bwd]?$")
@@ -125,11 +125,11 @@ def main():
             if state["open"]:
                 i = bisect.bisect_right(addrs, h.r("pc")) - 1
                 writers[lab[i][1] if i >= 0 else "?"] += size
-                rows[-1].add((addr - GUEST - 0xA0000) // 320)
+                rows[-1].add(max(TOP - addr - size + 1 - 0xA0000, 0) // 320)
             return True
         cb = U.MEM_CB(wr)
         hooks.append(cb)
-        h.e.hook_range(U.HOOK_MEM_WRITE, cb, GUEST + 0xA0000, GUEST + 0xAFFFF)
+        h.e.hook_range(U.HOOK_MEM_WRITE, cb, TOP - 0xAFFFF, TOP - 0xA0000)
 
     h.run(script, args.timeout)
     f = max(state["frames"], 1)

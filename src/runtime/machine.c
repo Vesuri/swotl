@@ -128,11 +128,11 @@ static void exec_root(uint16_t psp_seg)
 #undef HW
 }
 
-void rt_start(uint8_t *guest)
+void rt_start(uint8_t *mem)
 {
-    rt_guest = guest;
-    for (uint32_t k = 0; k < RT_STATE_BYTES; ++k) {
-        guest[(int32_t)k - (int32_t)RT_STATE_BYTES] = 0;
+    rt_guest = mem + RT_GUEST_BYTES - 1;
+    for (uint32_t k = 1; k <= RT_STATE_BYTES; ++k) {
+        rt_guest[k] = 0;
     }
     rt_fill(0, 0, RT_GUEST_BYTES);
     for (uint32_t k = 0; k < sizeof vectors / sizeof vectors[0]; ++k) {

@@ -369,7 +369,7 @@ int amiga_guest_open(void)
         return 0;
     }
     plat_log("SWOTL guest start");
-    rt_start(guest_block + RT_STATE_BYTES);
+    rt_start(guest_block);
     if (rt_bench) {
         plat_log("SWOTL frame bench");
     } else if (!timer_open()) {

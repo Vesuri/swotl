@@ -172,7 +172,7 @@ def walks(p: emit.Program, h, m, addr, stop_names, cases: int) -> tuple[int, lis
                         diffs.append(f"{f} 68k={mf[f]} x86={fl >> FLAG_BIT[f] & 1}")
                 for a in sorted(set(umem) | mwrites):
                     want = umem.get(a, patched.get(a, h.bg[a]))
-                    got = mmem.get(a, m.e.read(D.GUEST + a, 1)[0])
+                    got = mmem.get(a, m.gread(a, 1)[0])
                     if got != want:
                         diffs.append(f"mem {a:05x} 68k={got:02x} x86={want:02x}")
                         break
@@ -354,7 +354,7 @@ def main(argv=None) -> int:
             patched = {a: d[a - a0] for a0, d in patches for a in range(a0, a0 + len(d))}
             for a in sorted(set(umem) | mwrites):
                 want = umem.get(a, patched.get(a, h.bg[a]))
-                got = mmem.get(a, m.e.read(D.GUEST + a, 1)[0])
+                got = mmem.get(a, m.gread(a, 1)[0])
                 if got != want:
                     diffs.append(f"mem {a:05x} 68k={got:02x} x86={want:02x}")
                     break

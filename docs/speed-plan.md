@@ -14,13 +14,13 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   24.5, 24.5, 24.5 (round-1 final audit) and 28.5 (replan capture
   2026-10-08: intervals 29, 26, 36, 26, 31, 26, 32, 28). One executable;
   the spread is trajectory noise (§5.1).
-- **Bench** (§4, generated code of `b9b6374`): frames 4–11 mean 37.74
-  fields (5.36M cycles), window 2.20M guest instructions, SPAZ 0.22%.
-- **Meter after R1a** (m4, 49 frames): 283,989,397 model cycles
-  (generated 214.1M, cell walk 66.8M, runtime 3.1M); 17,976,252 guest
-  instructions, 15.63 model cycles each. Round 2 kept: T8 −0.242%, T7
-  −0.005%, R1a −0.0001% (runtime only, no generated label changed: the
-  FS-UAE check comes with R1b).
+- **Bench** (§4): frames 4–11 mean 37.74 fields (5.36M cycles) at
+  `b9b6374`, 37.56 at `63a99fe` (R1a), 34.41 (4.89M cycles) at R1b;
+  window 2.20M guest instructions, SPAZ 0.22%.
+- **Meter after R1b** (m4, 49 frames): 278,547,911 model cycles
+  (generated 208.3M, cell walk 66.8M, runtime 3.4M); 17,976,252 guest
+  instructions, 15.30 model cycles each. Round 2 kept: T8 −0.242%, T7
+  −0.005%, R1a −0.0001%, R1b −1.916%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -289,8 +289,25 @@ Exact by construction:
     meter Δ ≈ 0 (runtime code only), payload unchanged. Kept: −381 model
     cycles (−0.0001%), runtime +16 bytes.
   - R1b: reversed memory with biased bases and mirrored SP/BP. This is
-    the switch itself and cannot be split further.
-  - R1c: SI/DI mirrored, if the census prices it positive.
+    the switch itself and cannot be split further. Price (census of
+    `63a99fe`): ≈ 4–5%: swaps 5.7 (`ror.w #8` 9.55M executions), `bd.l`
+    ≈ 0.7, walk ≈ 1–2, minus native indexes without displacement ([bx],
+    [si], [di]: 0.74M executions, +6 bytes) ≈ 1.4 and SP/BP as values
+    (≈ 1M executions) ≈ 1.3. Kept: −1.92% (generated −5.75M: swaps
+    −15.2M, native-index mirrors and SP/BP conversions back +; CMPS loop
+    +1.6M, BP as a data register (`or bp,cx` chains) +1.7M, walk ±0: the
+    model charges bytes, and its cells keep their size; runtime +0.34M,
+    the present's row copy), static code −156 KB (−12%). FS-UAE check:
+    bench frames 4–11 37.56 → 34.41 fields (−8.4%, equal RAM at frame
+    12), `ab_labels.py` −10.6% on the 8,009 changed labels: same sign,
+    but the meter underrates removed instructions (recalibrate after
+    R1, §4). Display audit 40/40. Candidate:
+    REPE CMPS comparing longs (half the reads), with exact first-mismatch
+    and guards.
+  - R1c: SI/DI mirrored, if the census prices it positive. Census of
+    R1b (meter labels × byte deltas): −1.0% (direct [si]/[di]
+    +2.3M, inc/dec and string updates +1.6M; SI/DI as data: mov, push/pop,
+    xor/or/cmp/shl … −5.9M, [bp+si/di] −0.6M): skipped.
   - R1d: folded memory operands.
 - **Coverage:**
   - Every addressing form at offsets 0, 1, 7FFEh, 7FFFh, 8000h, FFFEh and
@@ -467,3 +484,5 @@ history at `781975e` and §5.)
   of each still compared": walk 14.1% → 12.0% of CPU, rejected only
   because frame times (trajectory noise) did not separate. Revisited as
   R7 under the meter.
+- R1c "SI/DI mirrored like SP/BP": census −1.0% (SI/DI serve as data
+  registers far more than as lone indexes); not built.

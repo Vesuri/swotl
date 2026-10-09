@@ -39,8 +39,11 @@ REPO = image.REPO
 ELF = REPO / "build/host/swotl.elf"
 MEM = 0x01000000          # flat map: code, data, stack, guest RAM
 STACK_TOP = 0x00FF0000
-GUEST = 0x00400010        # src/platform/host/host.c HOST_GUEST
+BLOCK = 0x00400000        # src/platform/host/host.c HOST_BLOCK
 GUEST_BYTES = 0x110000
+TOP = BLOCK + GUEST_BYTES - 1   # rt_guest: guest linear L at TOP - L (reversed)
+STATE = TOP + 1           # state block (translator/lower.py STATE_EQU)
+G_IRQ = TOP + 9
 # Key names of the reference key script (tracer KeyByName): scan << 8 | ASCII
 # as the BIOS INT 09h handler stores them.
 KEYS = {"enter": 0x1C0D, "esc": 0x011B, "space": 0x3920, "tab": 0x0F09, "backspace": 0x0E08,
@@ -197,12 +200,12 @@ class Host:
 
         @U.MEM_CB
         def vram(h, kind, addr, size, value, user):  # the frame exists in mode 13h only
-            if self.e.read(GUEST + 0x449, 1)[0] == 0x13:
-                off = addr - GUEST - 0xA0000
-                self.vram_written.update(range(off, min(off + size, 64000)))
+            if self.gmem(0x449, 1)[0] == 0x13:
+                off = TOP - addr - size + 1 - 0xA0000
+                self.vram_written.update(range(max(off, 0), min(off + size, 64000)))
             return True
 
-        e.hook_range(U.HOOK_MEM_WRITE, vram, GUEST + 0xA0000, GUEST + 0xA0000 + 63999)
+        e.hook_range(U.HOOK_MEM_WRITE, vram, TOP - 0xA0000 - 63999, TOP - 0xA0000)
 
         @U.CODE_CB
         def stub(h, addr, size, user):
@@ -261,7 +264,7 @@ class Host:
 
         @U.MEM_CB
         def write(h, kind, addr, size, value, user):
-            span = range(addr - GUEST, addr - GUEST + size)
+            span = range(TOP - addr - size + 1, TOP - addr + 1)
             if self.dead_flags is not None and self.dead_flags in span:
                 self.masked.update(span)
                 self.dead_flags = None
@@ -284,7 +287,7 @@ class Host:
         @U.MEM_CB
         def read(h, kind, addr, size, value, user):
             if not self.in_service and self.code[0] <= self.r("pc") < self.code[1]:
-                self.machine_reads.update(range(addr - GUEST, addr - GUEST + size))
+                self.machine_reads.update(range(TOP - addr - size + 1, TOP - addr + 1))
             return True
 
         @U.CODE_CB
@@ -293,11 +296,11 @@ class Host:
                 return
             self.watching = True
             if self.sabotage == "psp":
-                a = GUEST + 0x8120 + 0x82
+                a = TOP - (0x8120 + 0x82)
                 self.e.write(a, bytes([self.mem(a, 1)[0] ^ 0x20]))
-            self.e.hook_range(U.HOOK_MEM_WRITE, write, GUEST, GUEST + GUEST_BYTES - 1)
+            self.e.hook_range(U.HOOK_MEM_WRITE, write, TOP - GUEST_BYTES + 1, TOP)
             for lo, hi in machine_ranges():
-                self.e.hook_range(U.HOOK_MEM_READ, read, GUEST + lo, GUEST + hi - 1)
+                self.e.hook_range(U.HOOK_MEM_READ, read, TOP - hi + 1, TOP - lo)
 
         # generated code: from the first guest label to program.s's data after
         # the modules (the runtime's own reads, e.g. the BIOS tick, are not the
@@ -315,6 +318,10 @@ class Host:
     def mem(self, a: int, n: int) -> bytes:
         return self.e.read(a, n)
 
+    def gmem(self, a: int, n: int) -> bytes:
+        """Guest bytes a..a+n-1 in guest order."""
+        return self.e.read(TOP - a - n + 1, n)[::-1]
+
     def u32(self, a: int) -> int:
         return struct.unpack(">I", self.mem(a, 4))[0]
 
@@ -323,15 +330,17 @@ class Host:
         return b[:b.index(b"\0")].decode("latin-1")
 
     def state(self, off: int, n: int) -> int:
-        return int.from_bytes(self.mem(GUEST + off, n), "big")
+        return int.from_bytes(self.mem(TOP + off, n), "big")
 
     def guest_regs(self, vector: int) -> dict:
         regs = {n: self.r(r) & 0xFFFF for n, r in zip(REGS, ("d0", "d1", "d2", "d3", "d4", "d5",
                                                              "a4", "a5"))}
-        regs.update(es=self.state(-12, 2), ss=self.state(-14, 2), ds=self.state(-16, 2))
-        ccr = self.state(-1, 1)
+        regs["sp"] ^= 0x7FFF    # mirrored (translator/lower.py MIRROR)
+        regs["bp"] ^= 0x7FFF
+        regs.update(es=self.state(5, 2), ss=self.state(3, 2), ds=self.state(1, 2))
+        ccr = self.state(16, 1)
         regs["cf"], regs["zf"] = ccr & 1, ccr >> 2 & 1
-        regs["df"], regs["if"] = int(self.state(-5, 1) != 0), int(self.state(-6, 1) != 0)
+        regs["df"], regs["if"] = int(self.state(12, 1) != 0), int(self.state(11, 1) != 0)
         regs["vector"] = vector
         return regs
 
@@ -429,13 +438,13 @@ class Host:
         self.e.write(self.syms["rt_irq_ring"] + tail % 32, bytes([vector]))
         self.e.write(self.syms["rt_irq_tail"], bytes([(tail + 1) & 0xFF]))
         self.e.write(self.syms["rt_irq_pending"], b"\1")  # RT_RAISE_IRQ
-        self.e.write(GUEST - 8, b"\1")
+        self.e.write(G_IRQ, b"\1")
 
     def guest_vector(self, vector: int) -> bool:
         """machine.c guest_vector: the IVT entry points into the program's memory."""
-        off, seg = struct.unpack("<HH", self.mem(GUEST + vector * 4, 4))
+        off, seg = struct.unpack("<HH", self.gmem(vector * 4, 4))
         psp = int.from_bytes(self.mem(self.syms["load_segment"], 4), "big") - 0x10
-        top = struct.unpack("<H", self.mem(GUEST + psp * 16 + 2, 2))[0]
+        top = struct.unpack("<H", self.gmem(psp * 16 + 2, 2))[0]
         return psp * 16 <= seg * 16 + off < top * 16
 
     def press(self, key: int) -> None:
@@ -687,7 +696,7 @@ def check_capture(tag, regs, state, ram, dac, ref_regs, ref, snap, h) -> list[st
     """Registers (state block: segments), RAM, framebuffer and DAC (dac None:
     not compared) of one capture vs the snapshot."""
     problems = []
-    seg = {"es": state[4:6], "ss": state[2:4], "ds": state[0:2]}  # G_ES -12, G_SS -14, G_DS -16
+    seg = {"es": state[4:6], "ss": state[2:4], "ds": state[0:2]}  # G_ES +5, G_SS +3, G_DS +1
     regs = dict(regs, **{n: int.from_bytes(v, "big") for n, v in seg.items()})
     for n in REGS + ("es", "ss", "ds"):
         if regs[n] != int(ref_regs[n], 16):
@@ -743,16 +752,16 @@ def rearm_problems() -> list[str]:
     rt_set_flags_word with IF set re-arms G_IRQ from rt_irq_pending."""
     h, problems = Host(image.M.REF), []
     ret = h.syms["plat_exit"]  # stop address, never executed
-    h.e.write(h.syms["rt_guest"], GUEST.to_bytes(4, "big"))
+    h.e.write(h.syms["rt_guest"], TOP.to_bytes(4, "big"))
     for flags in (0x0002, 0x0202):
         for pending in (0, 1):
-            h.e.write(GUEST - 8, b"\0")
+            h.e.write(G_IRQ, b"\0")
             h.e.write(h.syms["rt_irq_pending"], bytes([pending]))
             h.e.write(STACK_TOP - 8, ret.to_bytes(4, "big") + flags.to_bytes(4, "big"))
             h.e.reg_write(U.M68K["sr"], 0x2700)  # first: it selects which a7
             h.e.reg_write(U.M68K["a7"], STACK_TOP - 8)
             h.e.start(h.syms["rt_set_flags_word"], ret, timeout_us=1_000_000)
-            got, want = h.mem(GUEST - 8, 1)[0], int(bool(flags & 0x200) and pending)
+            got, want = h.mem(G_IRQ, 1)[0], int(bool(flags & 0x200) and pending)
             if h.r("pc") != ret or got != want:
                 problems.append(f"rt_set_flags_word({flags:04x}) with rt_irq_pending {pending}: "
                                 f"G_IRQ {got}, want {want} (pc={h.r('pc'):x})")
@@ -802,7 +811,7 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
         ref_regs = dict(kv.split("=") for kv in (snap / "regs.txt").read_text().split())
         ref = (snap / "ram.bin").read_bytes()
         g = h.guest_regs(0)
-        problems += check_capture("host", g, h.mem(GUEST - 16, 16), h.mem(GUEST, 0x100000),
+        problems += check_capture("host", g, h.mem(STATE, 16), h.gmem(0, 0x100000),
                                   h.mem(h.syms["rt_dac"], 768) if frame else None,
                                   ref_regs, ref, snap, h)
         if args.amiga:
@@ -811,7 +820,7 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
             if frame:
                 problems += compare_shown(args.amiga, int(regs["bpr"]), snap)
             problems += check_capture("amiga", ga, (args.amiga / "state.bin").read_bytes(),
-                                      (args.amiga / "ram.bin").read_bytes(),
+                                      (args.amiga / "ram.bin").read_bytes()[::-1],  # reversed
                                       (args.amiga / "dac.bin").read_bytes() if frame else None,
                                       ref_regs, ref,
                                       snap, h)

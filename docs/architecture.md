@@ -49,18 +49,19 @@ root EXE + .OVL images (proved against DOSBox captures)
 
 ## Target model (contract: translator-design.md; D8–D11 open)
 
-- Guest RAM: one contiguous block at a6, byte-exact little-endian, linear
-  address `seg*16+off` with the reference load segment, so RAM images diff
-  directly against captures.
+- Guest RAM: one contiguous block below a6, byte-exact and reversed (linear
+  `seg*16+off` at a6 − linear, so a little-endian word is a native word),
+  with the reference load segment, so RAM images diff (reversed) against
+  captures.
 - Segments: ES/SS/DS bases cached in a1–a3 and recomputed on every write;
   CS static per instruction. 64 KiB offset wrap honoured everywhere (phase 7
   may drop it where analysis rules it out).
-- Registers: AX–DX, SP, BP in d0–d5, SI/DI in a4/a5, zero-extended; d6/d7/a0
-  scratch. AH-class halves lowered explicitly.
+- Registers: AX–DX, SP, BP in d0–d5, SI/DI in a4/a5, zero-extended, SP/BP
+  mirrored (offset ^ 7FFFh); d6/d7/a0 scratch. AH-class halves lowered
+  explicitly.
 - Flags: virtual; stored only where live, read from the CCR by the next
   instruction where the 68k flags agree; PF/AF only when live.
-- Endianness: word access via `ror.w #8` on load/store. Alternatives (e.g.
-  byte-reversed memory) only after a measured A/B.
+- Endianness: none at run time (reversed memory, speed-plan R1).
 - Calls: guest stack byte-exact; native `jsr`/`rts` with a return-site check
   of the popped IP/CS.
 - Overlays: each `.OVL` is a separately translated module at its proved load

@@ -9,7 +9,7 @@ stores only what is live after the reader and the reader skips the load.
 
 from __future__ import annotations
 
-from . import byteorder, reglive
+from . import reglive
 from .ir import STATUS
 from .lower import CCR_OK, Ctx, Lowering, fuse_reader, lower, reads, writes
 
@@ -46,13 +46,11 @@ def plan(insns, lives, leaders, ctx_for, program: bool = False) -> list[Lowering
     insns[k]; `leaders`: indices that other control flow reaches; `ctx_for(k)`: a
     fresh Ctx for insns[k]."""
     contexts = [ctx_for(k) for k in range(len(insns))]
-    actions = byteorder.plan(insns, leaders, contexts)
     dead_dx = reglive.dead_dx(insns, leaders, contexts)
     original_ctx_for = ctx_for
 
     def ctx_for(k):
         c = original_ctx_for(k)
-        c.byteorder = actions[k]
         c.dead_dx = dead_dx[k]
         return c
 

@@ -470,6 +470,7 @@ def boundary(h: Harness) -> None:
     address_byteorder_cases(h)
     stack_byteorder_cases(h)
     restoration_tradeoff_cases(h)
+    mirror_cases(h)
 
 
 def address_guard_cases(h):
@@ -975,6 +976,44 @@ def restoration_tradeoff_cases(h):
                                    "flags": {"CF": cf}, "mem": [(0x50400,
                                    value.to_bytes(2, "little")
                                    + (value ^ 0xa55a).to_bytes(2, "little"))]})
+
+
+def mirror_cases(h):
+    """R1 (D1): reversed memory, biased segment bases, SP/BP held as offset ^
+    7FFFh. Stack at the mirror's wrap points, SP/BP as values with live and
+    dead flags, direct offsets at the bias edges, far pointers wrapping."""
+    stack = ("50", "58", "54", "5c", "55", "5d", "9c", "9d", "e81000", "c3", "c20400",
+             "c2fcff", "cb", "ca0200", "cf", "9a34127856", "ff1f", "0e", "1f", "ff7602",
+             "8f4602", "ff76fe")
+    for code in stack:
+        for sp in (0x7FFC, 0x7FFE, 0x7FFF, 0x8000, 0x8001, 0x8002):
+            for bp in (0x7FFF, 0x8001):
+                h.case(bytes.fromhex(code), f"b:mirror-stack{code}",
+                       overrides={"regs": {"sp": sp, "bp": bp}})
+    values = ("89e8", "89c5", "89e5", "89ec", "89ee", "89f5", "bd3412", "bcfeff", "8b2f",
+              "892f", "8edd", "8cdd", "01c5", "29c5", "83c404", "83ec04", "83c5ff", "0327",
+              "01e8", "39c5", "39e8", "09ed", "21ed", "85ed", "31ed", "09c5", "11c5", "19c5",
+              "45", "4d", "44", "4c", "f7dd", "f7d5", "d1e5", "d1dd", "d3e5", "f7e5", "95",
+              "87ee", "87ec", "94", "8d6a02", "8d43ff", "8d66fe", "c42f", "01ec", "29e5",
+              "3bec", "83fd00", "f7c5ff00", "0bec", "87e8", "01f5", "29fd", "31f5")
+    for code in values:
+        for v in (0, 1, 0x7FFF, 0x8000, 0xFFFF):
+            for tail in ("", "29c0"):    # flags live / all dead (SUB AX,AX defines them)
+                h.case(bytes.fromhex(code + tail), f"b:mirror-value{code}{tail and '-dead'}",
+                       n=1 + bool(tail), block=bool(tail),
+                       overrides={"regs": {"bp": v, "sp": v ^ 0x8001, "ax": 0x8001, "cx": 3,
+                                           "bx": 0x0400, "si": 0x7FFF, "ds": 0x5000,
+                                           "ss": 0x6000, "cs": 0x2000}, "ip": 0x100})
+    direct = ("a0", "a1", "a2", "a3", "8b1e", "0306", "8306 01", "fe06", "ff36", "c41e",
+              "2ea1", "268b1e", "36a3", "8f06", "f726", "d126", "c706 3412")
+    for form in direct:
+        code, _, imm = form.partition(" ")
+        for disp in (0, 1, 0x7FFE, 0x7FFF, 0x8000, 0x8001, 0xFFFE, 0xFFFF):
+            for ds in (0x5000, 0xFFFF):
+                h.case(bytes.fromhex(code) + disp.to_bytes(2, "little") + bytes.fromhex(imm),
+                       f"b:mirror-direct{code}",
+                       overrides={"regs": {"ds": ds, "es": ds ^ 0x1000, "ss": 0x6000,
+                                           "cs": 0x2000, "sp": 0x7FFE}, "ip": 0x100})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

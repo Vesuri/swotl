@@ -5,8 +5,8 @@ original bytes in Unicorn x86-16 vs the generated 68020 code in Unicorn 68020.
 Same corpora and states as tests/x86_diff.py (forms, space, boundary, blocks).
 Each case is lowered in test mode (every transfer leaves through a stub that
 reports CS:IP; flags live at the end of the case), assembled with vasm in
-batches and run on the 68020 core over the same guest RAM (byte-exact,
-little-endian, at a6). Compared: registers, segment registers, CS:IP, defined
+batches and run on the 68020 core over the same guest RAM (reversed below a6
+as the register contract maps it, SP/BP mirrored; translator/lower.py). Compared: registers, segment registers, CS:IP, defined
 flags (undefined ones masked by the IR), FLAGS bits 12-14, every written byte,
 the OUT sequence and the raised interrupt/fault. Checked on the 68k side alone:
 the poll-point contract of runtime.h (G_IRQ never set without rt_irq_pending;
@@ -37,8 +37,9 @@ from translator.lower import Ctx, LowerError, hx  # noqa: E402
 from translator.support import HELPERS, equates  # noqa: E402
 
 VASM = Path.home() / ".local/vasmm68k_mot"
-GUEST = 0x100000            # a6: guest linear 0
-STATE = GUEST - 0x1000      # state block page
+GUEST_LO = 0x100000         # lowest host byte of guest RAM
+TOP = GUEST_LO + X.RAM + 0x10000 - 1    # a6: guest linear L at TOP - L
+STATE = TOP + 1             # state block page
 CODE = 0x400000
 STUB = 0x300000
 STACK = 0x380000
@@ -47,6 +48,7 @@ STUBS = ("T_JUMP", "T_CALL", "T_JUMPF", "T_CALLF", "T_INT", "T_FAULT", "T_HALT",
          "rt_in8", "rt_in16", "rt_out8", "rt_out16", "T_RET")
 STUB_AT = {n: STUB + 4 * k for k, n in enumerate(STUBS)}
 REGS = ("ax", "bx", "cx", "dx", "sp", "bp", "si", "di")
+MIRROR = {"sp": 0x7FFF, "bp": 0x7FFF}   # held as offset ^ 7FFFh
 M68 = {"ax": "d0", "cx": "d1", "dx": "d2", "bx": "d3", "sp": "d4", "bp": "d5", "si": "a4",
        "di": "a5"}
 BATCH = 1500
@@ -96,12 +98,13 @@ class M68k:
     """Unicorn 68020 with guest RAM, state block, stubs and native stack."""
 
     def __init__(self, background: bytes, stubs: dict[str, int] | None = None):
+        assert len(background) == X.RAM
         self.bg = background
         self.stub_at = stubs or STUB_AT
         e = self.e = U.Engine(U.ARCH_M68K, U.MODE_BIG_ENDIAN, U.CPU_M68K_M68020)
         e.map(STATE, 0x1000)
-        e.map(GUEST, len(background) + 0x10000)
-        e.write(GUEST, background)
+        e.map(GUEST_LO, TOP + 1 - GUEST_LO)
+        self.gwrite(0, background)
         e.map(STUB, 0x1000)
         e.write(STUB, b"\x4a\xfc\x4e\x75" * len(self.stub_at))  # illegal; rts
         e.map(STACK - 0x10000, 0x20000)
@@ -113,8 +116,8 @@ class M68k:
 
         @U.MEM_CB
         def write(h, kind, addr, size, value, user):
-            if GUEST <= addr < GUEST + len(background) + 0x10000:
-                self.writes.update(range(addr - GUEST, addr - GUEST + size))
+            if GUEST_LO <= addr <= TOP:
+                self.writes.update(range(TOP - addr - size + 1, TOP - addr + 1))
             return True
 
         by_addr = {a: n for n, a in self.stub_at.items()}
@@ -153,6 +156,13 @@ class M68k:
     def r(self, name: str) -> int:
         return self.e.reg_read(U.M68K[name])
 
+    def gread(self, a: int, n: int) -> bytes:
+        """Guest bytes a..a+n-1 in guest order."""
+        return self.e.read(TOP - a - n + 1, n)[::-1]
+
+    def gwrite(self, a: int, data: bytes) -> None:
+        self.e.write(TOP - a - len(data) + 1, bytes(data)[::-1])
+
     def load(self, image: bytes) -> None:
         self.e.write(CODE, image)
         self.e.flush()
@@ -164,12 +174,12 @@ class M68k:
         regs, flags, flagsx, ip, patches = case
         e = self.e
         for a, data in patches:
-            e.write(GUEST + a, data)
+            self.gwrite(a, data)
         for r in REGS:
-            e.reg_write(U.M68K[M68[r]], regs[r])
+            e.reg_write(U.M68K[M68[r]], regs[r] ^ MIRROR.get(r, 0))
         for s, a in (("es", "a1"), ("ss", "a2"), ("ds", "a3")):
-            e.reg_write(U.M68K[a], GUEST + regs[s] * 16)
-        e.reg_write(U.M68K["a6"], GUEST)
+            e.reg_write(U.M68K[a], TOP - regs[s] * 16 - 0x7FFF)
+        e.reg_write(U.M68K["a6"], TOP)
         for j in ("d6", "d7", "a0"):
             e.reg_write(U.M68K[j], rng.randrange(1 << 32))
         for j, v in (init or {}).items():
@@ -185,7 +195,7 @@ class M68k:
         pending = int(irq and self.irq_rng.randrange(4) != 0)
         st[16 - 8] = pending & flags["IF"]
         e.write(PENDING, bytes([pending]))
-        e.write(GUEST - 16, bytes(st))
+        e.write(STATE, bytes(st))
         sp = STACK - 0x100
         e.write(sp, self.stub_at["T_RET"].to_bytes(4, "big"))
         e.reg_write(U.M68K["sr"], 0)  # user mode first: a7 is then the USP
@@ -193,8 +203,8 @@ class M68k:
         self.writes, self.outs, self.stop = set(), [], None
         self.entry = entry if skip_entry else None
         err = e.start(entry, 0xFFFFFFFF, 4_000_000)
-        out = {r: self.r(M68[r]) for r in REGS}
-        st = e.read(GUEST - 16, 16)
+        out = {r: self.r(M68[r]) ^ MIRROR.get(r, 0) for r in REGS}
+        st = e.read(STATE, 16)
         for s, at in (("es", 12), ("ss", 14), ("ds", 16)):
             out[s] = int.from_bytes(st[16 - at:16 - at + 2], "big")
         fl = st[16 - 1]
@@ -207,13 +217,12 @@ class M68k:
                 "irq": irq_diffs(f, st[16 - 8], e.read(PENDING, 1)[0]),
                 "upper": {r: out[r] >> 16 for r in REGS},
                 "a7": self.r("a7"), "segbase": {a: self.r(a) for a in ("a1", "a2", "a3")}}
-        mem = {a: b for a, b in zip(sorted(self.writes), (e.read(GUEST + a, 1)[0]
-                                                          for a in sorted(self.writes)))}
+        mem = {a: self.gread(a, 1)[0] for a in sorted(self.writes)}
         return out, f, fx, mem, list(self.outs), set(self.writes), info
 
     def restore(self, addrs) -> None:
         for a in addrs:
-            self.e.write(GUEST + a, self.bg[a:a + 1])
+            self.gwrite(a, self.bg[a:a + 1])
 
 
 class Harness(X.Harness):
@@ -345,7 +354,7 @@ class Harness(X.Harness):
         for sname, a in (("es", "a1"), ("ss", "a2"), ("ds", "a3")):
             if mo[sname] != out[sname]:
                 diffs.append(f"{sname} 68k={mo[sname]:04x} x86={out[sname]:04x}")
-            if info["segbase"][a] != GUEST + out[sname] * 16:
+            if info["segbase"][a] != TOP - out[sname] * 16 - 0x7FFF:
                 diffs.append(f"{sname} base {info['segbase'][a]:x}")
         # CS:IP
         far = stop in ("T_JUMPF", "T_CALLF") or stop == "T_RET" and last in ("retf", "iret")
@@ -365,7 +374,7 @@ class Harness(X.Harness):
                          else None)
             m = mmem.get(a)
             if m is None:
-                m = self.m.e.read(GUEST + a, 1)[0]
+                m = self.m.gread(a, 1)[0]
             if x is None:
                 x = next(d[a - p] for p, d in case[4] if p <= a < p + len(d))
             if m != x:

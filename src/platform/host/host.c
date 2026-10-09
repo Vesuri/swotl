@@ -6,13 +6,13 @@
 
 void rt_run_guest(void);
 
-/* Guest RAM (EMS store after it) of the harness memory map (tests/host_run.py
- * GUEST). */
-#define HOST_GUEST ((uint8_t *)0x00400010)
+/* Guest RAM, state block and EMS store of the harness memory map
+ * (tests/host_run.py BLOCK). */
+#define HOST_BLOCK ((uint8_t *)0x00400000)
 
 void host_main(void)
 {
-    rt_start(HOST_GUEST);
+    rt_start(HOST_BLOCK);
     rt_run_guest();
     rt_stop("guest returned from its entry", 0, 0);
 }

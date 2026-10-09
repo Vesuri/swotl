@@ -89,6 +89,7 @@ uint16_t rt_vdrv_depth;          /* calls into the graphics driver in progress *
 static uint8_t published;        /* a driver call that changed rows has returned */
 volatile uint8_t rt_present_due;
 static struct plat_rect rects[200];
+static uint32_t frame[16000];      /* the presented rectangles in guest order */
 
 void rt_vram_stray(void)
 {
@@ -128,7 +129,21 @@ static void present(void)
     published = 0;
     rt_present_due = 0;
     if (n && rd8(BDA_MODE) == 0x13) {
-        plat_present(rt_span(0xa0000, 64000), rects, n);   /* host order is guest order */
+        /* Rows are whole 32-pixel groups and guest memory is reversed at a
+         * long-aligned TOP + 1 (runtime.h): each long, byte-swapped, is four
+         * pixels in guest order. */
+        for (int32_t k = 0; k < n; ++k) {
+            uint32_t w = (uint32_t)(rects[k].x1 - rects[k].x0) / 4;
+            for (uint16_t y = rects[k].y0; y < rects[k].y1; ++y) {
+                uint32_t o = y * 320u + rects[k].x0;
+                const uint32_t *s = (const uint32_t *)rt_span(0xa0000 + o, w * 4);
+                uint32_t *d = frame + o / 4 + w;
+                for (uint32_t c = w; c; --c) {
+                    *--d = __builtin_bswap32(*s++);
+                }
+            }
+        }
+        plat_present((const uint8_t *)frame, rects, n);
     }
 }
 

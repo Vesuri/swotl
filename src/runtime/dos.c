@@ -177,13 +177,24 @@ static void read_file(void)
     if (a + rt_r.cx > RT_GUEST_BYTES) {
         rt_stop("read past guest memory", a, rt_r.cx);
     }
-    uint8_t *span = rt_span(a, rt_r.cx);
-    int32_t got = plat_read(f, span, rt_r.cx);
-    rt_span_order(span, rt_r.cx);
-    if (got < 0) {
-        fail(5);
-        return;
-    }
+    /* Through a buffer: a short read (end of file) must leave the rest of the
+     * reversed span untouched. */
+    static uint8_t buf[0x1000];
+    uint32_t got = 0, want;
+    int32_t n;
+    do {
+        want = rt_r.cx - got < sizeof buf ? rt_r.cx - got : sizeof buf;
+        n = plat_read(f, buf, want);
+        if (n < 0) {
+            fail(5);
+            return;
+        }
+        uint8_t *d = rt_span(a + got, 1);
+        for (int32_t k = 0; k < n; ++k) {
+            *d-- = buf[k];
+        }
+        got += (uint32_t)n;
+    } while ((uint32_t)n == want && got < rt_r.cx);
     rt_r.ax = (uint16_t)got;
     set_cf(0);
 }

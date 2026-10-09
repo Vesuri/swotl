@@ -1,12 +1,13 @@
 ; Runtime entries of the generated-code contract (docs/translator-design.md):
-; guest registers d0-d5/a4/a5, segment bases a1-a3 = a6 + seg*16, guest RAM a6,
+; guest registers d0-d5/a4/a5 (SP/BP mirrored: offset ^ 7FFFh), segment bases
+; a1-a3 = a6 - seg*16 - 7FFFh, guest RAM reversed below a6 (translator/lower.py),
 ; d6/d7/a0 scratch. C (gcc, 68020 ABI) clobbers d0/d1/a0/a1 only.
 
 ; State block offsets (translator/lower.py STATE_EQU)
-G_IRQ	equ	-8
-G_ES	equ	-12
-G_SS	equ	-14
-G_DS	equ	-16
+G_IRQ	equ	9
+G_ES	equ	5
+G_SS	equ	3
+G_DS	equ	1
 
 	xdef	rt_int
 	xdef	rt_irq
@@ -53,7 +54,7 @@ G_DS	equ	-16
 
 	section	.text,code
 
-; guest registers -> rt_r
+; guest registers -> rt_r (SP and BP as offsets)
 save_regs:
 	move.l	a0,-(a7)
 	lea	rt_r,a0
@@ -62,7 +63,9 @@ save_regs:
 	move.w	d2,4(a0)
 	move.w	d3,6(a0)
 	move.w	d4,8(a0)
+	eori.w	#$7fff,8(a0)
 	move.w	d5,10(a0)
+	eori.w	#$7fff,10(a0)
 	move.w	a4,12(a0)
 	move.w	a5,14(a0)
 	movea.l	(a7)+,a0
@@ -81,8 +84,10 @@ load_regs:
 	move.w	6(a0),d3
 	moveq	#0,d4
 	move.w	8(a0),d4
+	eori.w	#$7fff,d4
 	moveq	#0,d5
 	move.w	10(a0),d5
+	eori.w	#$7fff,d5
 	moveq	#0,d7
 	move.w	12(a0),d7
 	movea.l	d7,a4
@@ -92,15 +97,18 @@ load_regs:
 	moveq	#0,d7
 	move.w	G_ES(a6),d7
 	lsl.l	#4,d7
-	lea	(a6,d7.l),a1
+	lea	-$7fff(a6),a1
+	suba.l	d7,a1
 	moveq	#0,d7
 	move.w	G_SS(a6),d7
 	lsl.l	#4,d7
-	lea	(a6,d7.l),a2
+	lea	-$7fff(a6),a2
+	suba.l	d7,a2
 	moveq	#0,d7
 	move.w	G_DS(a6),d7
 	lsl.l	#4,d7
-	lea	(a6,d7.l),a3
+	lea	-$7fff(a6),a3
+	suba.l	d7,a3
 	rts
 
 ; Software interrupt: d6 = CS << 16 | vector, d7 = next IP. A machine service

@@ -48,14 +48,14 @@ Registers (D4, fixed program-wide; spill audit 0):
 
 | 68k | Guest | Rule |
 |---|---|---|
-| d0 d1 d2 d3 d4 d5 | AX CX DX BX SP BP | 16-bit, upper word always 0 (so `(base,Rn.l)` indexes) |
-| a4 a5 | SI DI | same; written via `movea.l` of a cleaned value |
-| a1 a2 a3 | ES SS DS base | a6 + seg*16, recomputed on every segment write |
-| a6 | guest RAM | linear 0, byte-exact little-endian; state block below |
-| d6 d7 a0 | scratch | a0 also CS base (`lea (cs*16,a6)`); CS is static per instruction |
+| d0 d1 d2 d3 d4 d5 | AX CX DX BX SP BP | 16-bit, upper word always 0; SP and BP mirrored: offset ^ 7FFFh |
+| a4 a5 | SI DI | same (not mirrored); written via `movea.l` of a cleaned value |
+| a1 a2 a3 | ES SS DS base | a6 − seg*16 − 7FFFh, recomputed on every segment write |
+| a6 | guest RAM | TOP = linear 0, byte-exact and reversed (linear L at TOP − L); state block above |
+| d6 d7 a0 | scratch | a0 also CS base (`lea (-cs*16-7FFFh,a6)`); CS is static per instruction |
 | a7 | native stack | `jsr`/`rts` only |
 
-State block (`G_*` equates at a6-16..a6-1): `G_FL` low byte = CCR image of
+State block (`G_*` equates at a6+1..a6+16): `G_FL` low byte = CCR image of
 CF (C), OF (V), ZF (Z), SF (N), X not guest state; PF = even parity of
 `G_PF`; AF = bit 4 of `G_AF`; `G_DF`/`G_IF`/`G_TF` bytes; `G_FX` = FLAGS
 bits 12–15; `G_ES`/`G_SS`/`G_DS` segment values. Run-time CS =
@@ -63,8 +63,15 @@ bits 12–15; `G_ES`/`G_SS`/`G_DS` segment values. Run-time CS =
 diffs directly); relocated words in instructions are emitted as
 `LOADSEG+value`.
 
-- Word access: `move.w` + `ror.w #8` (68020 allows odd addresses); a word
-  at offset FFFFh is two consecutive linear bytes, offsets wrap at 64 KiB.
+- Memory (D1, speed-plan R1): a little-endian word at linear L is the native
+  word at TOP − L − 1 (68020 allows odd addresses), no byte swaps. The byte
+  at offset o is `(7FFFh−o,aS)`, the word `(7FFEh−o,aS)`; a computed offset
+  is mirrored into d7 (`move.w #7FFFh−disp` / `sub.w Rn`, or from a mirrored
+  register `move.w Rn` / `sub.w #disp`) and indexes as `(0,aS,d7.w)` /
+  `(−1,aS,d7.w)`, keeping the 16-bit wrap; SP/BP alone index directly. A word
+  at offset FFFFh is two consecutive linear bytes. Push is `addq.w #2,d4` +
+  `move.w v,(−1,a2,d4.w)`. SP/BP as values convert with `eori.w #$7fff`
+  (dead-flag add/sub/inc/dec, NOT and `or/and/test r,r` stay in place).
 - Flags (D6): a setter stores the defined flags live after it (`flags.py`,
   global liveness in `emit.py`). The next instruction reads the CCR directly
   when it is not a leader, reads only flags the setter's 68k op holds with
@@ -207,5 +214,5 @@ check, read by the sweep), `data.csv` (ranges),
 | D8 | Interrupt delivery | (a) runtime runs translated guest ISRs at safe points (loop back-edges, calls); (b) HLE of the game's ISRs | [external-surface.md](external-surface.md): guest installs INT 00h/05h/08h (SPAZ tick)/23h/24h; INT 09h/1Ch stay BIOS | (a) |
 | D9 | Graphics drivers | (a) HLE at RTSVGA's call table on the dA JoRMaS layer; (b) translate driver + emulate VGA ports/memory | chained mode 13h via INT 10h, no VGA ports, no page flip; entries = PLINK thunks with id 3 | (a), with RTSVGA itself as oracle |
 | D10 | Sound | SPAZ HLE at its table; AdLib music method open (OPL -> Paula) | 2.5; open-work AdLib item | HLE |
-| D11 | String ops | per-element loops, one body per DF; REP with DF = 0, CX ≠ 0 and SI/DI + size × CX < 10000h: linear pointers, `move (a4)+,(a5)+` / `move d,(a5)+` / `cmpm` / `cmp (a5)+` with `db<cc>`, last pair's flags recomputed (done) | boundary corpus (guard and stop edges, overlap), sabotage | done |
+| D11 | String ops | per-element loops, one body per DF; REP with DF = 0, CX ≠ 0 and SI/DI + size × CX < 10000h: host pointers descending (base + 8000h − offset), `move -(a4),-(a5)` / `move d,-(a5)` / `move -(a4),d6` + `cmp -(a5),d6` / `cmp -(a5),d` with `db<cc>`, last pair's flags recomputed (done) | boundary corpus (guard and stop edges, overlap), sabotage | done |
 

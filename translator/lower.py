@@ -2,10 +2,13 @@
 register contract of docs/translator-design.md §Generated code contract.
 
 Registers: d0 AX, d1 CX, d2 DX, d3 BX, d4 SP, d5 BP, a4 SI, a5 DI hold 16-bit
-guest values zero-extended to 32 bits (every write keeps the upper word 0, so
-any of them indexes guest RAM as `(base,Rn.l)`); a1/a2/a3 = ES/SS/DS base
-(a6 + seg*16); a6 = guest RAM (linear 0, little-endian, byte-exact) with the
-state block at negative offsets; d6, d7, a0 scratch; a7 native stack.
+values zero-extended to 32 bits (every write keeps the upper word 0); SP and BP
+are mirrored (MIRROR: the register holds offset ^ 7FFFh). Guest RAM is reversed
+(D1): a6 = TOP, the guest byte at linear L lives at TOP - L, so a little-endian
+word is a native word at TOP - L - 1; the state block is above TOP. a1/a2/a3 =
+ES/SS/DS base a6 - seg*16 - 7FFFh: the byte at offset o is (7FFFh - o, base),
+or (0,base,Xn.w) with Xn = o ^ 7FFFh, the word one byte lower. d6, d7, a0
+scratch; a7 native stack.
 
 Guest flags (state block): G_FL low byte = 68k CCR image of CF (C), OF (V),
 ZF (Z), SF (N) (X is not guest state); PF = even parity of G_PF; AF = bit 4
@@ -31,6 +34,7 @@ GREG = {"ax": "d0", "cx": "d1", "dx": "d2", "bx": "d3", "sp": "d4", "bp": "d5", 
         "di": "a5"}
 HALF = {"al": ("ax", 0), "cl": ("cx", 0), "dl": ("dx", 0), "bl": ("bx", 0),
         "ah": ("ax", 8), "ch": ("cx", 8), "dh": ("dx", 8), "bh": ("bx", 8)}
+MIRROR = frozenset({"sp", "bp"})   # held as offset ^ 7FFFh (D1)
 SEGBASE = {"es": "a1", "ss": "a2", "ds": "a3"}
 SEGSLOT = {"es": "G_ES", "ss": "G_SS", "ds": "G_DS"}
 SZ = {8: "b", 16: "w"}
@@ -48,8 +52,9 @@ CCR_OK = {"add": ALLC | {"X"}, "adc": ALLC | {"X"}, "sub": ALLC | {"X"}, "sbb": 
           "cmp": ALLC, "logic": ALLC, "inc": {"OF", "ZF", "SF"}, "dec": {"OF", "ZF", "SF"},
           "neg": ALLC | {"X"}, "shl": ALLC | {"X"}, "sar": ALLC | {"X"},
           "shr": {"CF", "ZF", "SF", "X"}}
-STATE_EQU = (("G_FL", -2), ("G_PF", -3), ("G_AF", -4), ("G_DF", -5), ("G_IF", -6),
-             ("G_TF", -7), ("G_IRQ", -8), ("G_FX", -10), ("G_ES", -12), ("G_SS", -14), ("G_DS", -16))
+# State block above guest RAM (a6 = TOP, odd: words at a6+odd are aligned).
+STATE_EQU = (("G_FL", 15), ("G_PF", 14), ("G_AF", 13), ("G_DF", 12), ("G_IF", 11),
+             ("G_TF", 10), ("G_IRQ", 9), ("G_FX", 7), ("G_ES", 5), ("G_SS", 3), ("G_DS", 1))
 LOADSEG = 0x0822  # load segment of every reference run (docs/source-inventory.md)
 
 
@@ -61,8 +66,19 @@ def hx(v: int) -> str:
     return f"${v:x}" if v > 9 else str(v)
 
 
-def swap_expr(e: str) -> str:
-    return f"((({e})>>8)&$ff)|((({e})&$ff)<<8)"
+def sx(v: int) -> str:
+    """Signed displacement."""
+    return f"-{hx(-v)}" if v < 0 else hx(v)
+
+
+@dataclass
+class Opnd:
+    """A memory operand: the byte and the word at the same guest offset."""
+    b: str
+    w: str
+
+    def at(self, width: int) -> str:
+        return self.b if width == 8 else self.w
 
 
 @dataclass
@@ -75,7 +91,6 @@ class Ctx:
     ccr_in: set = field(default_factory=set)  # flags valid in the CCR at entry
     x_in: bool = False                       # preceding instruction proved X = guest CF
     dead_dx: bool = False                    # proved overwritten before read in this block
-    byteorder: object = None                  # block-local word representation action
     fuse: bool = False                        # try to leave `need`-free flags in the CCR
     reloc: frozenset = frozenset()            # byte positions of relocated segment words
     near: object = None                       # ip -> label | None (None: test exit)
@@ -106,7 +121,7 @@ class Lowering:
         # A closed whitelist proves X preservation; unknown instructions kill it.
         op = line.split()[0].split(".")[0]
         preserves = {"move", "movea", "moveq", "lea", "ror", "rol", "and", "or",
-                     "eor", "not", "cmp", "cmpa", "cmpi", "tst", "btst", "bset",
+                     "eor", "eori", "not", "cmp", "cmpa", "cmpi", "tst", "btst", "bset",
                      "bclr", "ext", "exg", "swap", "nop", "sne", "seq", "smi", "spl", "bfins"}
         if op not in preserves or "ccr" in line and not line.startswith("move.w ccr,"):
             self.x_cf = False
@@ -136,42 +151,53 @@ class Lowering:
 
     def seg_base(self, seg: str) -> str:
         if seg == "cs":
-            self.e(f"lea (({self.c.cs})*16,a6),a0")
+            self.e(f"lea (-({self.c.cs})*16-$7fff,a6),a0")
             return "a0"
         return SEGBASE[seg]
 
-    def ea(self, m: Mem, seg: str | None = None):
-        """Address of a memory operand: returns mem(k) for the byte at +k (no 64 KiB
-        wrap inside a word). Uses d7 for computed offsets and a0 for CS."""
-        base = self.seg_base(seg or m.seg)
-        regs = [GREG[r] for r in (m.base, m.index) if r]
-        if not regs:
+    def sub_const(self, d: int, r: str) -> None:
+        """r.w -= d (16-bit)."""
+        d &= 0xFFFF
+        if 1 <= d <= 8:
+            self.e(f"subq.w #{d},{r}")
+        elif d >= 0xFFF8:
+            self.e(f"addq.w #{0x10000 - d},{r}")
+        elif d:
+            self.e(f"sub.w #{hx(d)},{r}")
+
+    def mirror_d7(self, m: Mem) -> None:
+        """d7.w := the operand's offset ^ 7FFFh (16-bit wrap kept)."""
+        regs = [r for r in (m.base, m.index) if r]
+        mirrored = [r for r in regs if r in MIRROR]
+        if mirrored:
+            self.e(f"move.w {GREG[mirrored[0]]},d7")
             d = m.disp
-            return lambda k: f"({hx(d + k)},{base})"
-        if len(regs) == 1 and not m.disp:
-            r = regs[0]
-            return lambda k: f"{k}({base},{r}.l)"
-        self.e(f"move.l {regs[0]},d7")
-        if len(regs) == 2:
-            self.e(f"add.w {regs[1]},d7")
-        if m.disp:
-            self.e(f"add.w #{hx(m.disp)},d7")
-        return lambda k: f"{k}({base},d7.l)"
+        else:
+            self.e(f"move.w #{hx((0x7FFF - m.disp) & 0xFFFF)},d7")
+            d = 0
+        for r in regs:
+            if r not in MIRROR:
+                self.e(f"sub.w {GREG[r]},d7")
+        self.sub_const(d, "d7")
+
+    def ea(self, m: Mem, seg: str | None = None) -> Opnd:
+        """A memory operand (a word at offset FFFFh is two consecutive linear
+        bytes). Uses d7 for computed offsets and a0 for CS."""
+        base = self.seg_base(seg or m.seg)
+        regs = [r for r in (m.base, m.index) if r]
+        if not regs:
+            v = 0x7FFF - (m.disp & 0xFFFF)
+            return Opnd(f"({sx(v)},{base})", f"({sx(v - 1)},{base})")
+        if regs[0] in MIRROR and len(regs) == 1 and not m.disp & 0xFFFF:
+            r = GREG[regs[0]]
+            return Opnd(f"0({base},{r}.w)", f"-1({base},{r}.w)")
+        self.mirror_d7(m)
+        return Opnd(f"0({base},d7.w)", f"-1({base},d7.w)")
 
     def lea(self, m: Mem) -> str:
-        """Put the operand's address in a0; returns the base string."""
-        mem = self.ea(m)
-        self.e(f"lea {mem(0)},a0")
+        """Put the operand's address (a word's lower host byte) in a0."""
+        self.e(f"lea {self.ea(m).at(m.width)},a0")
         return "a0"
-
-    def load16(self, mem, dst: str) -> None:
-        self.e(f"move.w {mem(0)},{dst}")
-        self.e(f"ror.w #8,{dst}")
-
-    def store16(self, mem, src: str) -> None:
-        """Store a native word from a data register (rotated in place)."""
-        self.e(f"ror.w #8,{src}")
-        self.e(f"move.w {src},{mem(0)}")
 
     def getreg(self, r: str, dst: str) -> None:
         """Guest register into data register `dst`: 16-bit ones zero-extended, 8-bit
@@ -185,6 +211,8 @@ class Lowering:
                 self.e(f"move.l {GREG[full]},{dst}")
         else:
             self.e(f"move.l {GREG[r]},{dst}")
+            if r in MIRROR:
+                self.e(f"eori.w #$7fff,{dst}")
 
     def putreg(self, r: str, src: str) -> None:
         """Data register `src` (low byte/word) into a guest register."""
@@ -203,6 +231,8 @@ class Lowering:
             self.e(f"movea.l {src},{GREG[r]}")
         else:
             self.e(f"move.w {src},{GREG[r]}")
+            if r in MIRROR:
+                self.e(f"eori.w #$7fff,{GREG[r]}")
 
     def read(self, o, dst: str, pos: int | None = None) -> None:
         """Operand value into the low byte/word of data register `dst` (upper bits
@@ -216,11 +246,7 @@ class Lowering:
         elif isinstance(o, Imm):
             self.e(f"move.l #{self.imm(o, pos)},{dst}")
         elif isinstance(o, Mem):
-            mem = self.ea(o)
-            if w == 8:
-                self.e(f"move.b {mem(0)},{dst}")
-            else:
-                self.load16(mem, dst)
+            self.e(f"move.{SZ[w]} {self.ea(o).at(w)},{dst}")
         else:
             raise LowerError(f"read {o}")
 
@@ -235,11 +261,7 @@ class Lowering:
             if src == "d7" and (o.base or o.index or o.seg == "cs"):
                 self.e("move.l d7,d6")
                 src = "d6"
-            mem = self.ea(o)
-            if o.width == 8:
-                self.e(f"move.b {src},{mem(0)}")
-            else:
-                self.store16(mem, src)
+            self.e(f"move.{SZ[o.width]} {src},{self.ea(o).at(o.width)}")
         else:
             raise LowerError(f"write {o}")
 
@@ -254,20 +276,17 @@ class Lowering:
         self.e(f"and.l #$ffff,{src}")
         self.e(f"move.w {src},{SEGSLOT[s]}(a6)")
         self.e(f"lsl.l #4,{src}")
-        self.e(f"lea (a6,{src}.l),{SEGBASE[s]}")
+        self.e(f"lea -$7fff(a6),{SEGBASE[s]}")
+        self.e(f"suba.l {src},{SEGBASE[s]}")
 
     def push(self, src: str | None = None, const: str | None = None) -> None:
-        self.e("subq.w #2,d4")
-        if const is not None:
-            self.e(f"move.w #{swap_expr(const)},(a2,d4.l)")
-        else:
-            self.e(f"ror.w #8,{src}")
-            self.e(f"move.w {src},(a2,d4.l)")
+        """Push a word: a register, a memory operand or a constant."""
+        self.e("addq.w #2,d4")
+        self.e(f"move.w {'#' + const if const is not None else src},-1(a2,d4.w)")
 
     def pop(self, dst: str) -> None:
-        self.e(f"move.w (a2,d4.l),{dst}")
-        self.e(f"ror.w #8,{dst}")
-        self.e("addq.w #2,d4")
+        self.e(f"move.w -1(a2,d4.w),{dst}")
+        self.e("subq.w #2,d4")
 
     # -- flags --------------------------------------------------------------
     def kills(self, kind: str) -> set:
@@ -379,14 +398,7 @@ class Lowering:
         if self.c.vram and op not in STRING_OPS:
             for m in mem_dests(i):
                 self.vram_mark(m)
-        action = self.c.byteorder
-        if action:
-            for r in sorted(action.before):
-                self.e(f"ror.w #8,{GREG[r]}")
         fn()
-        if action:
-            for r in sorted(action.after):
-                self.e(f"ror.w #8,{GREG[r]}")
         if "CF" in writes(i)[1] and not self.cf_result:
             self.x_cf = False
         self.out, compact_stats = compact(self.out)
@@ -402,15 +414,7 @@ class Lowering:
         skip = self.local()
         self.e(f"cmp.w #$a000,{SEGSLOT[m.seg]}(a6)")
         self.e(f"bne.s {skip}")
-        regs = [GREG[r] for r in (m.base, m.index) if r]
-        if regs:
-            self.e(f"move.l {regs[0]},d7")
-            if len(regs) == 2:
-                self.e(f"add.w {regs[1]},d7")
-            if m.disp:
-                self.e(f"add.w #{hx(m.disp)},d7")
-        else:
-            self.e(f"move.l #{hx(m.disp)},d7")
+        self.offset_d7(m)
         self.e(f"moveq #{m.width // 8},d6")
         self.e("jsr rt_vram_mark")
         self.at(skip)
@@ -451,12 +455,12 @@ class Lowering:
                 full, sh = HALF[o.name]
                 if not sh:
                     return GREG[full]
-            elif GREG[o.name][0] == "d" or areg:
+            elif o.name not in MIRROR and (GREG[o.name][0] == "d" or areg):
                 return GREG[o.name]
             self.getreg(o.name, scratch)
             return scratch
         if o.width == 8 and mem:
-            return self.ea(o)(0)
+            return self.ea(o).b
         self.read(o, scratch)
         return scratch
 
@@ -466,29 +470,23 @@ class Lowering:
             if a.name in HALF:
                 full, sh = HALF[a.name]
                 return None if sh else GREG[full]
-            if GREG[a.name][0] == "d":
+            if GREG[a.name][0] == "d" and a.name not in MIRROR:
                 return GREG[a.name]
         return None
 
     def load_dest(self, a, dst: str) -> None:
         """Destination operand into `dst` (a0 holds a memory operand's address). Keeps X."""
         if isinstance(a, Mem):
-            if a.width == 8:
-                self.e(f"move.b (a0),{dst}")
-            else:
-                self.load16(lambda k: f"{k}(a0)", dst)
+            self.e(f"move.{SZ[a.width]} (a0),{dst}")
         else:
             self.getreg(a.name, dst)
 
     def store_dest(self, a, src: str) -> None:
         """Write `src` back to the destination; clears self.ccr if that clobbers it."""
         if isinstance(a, Mem):
-            if a.width == 8:
-                self.e(f"move.b {src},(a0)")
-            else:
-                self.store16(lambda k: f"{k}(a0)", src)
+            self.e(f"move.{SZ[a.width]} {src},(a0)")
             self.ccr = set()
-        elif a.name in HALF:
+        elif a.name in HALF or a.name in MIRROR:
             self.putreg(a.name, src)
             self.ccr = set()
         else:
@@ -514,6 +512,8 @@ class Lowering:
             return
         if op == "cmp" and {"PF", "AF"} & need:
             m68, ok = "sub", CCR_OK["sub"]  # the result is needed: subtract a copy
+        if isinstance(a, Reg) and a.name in MIRROR and self.mirrored_alu(op, a, b, need):
+            return
         r = self.dest_reg(a)
         if r and (writes or m68 == "cmp"):
             # in place on a data register
@@ -527,8 +527,7 @@ class Lowering:
                 and (writes or isinstance(b, Imm))):
             # in place on a memory byte
             s = self.src_operand(b, areg=False, mem=False, scratch="d6")
-            mem = self.ea(a)
-            self.e(f"{m68}.b {s},{mem(0)}")
+            self.e(f"{m68}.b {s},{self.ea(a).b}")
             self.finish_flags(flagkind, ok)
             return
         # on a copy in d6
@@ -542,6 +541,46 @@ class Lowering:
         self.af_post("d6")
         if writes:
             self.store_dest(a, "d6")
+
+    def mirrored_alu(self, op: str, a: Reg, b, need: set) -> bool:
+        """add sub xor or and on a mirrored register, and or/and/test of it
+        with itself, leaving exact flags in the CCR: add/sub/xor update the
+        mirror in place (inverse op; XOR commutes with it) and set the flags on
+        a native copy in d6; or/and write the copy back, then TST restores
+        their logic flags; or/and/test r,r leave the value unchanged."""
+        r = GREG[a.name]
+        kind = {"add": "add", "sub": "sub"}.get(op, "logic")
+        if op in ("or", "and", "test") and isinstance(b, Reg) and b.name == a.name:
+            self.e(f"move.w {r},d6")
+            self.e("eori.w #$7fff,d6")
+            self.finish_flags("logic", CCR_OK["logic"], "d6")
+            return True
+        if op not in ("add", "sub", "xor", "or", "and"):
+            return False
+        s = self.src_operand(b, areg=op in ("add", "sub") and "AF" not in need, mem=False)
+        inv = {"add": "sub", "sub": "add", "xor": "eor"}.get(op)
+        flags = bool(need) or self.c.fuse
+        if inv and not flags:
+            self.e(f"{inv}.w {s},{r}")
+            self.ccr = set()
+            return True
+        self.e(f"move.w {r},d6")
+        self.e("eori.w #$7fff,d6")
+        self.af_pre("d6", s)
+        if inv:
+            self.e(f"{inv}.w {s},{r}")
+            self.e(f"{ {'xor': 'eor'}.get(op, op)}.w {s},d6")
+        else:
+            self.e(f"{op}.w {s},d6")
+            self.e(f"move.w d6,{r}")
+            self.e(f"eori.w #$7fff,{r}")
+            if not flags:
+                self.ccr = set()
+                return True
+            self.e("tst.w d6")
+        self.finish_flags(kind, CCR_OK[kind], "d6")
+        self.af_post("d6")
+        return True
 
     def carry_op(self, m68, kind, a, b, w) -> None:
         """adc sbb: addx/subx need X = CF and Z preset to 1. Order: addresses and the
@@ -580,8 +619,27 @@ class Lowering:
         need = self.c.need
         ok = CCR_OK.get(kind, set())
         opnd = {"addq": "#1,", "subq": "#1,", "neg": "", "not": ""}[m68]
+        if isinstance(a, Reg) and a.name in MIRROR and m68 != "neg":
+            # NOT commutes with the mirror; inc/dec invert in place, their
+            # flags (if any) set on a native copy in d6
+            r = GREG[a.name]
+            inv = {"addq": "subq", "subq": "addq", "not": "not"}[m68]
+            flags = kind and (need & FLAG_KINDS[kind][0] or self.c.fuse)
+            if flags:
+                self.e(f"move.w {r},d6")
+                self.e("eori.w #$7fff,d6")
+                self.af_pre("d6", "#1")
+            self.e(f"{inv}.w {opnd}{r}")
+            if flags:
+                self.e(f"{m68}.w {opnd}d6")
+                self.finish_flags(kind, ok, "d6")
+                self.af_post("d6")
+            else:
+                self.ccr = set()
+            return
         if isinstance(a, Reg) and (a.name in HALF and not HALF[a.name][1]
-                                   or a.name in GREG and GREG[a.name][0] == "d"):
+                                   or a.name in GREG and GREG[a.name][0] == "d"
+                                   and a.name not in MIRROR):
             r = GREG[HALF[a.name][0]] if a.name in HALF else GREG[a.name]
             if kind:
                 if kind == "neg":
@@ -596,17 +654,13 @@ class Lowering:
                 self.af_post(r)
             return
         if isinstance(a, Mem) and i.width == 8 and not ({"AF", "PF"} & need):
-            mem = self.ea(a)
-            self.e(f"{m68}.b {opnd}{mem(0)}")
+            self.e(f"{m68}.b {opnd}{self.ea(a).b}")
             if kind:
                 self.finish_flags(kind, ok)
             return
         if isinstance(a, Mem):
             self.lea(a)
-            if i.width == 8:
-                self.e("move.b (a0),d6")
-            else:
-                self.load16(lambda k: f"{k}(a0)", "d6")
+            self.e(f"move.{sz} (a0),d6")
         else:
             self.getreg(a.name, "d6")
         if kind == "neg":
@@ -620,12 +674,9 @@ class Lowering:
             self.finish_flags(kind, ok, "d6")
             self.af_post("d6")
         if isinstance(a, Mem):
-            if i.width == 8:
-                self.e("move.b d6,(a0)")
-            else:
-                self.store16(lambda k: f"{k}(a0)", "d6")
+            self.e(f"move.{sz} d6,(a0)")
             self.ccr = set()
-        elif a.name in HALF:
+        elif a.name in HALF or a.name in MIRROR:
             self.putreg(a.name, "d6")
             self.ccr = set()
         else:
@@ -849,7 +900,9 @@ class Lowering:
                 return
             if isinstance(b, Imm):
                 v = self.imm(b, pos)
-                if a.name in HALF or GREG[a.name][0] == "d":
+                if a.name in MIRROR:
+                    self.e(f"move.w #({v})^$7fff,{GREG[a.name]}")
+                elif a.name in HALF or GREG[a.name][0] == "d":
                     if a.name in HALF and HALF[a.name][1]:
                         self.e(f"move.l #{v},d6")
                         self.putreg(a.name, "d6")
@@ -860,44 +913,34 @@ class Lowering:
                     self.e(f"move.l #{v},{GREG[a.name]}")
                 return
             if isinstance(b, Mem) and (a.name in GREG and GREG[a.name][0] == "d"):
-                mem = self.ea(b)
-                if self.c.byteorder and self.c.byteorder.raw_load:
-                    self.e(f"move.w {mem(0)},{GREG[a.name]}")
-                    self.stats["raw word load"] += 1
-                else:
-                    self.load16(mem, GREG[a.name])
+                self.e(f"move.w {self.ea(b).w},{GREG[a.name]}")
+                if a.name in MIRROR:
+                    self.e(f"eori.w #$7fff,{GREG[a.name]}")
                 return
             if isinstance(b, Mem) and a.name in HALF and not HALF[a.name][1]:
-                mem = self.ea(b)
-                self.e(f"move.b {mem(0)},{GREG[HALF[a.name][0]]}")
+                self.e(f"move.b {self.ea(b).b},{GREG[HALF[a.name][0]]}")
                 return
             if isinstance(b, Reg) and w == 16 and GREG[a.name][0] == "d":
                 self.e(f"move.w {GREG[b.name]},{GREG[a.name]}")
+                if (a.name in MIRROR) != (b.name in MIRROR):
+                    self.e(f"eori.w #$7fff,{GREG[a.name]}")
                 return
-            if isinstance(b, Reg) and w == 16:
+            if isinstance(b, Reg) and w == 16 and b.name not in MIRROR:
                 self.e(f"move.l {GREG[b.name]},{GREG[a.name]}")
                 return
             self.read(b, "d6")
             self.write(a, "d6")
             return
         # memory destination
-        action = self.c.byteorder
-        if action and action.raw_store:
-            r = GREG[b.name]
-            if action.swap_store:
-                self.e(f"ror.w #8,{r}")
-            mem = self.ea(a)
-            self.e(f"move.w {r},{mem(0)}")
-            self.stats["raw word store"] += 1
-            return
         if isinstance(b, Imm):
-            mem = self.ea(a)
             v = self.imm(b, pos)
-            self.e(f"move.{SZ[w]} #{swap_expr(v) if w == 16 else v},{mem(0)}")
+            self.e(f"move.{SZ[w]} #{v},{self.ea(a).at(w)}")
             return
         if w == 8 and b.name in HALF and not HALF[b.name][1]:
-            mem = self.ea(a)
-            self.e(f"move.b {GREG[HALF[b.name][0]]},{mem(0)}")
+            self.e(f"move.b {GREG[HALF[b.name][0]]},{self.ea(a).b}")
+            return
+        if w == 16 and b.name in GREG and b.name not in MIRROR:
+            self.e(f"move.w {GREG[b.name]},{self.ea(a).w}")
             return
         self.read(b, "d6")
         self.write(a, "d6")
@@ -905,19 +948,23 @@ class Lowering:
     def op_lea(self):
         i = self.i
         r, m = i.operands
-        regs = [GREG[x] for x in (m.base, m.index) if x]
-        if not regs:
-            self.e(f"move.l #{hx(m.disp)},d7")
-        else:
-            self.e(f"move.l {regs[0]},d7")
-            if len(regs) == 2:
-                self.e(f"add.w {regs[1]},d7")
-            if m.disp:
-                self.e(f"add.w #{hx(m.disp)},d7")
+        self.offset_d7(m)
         if GREG[r.name][0] == "d":
-            self.e(f"move.w d7,{GREG[r.name]}")
+            self.putreg(r.name, "d7")
         else:
             self.e(f"movea.l d7,{GREG[r.name]}")
+
+    def offset_d7(self, m: Mem) -> None:
+        """d7 := the operand's offset, zero-extended."""
+        regs = [x for x in (m.base, m.index) if x]
+        if not regs:
+            self.e(f"move.l #{hx(m.disp)},d7")
+            return
+        self.getreg(regs[0], "d7")
+        if len(regs) == 2:
+            self.e(f"add.w {GREG[regs[1]]},d7")
+        if m.disp:
+            self.e(f"add.w #{hx(m.disp)},d7")
 
     def op_les(self):
         self.lxs("es")
@@ -928,21 +975,15 @@ class Lowering:
     def far_pair(self, m: Mem) -> None:
         """Far pointer in memory: offset word -> d6, segment word (at offset+2, 64 KiB
         wrap) -> d7; low words valid."""
-        regs = [GREG[x] for x in (m.base, m.index) if x]
         base = self.seg_base(m.seg)
-        if not regs:
-            self.load16(lambda k: f"({hx(m.disp + k)},{base})", "d6")
-            seg = (m.disp + 2) & 0xFFFF
-            self.load16(lambda k: f"({hx(seg + k)},{base})", "d7")
+        if not (m.base or m.index):
+            for d, r in ((m.disp, "d6"), (m.disp + 2, "d7")):
+                self.e(f"move.w ({sx(0x7FFE - (d & 0xFFFF))},{base}),{r}")
             return
-        self.e(f"move.l {regs[0]},d7")
-        if len(regs) == 2:
-            self.e(f"add.w {regs[1]},d7")
-        if m.disp:
-            self.e(f"add.w #{hx(m.disp)},d7")
-        self.load16(lambda k: f"{k}({base},d7.l)", "d6")
-        self.e("addq.w #2,d7")
-        self.load16(lambda k: f"{k}({base},d7.l)", "d7")
+        self.mirror_d7(m)
+        self.e(f"move.w -1({base},d7.w),d6")
+        self.e("subq.w #2,d7")
+        self.e(f"move.w -1({base},d7.w),d7")
 
     def lxs(self, seg: str) -> None:
         r, m = self.i.operands
@@ -953,7 +994,8 @@ class Lowering:
     def op_xchg(self):
         a, b = self.i.operands
         w = self.i.width
-        if isinstance(a, Reg) and isinstance(b, Reg) and w == 16:
+        if isinstance(a, Reg) and isinstance(b, Reg) and w == 16 and \
+                (a.name in MIRROR) == (b.name in MIRROR):
             if a.name != b.name:
                 self.e(f"exg {GREG[a.name]},{GREG[b.name]}")
             return
@@ -972,42 +1014,26 @@ class Lowering:
 
     def op_push(self):
         o = self.i.operands[0]
-        action = self.c.byteorder
-        if action and action.raw_store:
-            r = GREG[o.name]
-            if action.swap_store:
-                self.e(f"ror.w #8,{r}")
-            self.e("subq.w #2,d4")
-            self.e(f"move.w {r},(a2,d4.l)")
-            self.stats["raw word push"] += 1
-            return
         if isinstance(o, Reg) and o.name == "cs":
             self.push(const=self.c.cs)
-        elif isinstance(o, Reg) and o.name == "sp":
-            self.e("move.l d4,d7")
-            self.push("d7")
-        elif isinstance(o, Reg) and o.name in GREG and GREG[o.name][0] == "d":
-            self.e(f"move.l {GREG[o.name]},d7")
-            self.push("d7")
-        else:
+        elif isinstance(o, Reg) and o.name in GREG and o.name not in MIRROR:
+            self.push(GREG[o.name])
+        elif isinstance(o, Mem) and o.width == 16:
+            mem = self.ea(o)    # 16-bit addressing never reads SP
+            self.push(mem.w)
+        else:   # SP: the value before the push (286 on)
             self.read(o, "d7")
             self.push("d7")
 
     def op_pop(self):
         o = self.i.operands[0]
-        if isinstance(o, Reg) and o.name in GREG and GREG[o.name][0] == "d":
-            self.e("move.w (a2,d4.l),d7")
-            self.e("addq.w #2,d4")
-            if not (self.c.byteorder and self.c.byteorder.raw_load):
-                self.e("ror.w #8,d7")
-            else:
-                self.stats["raw word pop"] += 1
-            self.e(f"move.w d7,{GREG[o.name]}")
+        if isinstance(o, Reg) and o.name in GREG and GREG[o.name][0] == "d" and o.name != "sp":
+            self.pop(GREG[o.name])
+            if o.name in MIRROR:
+                self.e(f"eori.w #$7fff,{GREG[o.name]}")
             return
         self.e("moveq #0,d6")
-        self.e("move.w (a2,d4.l),d6")
-        self.e("addq.w #2,d4")
-        self.e("ror.w #8,d6")
+        self.pop("d6")
         self.write(o, "d6")
 
     def op_cbw(self):
@@ -1025,7 +1051,8 @@ class Lowering:
         self.e("moveq #0,d7")
         self.e("move.b d0,d7")
         self.e("add.w d3,d7")
-        self.e(f"move.b ({base},d7.l),d0")
+        self.e("eori.w #$7fff,d7")
+        self.e(f"move.b 0({base},d7.w),d0")
 
     def op_nop(self):
         pass
@@ -1128,6 +1155,7 @@ class Lowering:
         i = self.i
         op, w = i.op, i.width
         src = self.seg_base(i.seg or "ds") if op in ("movs", "cmps", "lods") else None
+        sz = SZ[w]
         add = f"{'addq' if step > 0 else 'subq'}.w #{abs(step)}"
         top = self.local()
         if self.c.vram and op in ("movs", "stos"):
@@ -1140,26 +1168,21 @@ class Lowering:
             self.at(top)
             self.e("tst.w d1")
             self.e(f"beq {end}")
+        k = 0 if w == 8 else -1     # [SI] at (k,src,d7.w), [ES:DI] at (k,a1,d6.w)
+        if op in ("movs", "cmps", "lods"):
+            self.e("move.w #$7fff,d7")
+            self.e("sub.w a4,d7")
+        if op in ("movs", "cmps", "stos", "scas"):
+            self.e("move.w #$7fff,d6")
+            self.e("sub.w a5,d6")
         if op == "movs":
-            if w == 8:
-                self.e(f"move.b ({src},a4.l),(a1,a5.l)")
-            else:
-                self.e(f"move.w ({src},a4.l),d7")
-                self.e("move.w d7,(a1,a5.l)")
+            self.e(f"move.{sz} {k}({src},d7.w),{k}(a1,d6.w)")
         elif op == "stos":
-            if w == 8:
-                self.e("move.b d0,(a1,a5.l)")
-            else:
-                self.e("move.w d0,d7")
-                self.store16(lambda k: f"{k}(a1,a5.l)", "d7")
+            self.e(f"move.{sz} d0,{k}(a1,d6.w)")
         elif op == "lods":
-            if w == 8:
-                self.e(f"move.b ({src},a4.l),d0")
-            else:
-                self.load16(lambda k: f"{k}({src},a4.l)", "d7")
-                self.e("move.w d7,d0")
+            self.e(f"move.{sz} {k}({src},d7.w),d0")
         else:  # cmps scas: d7 - d6
-            self.compare_pair(lambda k: f"{k}({src},a4.l)", lambda k: f"{k}(a1,a5.l)")
+            self.compare_pair(f"{k}({src},d7.w)", f"{k}(a1,d6.w)")
         if op in ("movs", "cmps", "lods"):
             self.e("move.l a4,d7")
             self.e(f"{add},d7")
@@ -1179,11 +1202,12 @@ class Lowering:
         """REP with DF = 0 and CX != 0 (D11): taken when no SI/DI range reaches
         10000h (offset + size * CX < 10000h: no access wraps and SI/DI end
         without wrapping), else `slow` (the element body).
-        SI/DI are linear pointers in the loop and offsets again after it; the
-        loop goes element by element in the x86 order (overlapping MOVS
-        included), `db<cc>` on CX - 1. CMPS/SCAS: words compared big-endian
-        (equality is byte-order independent), then the flags of the last pair
-        computed as the element body does."""
+        SI/DI are host pointers in the loop (base + 8000h - offset: just above
+        the element, which forward order meets descending) and offsets again
+        after it; the loop goes element by element in the x86 order
+        (overlapping MOVS included), `db<cc>` on CX - 1. CMPS/SCAS compare for
+        equality, then the flags of the last pair computed as the element
+        body does."""
         i = self.i
         op, w = i.op, i.width
         sz, n = SZ[w], w // 8
@@ -1200,24 +1224,26 @@ class Lowering:
         self.e("add.l a5,d7")
         self.e("cmp.l #$10000,d7")
         self.e(f"bcc {slow}")
-        if uses_si:
-            self.e(f"adda.l {src},a4")
-        self.e("adda.l a1,a5")
-        if op == "stos" and n == 2 or op == "scas" and n == 2:
-            self.e("move.w d0,d7")
-            self.e("ror.w #8,d7")
+        ptrs = [("a4", src)] if uses_si else []
+        ptrs.append(("a5", "a1"))
+        for p, base in ptrs:        # offset <-> base + 8000h - offset
+            self.e("move.l #$8000,d6")
+            self.e(f"add.l {base},d6")
+            self.e(f"sub.l {p},d6")
+            self.e(f"movea.l d6,{p}")
         loop = self.local()
         self.e("subq.w #1,d1")
         self.at(loop)
         cc = {"repe": "ne", "repne": "eq"}.get(i.rep, "f") if op in ("cmps", "scas") else "f"
         if op == "movs":
-            self.e(f"move.{sz} (a4)+,(a5)+")
+            self.e(f"move.{sz} -(a4),-(a5)")
         elif op == "stos":
-            self.e(f"move.{sz} {'d7' if n == 2 else 'd0'},(a5)+")
+            self.e(f"move.{sz} d0,-(a5)")
         elif op == "cmps":
-            self.e(f"cmpm.{sz} (a4)+,(a5)+")
+            self.e(f"move.{sz} -(a4),d6")
+            self.e(f"cmp.{sz} -(a5),d6")
         else:
-            self.e(f"cmp.{sz} (a5)+,{'d7' if n == 2 else 'd0'}")
+            self.e(f"cmp.{sz} -(a5),d0")
         self.e(f"db{cc} d1,{loop}")
         if cc == "f":
             self.e("clr.w d1")
@@ -1226,10 +1252,12 @@ class Lowering:
             self.e(f"b{cc}.s {done}")
             self.e("addq.w #1,d1")
             self.at(done)
-            self.compare_pair(lambda k: f"{k - n}(a4)", lambda k: f"{k - n}(a5)")
-        if uses_si:
-            self.e(f"suba.l {src},a4")
-        self.e("suba.l a1,a5")
+            self.compare_pair("(a4)", "(a5)")
+        for p, base in ptrs:
+            self.e("move.l #$8000,d6")
+            self.e(f"add.l {base},d6")
+            self.e(f"sub.l {p},d6")
+            self.e(f"movea.l d6,{p}")
         self.e(f"bra {end}")
         self.stats["string fast path"] += 1
 
@@ -1260,11 +1288,8 @@ class Lowering:
             if "AF" in need:
                 self.e("eor.b d7,G_AF(a6)")
 
-    def load_mem(self, mem, w: int, dst: str) -> None:
-        if w == 8:
-            self.e(f"move.b {mem(0)},{dst}")
-        else:
-            self.load16(mem, dst)
+    def load_mem(self, mem: str, w: int, dst: str) -> None:
+        self.e(f"move.{SZ[w]} {mem},{dst}")
 
     # -- control flow ---------------------------------------------------------------
     def goto_near(self, ip: int, how: str = "bra") -> None:
@@ -1493,21 +1518,20 @@ class Lowering:
             self.e("moveq #0,d6")
             self.pop("d6")
         if i.operands:
-            self.e(f"add.w #{hx(i.operands[0].value)},d4")
+            self.sub_const(i.operands[0].value, "d4")
         self.e("rts")
 
     def op_iret(self):
         # flags word at SS:SP+4 first (d6/d7 then carry IP and CS)
         self.e("move.l d4,d7")
-        self.e("addq.w #4,d7")
-        self.e("move.w (a2,d7.l),d7")
-        self.e("ror.w #8,d7")
+        self.e("subq.w #4,d7")
+        self.e("move.w -1(a2,d7.w),d7")
         self.e("jsr __set_flags")
         self.e("moveq #0,d7")
         self.pop("d7")
         self.e("moveq #0,d6")
         self.pop("d6")
-        self.e("addq.w #2,d4")
+        self.e("subq.w #2,d4")
         self.e("rts")
 
     def op_int(self):
