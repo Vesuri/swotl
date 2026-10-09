@@ -212,6 +212,21 @@ def word_store_swapped(self, out):
     return result
 
 
+def folded_word_as_byte(self, out):
+    """R1d: a folded word read-modify-write applied to one byte (an immediate
+    cut to its low byte, so the line still assembles)."""
+    if self.i.width != 16 or not self.i.operands or not hasattr(self.i.operands[0], "disp"):
+        return out
+
+    def one(m):
+        src = re.sub(r"^#(\$[0-9a-f]+|\d+)(?=,)",
+                     lambda k: f"#${int(k.group(1).lstrip('$'), 16 if k.group(1)[0] == '$' else 10) & 0xFF:x}",
+                     m.group(2))
+        return f"\t{m.group(1)}.b {src}"
+    return [re.sub(r"^\t(add|sub|and|or|eor|addq|subq|neg|not|addi|subi|andi|ori|eori)\.w (.*\()",
+                   one, line) for line in out]
+
+
 def wrong_mirror(self, out):
     """D1: SP/BP converted with a wrong mirror constant."""
     return [line.replace("eori.w #$7fff,", "eori.w #$7ffe,") for line in out]
@@ -271,6 +286,7 @@ SABOTAGE = [
     ("DX result dropped while live", drop_live_dx, "boundary"),
     ("high-byte write corrupts low byte", high_byte_written_low, "boundary"),
     ("byte copy uses destination", byte_copy_uses_destination, "boundary"),
+    ("folded word op on one byte", folded_word_as_byte, "boundary"),
     ("wrong mirror constant", wrong_mirror, "boundary"),
     ("SP/BP value without native conversion", no_native_conversion, "boundary"),
     ("wrapped offset trusted without proof", stale_address_offset, "boundary"),

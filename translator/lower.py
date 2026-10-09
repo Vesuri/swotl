@@ -447,7 +447,8 @@ class Lowering:
     def src_operand(self, o, *, areg: bool, mem: bool, scratch: str = "d7",
                     pos: int | None = None) -> str:
         """Second operand as a 68k source: data register, #imm, an address register
-        (`areg`), direct byte memory (`mem`) or `scratch` it was loaded into."""
+        (`areg`), the memory operand itself (`mem`; words are native, D1) or
+        `scratch` it was loaded into."""
         if isinstance(o, Imm):
             return f"#{self.imm(o, pos)}"
         if isinstance(o, Reg):
@@ -459,8 +460,8 @@ class Lowering:
                 return GREG[o.name]
             self.getreg(o.name, scratch)
             return scratch
-        if o.width == 8 and mem:
-            return self.ea(o).b
+        if mem:
+            return self.ea(o).at(o.width)
         self.read(o, scratch)
         return scratch
 
@@ -523,11 +524,11 @@ class Lowering:
             self.finish_flags(flagkind, ok, r)
             self.af_post(r)
             return
-        if (isinstance(a, Mem) and w == 8 and not ({"AF", "PF"} & need) and op != "test"
+        if (isinstance(a, Mem) and not ({"AF", "PF"} & need) and op != "test"
                 and (writes or isinstance(b, Imm))):
-            # in place on a memory byte
+            # in place on memory (words are native, D1)
             s = self.src_operand(b, areg=False, mem=False, scratch="d6")
-            self.e(f"{m68}.b {s},{self.ea(a).b}")
+            self.e(f"{m68}.{sz} {s},{self.ea(a).at(w)}")
             self.finish_flags(flagkind, ok)
             return
         # on a copy in d6
@@ -653,8 +654,8 @@ class Lowering:
                 self.finish_flags(kind, ok, r)
                 self.af_post(r)
             return
-        if isinstance(a, Mem) and i.width == 8 and not ({"AF", "PF"} & need):
-            self.e(f"{m68}.b {opnd}{self.ea(a).b}")
+        if isinstance(a, Mem) and not ({"AF", "PF"} & need):
+            self.e(f"{m68}.{sz} {opnd}{self.ea(a).at(i.width)}")
             if kind:
                 self.finish_flags(kind, ok)
             return

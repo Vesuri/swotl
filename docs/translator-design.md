@@ -72,6 +72,9 @@ diffs directly); relocated words in instructions are emitted as
   at offset FFFFh is two consecutive linear bytes. Push is `addq.w #2,d4` +
   `move.w v,(−1,a2,d4.w)`. SP/BP as values convert with `eori.w #$7fff`
   (dead-flag add/sub/inc/dec, NOT and `or/and/test r,r` stay in place).
+  Byte and word memory operands fold into the 68k op (source, read-modify-
+  write destination, INC/DEC/NEG/NOT, CMP with an immediate) where AF and
+  PF are dead.
 - Flags (D6): a setter stores the defined flags live after it (`flags.py`,
   global liveness in `emit.py`). The next instruction reads the CCR directly
   when it is not a leader, reads only flags the setter's 68k op holds with

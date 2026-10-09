@@ -471,6 +471,7 @@ def boundary(h: Harness) -> None:
     stack_byteorder_cases(h)
     restoration_tradeoff_cases(h)
     mirror_cases(h)
+    fold_cases(h)
 
 
 def address_guard_cases(h):
@@ -1014,6 +1015,31 @@ def mirror_cases(h):
                        f"b:mirror-direct{code}",
                        overrides={"regs": {"ds": ds, "es": ds ^ 0x1000, "ss": 0x6000,
                                            "cs": 0x2000, "sp": 0x7FFE}, "ip": 0x100})
+
+
+def fold_cases(h):
+    """R1d: word memory operands folded into the 68k op (source of a register
+    op, read-modify-write destination, INC/DEC/NEG/NOT, CMP with an
+    immediate) at sign/carry edges, flags live and dead, direct and indexed,
+    at offset FFFFh (a word across the segment end)."""
+    forms = ("0307", "2b07", "2307", "0b07", "3b07", "0107", "2907", "2107", "0907", "3107",
+             "830701", "832fff", "812734 12", "810f00 80", "813701 00", "817f02 ff 7f",
+             "ff07", "ff0f", "f71f", "f717", "3907", "0346fe", "2946fe", "ff46fe", "817efe 00 80",
+             "0306 fe ff", "ff06 fe ff", "813e fe ff 00 80")
+    for form in forms:
+        code = bytes.fromhex(form.replace(" ", ""))
+        for m in (0, 1, 0x7FFF, 0x8000, 0xFFFF):
+            for ax in (0, 1, 0x7FFF, 0x8000, 0xFFFF):
+                for bx in (0x0400, 0xFFFF):
+                    for tail in ("", "29c0"):
+                        h.case(code + bytes.fromhex(tail), f"b:fold{form.replace(' ', '')}{tail and '-dead'}",
+                               n=1 + bool(tail), block=bool(tail),
+                               overrides={"regs": {"ax": ax, "bx": bx, "bp": 0x0102, "ds": 0x5000,
+                                                   "ss": 0x5000, "cs": 0x2000},
+                                          "ip": 0x100,
+                                          "mem": [(0x50000 + bx, m.to_bytes(2, "little")),
+                                                  (0x50000 + 0x0100, m.to_bytes(2, "little")),
+                                                  (0x50000 + 0xFFFE, m.to_bytes(2, "little"))]})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

@@ -17,10 +17,10 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
 - **Bench** (§4): frames 4–11 mean 37.74 fields (5.36M cycles) at
   `b9b6374`, 37.56 at `63a99fe` (R1a), 34.41 (4.89M cycles) at R1b;
   window 2.20M guest instructions, SPAZ 0.22%.
-- **Meter after R1b** (m4, 49 frames): 278,547,911 model cycles
-  (generated 208.3M, cell walk 66.8M, runtime 3.4M); 17,976,252 guest
-  instructions, 15.30 model cycles each. Round 2 kept: T8 −0.242%, T7
-  −0.005%, R1a −0.0001%, R1b −1.916%.
+- **Meter after R1d** (m4, 49 frames): 275,119,407 model cycles
+  (generated 204.9M, cell walk 66.8M, runtime 3.4M); 17,976,252 guest
+  instructions, 15.11 model cycles each (generated + walk). Round 2 kept:
+  T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b −1.916%, R1d −1.231%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -308,7 +308,12 @@ Exact by construction:
     R1b (meter labels × byte deltas): −1.0% (direct [si]/[di]
     +2.3M, inc/dec and string updates +1.6M; SI/DI as data: mov, push/pop,
     xor/or/cmp/shl … −5.9M, [bp+si/di] −0.6M): skipped.
-  - R1d: folded memory operands.
+  - R1d: folded memory operands. Price (census of R1b): ≈ 1.2%: word
+    sources of register ops (0.72M executions, −2 bytes), word
+    read-modify-writes, INC/DEC/NEG/NOT and CMP with an immediate in place
+    on memory (0.37M, −4–6 bytes); where AF and PF are dead, as for bytes.
+    Kept: −1.231% (−3,428,504 model cycles, all generated code), static
+    code −28,466 bytes (−2.5%).
 - **Coverage:**
   - Every addressing form at offsets 0, 1, 7FFEh, 7FFFh, 8000h, FFFEh and
     FFFFh, with disp ±1, ±7Fh and ±8000h.
