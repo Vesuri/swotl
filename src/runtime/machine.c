@@ -218,6 +218,8 @@ static uint32_t deliver(uint8_t vector, uint16_t cs, uint16_t ip)
     return (uint32_t)cs << 16 | ip;
 }
 
+static void bench_service(void);
+
 uint32_t rt_int_c(uint32_t d6, uint32_t ip)
 {
     uint8_t vector = (uint8_t)d6;
@@ -226,6 +228,9 @@ uint32_t rt_int_c(uint32_t d6, uint32_t ip)
         return deliver(vector, cs, (uint16_t)ip);
     }
     push_frame(cs, (uint16_t)ip);
+    if (rt_bench) {
+        bench_service();
+    }
     switch (vector) {
     case 0x10: rt_int10(); break;
     case 0x21: rt_int21(cs, (uint16_t)ip); break;
@@ -245,6 +250,75 @@ volatile uint8_t rt_irq_ring[RT_IRQ_RING];
 volatile uint8_t rt_irq_tail;
 volatile uint8_t rt_irq_pending;
 static uint8_t irq_head;
+
+/* -- frame bench (runtime.h) ------------------------------------------------ */
+
+uint8_t rt_bench;
+static uint16_t bench_share, bench_polls, bench_budget;
+static uint32_t bench_point;        /* CS << 16 | IP of the watched poll point */
+static uint32_t bench_due;          /* ticks not yet in the ring */
+static uint8_t bench_watching;
+
+/* Due ticks into the ring as far as it has room (rt_irq_c tops it up). */
+static void bench_post(void)
+{
+    if (!bench_due) {
+        return;
+    }
+    while (bench_due && (uint8_t)(rt_irq_tail - irq_head) < RT_IRQ_RING) {
+        rt_irq_ring[rt_irq_tail % RT_IRQ_RING] = 8;
+        ++rt_irq_tail;
+        --bench_due;
+    }
+    RT_RAISE_IRQ();
+}
+
+static void bench_ticks(uint32_t n)
+{
+    bench_due += n;
+    bench_post();
+}
+
+/* Every poll point calls rt_irq_c while the spin watch runs (rt_irq_pending
+ * stays set). */
+void rt_bench_watch(void)
+{
+    bench_watching = 1;
+    bench_budget = RT_BENCH_WATCH;
+    bench_point = 0;
+    bench_polls = 0;
+    RT_RAISE_IRQ();
+}
+
+/* rt_int_c: a runtime service ran. */
+static void bench_service(void)
+{
+    bench_share += RT_BENCH_FRAME_TICKS;
+    bench_ticks(bench_share / RT_BENCH_FRAME_SERVICES);
+    bench_share %= RT_BENCH_FRAME_SERVICES;
+    rt_bench_watch();
+}
+
+/* A poll visit with IF set: consecutive visits to one poll point are
+ * counted; a spin ticks every RT_BENCH_POLLS of them, leaving it ends the
+ * watch, other visits use up its budget. */
+static void bench_poll(uint32_t at)
+{
+    if (at != bench_point) {
+        if (bench_polls >= RT_BENCH_SPIN) {
+            bench_watching = 0;
+            return;
+        }
+        bench_point = at;
+        bench_polls = 0;
+    }
+    if (++bench_polls == RT_BENCH_POLLS) {
+        bench_polls = 0;
+        bench_ticks(1);
+    } else if (bench_polls < RT_BENCH_SPIN && !--bench_budget) {
+        bench_watching = 0;
+    }
+}
 
 #define BIOS_TICKS 0x46c
 #define BIOS_MIDNIGHT 0x470
@@ -272,8 +346,12 @@ uint32_t rt_irq_c(uint32_t d6, uint32_t ip)
     if (rt_present_due == 1) {
         rt_video_refresh();
     }
+    if (bench_watching && G_IF) {
+        bench_poll((d6 & 0xffff0000) | (uint16_t)ip);
+    }
     while (G_IF && irq_head != rt_irq_tail) {
         uint8_t irq = rt_irq_ring[irq_head++ % RT_IRQ_RING];
+        bench_post();
         uint8_t vector = irq & 0x7f;
         if (guest_vector(vector)) {
             return deliver(vector, cs, (uint16_t)ip);
@@ -293,7 +371,7 @@ uint32_t rt_irq_c(uint32_t d6, uint32_t ip)
     volatile uint8_t *irq = &G_IRQ;
     *irq = 0;
     rt_irq_pending = 0;
-    if (irq_head != rt_irq_tail) {
+    if (irq_head != rt_irq_tail || bench_watching) {
         rt_irq_pending = 1;
         *irq = G_IF;
     }

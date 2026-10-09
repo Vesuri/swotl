@@ -1,8 +1,9 @@
 /* Platform services for the runtime on AmigaOS: the game's files through
  * dos.library (each call in an I/O window of the takeover, Swotl.cpp), the
- * PIT on a CIA-B timer, the diagnostic key script, and the run of the
- * translated program on its own native stack. Game files are read from the
- * current directory (the game's own data files, supplied by the user). */
+ * PIT on a CIA-B timer (none in the frame bench, argument BENCH), the
+ * diagnostic key script, and the run of the translated program on its own
+ * native stack. Game files are read from the current directory (the game's
+ * own data files, supplied by the user). */
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/cia.h>
@@ -354,6 +355,10 @@ int amiga_guest_open(void)
         if (a[0] == 'K' && a[1] == 'E' && a[2] == 'Y' && a[3] == 'S' && a[4] == '=') {
             key_script = a + 5;     /* ends at a space or the line end */
         }
+        if (a[0] == 'B' && a[1] == 'E' && a[2] == 'N' && a[3] == 'C' && a[4] == 'H' &&
+            a[5] <= ' ') {
+            rt_bench = 1;           /* frame bench: ticks from guest progress, no CIA timer */
+        }
     }
     /* Guest RAM, the state block below it and the EMS store after it; Fast RAM
      * when present (D15). */
@@ -365,7 +370,9 @@ int amiga_guest_open(void)
     }
     plat_log("SWOTL guest start");
     rt_start(guest_block + RT_STATE_BYTES);
-    if (!timer_open()) {
+    if (rt_bench) {
+        plat_log("SWOTL frame bench");
+    } else if (!timer_open()) {
         plat_log("SWOTL no CIA-B timer");
     }
     return 1;

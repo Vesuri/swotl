@@ -100,6 +100,26 @@ extern volatile uint8_t rt_irq_pending;
 #define RT_RAISE_IRQ() (rt_irq_pending = 1, *(volatile uint8_t *)&G_IRQ = 1)
 void rt_bios_int08(void);
 
+/* Frame bench (docs/speed-plan.md M2): set by the platform at startup, never
+ * in release or fixture runs. PIT ticks then follow guest progress instead
+ * of a timer, so every build does the same guest work:
+ * - RT_BENCH_FRAME_TICKS per RT_BENCH_FRAME_SERVICES runtime services, spread
+ *   over them (the flight makes 4 services per frame; the m4 reference draws
+ *   a frame every 9 ticks);
+ * - in a spin (RT_BENCH_SPIN or more consecutive visits with IF set to one
+ *   poll point): one per RT_BENCH_POLLS such visits. Poll visits are watched
+ *   from each service, PIT channel 0 reload or such tick, for at most
+ *   RT_BENCH_WATCH visits outside spins and until a spin ends (SPAZ's rate
+ *   calibration counts loop iterations between two ticks: the reference
+ *   count; the flight demo waits for a tick after loading its replay). */
+#define RT_BENCH_FRAME_TICKS 9
+#define RT_BENCH_FRAME_SERVICES 4
+#define RT_BENCH_POLLS 8956
+#define RT_BENCH_SPIN 8
+#define RT_BENCH_WATCH 64
+extern uint8_t rt_bench;
+void rt_bench_watch(void);
+
 /* input.c: the platform appends keyboard events (PC set 1 scan code, bit 7
  * break, RT_KEY_E0 for E0-prefixed keys), one per 09h interrupt it posts */
 #define RT_KEY_RING 16

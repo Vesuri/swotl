@@ -14,6 +14,8 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   24.5, 24.5, 24.5 (round-1 final audit) and 28.5 (replan capture
   2026-10-08: intervals 29, 26, 36, 26, 31, 26, 32, 28). One executable;
   the spread is trajectory noise (§5.1).
+- **Bench** (§4, generated code of `b9b6374`): frames 4–11 mean 37.74
+  fields (5.36M cycles), window 2.20M guest instructions, SPAZ 0.22%.
 - **Meter at `88b0038`** (m4, 49 frames): 284,644,758 model cycles
   (generated 214.8M, cell walk 66.8M, runtime 3.1M); 17,976,252 guest
   instructions, 15.66 model cycles each.
@@ -83,7 +85,7 @@ Breaking any of these voids the step, whatever it measures.
    or the order of interrupt delivery; removing or thinning poll points or
    return checks; shortening the guest's own delay loops (SPAZ OPL waits
    are guest semantics); a double buffer or copper display (open-work 14a);
-   Chip-only memory (19). Exception: the deterministic frame bench (M2,
+   Chip-only memory (19). Exception: the deterministic frame bench (§4,
    user 2026-10-08) posts PIT ticks on a fixed schedule in its own runtime
    mode, as an instrument only.
 10. **One step, one commit**, before/after numbers in the message, §7 and
@@ -99,13 +101,13 @@ Breaking any of these voids the step, whatever it measures.
 - **Code growth** only with lower model cycles (D2). Stop and ask before
   the payload exceeds 1,325,164 bytes by more than 25% (open-work 19).
 - **FS-UAE check** after every third kept step and after R1, R6, R7 and
-  R7b: an M2 bench run per arm with a capture; the meter's Δ must have the
+  R7b: a bench run (§4) per arm with a capture; the meter's Δ must have the
   sign of `ab_labels.py`'s mix-adjusted Δ over the changed labels. If they
   disagree, stop: fix the meter, never tune lowerings to FS-UAE noise.
-  Report the bench's cycles per drawn frame (it includes layout effects).
-- **Frame-rate claims:** M2 bench for build-to-build progress; the target
-  itself is the frames fixture (§4, with the interval lists), measured
-  after R1, R6, R7b and R11. Neither is a per-step gate.
+  Report the bench's frames 4–11 cycles (they include layout effects).
+- **Frame-rate claims:** the bench (§4) for build-to-build progress; the
+  target itself is the frames fixture (§4, with the interval lists),
+  measured after R1, R6, R7b and R11. Neither is a per-step gate.
 
 **Stop and ask the user** when: a gate fails for a reason that is not a
 plain bug; a step needs any of §2 beyond what was approved; references
@@ -154,7 +156,21 @@ lines.
   then `--plant-check`) after R1 and R11 or when the FS-UAE check
   disagrees. Retro-check on round 1: T6 −0.39%, T4-local −6.05% (FS-UAE
   mix-adjusted −2.2%, −6.2%). `tools/ab_labels.py` serves the FS-UAE check.
-- **Bench:** M2.
+- **Bench** (`SWOTL_ARGS=BENCH ./debug.sh "" bench_frames.gdb`, same model;
+  runtime.h `rt_bench`): no CIA timer; 9 PIT ticks per 4 runtime services
+  (the flight makes 4 per frame, m4 draws a frame every 9 ticks), plus one
+  per 8,956 consecutive visits to a poll point in a spin (SPAZ's rate
+  calibration gets the reference count 8,956; the demo waits for a tick
+  after loading its replay). Every build does the same guest work: demo
+  after 1,628 services (reference 261,320), the guest's elapsed ticks 9 per
+  frame, frames 0–56 the static opening view (rendered, compared, not
+  blitted; the reference's 27 frames at 18 ticks), about 830K guest
+  instructions each. Output: field and beam line at frames 0–12, the guest
+  RAM at frame 12 (`shasum tmp/bench/ram.bin`; equal to the host run's at
+  that frame), a 100-field capture. Two runs: equal RAM hash, frames 4–11
+  sum within 2 of 94,498 lines (single frames within 16), window guest
+  instructions within 0.02%, start fields 1523 and 1508. Not comparable to P
+  (different frames and tick rate); compare arms by the frames 4–11 sum.
 - **Stops are free (S0).** Fields from `rt_run_guest` to m1b-logo
   (`VGA_039AD`), 68020: 99–100 with no stop between (3 runs), 99–100 with
   110, 364 and 731 stops (5 runs). `amiga_io_frames` counts the fields
@@ -218,29 +234,6 @@ push/pop/call/ret), BP 236K (65% base+disp), BX 242K (33% ALU destination,
 32% base), SI 216K and DI 131K (34–41% base, 30–36% ALU).
 
 ## 7. Steps (in order; prices are replan estimates, re-price with the meter)
-
-### M2. Deterministic frame bench (D4)
-
-- **What it is:** a bench mode of the Amiga runtime, selected at startup
-  and never active in release or fixture runs. PIT ticks are posted on a
-  fixed schedule tied to guest progress, not to the CIA timer, so every
-  build does the same guest work. Ticks are still delivered at poll points
-  as today.
-- **Schedule:** follow the reference cadence (m4: a drawn frame every 9 PIT
-  ticks at the guest's programmed rate). Disk I/O must not leak host time
-  into the window.
-- **Output:**
-  - Emulated cycles (fields and beam position) for drawn frames 4–11 and
-    for a 100-field capture window.
-  - A guest-RAM hash at the end. Equal hashes prove both arms did the same
-    work (perf-method §4).
-- **Checks:**
-  - Two runs give identical numbers.
-  - The bench is independent of the start field.
-  - The guest never waits for a tick that cannot come. If it would, stop
-    and report the schedule problem; never patch the guest.
-- Guest semantics are unchanged; only the timing of interrupts moves
-  (§2.9 exception).
 
 ### Q. Round-1 candidates under the meter
 
@@ -450,7 +443,7 @@ from the top while the meter finds a gain.
 - **D2.** R6 may grow the code beyond +5% when each guarded copy lowers
   model cycles; the +25% stop in §3 remains.
 - **D3.** Cell cache (R7b) with exact invalidation.
-- **D4.** Deterministic frame bench (M2).
+- **D4.** Deterministic frame bench (§4).
 - Native replacement is not part of this plan (§2.2).
 
 ## 9. Projection

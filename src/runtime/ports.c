@@ -39,6 +39,9 @@ static void pit_data(uint8_t ch, uint8_t v)
     if (ch == 0 && (access != 3 || !pit_high[ch])) {
         rt_pit_divisor = pit_reload[0] ? pit_reload[0] : 0x10000;
         plat_timer_rate(rt_pit_divisor);
+        if (rt_bench) {
+            rt_bench_watch();
+        }
     }
 }
 
