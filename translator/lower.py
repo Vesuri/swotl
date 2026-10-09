@@ -106,7 +106,7 @@ class Lowering:
         op = line.split()[0].split(".")[0]
         preserves = {"move", "movea", "moveq", "lea", "ror", "rol", "and", "or",
                      "eor", "not", "cmp", "cmpa", "cmpi", "tst", "btst", "bset",
-                     "bclr", "ext", "exg", "swap", "nop", "sne", "seq", "smi", "spl"}
+                     "bclr", "ext", "exg", "swap", "nop", "sne", "seq", "smi", "spl", "bfins"}
         if op not in preserves or "ccr" in line and not line.startswith("move.w ccr,"):
             self.x_cf = False
         self.out.append("\t" + line)
@@ -191,9 +191,10 @@ class Lowering:
             full, sh = HALF[r]
             g = GREG[full]
             if sh:
-                self.e(f"ror.w #8,{g}")
-                self.e(f"move.b {src},{g}")
-                self.e(f"rol.w #8,{g}")
+                # Bit-field offsets count from bit 31: bits 15..8 are AH etc.
+                # Keeps X and every other register bit. Callers never export
+                # this write's CCR as guest flags (arithmetic saves them first).
+                self.e(f"bfins {src},{g}{{16:8}}")
             else:
                 self.e(f"move.b {src},{g}")
         elif GREG[r][0] == "a":

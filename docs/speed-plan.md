@@ -16,9 +16,9 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   the spread is trajectory noise (§5.1).
 - **Bench** (§4, generated code of `b9b6374`): frames 4–11 mean 37.74
   fields (5.36M cycles), window 2.20M guest instructions, SPAZ 0.22%.
-- **Meter at `88b0038`** (m4, 49 frames): 284,644,758 model cycles
-  (generated 214.8M, cell walk 66.8M, runtime 3.1M); 17,976,252 guest
-  instructions, 15.66 model cycles each.
+- **Meter after T8** (m4, 49 frames): 284,003,013 model cycles
+  (generated 214.1M, cell walk 66.8M, runtime 3.1M); 17,976,252 guest
+  instructions, 15.63 model cycles each. Round 2 so far: T8 −0.24%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -237,9 +237,8 @@ push/pop/call/ret), BP 236K (65% base+disp), BX 242K (33% ALU destination,
 
 ### Q. Round-1 candidates under the meter
 
-T8 (BFINS high-byte writes; patch `tmp/t8-session/rejected-lowering.patch`)
-and T7 (dead DX; `tmp/t7-session/`): re-apply, gates, meter. Their coverage
-and plants are already in the tree. T12–T15 are superseded by R1 and R6.
+T7 (dead DX; `tmp/t7-session/`): re-apply, gates, meter. Its coverage and
+plant are already in the tree. T12–T15 are superseded by R1 and R6.
 
 ### R1. Memory model v2 (D1)
 

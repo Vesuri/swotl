@@ -41,9 +41,10 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     CIA and JOY0DAT reads).
 14b. Speed: [speed-plan.md](speed-plan.md) round 2 (Q, R1–R11).
     Target ≤12 fields on 68020 + 8 MB Fast; HEAD run medians 24.5–28.5 fields (trajectory noise), 14.64
-    cycles/guest, code payload 1,325,164 bytes. User decisions D0–D4 approved
+    cycles/guest, code payload 1,321,076 bytes. User decisions D0–D4 approved
     (meter acceptance, memory model v2 with harness conversion, R6 growth,
-    cell cache, frame bench). Meter and frame bench in place (§4); next: Q.
+    cell cache, frame bench). Meter and frame bench in place (§4); kept: T8
+    (−0.24% model cycles); next: Q's T7.
     Projection ≈ 16–18 fields; native work needs per-routine authorization.
 15. Microbenchmark the remaining [arch] 68020 costs on the A1200 model
     (`mulu.l`/`divu.l`, unaligned word/long); shifts, swaps, loads, stores and
