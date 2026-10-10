@@ -19,10 +19,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import m68k_blocks as B  # noqa: E402
 import m68k_diff as D  # noqa: E402
-from translator import lower as L  # noqa: E402
+from translator import emit as E, lower as L  # noqa: E402
 
 real_run = L.Lowering.run
 real_helpers = D.HELPERS
+real_poll_stub = E.poll_stub
 
 
 def text(fn):
@@ -293,6 +294,7 @@ SABOTAGE = [
     ("word store in swapped byte order", word_store_swapped, "boundary"),
     ("predecessor drops successor flag store", no_predecessor_store, "cross-block"),
     ("live flag wrong at a walk entry", walk_entry_flag, "program"),
+    ("poll stub returns to the poll's label", "poll stub", "program"),
     ("mask trusts dirty upper word", trust_dirty_upper_word, "boundary"),
     ("DX result dropped while live", drop_live_dx, "boundary"),
     ("high-byte write corrupts low byte", high_byte_written_low, "boundary"),
@@ -315,6 +317,8 @@ def plant(k: int) -> tuple[int, int]:
     if fn == "helpers":     # __set_flags (translator/support.py)
         D.HELPERS = real_helpers.replace("\tmove.b\trt_irq_pending,G_IRQ(a6)", "\tnop")
         assert D.HELPERS != real_helpers
+    elif fn == "poll stub":     # emit.poll_stub (R2)
+        E.poll_stub = lambda lab, ip, cs: real_poll_stub(lab, ip, cs)[:-1] + [f"\tbra {lab}"]
     else:
         L.Lowering.run = text(fn)
     try:
@@ -334,6 +338,7 @@ def plant(k: int) -> tuple[int, int]:
     finally:
         L.Lowering.run = real_run
         D.HELPERS = real_helpers
+        E.poll_stub = real_poll_stub
 
 
 def main() -> int:

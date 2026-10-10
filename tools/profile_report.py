@@ -98,8 +98,8 @@ def symbols(objdump, elf):
     syms = []
     for line in text.splitlines():
         parts = line.split()
-        if len(parts) >= 5 and parts[-3] == ".text":
-            syms.append((int(parts[0], 16), parts[-1]))
+        if len(parts) >= 5 and parts[-3] == ".text" and not parts[-1].endswith("_np"):
+            syms.append((int(parts[0], 16), parts[-1]))  # X_np: inside X (emit.poll)
     syms.sort()
     return syms
 

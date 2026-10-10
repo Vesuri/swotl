@@ -74,8 +74,8 @@ def static_counts(gen: Path) -> tuple[dict, dict]:
                 text[cur] = m.group(2)
             elif cur and line.startswith("\t") and not line.startswith("\t;"):
                 count[cur] += 1
-            elif line and not line.startswith((".", "\t", ";")):
-                cur = None
+            elif line and not line.startswith((".", "\t", ";")) and not line.endswith("_np:"):
+                cur = None  # X_np: inside X (emit.poll)
     return text, count
 
 

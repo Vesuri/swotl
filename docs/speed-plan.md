@@ -19,12 +19,12 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
 - **Bench** (§4): frames 4–11 mean 37.74 fields (5.36M cycles) at
   `b9b6374`, 37.56 at `63a99fe` (R1a), 34.41 (4.89M cycles) at R1b, 33.69
   at R1d; window 2.20M guest instructions, SPAZ 0.22%.
-- **Meter after R1** (m4, 49 frames; weights recalibrated after R1, §4):
-  292,676,869 model cycles (generated 211.9M, cell walk 77.4M, runtime
-  3.4M); 17,976,252 guest instructions, 16.09 model cycles each (generated
-  + walk); 275,119,407 under the previous weights. Round 2 kept (previous
-  weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b −1.916%, R1d
-  −1.231%.
+- **Meter after R2** (m4, 49 frames; weights recalibrated after R1, §4):
+  289,665,173 model cycles (generated 208.9M, cell walk 77.4M, runtime
+  3.4M); 17,976,252 guest instructions, 15.92 model cycles each (generated
+  + walk); R1 292,676,869 (275,119,407 under the previous weights). Round 2
+  kept (previous weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b
+  −1.916%, R1d −1.231%; (current) R2 −1.029%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -349,6 +349,18 @@ inverted so the common case falls through: `bne` to an out-of-line stub at
 the function or module tail, which calls `rt_irq` and returns to the poll
 point. `poll-points.csv` stays identical. Price ≈ 1–1.3% (3.23% now; a
 taken `beq.s` costs 4.6 cycles). Plant: the stub returns to the wrong point.
+- Re-price (census of `58aae32`, m4: 979,570 executions of 276 poll points,
+  2,094 in all): no free address register after R1 (a1–a3 bases, a4/a5
+  SI/DI, a6 TOP), so the test stays `tst.b G_IRQ(a6)`; the stub sits after
+  the end of its run (an unconditional transfer) and branches back to the
+  poll. Meter: −0.5 to −1.8% with `bne.s` in reach (inside / outside
+  ≤ 256-byte loops), +0.1 to −1.2% with `bne.w`; 68020: −2 cycles per poll
+  with `bne.s` (taken `beq.s` 6, untaken `bne.s` 4), none with `bne.w`;
+  18 bytes per poll point leave the loop body.
+- Kept: −1.029% (−3,011,696 model cycles): taken transfers −467K, 12.6M
+  executed bytes now inside ≤ 256-byte loops; static code +8,398 bytes
+  (+0.8%). `bne.s` reaches its stub for 1,110 of 2,094 poll points, 71.9%
+  of executions (all of the five hottest).
 
 ### R3. Flags
 

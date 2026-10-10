@@ -113,6 +113,11 @@ class M68k:
         self.outs: list = []
         self.stop: str | None = None
         self.irq_rng = random.Random(1)
+        # rt_irq called at a poll point: None stops there (a block exit); a
+        # list records (d6, d7) and returns, G_IRQ and rt_irq_pending cleared
+        # (an interrupt taken) or, with irq_keep, left set (the bench watch).
+        self.irq_calls: list | None = None
+        self.irq_keep = False
 
         @U.MEM_CB
         def write(h, kind, addr, size, value, user):
@@ -135,7 +140,13 @@ class M68k:
                 n = self.extra_stops.get(addr)
                 if n is None or addr in self.inside:
                     return
-            if n in ("rt_in8", "rt_in16"):
+            if n == "rt_irq" and self.irq_calls is not None:
+                self.irq_calls.append((self.r("d6"), self.r("d7")))
+                if not self.irq_keep:
+                    self.e.write(STATE + 8, b"\0")
+                    self.e.write(PENDING, b"\0")
+                self.e.reg_write(U.M68K["pc"], addr + 2)
+            elif n in ("rt_in8", "rt_in16"):
                 port = self.r("d7") & 0xFFFF
                 w = 8 if n == "rt_in8" else 16
                 v = X.port_value(port, w // 8)
@@ -168,9 +179,10 @@ class M68k:
         self.e.flush()
 
     def run(self, entry: int, case, rng, skip_entry: bool = True, init: dict | None = None,
-            irq: bool = True):
+            irq: bool = True, posted: bool = False):
         """irq: rt_irq_pending mostly set, G_IRQ as rt_irq leaves it (IF ? pending : 0);
-        otherwise both clear (code with poll points)."""
+        otherwise both clear (code with poll points), or with `posted` both set (an
+        interrupt posted before a poll point)."""
         regs, flags, flagsx, ip, patches = case
         e = self.e
         for a, data in patches:
@@ -194,6 +206,8 @@ class M68k:
             st[16 - at:16 - at + 2] = regs[s].to_bytes(2, "big")
         pending = int(irq and self.irq_rng.randrange(4) != 0)
         st[16 - 8] = pending & flags["IF"]
+        if posted:
+            pending = st[16 - 8] = 1
         e.write(PENDING, bytes([pending]))
         e.write(STATE, bytes(st))
         sp = STACK - 0x100

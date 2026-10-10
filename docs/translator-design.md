@@ -172,7 +172,10 @@ check, read by the sweep), `data.csv` (ranges),
   shown bitplanes equal guest A0000h).
 - Interrupts (D8): poll points at loop heads (targets of backward branches,
   all block leaders, so live flags are in the state block): `tst.b G_IRQ(a6)`
-  then `rt_irq` (d6 = CS << 16, d7 = IP). The platform raises `G_IRQ` and
+  and `bne` to the poll's stub `X_irq`, placed after the next run that cannot
+  fall through: d6 = CS << 16, d7 = IP, `jsr rt_irq`, back past the test to
+  `X_np` (the tools fold `X_np` into `X`; the block differential also runs
+  every poll block with an interrupt posted). The platform raises `G_IRQ` and
   `rt_irq_pending` together (`RT_RAISE_IRQ`); with IF clear `rt_irq` clears
   `G_IRQ` only, and `sti`, `__set_flags` (POPF, IRET) and
   `rt_set_flags_word` re-arm it from `rt_irq_pending` when they set IF

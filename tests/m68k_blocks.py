@@ -249,8 +249,11 @@ def main(argv=None) -> int:
     count, bad, skipped, exits = Counter(), [], Counter(), Counter()
     walks_at = {emit.walk_label(mo, lo) for mo, lo, _ in p.smc_forms}
 
-    def block_cases(mod, run, states, force=None):
-        """`states` cases of one block; `force`: registers set after the random state."""
+    def block_cases(mod, run, states, force=None, posted=None):
+        """`states` cases of one block; `force`: registers set after the random
+        state; `posted` (at a poll point): an interrupt posted, rt_irq modelled as
+        taking it ("taken") or as the bench watch leaving it set ("watch"); the
+        poll must call it once with its CS:IP."""
         u = p.units[mod]
         data = reloc[mod]
         last = u.insns[run[-1]]
@@ -303,8 +306,12 @@ def main(argv=None) -> int:
             umem = {a: umem.get(a, h.oracle.e.read(a, 1)[0]) for a in set(umem) | uwrites}
             h.oracle.restore(uwrites | {a for a0, d in patches for a in range(a0, a0 + len(d))})
             entry = addr[emit.label(mod, run[0])]
+            if posted:
+                m.irq_calls, m.irq_keep = [], posted == "watch"
             mo, mf, mfx, mmem, mouts, mwrites, info = m.run(entry, case, h.rng,
-                                                            skip_entry=not empty, irq=False)
+                                                            skip_entry=not empty, irq=False,
+                                                            posted=bool(posted))
+            calls, m.irq_calls = m.irq_calls, None
             stop = info["stop"]
             pc = m.r("pc")
             if stop in node_of:  # labels sharing the address: take the one x86 reached
@@ -318,6 +325,9 @@ def main(argv=None) -> int:
             if info["err"]:
                 diffs.append(f"68k error {info['err']} stop={stop} pc={pc:x}")
             diffs += info["irq"]
+            if posted and calls != [(cs << 16, ip)]:
+                diffs.append(f"poll: rt_irq calls {[(hex(a), hex(b)) for a, b in calls]}, "
+                             f"want one with d6={cs << 16:x} d7={ip:x}")
             # successor reached
             exc = ints[0] if ints else None
             live: set = set()
@@ -431,8 +441,19 @@ def main(argv=None) -> int:
                     if force:
                         force[force.pop("target")] = h.rng.randrange(lo, hi + 1)
                         block_cases(mod, run, 2, force)
+    # every executed block at a poll point with an interrupt posted (R2)
+    polls = Counter()
+    if not args.only:
+        before = Counter(count)
+        for mod, run in allb:
+            if (mod, run[0]) in p.loop_heads:
+                for posted in ("taken", "watch"):
+                    block_cases(mod, run, 1, posted=posted)
+        polls = count - before
+        count -= polls
     total = sum(v for k, v in count.items() if k != "return checks")
     print(f"blocks {len(picks)} of {len(allb)} executed; cases {total}", dict(count))
+    print(f"poll cases {sum(polls.values()) - polls['return checks']} (interrupt posted)")
     print("exits", dict(exits))
     if skipped:
         print("not compared:", dict(skipped))

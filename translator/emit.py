@@ -56,13 +56,20 @@ def stop_label(mod: str, off: int) -> str:
     return f"{TAG[mod]}_{off:05X}_stop"
 
 
-def poll(ip: int, cs: str) -> list[str]:
+def poll(lab: str) -> list[str]:
     """D8 safe point at a loop head (a block leader: live flags are in the state
-    block, so the CCR is free): rt_irq takes a pending hardware interrupt with
-    d6 = CS << 16, d7 = this IP."""
-    skip = f".np{ip:04x}"
-    return ["\ttst.b G_IRQ(a6)", f"\tbeq.s {skip}", f"\tmove.l #{hx(ip)},d7",
-            f"\tmove.l #({cs})<<16,d6", "\tjsr rt_irq", f"{skip}:"]
+    block, so the CCR is free): a posted interrupt branches to the poll's stub
+    (poll_stub), the common case falls through."""
+    return ["\ttst.b G_IRQ(a6)", f"\tbne {lab}_irq", f"{lab}_np:"]
+
+
+def poll_stub(lab: str, ip: int, cs: str) -> list[str]:
+    """Out of line, after an unconditional transfer: rt_irq takes a pending
+    hardware interrupt with d6 = CS << 16, d7 = the poll point's IP, then back
+    past the test (`{lab}_np`; tools fold it into `lab`): a return to the label
+    would be another visit, and loop while the bench watch keeps G_IRQ set."""
+    return [f"{lab}_irq:", f"\tmove.l #{hx(ip)},d7", f"\tmove.l #({cs})<<16,d6",
+            "\tjsr rt_irq", f"\tbra {lab}_np"]
 
 
 def cs_expr(cs: int) -> str:
@@ -377,6 +384,7 @@ class Program:
         u = self.units[mod]
         stats = Counter()
         lines: list[str] = []
+        stubs: list[str] = []  # poll stubs, placed after the next run that cannot fall through
         for run in self.runs(mod):
             insns = [u.insns[o] for o in run]
             lives = [self.live_out[(mod, o)] for o in run]
@@ -391,17 +399,24 @@ class Program:
                 lines.append(f"{label(mod, o)}:\t; {u.cs[o]:04X}:{n.ip:04X} {n}")
                 if (mod, o) in self.loop_heads:
                     assert (mod, o) in self.leaders, (mod, o)
-                    lines.extend(poll(u.ip_of(o), cs_expr(u.cs[o])))
+                    lines.extend(poll(label(mod, o)))
+                    stubs += poll_stub(label(mod, o), u.ip_of(o), cs_expr(u.cs[o]))
                     stats["interrupt poll"] += 1
                 lines.extend(lw.out)
                 stats.update(lw.stats)
             # fall-through out of the run into something not decoded here
             last = run[-1]
             i = u.insns[last]
-            if i.op not in TERMINAL:
+            closed = i.op in TERMINAL
+            if not closed:
                 nxt = last + i.size + (2 if last in u.manager_calls else 0)
                 if nxt not in u.insns:
                     lines.append(f"\tbra {smc_label(mod, nxt) if nxt in u.smc_entries else stop_label(mod, last)}")
+                    closed = True
+            if closed:
+                lines += stubs
+                stubs = []
+        lines += stubs  # after the last run, with the entries below
         for off in sorted(u.smc_entries):
             lo, _ = self.region(mod, off)
             lines += [f"{smc_label(mod, off)}:\t; self-modified code (D16)",
