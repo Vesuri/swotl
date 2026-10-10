@@ -13,14 +13,18 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
 - **HEAD `781975e`** (executable unchanged since `596b337`): run medians
   24.5, 24.5, 24.5 (round-1 final audit) and 28.5 (replan capture
   2026-10-08: intervals 29, 26, 36, 26, 31, 26, 32, 28). One executable;
-  the spread is trajectory noise (§5.1).
+  the spread is trajectory noise (§5.1). Frames fixture (§4, 2026-10-10,
+  3 runs each): medians 25, 25, 25 at `420d81b` (before R1), 24, 24, 24
+  at `c6a7de1` (R1d).
 - **Bench** (§4): frames 4–11 mean 37.74 fields (5.36M cycles) at
-  `b9b6374`, 37.56 at `63a99fe` (R1a), 34.41 (4.89M cycles) at R1b;
-  window 2.20M guest instructions, SPAZ 0.22%.
-- **Meter after R1d** (m4, 49 frames): 275,119,407 model cycles
-  (generated 204.9M, cell walk 66.8M, runtime 3.4M); 17,976,252 guest
-  instructions, 15.11 model cycles each (generated + walk). Round 2 kept:
-  T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b −1.916%, R1d −1.231%.
+  `b9b6374`, 37.56 at `63a99fe` (R1a), 34.41 (4.89M cycles) at R1b, 33.69
+  at R1d; window 2.20M guest instructions, SPAZ 0.22%.
+- **Meter after R1** (m4, 49 frames; weights recalibrated after R1, §4):
+  292,676,869 model cycles (generated 211.9M, cell walk 77.4M, runtime
+  3.4M); 17,976,252 guest instructions, 16.09 model cycles each (generated
+  + walk); 275,119,407 under the previous weights. Round 2 kept (previous
+  weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b −1.916%, R1d
+  −1.231%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -151,12 +155,15 @@ lines.
   every 9 PIT ticks ≈ 36 ms, ≈ 408K x86 instructions per frame.
 - **Meter** (`tools/cost_meter.py`, ≈ 40 s, deterministic): `--out
   tmp/meter/ARM.json` per arm, `--compare A B` for the §3 deltas. Weights
-  `tools/cost_model.json`, fit on a 100-field capture of `781975e`: per code
-  byte 0.91 cycles (0.73 inside a loop of ≤ 256 bytes), read 3.41, write
-  4.14, taken transfer outside such a loop 6.42, mul/div 21.7 (R² 0.961,
-  model −2.9% of measured). Recalibrate (`--calibrate CAPTURE ELF --write`,
-  then `--plant-check`) after R1 and R11 or when the FS-UAE check
-  disagrees. Retro-check on round 1: T6 −0.39%, T4-local −6.05% (FS-UAE
+  `tools/cost_model.json`, fit after R1 on the bench's 100-field capture of
+  `c6a7de1`: per code byte 0.97 cycles (0.95 inside a loop of ≤ 256
+  bytes), read 2.40, write 3.42, taken transfer 5.36 outside such a loop
+  and 1.57 inside, mul/div 23.1 (R² 0.919, model −2.8% of measured; the
+  previous weights, fit on `781975e`, give 0.899 and −3.5% there). It
+  underrates removed instructions (bench vs meter: R1b −8.4% vs −1.9%,
+  R1d −2.1% vs −1.2%; the per-instruction weight fits to 0). Recalibrate
+  (`--calibrate CAPTURE ELF --write`, then `--plant-check`) after R11 or
+  when the FS-UAE check disagrees. Retro-check on round 1: T6 −0.39%, T4-local −6.05% (FS-UAE
   mix-adjusted −2.2%, −6.2%). `tools/ab_labels.py` serves the FS-UAE check.
 - **Bench** (`SWOTL_ARGS=BENCH ./debug.sh "" bench_frames.gdb`, same model;
   runtime.h `rt_bench`): no CIA timer; 9 PIT ticks per 4 runtime services
@@ -313,7 +320,12 @@ Exact by construction:
     read-modify-writes, INC/DEC/NEG/NOT and CMP with an immediate in place
     on memory (0.37M, −4–6 bytes); where AF and PF are dead, as for bytes.
     Kept: −1.231% (−3,428,504 model cycles, all generated code), static
-    code −28,466 bytes (−2.5%).
+    code −28,466 bytes (−2.5%). FS-UAE check: bench frames 4–11 34.41 →
+    33.69 fields (−2.1%, equal RAM), `ab_labels.py` −2.75% (−21.8% on the
+    759 changed labels).
+  - R1 done. Frames fixture against `420d81b` (3 runs each): medians 25,
+    25, 25 → 24, 24, 24 fields (500 → 480 ms per drawn frame), frames
+    4–11 sums 184–185 → 178–179; ranges apart. Meter recalibrated (§4).
 - **Coverage:**
   - Every addressing form at offsets 0, 1, 7FFEh, 7FFFh, 8000h, FFFEh and
     FFFFh, with disp ±1, ±7Fh and ±8000h.

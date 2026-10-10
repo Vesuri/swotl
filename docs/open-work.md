@@ -39,11 +39,12 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     check yet (L5, SL `restore_status`); keyboard and mouse input from the
     takeover are untested by any reference (scripted input enters past the
     CIA and JOY0DAT reads).
-14b. Speed: [speed-plan.md](speed-plan.md) round 2, R2–R11 left (next: R1's
-    FS-UAE check, frames fixture and meter recalibration, then R2, poll
+14b. Speed: [speed-plan.md](speed-plan.md) round 2, R2–R11 left (next: R2, poll
     points; R1c skipped by its census). Target ≤12 fields on 68020 + 8 MB
     Fast; run medians 24.5–28.5 fields at `781975e` (trajectory noise);
-    meter 275,119,407 model cycles, static generated code 1,098,886 bytes. User
+    frames fixture medians 24 fields at R1d (25 before R1); meter
+    292,676,869 model cycles (weights recalibrated after R1; it underrates
+    removed instructions, §4), static generated code 1,098,886 bytes. User
     decisions D0–D4 approved (meter acceptance, memory model v2 with harness
     conversion, R6 growth, cell cache, frame bench). Meter and frame bench in
     place (§4); kept: T8 −0.24%, T7 −0.005%, R1a −0.0001%, R1b −1.92%, R1d −1.23%. Projection ≈ 16–18 fields;
