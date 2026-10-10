@@ -177,8 +177,10 @@ t-sab-host:
 	$(call RUN,sabotage-host,$(PYTHON) tests/host_run.py --sabotage --milestone m1b-logo)
 
 # Host image: the generated program and the runtime for tests/host_run.py.
-CROSS    = $(HOME)/.local/opt/bin/m68k-amiga-elf-
-VASM     = $(HOME)/.local/vasmm68k_mot
+# The shared toolchain (amiga/env.sh sets both; these are its defaults).
+AMIGA_TOOLCHAIN ?= $(HOME)/.local/opt
+VASM     ?= $(HOME)/.local/vasmm68k_mot
+CROSS    = $(AMIGA_TOOLCHAIN)/bin/m68k-amiga-elf-
 VASMELF  = $(VASM) -quiet -m68020 -Felf -x -nowarn=62
 RT_CFLAGS = -m68020 -O2 -ffreestanding -nostdlib -fomit-frame-pointer \
 	-fno-tree-loop-distribute-patterns -Wall -Wextra -Werror -Isrc/runtime

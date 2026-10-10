@@ -30,6 +30,7 @@ import argparse
 import bisect
 from collections import Counter, defaultdict
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -47,7 +48,10 @@ import lowering_cost as L  # noqa: E402
 import profile_report as P  # noqa: E402
 
 MODEL = TOOLS / "cost_model.json"
-OBJDUMP = str(Path.home() / ".local/opt/bin/m68k-amiga-elf-objdump")
+# The shared toolchain, as amiga/env.sh.
+CROSS = str(Path(os.environ.get("AMIGA_TOOLCHAIN") or Path.home() / ".local/opt") / "bin/m68k-amiga-elf-")
+VASM = os.environ.get("VASM") or str(Path.home() / ".local/vasmm68k_mot")
+OBJDUMP = CROSS + "objdump"
 FEATURES = ("insns", "bytes", "loop_bytes", "reads", "writes", "taken", "loop_taken", "muldiv")
 LOOP = 256      # 68020 instruction cache
 
@@ -388,8 +392,8 @@ def plant_check(base_json: Path, objdump: str) -> int:
         text = s.read_text()
         s.write_text(re.sub(r"^(\tror\.w #8,d[0-7])$", r"\1\n\1\n\1", text, flags=re.M))
     host = REPO / "build/host"
-    cross = str(Path.home() / ".local/opt/bin/m68k-amiga-elf-")
-    subprocess.run([str(Path.home() / ".local/vasmm68k_mot"), "-quiet", "-m68020", "-Felf", "-x",
+    cross = CROSS
+    subprocess.run([VASM, "-quiet", "-m68020", "-Felf", "-x",
                     "-nowarn=62", "-o", str(work / "program.o"), "program.s"],
                    cwd=work / "gen", check=True)
     order = ["host_s.o", "host.o", "rt_entry.o"]

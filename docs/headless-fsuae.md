@@ -10,14 +10,14 @@ optimisation are in [perf-method.md](perf-method.md) and [m68k-optimisation.md](
 
 | Script | Role | Source |
 |---|---|---|
-| `amiga/env.sh` | PATH: `~/.local/opt/bin` (gcc/gdb), `~/.local` (vasm, elf2hunk), `~/.local/fs-uae`; `KICKSTART` default | all |
-| `amiga/run.sh` | audible interactive boot, real speed, wipes `.uss`, `exec fs-uae` + `fsuae_track_self` | Slicks `amiga/run.sh` |
+| `amiga/env.sh` | sources the shared AmigaXDev `env.sh`: PATH (`~/.local/opt/bin` gcc/gdb, `~/.local` vasm and elf2hunk, `~/.local/fs-uae`), `KICKSTART`, `SETPATCH`, `FSUAE_COMMON` | all |
+| `amiga/run.sh` | audible interactive boot, real speed, wipes `.uss`, `fsuae_exec` | Slicks `amiga/run.sh` |
 | `amiga/debug.sh [ROM] [fixture.gdb]` | boot under the GDB stub; with a fixture: run it, exit with gdb's status, `trap fsuae_stop EXIT` | Slicks `amiga/debug.sh` |
 | `amiga/diag_run.sh [secs]` (copy when needed) | boot, run `$GDBSCRIPT`, SIGINT gdb after `secs`, log to `.run/gdb-out.log`, returns early when gdb exits | Revs/RoF/Vette `amiga/diag_run.sh` |
 | `~/.local/share/amiga/fsuae_common.sh` | shared PID/port ownership (below) | all |
 
 - Source `. ./env.sh` **in the same shell command** as the run. Otherwise `fs-uae` is "not found" and gdb exits at once, which leaves the old log in place. [RoF, Revs]
-- Copy `fsuae_common.sh` in right after `cd "$(dirname "$0")"`: `. "${FSUAE_COMMON:-$HOME/.local/share/amiga/fsuae_common.sh}"`. [all]
+- Source `./env.sh` and then `"$FSUAE_COMMON"` right after `cd "$(dirname "$0")"`. Launch with its `fsuae_options` (model, CPU, memory, Kickstart, sound, window, `DEBUG`) and `fsuae_launch`/`fsuae_exec`, passing only the drives and game options. [all]
 
 ## FS-UAE invocation
 
@@ -38,13 +38,13 @@ fs-uae --audio_driver=dummy \
 - AGA launchers copy in the user's own `SetPatch` (`SETPATCH`, default `~/.local/share/amiga/SetPatch`, shared with the sibling ports); never committed. [Slicks `docs/toolchain.md`]
 - Wait for the stub with `lsof -nP -iTCP:$DEBUG_PORT -sTCP:LISTEN`, polling 60×1 s. Bail out if the FS-UAE PID dies. [Slicks, Revs]
 - gdb preamble: `set pagination off`, `set confirm off`, `set remotetimeout 90`, `target remote 127.0.0.1:$DEBUG_PORT`. Run gdb with `-q -l 10` under `HOME=$RUN/gdbhome XDG_CACHE_HOME=$RUN/gdbhome`. [Slicks, Revs]
-- FS-UAE keeps the **first** value of a repeated option, so `EXTRA_ARGS` cannot override the script's `--chip_memory/--fast_memory`. Use `CHIP_KB`/`FAST_KB` variables instead. [Revs]
+- FS-UAE keeps the **first** value of a repeated option. The shared launcher passes `EXTRA_ARGS` first, so it overrides the script's options; `CHIP_KB`/`FAST_KB`/`CPU` set them directly. [Revs]
 - FS-UAE echoes every option into its log, including misspelt and unimplemented ones. The config dump does not prove an option took effect. `--volume=0` is unimplemented. Use `--audio_driver=dummy`, checked with `lsof -p <pid> | grep -ic CoreAudio` (3 on a normal run, 0 with dummy). [Revs]
-- Diagnostic runs are muted. `run.sh` stays audible. Opt in with `FSUAE_SOUND=1`. [Slicks, Revs]
+- Debug runs (`DEBUG=1`, `WARP=1`) are muted and open their window behind the others (`WINDOW=none`: no window). `run.sh` stays audible and in front. Opt in with `SOUND=1`, `WINDOW=front`. [Slicks, Revs]
 - Audio capture: SDL2 disk backend `SDL_AUDIODRIVER=disk SDL_DISKAUDIOFILE=/abs/path` with `--audio_driver=sdl`. The path must be absolute, and the script refuses to overwrite. [Slicks `debug.sh`]
 - Keyboard joystick: the installed build ignores `keyboard_key_*`. `--joystick_port_1=keyboard` gives arrows plus right Ctrl/Alt as fire. [Slicks `debug.sh`]
 - Kickstart 1.3 does not boot from a directory drive (gdb never connects). Use WHDLoad kick13 for 1.3. [Revs]
-- Kickstart path on this machine: `~/Documents/RetroPie/BIOS/kick31.rom` → symlink to `kick40063.A600` (KS 3.1 A600, SHA-1 `3b7f1493b27e212830f989f26ca76c02049f09ca`). `kick40068.A1200` is beside it. [verified 2026-10-02]
+- Kickstart: the shared `kick40063.A600` (KS 3.1 A600, SHA-1 `3b7f1493b27e212830f989f26ca76c02049f09ca`); `kick40068.A1200` is beside it (`$KICKSTART_A1200`).
 
 ## A1200 model settings
 

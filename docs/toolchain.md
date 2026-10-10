@@ -12,16 +12,13 @@ provenance is in brackets.
   patched build (`make reference-emulator`); with Command Line Tools 26.6 the default
   MacOSX27 SDK fails to link (`ld: tapi error … arm64e.x1`): build with
   `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk`.
-- Amiga toolchain: BartmanAbyss `vscode-amiga-debug` 1.8.2 VSIX (`gh release download
-  1.8.2 -R BartmanAbyss/vscode-amiga-debug`, a zip): `extension/bin/darwin/*` into
-  `~/.local/`, `extension/template/support/gcc8_*` into `~/.local/support/`. The zip has
-  no Unix modes: `chmod +x` the Mach-O files under `~/.local/opt/{bin,libexec,m68k-amiga-elf/bin}`
-  and the top-level tools. Its FS-UAE is x86_64 (Rosetta).
+- Amiga toolchain, Kickstarts, SetPatch (Workbench 3.1), WHDLoad, LHa for UNIX and
+  `fsuae_common.sh`: AmigaXDev's `make setup`, which installs `~/.local` and
+  `~/.local/share/amiga` (BartmanAbyss `vscode-amiga-debug` 1.8.2; its FS-UAE is x86_64,
+  under Rosetta). `amiga/env.sh` sources the shared `~/.local/share/amiga/env.sh`.
 - Ghidra: `~/.local/share/ghidra/ghidra_12.1_PUBLIC` → `/opt/homebrew/opt/ghidra/libexec`
-  (brew 12.1.4).
-- `~/.local/share/amiga/`: `SetPatch` (Workbench 3.1 `C/SetPatch`) and `fsuae_common.sh`
-  (no copy survived; rewritten to the contract in [headless-fsuae.md](headless-fsuae.md)).
-- Not on this host yet: LHa for UNIX encoder, olha, WHDLoad dev files (release only).
+  (brew 12.1.4). `tools/ghidra_import.py` runs it with Homebrew's openjdk@21
+  (`GHIDRA_JAVA_HOME` overrides).
 
 ## Amiga cross-build (`. amiga/env.sh`, same shell command as the use)
 
@@ -35,8 +32,8 @@ provenance is in brackets.
 | NDK headers | `~/.local/opt/m68k-amiga-elf/sys-include` | Slicks: `SDKDIR` |
 | FS-UAE | `~/.local/fs-uae/fs-uae` | `0.0.0-remote_debug.0`, SDL2 bundled |
 | Shrinkler, exe2adf | `~/.local` | Shrinkler dev build (Bartman stats) |
-| WHDLoad dev files | `~/.local/share/amiga/WHDLoad` | see [whdload.md](whdload.md), [release.md](release.md) |
-| Kickstart | `~/Documents/RetroPie/BIOS/kick31.rom` → `kick40063.A600` | see [headless-fsuae.md](headless-fsuae.md) |
+| WHDLoad dev files | `~/.local/share/amiga/WHDLoad-20.0` (`$WHDLOAD`; 19.2 in `WHDLoad`) | see [whdload.md](whdload.md), [release.md](release.md) |
+| Kickstart | `~/.local/share/amiga/Kickstarts/kick40063.A600` (`$KICKSTART`) | see [headless-fsuae.md](headless-fsuae.md) |
 
 - The toolchain comes from BartmanAbyss `vscode-amiga-debug`. Its gcc, gdb, elf2hunk and FS-UAE are matched builds, which is what makes source-level debugging work. [RoF `docs/toolchain.md`]
 - The toolchain must sit at a space-free path. GCC LTO bakes the install path into `COLLECT_LTO_WRAPPER` and `posix_spawnp`s it, so a path like `…/Secret Weapons of Luftwaffe/…` breaks. Hence `~/.local`. [RoF]
@@ -48,7 +45,7 @@ provenance is in brackets.
 
 | Tool | Path | Version | Use |
 |---|---|---|---|
-| LHa for UNIX | `~/.local/opt/lha/bin/lha`, `~/.local/bin/lha-compress` | 1.14i-ac20260723 | LH5 encoding (Vette: set `LHA` or install as `lha-compress`) |
+| LHa for UNIX | `~/.local/share/amiga/lha-compressor/src/lha` (`$LHA`) | 1.14i-ac20260723 | LH5 encoding (Vette: set `LHA` or install as `lha-compress`) |
 | Lhasa `lha` | `/opt/homebrew/bin/lha` | 0.6.0 | independent archive verification [Vette] |
 | olha | `~/.local/bin/olha` | 0.4.4 | — |
 | 7-Zip `7zz` | `/opt/homebrew/bin` | 26.03 | `ref-originals/*.7z` (`7z` missing) |

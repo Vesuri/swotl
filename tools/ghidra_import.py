@@ -24,7 +24,8 @@ from collections import defaultdict
 import swotl_model as M
 
 GHIDRA = M.REPO / "tools/ghidra/ghidra_12.1_PUBLIC/support/analyzeHeadless"
-JAVA_HOME = "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+# Ghidra 12.1 needs JDK 21 (AmigaXDev installs Homebrew openjdk@21); GHIDRA_JAVA_HOME overrides.
+JAVA_HOME = os.environ.get("GHIDRA_JAVA_HOME") or "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
 PROJECT = M.REPO / "tools/ghidra-proj"
 OUT = M.REPO / "tmp/ghidra"
 CODE_MODULES = [n for n in M.SCOPE if n != "DATA.OVL"]

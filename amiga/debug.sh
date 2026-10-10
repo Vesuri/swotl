@@ -6,16 +6,15 @@
 # The stub serves memory reads but silently drops writes: inject inputs from C.
 set -uo pipefail
 cd "$(dirname "$0")"
-. "${FSUAE_COMMON:-$HOME/.local/share/amiga/fsuae_common.sh}"
+. ./env.sh
+. "$FSUAE_COMMON"
 
-FSUAE="${FSUAE:-fs-uae}"
 GDB="${GDB:-m68k-amiga-elf-gdb}"
-ROM="${1:-${KICKSTART:-$HOME/Documents/RetroPie/BIOS/kick31.rom}}"
+ROM="${1:-$KICKSTART}"
 [ -f "$ROM" ] || { echo "Kickstart ROM not found: $ROM"; exit 1; }
 [ -f out/Swotl.elf ] || { echo "build first: make"; exit 1; }
 
 # KS 3.1 sets the AGA bits in GfxBase only after SetPatch (docs/amiga-lessons.md L8).
-SETPATCH="${SETPATCH:-$HOME/.local/share/amiga/SetPatch}"
 [ -f "$SETPATCH" ] || { echo "SetPatch not found: $SETPATCH"; exit 1; }
 RUN="$FSUAE_RUN"; DH0="$RUN/dh0"; DH1="$RUN/dh1"; GDBHOME="$RUN/gdbhome"
 mkdir -p "$DH0/c" "$DH0/s" "$DH1" "$RUN/state" "$GDBHOME"
@@ -29,15 +28,14 @@ rsync -a --exclude '*.pdf' ../ref/ "$DH1/"
 rm -f "$RUN"/state/*.uss
 
 fsuae_claim_port
-"$FSUAE" \
-  --amiga_model=A1200 ${AMIGA_CPU:+--cpu=$AMIGA_CPU} --chip_memory=2048 --fast_memory="${FAST_MEMORY:-8192}" \
-  --kickstart_file="$ROM" \
+# Quiet debug run (no sound, window behind the others): fsuae_options in $FSUAE_COMMON.
+KICKSTART="$ROM" AMIGA_MODEL=A1200 CPU="${CPU:-${AMIGA_CPU:-}}" DEBUG=1
+CHIP_KB=2048 FAST_KB="${FAST_KB:-${FAST_MEMORY:-8192}}"
+fsuae_options
+FSUAE_LOG="$RUN/fsuae-dbg.log" fsuae_launch \
   --hard_drive_0="$DH0" --hard_drive_1="$DH1" \
-  --automatic_input_grab=0 --fullscreen=0 --window_width=720 --window_height=568 \
-  --remote_debugger=20 --remote_debugger_port="$DEBUG_PORT" --remote_debugger_trigger=Swotl \
-  --ntsc_mode=0 --state_dir="$RUN/state" > "$RUN/fsuae-dbg.log" 2>&1 &
-FSUAE_PID=$!
-fsuae_track "$FSUAE_PID"
+  --window_width=720 --window_height=568 \
+  --remote_debugger_trigger=Swotl --state_dir="$RUN/state"
 
 for i in $(seq 1 60); do
   kill -0 "$FSUAE_PID" 2>/dev/null || { echo "FS-UAE exited early; see $RUN/fsuae-dbg.log"; exit 1; }

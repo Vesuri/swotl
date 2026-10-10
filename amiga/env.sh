@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Source this to expose the shared Amiga cross-toolchain and FS-UAE.
+# Source this for the shared Amiga environment that AmigaXDev installs (~/.local/share/amiga):
+# the cross-toolchain and FS-UAE on PATH, the Kickstart, SetPatch and the FS-UAE helpers.
+# Every variable can be overridden from the environment.
 #   . amiga/env.sh
 # or, from amiga/:
 #   . env.sh
-SWOTL_TC="$HOME/.local"
-export PATH="$SWOTL_TC/opt/bin:$SWOTL_TC:$SWOTL_TC/fs-uae:$PATH"
-export KICKSTART="${KICKSTART:-$HOME/Documents/RetroPie/BIOS/kick31.rom}"
+. "${AMIGA_ENV:-$HOME/.local/share/amiga/env.sh}"

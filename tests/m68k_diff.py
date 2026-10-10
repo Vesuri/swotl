@@ -18,6 +18,7 @@ x86 results or the IR (the IR only supplies the undefined-flag mask).
 
 from __future__ import annotations
 
+import os
 import random
 import subprocess
 import sys
@@ -36,7 +37,7 @@ from translator.ir import FLAG_BIT, FLAGS, STATUS  # noqa: E402
 from translator.lower import Ctx, LowerError, hx  # noqa: E402
 from translator.support import HELPERS, equates  # noqa: E402
 
-VASM = Path.home() / ".local/vasmm68k_mot"
+VASM = Path(os.environ.get("VASM") or Path.home() / ".local/vasmm68k_mot")
 GUEST_LO = 0x100000         # lowest host byte of guest RAM
 TOP = GUEST_LO + X.RAM + 0x10000 - 1    # a6: guest linear L at TOP - L
 STATE = TOP + 1             # state block page

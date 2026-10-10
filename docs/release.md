@@ -43,7 +43,7 @@ an executable only; packaging below remains planned.
 
 ## LHA packaging
 
-- Encoder: LHa for UNIX (`github.com/jca02266/lha` @ `16619b06`), `LHA` env override, default `~/.local/opt/lha/bin/lha`. Homebrew `lhasa` extracts only (Ve, RoF §3, Sl).
+- Encoder: LHa for UNIX (`github.com/jca02266/lha` @ `16619b06`), `LHA` env override, default the shared `~/.local/share/amiga/lha-compressor/src/lha`. Homebrew `lhasa` extracts only (Ve, RoF §3, Sl).
 - LH5 only, fail rather than fall back to LH0 (Ve).
 - Deterministic: sorted members, fixed date headers, packager owns every header field (level-0 in Sl/Ve/Po; RoF level-1) (Sl, Po).
 - Checker decodes each member independently with Lhasa, verifies header+payload CRC, exact member set, HUNK magic `000003f3`, icon magic, slave `WHDLOADS` header and memory/flag/quit-key bytes, byte identity with build outputs (Sl, Po).
