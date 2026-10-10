@@ -1,4 +1,4 @@
-"""Minimal ctypes binding to the Unicorn C library (2.1.x, Homebrew), as Slicks.
+"""Minimal ctypes binding to the Unicorn C library (2.1.4), as Slicks.
 
 Only what the differentials use. Enum values are from unicorn.h 2.1.4
 (printed by a C probe); `check_abi()` re-reads the library version.
@@ -9,7 +9,11 @@ from __future__ import annotations
 import ctypes as C
 import os
 
-LIB = os.environ.get("UNICORN_LIB", "/opt/homebrew/lib/libunicorn.2.dylib")
+# The shared build with the arm64 constant-subtract fix (AmigaXDev `make unicorn`): Homebrew's
+# 2.1.4 dies with SIGILL where an addx/subx folds to a constant (docs/toolchain.md).
+LIB = os.environ.get("UNICORN_LIB") or os.path.join(
+    os.environ.get("AMIGA_UNICORN") or os.path.expanduser("~/.local/share/amiga/unicorn"),
+    "lib/libunicorn.2.dylib")
 uc = C.CDLL(LIB)
 
 ARCH_X86, MODE_16 = 4, 2

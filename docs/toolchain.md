@@ -96,7 +96,7 @@ provenance is in brackets.
 | Tool | Where | Version | Slicks use |
 |---|---|---|---|
 | Unicorn (C library) | `/opt/homebrew/opt/unicorn` | 2.1.4 | Compack unpack capture (`build/unpack_compack`). x86-16 vs M68k differential executors `verify_*.c`, built with `cc -I$(UNICORN_PREFIX)/include … -lunicorn` |
-| Unicorn Python binding | — | **missing**; SWOTL uses `tests/uc.py` (ctypes over `libunicorn.2.dylib`, no install) | not used by Slicks |
+| Unicorn Python binding | — | **missing**; SWOTL uses `tests/uc.py` (ctypes over `$AMIGA_UNICORN/lib/libunicorn.2.dylib`, AmigaXDev `make unicorn`: 2.1.4 with QEMU 707b45a2; Homebrew's dies with SIGILL where an addx/subx folds to a constant; `UNICORN_LIB` overrides) | not used by Slicks |
 | Capstone C + `cstool` | `/opt/homebrew/opt/capstone` | 5.0.9 | 16-bit decode |
 | Capstone Python | pyenv 3.11.10 site-packages | 5.0.7 | `from capstone import CS_ARCH_X86, CS_MODE_16, Cs` in `mz_info.py`, `analyze_execution_trace.py`, `analyze_vga_sites.py`, `summarize_memory_trace.py` |
 | Intel XED | — | **missing** (`/usr/bin/xed` is Xcode's editor launcher) | listed as optional second decoder |
