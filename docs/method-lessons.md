@@ -21,7 +21,7 @@ Revs (BBC 6502→A500), Vette (Mac 68000→A1200). Target-hardware lessons:
    — Slicks `docs/validation-harness.md`.
 3. **Every gate in the order; no gate skipped because a later one looks easy.**
    Reference loop → proven runtime image → static/live map → semantics → lowering
-   → end-to-end target skeleton → optimise. — Slicks `CLAUDE.md` §Gates.
+   → end-to-end target skeleton → optimise. — Slicks `AGENTS.md` §Gates.
 4. **Build discovery and validation infrastructure exhaustively up front,
    not reactively.** Every RoF scar (missed indirect targets, vacuous greens,
    late reference loops) came from growing them on demand.
@@ -43,7 +43,7 @@ Revs (BBC 6502→A500), Vette (Mac 68000→A1200). Target-hardware lessons:
    input (BRK, unmapped target, unlisted SMC value, fixture-less validated name)
    must fail at generation or report loudly at run time; a `TODO` in generated
    output is not loud. Do not suppress generated-code warnings.
-   — Revs `docs/method-lessons.md`; Slicks `CLAUDE.md` (unknown control flow fails loudly).
+   — Revs `docs/method-lessons.md`; Slicks `AGENTS.md` (unknown control flow fails loudly).
 10. **Read bounds/counts from the instruction, never from the first example.**
     Assert the instruction shape relied on (patch count differed per track;
     unpack tables overwritten mid-sequence). — Revs `docs/method-lessons.md`.
@@ -61,9 +61,9 @@ Revs (BBC 6502→A500), Vette (Mac 68000→A1200). Target-hardware lessons:
     — Revs `docs/method-lessons.md`; Slicks `docs/validation-harness.md`.
 14. **A dropped probe symbol reads garbage that looks like data.** gc-sections
     removed a counter, gdb resolved it into `.text`; root every probe symbol in
-    the link and audit it. — Revs `docs/method-lessons.md`; Vette `CLAUDE.md` (`PROBE_SYMS`).
+    the link and audit it. — Revs `docs/method-lessons.md`; Vette `AGENTS.md` (`PROBE_SYMS`).
 15. **A gdb script aborts at the first unknown symbol**; "trace stopped after the
-    header" = stale script. — Revs `docs/method-lessons.md`; Pokeri `CLAUDE.md`.
+    header" = stale script. — Revs `docs/method-lessons.md`; Pokeri `AGENTS.md`.
 16. **Assert name-keyed harness inputs resolve.** jsbeeb `RETURN` was undefined,
     so every press was a silent no-op. — Revs `docs/method-lessons.md`.
 17. **A hedge is not a control.** Writing "this 0 may be a wrapped bracket" under
@@ -88,7 +88,7 @@ Revs (BBC 6502→A500), Vette (Mac 68000→A1200). Target-hardware lessons:
     — Revs `docs/method-lessons.md`.
 26. **Re-measure; never quote an old number.** A stale "~6 FPS" (really 14.4)
     steered scope for months; RoF's "algorithmic floor" was GCC's floor.
-    — Revs `docs/method-lessons.md`; RoF `docs/perf-budget.md`, `CLAUDE.md`.
+    — Revs `docs/method-lessons.md`; RoF `docs/perf-budget.md`, `AGENTS.md`.
 27. **A plausible cycle-accounting story is not evidence**; the first
     "register pressure" diagnosis of a regression was retracted (it was an
     inlining eviction). — Revs `docs/m68k-optimisation.md`.
@@ -97,10 +97,10 @@ Revs (BBC 6502→A500), Vette (Mac 68000→A1200). Target-hardware lessons:
     `rm` objects before each sabotage build. — Revs `docs/validation-harness.md`.
 29. **Never rebuild an ELF an emulator or oracle is using; freeze exe+ELF for long
     runs; don't edit a running launcher.** — Slicks `docs/development-verification.md`;
-    Pokeri `docs/testing.md`, `CLAUDE.md`.
+    Pokeri `docs/testing.md`, `AGENTS.md`.
 30. **Clean after changing build flags or widely included headers**; a stale
     partial build links a working-but-wrong binary.
-    — RoF `CLAUDE.md`; Revs `CLAUDE.md`; Vette `CLAUDE.md`.
+    — RoF `AGENTS.md`; Revs `AGENTS.md`; Vette `AGENTS.md`.
 31. **A run that timed out is not a pass.** Each case requires an explicit
     success record and rejects loud stops. — Vette `docs/gameplay-coverage.md`,
     `docs/development.md`.
@@ -127,16 +127,16 @@ Revs (BBC 6502→A500), Vette (Mac 68000→A1200). Target-hardware lessons:
 39. **Tests, not agent confidence, settle correctness.** Every instruction
     semantic and every lowering is differentially tested against an independent
     x86 oracle (Unicorn x86-16 vs Unicorn 68020 in Slicks).
-    — Slicks `CLAUDE.md`, `docs/validation-harness.md`.
+    — Slicks `AGENTS.md`, `docs/validation-harness.md`.
 40. **Never compare the port with itself or a host approximation.** Ground truth
-    is the original under the reference emulator. — Slicks/SWOTL `CLAUDE.md`;
-    RoF `CLAUDE.md`; Revs `CLAUDE.md`.
+    is the original under the reference emulator. — Slicks/SWOTL `AGENTS.md`;
+    RoF `AGENTS.md`; Revs `AGENTS.md`.
 41. **Fixture-or-fail.** A validated name with no fixture must fail the run
     (RoF printed PASS with zero comparisons). — RoF `docs/postmortem.md` §3;
     Revs `docs/validation-harness.md`.
 42. **Run the differential on the big-endian target, or lint wide aliases of
     little-endian guest RAM.** Host-green, Amiga-garbage happened.
-    — RoF `docs/postmortem.md`; Revs `CLAUDE.md` (`endian-lint`).
+    — RoF `docs/postmortem.md`; Revs `AGENTS.md` (`endian-lint`).
 43. **No "incidental difference" bucket.** Declare live exit registers/flags;
     undeclared ones are asserted dead. — RoF `docs/postmortem.md`; Revs `docs/validation-harness.md`.
 44. **Memory is half the output.** Compare the hardware-write sequence, traps,
@@ -144,7 +144,7 @@ Revs (BBC 6502→A500), Vette (Mac 68000→A1200). Target-hardware lessons:
     — Revs `docs/validation-harness.md` §FIFTH/§SEVENTH/§FOURTEENTH.
 45. **Sabotage every new gate**: inject a few deliberate defects, confirm they
     fail, remove them. A first-run PASS is indistinguishable from blindness.
-    — Revs `CLAUDE.md`, `docs/validation-harness.md`.
+    — Revs `AGENTS.md`, `docs/validation-harness.md`.
 46. **A sabotage must be reachable in value space** (threshold moved to an
     unproducible odd value proved nothing). — Revs `docs/validation-harness.md`.
 47. **A differential is blind to what its two sides share** (code or input);
@@ -152,7 +152,7 @@ Revs (BBC 6502→A500), Vette (Mac 68000→A1200). Target-hardware lessons:
     — Revs `docs/validation-harness.md`.
 48. **Generator/CPU-model changes alter the oracle too**; record whole-program
     determinism baselines before, compare after, and never re-record to make a
-    failure pass. Re-record only from a clean tree. — Revs `CLAUDE.md`,
+    failure pass. Re-record only from a clean tree. — Revs `AGENTS.md`,
     `docs/validation-harness.md` §SIXTH.
 49. **Randomise inputs incl. gating bytes by default; narrow only to a stated
     game representation invariant**, written at the fixture with its writer.
@@ -160,10 +160,10 @@ Revs (BBC 6502→A500), Vette (Mac 68000→A1200). Target-hardware lessons:
 50. **Validate results, not implementation details.** Dead scratch cells and dead
     flags are ignorable only with a written reader audit; accepted numeric
     departures use a derived tolerance, not an ignore mask.
-    — Revs `docs/validation-harness.md` §RESULTS RULE, `CLAUDE.md`.
+    — Revs `docs/validation-harness.md` §RESULTS RULE, `AGENTS.md`.
 51. **A shim/boundary reproduces every register and flag its callers read**,
     transitively, even if the native core does not need it.
-    — Revs `CLAUDE.md`, `docs/native-maintenance.md`; Vette/Pokeri `CLAUDE.md`.
+    — Revs `AGENTS.md`, `docs/native-maintenance.md`; Vette/Pokeri `AGENTS.md`.
 52. **Exercise every mode/session type**; a mode the tests never run is a whole
     untested subsystem (practice skipped the multi-car path).
     — Revs `docs/method-lessons.md`.
@@ -172,11 +172,11 @@ Revs (BBC 6502→A500), Vette (Mac 68000→A1200). Target-hardware lessons:
     — Revs `docs/method-lessons.md`.
 54. **Target-only asm needs an in-process differential with a nonzero check
     count**; inline asm is unverified until it has run on the target (ROR/ROL-X
-    bug assembled and disassembled correctly). — Revs `CLAUDE.md`,
+    bug assembled and disassembled correctly). — Revs `AGENTS.md`,
     `docs/m68k-optimisation.md`.
 55. **Isolated oracle, smoke test and production-screen comparison prove
     different things; none proves whole-game fidelity.**
-    — Slicks `docs/development-verification.md`; Revs `CLAUDE.md`.
+    — Slicks `docs/development-verification.md`; Revs `AGENTS.md`.
 56. **Audit architecture, not just output**: generated code is rejected for
     unexpected guest-context traffic, helper calls, flag materialisations and
     dispatcher exits. — Slicks `docs/validation-harness.md`, `docs/architecture.md`.
@@ -187,9 +187,9 @@ Revs (BBC 6502→A500), Vette (Mac 68000→A1200). Target-hardware lessons:
     with its reason and the user's decision.** — Slicks `docs/fidelity.md`.
 58. **Remove port-only additions** (Slicks F01/F03/F11/F16 footer, rows, mouse
     exits); do not add optional UI to hide a failure. — Slicks `docs/fidelity.md`;
-    Vette `CLAUDE.md`.
+    Vette `AGENTS.md`.
 59. **Keep original decisions; implement their services.** Unknown calls stay
-    named loud stops. — Pokeri `CLAUDE.md`; Vette `CLAUDE.md`.
+    named loud stops. — Pokeri `AGENTS.md`; Vette `AGENTS.md`.
 60. **Decide the faithful-vs-platform seam rule before the first native routine**;
     prefer a small `#ifdef` variation over moving code out of the validated tier.
     — RoF `docs/postmortem.md` §5; Revs `docs/faithfulness-seam.md`.
@@ -201,22 +201,22 @@ Revs (BBC 6502→A500), Vette (Mac 68000→A1200). Target-hardware lessons:
     departures with a per-piece argument and their own gate.**
     — Revs `docs/faithfulness-seam.md`; Slicks `docs/frame-pacing.md`.
 64. **Ask the user at genuine decision points** (scope, architecture, fidelity).
-    — RoF/Pokeri `CLAUDE.md`.
+    — RoF/Pokeri `AGENTS.md`.
 
 ## E. Gating and process
 
 65. **Gate a change by what it can affect**: doc-only → link/syntax checks;
     pure helper → host checks; runtime → original-byte checks + bounded target run.
-    Do not change fidelity or scope as housekeeping. — Revs `CLAUDE.md`; Vette `CLAUDE.md`.
+    Do not change fidelity or scope as housekeeping. — Revs `AGENTS.md`; Vette `AGENTS.md`.
 66. **Fail fast**: build + quick oracle → parent timing → expensive validation
-    only for promising candidates → final timing. — Slicks `CLAUDE.md`,
+    only for promising candidates → final timing. — Slicks `AGENTS.md`,
     `docs/development-verification.md`.
 67. **Read the measured dead ends before retrying; require a changed premise and
-    a new measurement.** — Revs `CLAUDE.md`; RoF `CLAUDE.md`; Slicks `docs/performance.md`.
+    a new measurement.** — Revs `AGENTS.md`; RoF `AGENTS.md`; Slicks `docs/performance.md`.
 68. **Fixed-hardware target: get an end-to-end skeleton running and profiled on
-    the target first.** — RoF `docs/postmortem.md` §4; Slicks `CLAUDE.md`.
+    the target first.** — RoF `docs/postmortem.md` §4; Slicks `AGENTS.md`.
 69. **Never kill all fs-uae/gdb; PID-scoped cleanup; close every session you
-    start.** Several projects share the host. — RoF/Pokeri/Vette `CLAUDE.md`;
+    start.** Several projects share the host. — RoF/Pokeri/Vette `AGENTS.md`;
     Slicks `docs/development-verification.md`.
 70. **Judge appearance only from a clean real run**; the debugger greys the
     display. Decode screenshots against memory dumps rather than eyeballing.
@@ -226,43 +226,43 @@ Revs (BBC 6502→A500), Vette (Mac 68000→A1200). Target-hardware lessons:
 
 71. **One coherent, verified change per commit, committed before the next.**
     Commit on user confirmation when behaviour is user-visible.
-    — Slicks/Revs/Vette/Pokeri `CLAUDE.md`; RoF `CLAUDE.md`.
-72. **Preserve unrelated worktree edits.** — Revs/Vette `CLAUDE.md`.
+    — Slicks/Revs/Vette/Pokeri `AGENTS.md`; RoF `AGENTS.md`.
+72. **Preserve unrelated worktree edits.** — Revs/Vette `AGENTS.md`.
 73. **Never commit original or byte-derived material**; check
     `git status --ignored` before adding new files (extensionless ROMs slipped).
-    — Pokeri `CLAUDE.md`; SWOTL `CLAUDE.md`.
-74. **Repo identity, no hooks/signing/co-author trailers.** — SWOTL/Slicks/Pokeri `CLAUDE.md`.
+    — Pokeri `AGENTS.md`; SWOTL `AGENTS.md`.
+74. **Repo identity, no hooks/signing/co-author trailers.** — SWOTL/Slicks/Pokeri `AGENTS.md`.
 
 ## G. Documentation
 
-75. **CLAUDE.md = standing rules and pointers only**; it is re-read every turn,
+75. **AGENTS.md = standing rules and pointers only**; it is re-read every turn,
     so keep it small. Detail goes in the matching `docs/` file.
-    — RoF/Pokeri/Revs `CLAUDE.md`.
+    — RoF/Pokeri/Revs `AGENTS.md`.
 76. **One work queue (`docs/open-work.md`); remove completed entries; history
     lives in git.** Adding an item needs a demonstrated defect, not "verify more".
-    — Slicks `docs/open-work.md`; Revs `CLAUDE.md`; Vette `CLAUDE.md`.
+    — Slicks `docs/open-work.md`; Revs `AGENTS.md`; Vette `AGENTS.md`.
 77. **Completed experiments are not instructions to repeat them.** Keep one-line
-    dispositions (kept/rejected + reason), not logs. — Pokeri `CLAUDE.md`,
+    dispositions (kept/rejected + reason), not logs. — Pokeri `AGENTS.md`,
     `docs/performance.md`; Slicks `docs/performance.md`.
 78. **Mark evidence level (MEASURED/DERIVED/INFERRED)**; a plausible name is not
-    a fact. — Pokeri `CLAUDE.md`; Vette `CLAUDE.md`; Revs `CLAUDE.md`.
+    a fact. — Pokeri `AGENTS.md`; Vette `AGENTS.md`; Revs `AGENTS.md`.
 79. **Record names and entry points the moment they are found** (rename list,
     `entrypoints.csv`); wrong names tax every later step.
-    — RoF `CLAUDE.md`, `docs/postmortem.md` §1.2; Revs `docs/method-lessons.md`.
+    — RoF `AGENTS.md`, `docs/postmortem.md` §1.2; Revs `docs/method-lessons.md`.
 80. **A rename is a re-read of the sentences** built on the old name.
     — Revs `docs/method-lessons.md`.
 81. **Stale figures are wrong by default**; a doc that quotes a number names
     build, window and date. Obsolete descriptions are deleted, not annotated.
-    — RoF `CLAUDE.md`; Slicks `docs/fidelity.md` (removed "atomic saves").
+    — RoF `AGENTS.md`; Slicks `docs/fidelity.md` (removed "atomic saves").
 82. **Reduce logs to conclusions in versioned docs before deleting them**; do not
     remove another task's files or runs. — Pokeri `docs/testing.md`.
 83. **`tmp/`/`ref/` may hold the only copy of inputs; inspect before cleaning.**
-    — Vette `CLAUDE.md`, `docs/development.md`.
+    — Vette `AGENTS.md`, `docs/development.md`.
 
 ## H. When to stop optimising
 
 84. **Stop when the user-defined bar is met**; do not reopen closed candidates for
-    margin. — RoF `CLAUDE.md` (flight perf closed at 25 FPS).
+    margin. — RoF `AGENTS.md` (flight perf closed at 25 FPS).
 85. **Stop when the profile is flat and experiments move totals by <1%**; fix the
     symptom structurally instead (Slicks: real-time clock + adaptive publication
     made game speed correct, worst-case 20 ms declared out of scope).

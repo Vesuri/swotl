@@ -4,8 +4,8 @@ How to get a number you can trust on the A1200 and decide what to do with it.
 Rules first; other projects' figures appear only as labelled examples (`ex:`).
 Provenance: Slicks `docs/performance.md`, `frame-pacing.md`,
 `development-verification.md`, git `docs/performance-{profiling,verification,distributions}.md`;
-Pokeri `docs/performance.md`, `testing.md`; RoF `docs/perf-budget.md`, `CLAUDE.md`;
-Revs `docs/perf-method.md` (§ cited), `CLAUDE.md`; Vette `docs/performance.md`,
+Pokeri `docs/performance.md`, `testing.md`; RoF `docs/perf-budget.md`, `AGENTS.md`;
+Revs `docs/perf-method.md` (§ cited), `AGENTS.md`; Vette `docs/performance.md`,
 `development.md`. Code-level cost facts: [m68k-optimisation.md](m68k-optimisation.md).
 Emulator driving: [headless-fsuae.md](headless-fsuae.md). Process rules:
 [method-lessons.md](method-lessons.md).
@@ -17,9 +17,9 @@ Emulator driving: [headless-fsuae.md](headless-fsuae.md). Process rules:
    against it. (Revs §WHAT THE ORIGINAL HARDWARE ACHIEVES; ex: BBC 97.0 ms median.)
 2. **Get an end-to-end translated skeleton running on the target model, then
    profile.** Do not pick optimisation work or promise a target before that.
-   (Slicks `CLAUDE.md`; RoF `docs/postmortem.md` §4.)
+   (Slicks `AGENTS.md`; RoF `docs/postmortem.md` §4.)
 3. **User sets the bar** (frame rate, best-case vs worst-case workload). "We need
-   50" is not evidence; "impossible" needs a hand-asm datapoint. (RoF `CLAUDE.md`;
+   50" is not evidence; "impossible" needs a hand-asm datapoint. (RoF `AGENTS.md`;
    Revs §The target.)
 4. **Price the prize before building**: reachable share × removable fraction,
    compared with the noise floor. A skip/sparse scheme needs visits removed AND
@@ -39,7 +39,7 @@ Emulator driving: [headless-fsuae.md](headless-fsuae.md). Process rules:
 | Quote ms/frame (or raster lines: 64 µs, 312/313 per PAL frame) | % of an unknown total is not a measurement | Slicks perf; Revs §The target machine |
 | Displayed FPS is quantised to 50/N; size changes in ms | vblank padding absorbed 75% of a +7.9 ms burn; a −12.5 ms win read +1.5% FPS | Revs Rule 1a |
 | Report work and cadence separately; mean, p50/p95/p99, max, count over budget | final-frame phase table ≠ max-work frame | Slicks git `performance-distributions.md`, `performance-verification.md` |
-| Time in emulated fields/beam, never host wall time | warp/host load changes nothing emulated; wall windows gave 75 vs 144 emulated s | Vette `CLAUDE.md`; Revs §PROBEFIELDS |
+| Time in emulated fields/beam, never host wall time | warp/host load changes nothing emulated; wall windows gave 75 vs 144 emulated s | Vette `AGENTS.md`; Revs §PROBEFIELDS |
 | Bound the window in emulated fields; fingerprint frozen counters | same 30 s wall window, different crash counts | Revs §PROBEFIELDS |
 | An absolute figure is a property of (build × window × workload) | RoF same binary 24.88 vs 23.57 FPS on two windows | RoF `docs/perf-budget.md` |
 | Don't add gains measured in different scenes or transfer them across CPU presets | — | Vette `docs/performance.md` |
@@ -75,7 +75,7 @@ Emulator driving: [headless-fsuae.md](headless-fsuae.md). Process rules:
   each run: accounted ≈100%, body ticks/field ≈1. Use a monotonic epoch, not
   `beam − beam` (wrap drops the longest phases). (Revs `perf-method.md` L68–114, §Lessons — measurement.)
 - **FPS/throughput counters sampled by the program**, read by gdb only at the end;
-  conditional-breakpoint scripts biased FPS by 10× either way. (Revs Rule 1; RoF `CLAUDE.md`.)
+  conditional-breakpoint scripts biased FPS by 10× either way. (Revs Rule 1; RoF `AGENTS.md`.)
 - **Calibrate every new bracket with a known burn**; fit a slope over N, not one
   row. **Empty-bracket control** at the same call rate gives the probe floor.
   (Revs §The four view probes; L339.)
@@ -102,7 +102,7 @@ Emulator driving: [headless-fsuae.md](headless-fsuae.md). Process rules:
 
 - **Control = exact parent build, same session, same window/workload.** Never
   diff against a ledger row or another session. (Slicks `docs/performance.md`;
-  RoF `CLAUDE.md`.)
+  RoF `AGENTS.md`.)
 - **Behaviour-preserving change must reproduce the final-state hash exactly**;
   fixed-clock mode makes final state depend only on inputs. Real-time-clock runs
   cannot gate fidelity. (Slicks `docs/frame-pacing.md` §Fixed-clock.)
@@ -118,7 +118,7 @@ Emulator driving: [headless-fsuae.md](headless-fsuae.md). Process rules:
   phase identical across runs). (Revs `perf-method.md` L1462, L2485.)
 - **Noise floor**: RoF/Revs end-to-end <~3% is agreement, not evidence; a paired,
   field-bounded phase A/B resolved 0.015%. Know yours before claiming.
-  (RoF `CLAUDE.md`; Revs §PROBEFIELDS.)
+  (RoF `AGENTS.md`; Revs §PROBEFIELDS.)
 - **Prove flags reached the build**: zsh does not word-split `$VAR`; command-line
   `VAR+=` replaces the Makefile's list; assert a symbol-count fingerprint per arm.
   (Revs §PROVE THE FLAGS REACHED THE BUILD.)
@@ -134,7 +134,7 @@ Emulator driving: [headless-fsuae.md](headless-fsuae.md). Process rules:
 4. Final timing confirmation; commit.
 
 Never pay for full validation of a candidate already rejected on performance.
-(Slicks `CLAUDE.md`, `docs/development-verification.md`.)
+(Slicks `AGENTS.md`, `docs/development-verification.md`.)
 
 A null counts only if the change **ran** (positive-control counter), was
 **emitted** (objdump), and was **faithful**; it proves "this shape is dead",
@@ -151,7 +151,7 @@ retry" at the code. (Slicks `docs/performance.md` §Rejected; Pokeri experiment 
 | Compiler deleted a busy-delay loop; every baseline lacked it | diff objdump of both arms | Revs §A BUSY-DELAY LOOP |
 | Beam delta wrapped; longest phases lost most; zeros read as "trivial" | monotonic epoch; accounting line | Revs §Lessons — measurement, `method-lessons.md` |
 | GDB-interrupt sampling vsync-locked | timer-interrupt sampler | Slicks perf |
-| gc-sections dropped a counter; gdb read code bytes | link roots + probe audit | Revs Rule 1; Vette `CLAUDE.md` |
+| gc-sections dropped a counter; gdb read code bytes | link roots + probe audit | Revs Rule 1; Vette `AGENTS.md` |
 | Stale object reproduced the previous number to the digit | clean on flag change | Revs `perf-method.md` L87, L341, L3136 |
 | Frozen numerator over live denominator | snapshot at window edge | Revs §THE PARTIAL-FREEZE TRAP |
 | Wrong denominator (per line vs per span vs per walk) | count calls first | Revs §PHASE 18 IS PER-WALK; `m68k-optimisation.md` |
@@ -163,7 +163,7 @@ retry" at the code. (Slicks `docs/performance.md` §Rejected; Pokeri experiment 
 | Pixel/RAM compare across builds of different speed | in-process oracle | RoF `perf-budget.md`; Revs `validation-harness.md` |
 | Parked/static scene flattered a census; mode excluded code | measure the representative workload | Revs `perf-method.md` L2111–2146, L1561 |
 | Restore label included unrelated work; intrusive sub-probes don't add | separate brackets; don't sum independent probes | Slicks git `performance-distributions.md` |
-| Residual attributed to an unmeasured component | measure both removed work and replacement cost | Revs `CLAUDE.md`; Revs `perf-method.md` L884–903, L2148–2177 |
+| Residual attributed to an unmeasured component | measure both removed work and replacement cost | Revs `AGENTS.md`; Revs `perf-method.md` L884–903, L2148–2177 |
 | Isolated routine win not visible whole-frame (ex: Pokeri compact dispatch −5.48 µs, no card gain) | whole-workload A/B decides | Pokeri `docs/performance.md` |
 | PC sampler bucket "Kickstart ROM 8%" was the first instruction of the L3 autovector stub (FS-UAE gdb stub breaks after dispatch) | timer sampler, not gdb | RoF `flight-perf-log.md` §4.1 |
 | Phase bracket credited ISR time at ISR exit, straddling bracket ends (+15% on combat) | calibrate with a fixed load; beam-locked windows | RoF `flight-perf-log.md` §8.3 |
@@ -198,7 +198,7 @@ retry" at the code. (Slicks `docs/performance.md` §Rejected; Pokeri experiment 
   with the user whether mean, p95 or max must meet it. (Slicks `docs/performance.md`.)
 - **ISR budget is separate**: a fixed wall-clock tax; copper/pointer work first,
   bounded work after; it hides inside the phase it interrupted.
-  (Revs Rule 5, `CLAUDE.md`; RoF `docs/perf-budget.md`.)
+  (Revs Rule 5, `AGENTS.md`; RoF `docs/perf-budget.md`.)
 - **Memory budget** measured, not reserved: report Chip vs other and check before
   adding tables. (RoF `docs/perf-budget.md`; Pokeri `docs/architecture.md`.)
 - **Game speed vs frame rate**: decouple when the original's speed depends on
@@ -208,7 +208,7 @@ retry" at the code. (Slicks `docs/performance.md` §Rejected; Pokeri experiment 
 
 ## 8. When to stop
 
-- Bar met → stop; do not reopen for margin. (RoF `CLAUDE.md`.)
+- Bar met → stop; do not reopen for margin. (RoF `AGENTS.md`.)
 - Flat profile (ex: Slicks no routine >7%) and experiments moving totals
   0.03–1% → stop micro work; change the structure or declare scope.
   (Slicks `docs/frame-pacing.md` §Alternatives not taken.)

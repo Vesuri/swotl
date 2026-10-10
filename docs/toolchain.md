@@ -102,7 +102,7 @@ provenance is in brackets.
 | Intel XED | — | **missing** (`/usr/bin/xed` is Xcode's editor launcher) | listed as optional second decoder |
 | iced-x86 | — | **missing** | not used by Slicks |
 
-- Slicks rule: every instruction semantic and every lowering is differentially tested against an independent x86 oracle (Unicorn x86-16 vs Unicorn 68020 on assembled bytes). [Slicks `CLAUDE.md`, `docs/validation-harness.md`]. Details are in [translation-lessons.md](translation-lessons.md).
+- Slicks rule: every instruction semantic and every lowering is differentially tested against an independent x86 oracle (Unicorn x86-16 vs Unicorn 68020 on assembled bytes). [Slicks `AGENTS.md`, `docs/validation-harness.md`]. Details are in [translation-lessons.md](translation-lessons.md).
 - Slicks: no LLVM and no generated-C backend until there is a measured need. [Slicks `docs/toolchain.md`]
 - SWOTL translator and tests (Python 3.12, stdlib + capstone; numpy for `tools/profile_report.py`): `make gen` (build/gen: `.ir`, `.s`,
   audit), `make gen-check` (G1), `make lint` (G2), `make test` (lint, decoder vs Capstone, x86

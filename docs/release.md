@@ -7,7 +7,7 @@ commit a0d16a2), `RoF` Rescue on Fractalus, `SDK` `~/.local/share/amiga/WHDLoad`
 
 ## Hard rule: no copyrighted bytes
 
-- SWOTL data, manual, ROMs, RTBs, Kickstart, WHDLoad, Installer, SetPatch never in repo or archive (CLAUDE.md, Sl, Po).
+- SWOTL data, manual, ROMs, RTBs, Kickstart, WHDLoad, Installer, SetPatch never in repo or archive (AGENTS.md, Sl, Po).
 - Packager uses an explicit **file allowlist**, never a directory sweep (Sl, Po).
 - Packager refuses any member whose SHA-256 is in the originals table; checker repeats it independently (Sl, Po).
 - Rv: scans every member for any 256-byte block of the original engine → refuse. Stronger than whole-file hash; use for any exe that could embed original tables (Rv).

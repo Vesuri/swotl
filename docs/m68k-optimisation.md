@@ -11,7 +11,7 @@ encode. Process: [method-lessons.md](method-lessons.md); measuring:
 [amiga-arch.md](amiga-arch.md).
 
 Sources: Slicks `docs/performance.md`, `rendering.md`, `native-graphics-abi.md`,
-`CLAUDE.md`; Vette git `56032f5^:docs/perf-method.md` (§A1200 C2P entries),
+`AGENTS.md`; Vette git `56032f5^:docs/perf-method.md` (§A1200 C2P entries),
 `docs/performance.md`; Pokeri `docs/performance.md` §Alignment, `docs/architecture.md`;
 RoF `docs/m68k-optimisation.md`, `docs/flight-perf-log.md`, `docs/asm-migration-plan.md`;
 Revs `docs/m68k-optimisation.md`, `docs/perf-method.md`.
@@ -27,7 +27,7 @@ Revs `docs/m68k-optimisation.md`, `docs/perf-method.md`.
 | Per-object overhead adds up (ex: 32 stationary objects, ~1000 px, once ~30% of a track's work) | [020] | Slicks |
 | Chip-destination writes cost 1.5× Fast-destination writes for the same C2P routine | [020] | Vette `C2P_SPLIT` |
 | With no Fast RAM, every lookup table is a Chip read; a table must beat the ALU sequence it replaces (ex: velocity reciprocal table slower than `DIVS`) | [020] | Slicks §Rejected |
-| Reduce the number of memory accesses; never justify a buffer as "cheaper RAM" | [both] | RoF/Revs `CLAUDE.md`; on this target true by construction |
+| Reduce the number of memory accesses; never justify a buffer as "cheaper RAM" | [both] | RoF/Revs `AGENTS.md`; on this target true by construction |
 | Blitter shares the bus; it pays only when it **replaces** CPU work (D-only clear), not beside it | [000] | Revs `m68k-optimisation.md` §MODE 7 |
 | A500 cycle→ms needs a ~1.6 contention factor; not measured on A1200 | [000] | Revs §EIGHT ADDRESS REGISTERS |
 | SWOTL measurement model (68020 + 8 MB Fast, FS-UAE): generated code costs ≈ 1.09 cycles per code byte + 2.27 per data read + 3.07 per data write (per-PC fit, R² 0.83); bytes inside cached loops are nearly free | [020] | SWOTL `speed-plan.md` §6 |
@@ -45,7 +45,7 @@ Revs `docs/m68k-optimisation.md`, `docs/perf-method.md`.
 | Bitfield ops (`BFINS`, `BFEXTU`, `BFFFO`) | absent (`bfffo` emulated with tables cost +27.56 ms in one Revs build) | present; Slicks sparse-pixel C2P uses per-pixel `BFINS` into all planes | Revs `perf-method.md` L1612 [000]; Slicks `rendering.md` [020] |
 | Word/long at odd address | address-error fault | permitted, extra bus cycles | Revs/RoF [000]; [arch] for 68020 |
 | Longword at addr ≡ 2 mod 4 | — | extra bus cycle; 101 hot globals misaligned → ~8% slower cold start, 0.65% gameplay; fix `alignas(4)` + build audit | Pokeri §Alignment [020] |
-| 32-bit `mul`/`div` | none: GCC emits `__mulsi3` etc. (~200–600 cycles); hard ban + objdump audit | `mulu.l`/`divu.l`/`divs.l` exist [arch]; Slicks uses direct 68020 constant division and found `DIVS` faster than a reciprocal table | RoF/Revs `CLAUDE.md` [000]; Slicks [020] |
+| 32-bit `mul`/`div` | none: GCC emits `__mulsi3` etc. (~200–600 cycles); hard ban + objdump audit | `mulu.l`/`divu.l`/`divs.l` exist [arch]; Slicks uses direct 68020 constant division and found `DIVS` faster than a reciprocal table | RoF/Revs `AGENTS.md` [000]; Slicks [020] |
 | Shifts | `lsl.l #8` 24, `ror.w #8` 22 cycles (2n+8): byte-swaps and pair builds are expensive | barrel shifter; `ror.w #8` ≈ 1.8 cycles on the SWOTL model, i.e. its 2 code bytes | RoF `m68k-optimisation.md` [000]; SWOTL `speed-plan.md` §6 [020] |
 | `(d16,An,Xn)` / 32-bit displacements | only `(d8,An,Xn)`; far table needs its own An | full-format EA with 16/32-bit displacements [arch] | Revs §WRITING A HAND-ASM ROUTINE [000] |
 | Published cycle tables (abs.l 16, d16(An) 12, (An)+ 8, `bne.s` 8/10, `bne.w` 12) | valid | **do not use**; price by memory accesses + code bytes fetched outside the cache, then measure | RoF/Revs [000]; Slicks [020] |
@@ -55,12 +55,12 @@ Revs `docs/m68k-optimisation.md`, `docs/perf-method.md`.
 
 ### Registers and state
 - **GEN Keep guest registers resident across blocks; materialise full guest state
-  only at a proven boundary; no CPU struct in translated regions.** — Slicks `CLAUDE.md`, `architecture.md`.
+  only at a proven boundary; no CPU struct in translated regions.** — Slicks `AGENTS.md`, `architecture.md`.
 - **GEN One base register for guest RAM**: `abs.l` operands → `d16(An)` saved 16→12
   cycles and 6→4 bytes per operand **and one HUNK RELOC32 per operand** (20 folds:
   −14,352 B). Revs: one `a5 = mem+$628F` reached all cells below `$E28E` via
   negative/positive `d16`. Derived for x86: a base at segment+`$8000` puts a whole
-  64 KiB segment in `d16` range. — RoF `CLAUDE.md`, `flight-perf-log.md` §23/§26 [000]; Revs [000].
+  64 KiB segment in `d16` range. — RoF `AGENTS.md`, `flight-perf-log.md` §23/§26 [000]; Revs [000].
 - **GEN A hoisted pointer is a second representation**; if every input is already
   live, hoisting buys an add and sells a register (spill). When the register file is
   saturated, the question is whether to hoist at all. — Revs §A HOISTED BASE POINTER [000].
@@ -81,7 +81,7 @@ Revs `docs/m68k-optimisation.md`, `docs/perf-method.md`.
   needing a constant register caused a spill. — Revs §SPELL AN OPERATION [000].
 - **GEN Make store targets statically known**: a store to a constant guest RAM address
   needs no device/bus check; only genuinely variable destinations do (ex: −1.17 ms
-  from removing an unreachable range test). — Revs `CLAUDE.md`, `perf-method.md`.
+  from removing an unreachable range test). — Revs `AGENTS.md`, `perf-method.md`.
 
 ### Flags / CCR
 - **GEN Flags stay virtual; compute a flag only when a reader is live; reuse CCR
@@ -95,17 +95,17 @@ Revs `docs/m68k-optimisation.md`, `docs/perf-method.md`.
 - **`MOVE` sets N/Z; `EXG` sets no flags** (`tst / exg / bmi` works, `tst / move / bmi`
   does not). — Revs §span PASS [both, ISA].
 - Patched/replaced routines preserve all live registers and **all five CCR bits incl.
-  X** (Vette copy-row: final-byte N/Z and X). — Vette `performance.md`; Pokeri/Vette `CLAUDE.md`.
+  X** (Vette copy-row: final-byte N/Z and X). — Vette `performance.md`; Pokeri/Vette `AGENTS.md`.
 
 ### Endianness and byte swaps
 - **GEN Guest RAM stays byte-exact; every native word/long access states its endian
-  and alignment rule.** — Slicks `CLAUDE.md`. SWOTL speed-plan R1 (user,
+  and alignment rule.** — Slicks `AGENTS.md`. SWOTL speed-plan R1 (user,
   2026-10-08) moves guest memory to a byte-reversed layout (guest byte at linear L
   at host TOP − L): a little-endian guest word is then a native big-endian word one
   byte below.
 - **Never alias LE guest memory through wide pointers** except uniform-byte
   broadcast (all bytes equal); lint for it. Host-green/target-garbage happened.
-  — RoF `m68k-optimisation.md`; Revs `CLAUDE.md`.
+  — RoF `m68k-optimisation.md`; Revs `AGENTS.md`.
 - **Pair build cost [000]**: `(hi<<8)|lo` = 74 cycles (46 shifting); `lo + 256*hi` = 58;
   two pairs added 152→98. — RoF `m68k-optimisation.md`.
 - **High byte without a shift [000]**: `move.w d,-(sp)` / `move.b (sp)+,x` 24 vs `lsr.w #8` 38.
@@ -172,10 +172,10 @@ Translated code is generated asm; these apply to the runtime/platform C.
 | Rule | Source |
 | --- | --- |
 | `-O3` for hot TUs (Slicks: `-O2` worse max, `-Os` 7–9% worse) | Slicks `performance.md` |
-| Audit objdump for `__mulsi3`/`__divsi3`/`__udivsi3`/`__modsi3`/`__umodsi3` on every link | RoF/Revs/Vette `CLAUDE.md` |
-| `alignas(4)` on even-sized ≥4-byte globals; ELF audit rejects misalignment | Pokeri `CLAUDE.md` [020] |
+| Audit objdump for `__mulsi3`/`__divsi3`/`__udivsi3`/`__modsi3`/`__umodsi3` on every link | RoF/Revs/Vette `AGENTS.md` |
+| `alignas(4)` on even-sized ≥4-byte globals; ELF audit rejects misalignment | Pokeri `AGENTS.md` [020] |
 | Freestanding `memset`/`memcpy`/`memmove` are byte loops (24/28/~40 cycles/byte [000]); GCC turns fill loops back into `memset` — use `-fno-tree-loop-distribute-patterns` | Revs `perf-method.md`; RoF |
-| `__chip` static initialisers are discarded (`.MEMF_CHIP` is BSS); fill at runtime | RoF/Pokeri `CLAUDE.md` |
+| `__chip` static initialisers are discarded (`.MEMF_CHIP` is BSS); fill at runtime | RoF/Pokeri `AGENTS.md` |
 | Size-changing edits flip inlining; count `jsr <hot leaf>` (and `.part.N`/`.constprop.N`) in objdump after each edit | Revs §MAKING A FUNCTION SMALLER |
 | Growing a shared `always_inline` leaf multiplies by its call sites; diff per-function sizes and intersect with call sites | Revs §FOURTH CASE |
 | A short list with an explicit count is peeled/unrolled by its declared bound; terminate positionally | Revs §THIRD CASE |

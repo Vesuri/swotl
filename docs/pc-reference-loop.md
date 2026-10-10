@@ -2,7 +2,7 @@
 
 Ground truth is the original v2.2 game running unattended under a PC emulator,
 never a host approximation and never the Amiga build compared with itself
-([../CLAUDE.md](../CLAUDE.md)). This doc distils how Slicks built its loop, plus the
+([../AGENTS.md](../AGENTS.md)). This doc distils how Slicks built its loop, plus the
 general lessons of the BBC (Revs) and Mac (Vette) loops. **[PLAN]** marks SWOTL
 adaptations that do not exist yet. Tool versions are in [toolchain.md](toolchain.md).
 

@@ -33,7 +33,7 @@ Causes (from the record):
 
 - Rules banned the *emulation* failure mode (generated C, CPU struct,
   dispatcher) but not the *hand-port* failure mode. Hand-written C/asm game
-  logic satisfied every rule. *SL CLAUDE.md*
+  logic satisfied every rule. *SL AGENTS.md*
 - Gate 5 ("translated end-to-end skeleton") was satisfiable without gates 3–4,
   and was ticked from hand-written code. *SL `4508f2c`*
 - "Immediate next step" always named a visible milestone ("recognizable
@@ -58,13 +58,13 @@ Guardrails for SWOTL (feed into `architecture.md`/`phases.md`):
 
 ## Process and scope
 
-1. **Standing rules must name the failure modes you expect, both of them** — SL's rules blocked emulation but not hand-porting, and it hand-ported. *SL CLAUDE.md, history above*
+1. **Standing rules must name the failure modes you expect, both of them** — SL's rules blocked emulation but not hand-porting, and it hand-ported. *SL AGENTS.md, history above*
 2. **Build discovery and validation infrastructure exhaustively up front, not reactively** — every reactive addition on RoF was a scar. *RoF postmortem (one-sentence version)*
 3. **Translator output quality is a prerequisite milestone before mass generation** — one generator fix upgrades the whole corpus; late fixes left every intermediate regen worse. *RoF postmortem 2.1; RV transpiler.md*
 4. **Generation fails rather than emitting a plausible stub** (unknown ROM/OS call, annotation address not an instruction start, unresolvable target) — a silent stub reads like a routine that runs and does nothing. *RV transpiler.md §What make gen reports*
-5. **Unknown control flow, code writes, overlays, interrupts, port I/O and device memory fail loudly until deliberately supported.** *SL CLAUDE.md*
+5. **Unknown control flow, code writes, overlays, interrupts, port I/O and device memory fail loudly until deliberately supported.** *SL AGENTS.md*
 6. **Oracle-tested code that is never linked is deleted** — SL removed 2,035 such lines. *SL `974ff50`*
-7. **Profile an end-to-end slow skeleton on the target before choosing optimisation work** — RoF's "algorithmic floor" was wrong; the ceiling was GCC. *RoF postmortem 4.1; SL CLAUDE.md*
+7. **Profile an end-to-end slow skeleton on the target before choosing optimisation work** — RoF's "algorithmic floor" was wrong; the ceiling was GCC. *RoF postmortem 4.1; SL AGENTS.md*
 8. **A structural fix is not a performance fix** — measure separately. *RV transpiler.md (build_regions bought no framerate)*
 
 ## Runtime image and static map
