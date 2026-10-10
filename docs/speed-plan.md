@@ -18,13 +18,14 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   at `c6a7de1` (R1d).
 - **Bench** (§4): frames 4–11 mean 37.74 fields (5.36M cycles) at
   `b9b6374`, 37.56 at `63a99fe` (R1a), 34.41 (4.89M cycles) at R1b, 33.69
-  at R1d; window 2.20M guest instructions, SPAZ 0.22%.
-- **Meter after R3a** (m4, 49 frames; weights recalibrated after R1, §4):
-  286,795,180 model cycles (generated 206.0M, cell walk 77.4M, runtime
-  3.4M); 17,976,252 guest instructions, 15.76 model cycles each (generated
+  at R1d, 33.37 at R3a, 33.27 (4.73M cycles) at R3b; window 2.20M guest
+  instructions, SPAZ 0.22%.
+- **Meter after R3b** (m4, 49 frames; weights recalibrated after R1, §4):
+  286,257,092 model cycles (generated 205.5M, cell walk 77.4M, runtime
+  3.4M); 17,976,252 guest instructions, 15.73 model cycles each (generated
   + walk); R1 292,676,869 (275,119,407 under the previous weights). Round 2
   kept (previous weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b
-  −1.916%, R1d −1.231%; (current) R2 −1.029%, R3a −0.991%.
+  −1.916%, R1d −1.231%; (current) R2 −1.029%, R3a −0.991%, R3b −0.188%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -368,12 +369,25 @@ taken `beq.s` costs 4.6 cycles). Plant: the stub returns to the wrong point.
   Kept: −0.991% (−2,869,993 model cycles: 728K presets in m4), static
   code −4,606 bytes; 6 presets left. Coverage: ADC/SBB boundary cases
   (1,320); plant: the preset dropped while ZF is live.
-- **N/Z provenance:** a later move of the last flag result (a plain store
-  after R1) leaves N and Z equal to SF and ZF.
-  - SF/ZF-only readers use the CCR.
-  - The producer drops its `G_FL` spill when no reader needs the image.
-  - CF/OF/PF/AF readers still get the image.
-- Price ≈ 1–1.5% (spill 1.60, reload 0.55, ori 0.93).
+- R3b, N/Z provenance: the setter's flags reach a fusing reader in the
+  CCR across plain instructions (`flags.py`). Lines that keep the CCR keep
+  every flag. A move of the setter's result, at its width and unchanged
+  since, leaves N and Z equal to SF and ZF. Anything else ends the chain.
+  The setter stores only what is live after the reader.
+  - Price ≈ 1–1.5% (spill 1.60, reload 0.55, ori 0.93). Re-price (census
+    of `0aa7480`, m4: 652,585 spill executions): ≈ −0.19%, 18 sites.
+  - Kept: −0.188% (−538,088 model cycles: 39,710 spills and 39,710
+    reloads), static code −140 bytes. Coverage: setter, plain
+    instructions, reader of ZF, SF, CF or SF^OF (9,648 boundary cases).
+    The plain instructions are moves of the result and near misses.
+    Plant: N/Z trusted after a move of another value.
+  - FS-UAE check: bench frames 4–11 83,538 → 83,308 lines (33.37 → 33.27
+    fields, equal RAM at frame 12), `ab_labels.py` −0.48% (−51.3% on the
+    24 changed labels); same sign as the meter.
+  - Candidates left: 329K spills sit right before a fused reader with flags
+    still live after it. For about 210K of them the next reader is a second
+    `jcc`, reached by fall-through. Another 150K keep CF for an `adc`/`sbb`
+    (failed carry pairs, CF across moves).
 
 ### R4. Zero-extension only where consumed
 

@@ -19,11 +19,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import m68k_blocks as B  # noqa: E402
 import m68k_diff as D  # noqa: E402
-from translator import emit as E, lower as L  # noqa: E402
+from translator import emit as E, flags as F, lower as L  # noqa: E402
 
 real_run = L.Lowering.run
 real_helpers = D.HELPERS
 real_poll_stub = E.poll_stub
+real_carry_ccr = F.carry_ccr
 
 
 def text(fn):
@@ -275,6 +276,14 @@ def address_copy_from_stale_scratch(self, out):
     return [re.sub(r"^\tmovea\.l d6,(a[45])$", r"\tmovea.l d7,\1", line) for line in out]
 
 
+def provenance_any_move(lines, ccr, res, nz):
+    """R3b: N and Z trusted after a move of any data register, at any width."""
+    if res:
+        lines = [re.sub(r"^\tmove\.[bw] d[0-7],", f"\tmove.{L.SZ[res[1]]} {res[0]},", x)
+                 for x in lines]
+    return real_carry_ccr(lines, ccr, res, nz)
+
+
 SABOTAGE = [
     ("jb/jae swapped", sub(r"\bbcs\b", "bcc"), "forms,boundary"),
     ("TOP off by one", top_off_by_one, "boundary"),
@@ -309,6 +318,7 @@ SABOTAGE = [
     ("unbiased segment base", unbiased_segment_base, "boundary"),
     ("RETF CS pop uses linear SP", linear_retf_stack, "boundary"),
     ("address restoration copies stale scratch", address_copy_from_stale_scratch, "boundary"),
+    ("N/Z provenance trusts a move of another value", "provenance", "boundary"),
 ]
 
 
@@ -320,6 +330,8 @@ def plant(k: int) -> tuple[int, int]:
         assert D.HELPERS != real_helpers
     elif fn == "poll stub":     # emit.poll_stub (R2)
         E.poll_stub = lambda lab, ip, cs: real_poll_stub(lab, ip, cs)[:-1] + [f"\tbra {lab}"]
+    elif fn == "provenance":    # flags.carry_ccr (R3b)
+        F.carry_ccr = provenance_any_move
     else:
         L.Lowering.run = text(fn)
     try:
@@ -340,6 +352,7 @@ def plant(k: int) -> tuple[int, int]:
         L.Lowering.run = real_run
         D.HELPERS = real_helpers
         E.poll_stub = real_poll_stub
+        F.carry_ccr = real_carry_ccr
 
 
 def main() -> int:

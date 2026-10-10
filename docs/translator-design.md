@@ -20,7 +20,7 @@ Overview and guardrails: [architecture.md](architecture.md).
 | `translator/gen.py` | `make gen`: `build/gen/<module>.ir` with hash header; coverage report (G6) |
 | `translator/check.py` | G1 header/digest/regeneration check, G2 lint |
 | `translator/lower.py` | one decoded instruction -> 68020 text under the register contract (templates per op family; the IR stays the semantic reference) |
-| `translator/flags.py` | flag demand: per-instruction store set and CCR fusion with the next reader |
+| `translator/flags.py` | flag demand: per-instruction store set and CCR fusion with the next reader, or one past plain instructions |
 | `translator/emit.py` | program mode: global flag liveness, per-function return sets, leaders, labels, transfers, `build/gen/<module>.s`, `program.s` (assembly root, dispatch table) |
 | `translator/support.py` | state-block equates, flag/BCD helpers (`build/gen/support.s`) |
 | `src/runtime/` | runtime (C + `rt_entry.s`): machine model of the reference (PSP, environment, MCBs, IVT values), EXEC of `SWOTL.EXE`, INT 21h/10h/67h services, `rt_*` entries, dispatch lookup with PLINK residency; platform interface `platform.h` |
@@ -79,8 +79,12 @@ diffs directly); relocated words in instructions are emitted as
   global liveness in `emit.py`). The next instruction reads the CCR directly
   when it is not a leader, reads only flags the setter's 68k op holds with
   x86 meaning (`CCR_OK`), and the setter's tail leaves the CCR intact; else
-  readers load `G_FL`. PF/AF are stored as result / `a^b^r` bytes only when
-  live. adc/sbb/rcl/rcr derive X from `G_FL` and preset Z for `addx`/`subx`.
+  readers load `G_FL`. Plain instructions (no flags, no transfer) may stand
+  between the two (speed-plan R3b). Their 68k lines keep the CCR, or the
+  last one that changes it moves the setter's result register at its width
+  (unchanged since), which leaves N and Z equal to SF and ZF. PF/AF are
+  stored as result / `a^b^r` bytes only when live. adc/sbb/rcl/rcr derive X
+  from `G_FL` and preset Z for `addx`/`subx`.
 - Calls (D1): the guest stack stays byte-exact (return CS:IP pushed as the
   CPU does); a guest call is `jsr`, `ret`/`retf` pop into d7/d6 and `rts`;
   the return site checks d7 (and d6) against its own IP/CS and jumps to

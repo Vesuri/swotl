@@ -474,6 +474,7 @@ def boundary(h: Harness) -> None:
     fold_cases(h)
     carry_cases(h)
     shift_fuse_cases(h)
+    provenance_cases(h)
 
 
 def address_guard_cases(h):
@@ -1077,6 +1078,33 @@ def shift_fuse_cases(h):
                     h.case(bytes.fromhex(form) + bytes((0x70 + cc, 2)), f"b:shiftfuse{form}",
                            n=2, block=True, overrides={"regs": {"ax": ax, "cs": 0x2000},
                                                        "flags": {"CF": cf}, "ip": 0x100})
+
+
+def provenance_cases(h):
+    """R3b: a flag setter (byte and word), plain instructions, a reader of ZF, SF,
+    CF or SF^OF. Moves of the result (memory, register, push), near misses
+    (another register, the other width, the high byte, the result overwritten or
+    exchanged first), a move of another register before the result's, NOP;
+    results 0, positive and negative in both widths, CX 8001h and 0 (SHL by CL 1, 0)."""
+    word = ("01d8", "29d8", "21d8", "09d8", "31d8", "11d8", "19d8", "40", "48", "f7d8", "85c0",
+            "d1e0", "d1e8", "d1f8", "d3e0", "39d8")
+    byte = ("00d8", "28d8", "fec8", "84c0", "d0e0")
+    wmid = (("a33412",), ("89c1",), ("50",), ("890e3412",), ("a23412",), ("88263412",),
+            ("89c8", "a33412"), ("91", "a33412"), ("890e3412", "a33412"), ("90",),
+            ("90", "a33412"))
+    bmid = (("a23412",), ("88c1",), ("a33412",), ("89c8", "a23412"), ("90",))
+    values = ((0, 0), (1, 1), (0x7f, 1), (0x7fff, 1), (0x8000, 0xffff), (0xff80, 0x80))
+    for setters, mids in ((word, wmid), (byte, bmid)):
+        for setter in setters:
+            for mid in mids:
+                for reader in ("7402", "7802", "7202", "7c02"):
+                    for k, (ax, bx) in enumerate(values):
+                        for cx in (0x8001, 0):
+                            h.case(bytes.fromhex(setter + "".join(mid) + reader), f"b:prov{setter}",
+                                   n=len(mid) + 2, block=True,
+                                   overrides={"regs": {"ax": ax, "bx": bx, "cx": cx, "ds": 0x5000,
+                                                       "cs": 0x2000}, "flags": {"CF": k & 1},
+                                              "ip": 0x100})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:
