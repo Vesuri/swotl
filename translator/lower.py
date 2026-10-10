@@ -742,6 +742,7 @@ class Lowering:
         self.store_ccr(store & ok, self.kills(op))
         if "PF" in need:
             self.e(f"move.b {r},G_PF(a6)")
+            self.ccr = set()
             self.stats["PF store"] += 1
         if computed:
             top = w - 1

@@ -473,6 +473,7 @@ def boundary(h: Harness) -> None:
     mirror_cases(h)
     fold_cases(h)
     carry_cases(h)
+    shift_fuse_cases(h)
 
 
 def address_guard_cases(h):
@@ -1061,6 +1062,21 @@ def carry_cases(h):
                                overrides={"regs": {"ax": ax, "bx": bx, "ds": 0x5000, "cs": 0x2000},
                                           "flags": {"CF": cf}, "ip": 0x100,
                                           "mem": [(0x50000 + bx, other.to_bytes(2, "little"))]})
+
+
+def shift_fuse_cases(h):
+    """SHL/SHR/SAR by 1 (byte and word) fused with the next reader, every
+    condition but parity, all flags live after it (the PF store), at the sign
+    and carry edges with CF in 0 and 1."""
+    for form in ("d1e0", "d1e8", "d1f8", "d0e0", "d0e8", "d0f8"):
+        for cc in range(16):
+            if cc in (0xa, 0xb):
+                continue
+            for k, ax in enumerate((0, 1, 0x7f, 0x7fff, 0x8000, 0xff80)):
+                for cf in (0, 1):
+                    h.case(bytes.fromhex(form) + bytes((0x70 + cc, 2)), f"b:shiftfuse{form}",
+                           n=2, block=True, overrides={"regs": {"ax": ax, "cs": 0x2000},
+                                                       "flags": {"CF": cf}, "ip": 0x100})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:
