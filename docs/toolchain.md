@@ -110,9 +110,10 @@ provenance is in brackets.
 - SWOTL translator and tests (Python 3.12, stdlib + capstone; numpy for `tools/profile_report.py`): `make gen` (build/gen: `.ir`, `.s`,
   audit), `make gen-check` (G1), `make lint` (G2), `make test` (lint, decoder vs Capstone, x86
   differential vs Unicorn, 68020 instruction differential, generated-program block differential,
-  guard plants, gen-check, host run m1–m3; ~5 min), `make test-sabotage` (x86, 68020 and runtime plants, ~3.5 min),
-  `make test-host-all` (m1–m7 and coverage c6-flight-keys, ~6 min). Checks run in parallel (`JOBS`, default all cores; the
-  differentials in `--shard K/N` pieces), each logging to `tmp/test/<name>.log`. Unicorn x86
+  guard plants, gen-check, host run m1–m3; ~3 min), `make test-sabotage` (x86, 68020 and runtime plants, one plant per
+  worker process; ~4.5 min), `make test-host-all` (m1–m7 and coverage c6-flight-keys, ~3–5 min), `make gates` (all step
+  gates: test, then the others at once; ~8 min, logs in `tmp/gates/`). Checks run in parallel (`JOBS`, default all cores;
+  the differentials in `--shard K/N` pieces), each logging to `tmp/test/<name>.log`. Unicorn x86
   quirks the harness works around: [x86-notes.md](x86-notes.md#unicorn-x86-16-as-oracle).
   Multi-instruction RETF wrap checks and `tests/test_dosbox_retf.py` also need
   the existing heavy-debug DOSBox-X binary (`make reference-emulator`).

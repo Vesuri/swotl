@@ -59,7 +59,7 @@ Breaking any of these voids the step, whatever it measures.
    only while its exact validity condition holds.
 5. **Gates stay green and unchanged** at every commit: `make test`,
    `make test-sabotage`, `make test-host-all`, `make test-amiga`, `make
-   smoke`. Never edit, skip, mask, loosen or re-record a test, reference or
+   smoke` (`make gates` runs all five). Never edit, skip, mask, loosen or re-record a test, reference or
    tolerance to make a step pass. R1's representation change (D1) may
    change how the harness maps memory and registers, never what is
    compared; every corpus case, reference and comparison stays. A plant is

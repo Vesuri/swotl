@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards host test-host test-host-all test-amiga amiga amiga-release smoke smoke-release size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae host test-host test-host-all test-amiga amiga amiga-release smoke smoke-release size clean
 
 PYTHON ?= python3
 REFERENCE_ROOT ?= tmp/pc-root
@@ -31,8 +31,9 @@ help:
 	@echo "  make test-sabotage      planted IR/decoder/runtime faults must fail the differentials and host run"
 	@echo "  make host               link generated program + runtime for Unicorn 68020 -> build/host/swotl.elf"
 	@echo "  make test-host          run it from the MZ entry to milestones m1-m3 against the reference"
-	@echo "  make test-host-all      the same to every milestone, m1-m7, and c6-flight-keys (~6 min)"
+	@echo "  make test-host-all      the same to every milestone, m1-m7, and c6-flight-keys (~3-5 min)"
 	@echo "  make test-amiga         m1b-logo on the A1200 model (FS-UAE + GDB capture, amiga/milestone.gdb.in; AMIGA_CPU=68030)"
+	@echo "  make gates              the step gates: test, then test-sabotage, test-host-all and test-amiga + smoke at once (~8 min)"
 	@echo "  make amiga   build amiga/out/Swotl.exe"
 	@echo "  make amiga-release  build and verify separate stripped amiga/out/Swotl-release.exe"
 	@echo "  make smoke-release  boot the stripped executable under FS-UAE"
@@ -246,6 +247,24 @@ size: amiga
 
 smoke: amiga
 	. amiga/env.sh && amiga/debug.sh "" "$(CURDIR)/amiga/diag_smoke.gdb" | grep -q '^SWOTL_SMOKE_OK'
+
+# Step gates (docs/speed-plan.md §2): test first (it writes build/gen and the
+# host image), then the others at once, the two FS-UAE gates in turn. Each
+# logs to tmp/gates/<gate>.log and prints its result and seconds.
+GATE = @mkdir -p tmp/gates; s=$$(date +%s); if $(MAKE) -s $(1) > tmp/gates/$(1).log 2>&1; \
+	then r=ok; else r=FAIL; fi; echo "$(1) $$r $$(( $$(date +%s) - s ))s"; [ $$r = ok ]
+
+gates:
+	$(call GATE,test)
+	@$(MAKE) -s -k -j3 g-sabotage g-host-all g-fsuae
+
+g-sabotage:
+	$(call GATE,test-sabotage)
+g-host-all:
+	$(call GATE,test-host-all)
+g-fsuae:
+	$(call GATE,test-amiga)
+	$(call GATE,smoke)
 
 clean:
 	$(MAKE) -C amiga clean

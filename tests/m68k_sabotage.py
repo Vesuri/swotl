@@ -2,14 +2,17 @@
 """Sabotage the 68020 differential (translation-lessons #42): each planted fault in
 the lowering's output must produce mismatches. Exit 1 if one passes unnoticed.
 Corpus "program" runs the generated-program block differential (m68k_blocks).
+The plants run in parallel, one at a time per worker process.
 """
 
 from __future__ import annotations
 
 import contextlib
 import io
+import os
 import re
 import sys
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -298,35 +301,41 @@ SABOTAGE = [
 ]
 
 
+def plant(k: int) -> tuple[int, int]:
+    """Plant SABOTAGE[k] and run its corpus: (mismatches, cases)."""
+    name, fn, corpus = SABOTAGE[k]
+    if fn == "helpers":     # __set_flags (translator/support.py)
+        D.HELPERS = real_helpers.replace("\tmove.b\trt_irq_pending,G_IRQ(a6)", "\tnop")
+        assert D.HELPERS != real_helpers
+    else:
+        L.Lowering.run = text(fn)
+    try:
+        if corpus == "cross-block":
+            total, failures = B.cross_entry_cases()
+            return len(failures), total
+        if corpus == "program":
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                B.main(["--blocks", "1500", "--states", "1"])
+            return (int(re.search(r"(\d+) mismatches", out.getvalue()).group(1)),
+                    int(re.search(r"cases (\d+)", out.getvalue()).group(1)))
+        h = D.X.run(["--only", corpus, "--states", "1", "--space", "2", "--blocks", "1500"],
+                    quiet=True, harness=D.Harness)
+        h.flush()
+        return len(h.bad), sum(h.count.values())
+    finally:
+        L.Lowering.run = real_run
+        D.HELPERS = real_helpers
+
+
 def main() -> int:
     missed = []
-    for name, fn, corpus in SABOTAGE:
-        if fn == "helpers":     # __set_flags (translator/support.py)
-            D.HELPERS = real_helpers.replace("\tmove.b\trt_irq_pending,G_IRQ(a6)", "\tnop")
-            assert D.HELPERS != real_helpers
-        else:
-            L.Lowering.run = text(fn)
-        try:
-            if corpus == "cross-block":
-                total, failures = B.cross_entry_cases()
-                bad = len(failures)
-            elif corpus == "program":
-                out = io.StringIO()
-                with contextlib.redirect_stdout(out):
-                    B.main(["--blocks", "1500", "--states", "1"])
-                bad = int(re.search(r"(\d+) mismatches", out.getvalue()).group(1))
-                total = int(re.search(r"cases (\d+)", out.getvalue()).group(1))
-            else:
-                h = D.X.run(["--only", corpus, "--states", "1", "--space", "2", "--blocks", "1500"],
-                            quiet=True, harness=D.Harness)
-                h.flush()
-                bad, total = len(h.bad), sum(h.count.values())
-        finally:
-            L.Lowering.run = real_run
-            D.HELPERS = real_helpers
-        print(f"{name:36} {corpus:15} mismatches {bad} of {total}")
-        if not bad:
-            missed.append(name)
+    with ProcessPoolExecutor(min(len(SABOTAGE), os.cpu_count() or 1)) as pool:
+        results = pool.map(plant, range(len(SABOTAGE)))
+        for (name, _fn, corpus), (bad, total) in zip(SABOTAGE, results):
+            print(f"{name:36} {corpus:15} mismatches {bad} of {total}", flush=True)
+            if not bad:
+                missed.append(name)
     if missed:
         print("not caught:", ", ".join(missed))
     return 1 if missed else 0

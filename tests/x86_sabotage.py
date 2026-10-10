@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Sabotage the x86 differential (translation-lessons #42): each planted fault in
 the IR semantics or the decoder must produce mismatches on a small corpus.
-Exit 1 if any sabotage passes unnoticed.
+Exit 1 if any sabotage passes unnoticed. The plants run in parallel, one at a
+time per worker process.
 """
 
 from __future__ import annotations
 
+import os
 import sys
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -65,21 +68,26 @@ SABOTAGE = [
 ]
 
 
+def plant(k: int) -> int:
+    """Plant SABOTAGE[k] and run its corpus: the mismatches."""
+    _name, target, fake, corpus = SABOTAGE[k]
+    mod = I if target in ("status", "execute") else D
+    setattr(mod, target, fake)
+    if target == "decode":
+        I.decode = fake
+    try:
+        return len(X.run(["--only", corpus, "--states", "2", "--space", "4"], quiet=True).bad)
+    finally:
+        I.status, I.execute, D.decode, I.decode = real_status, real_execute, real_decode, real_decode
+
+
 def main() -> int:
     missed = []
-    for name, target, fake, corpus in SABOTAGE:
-        mod = I if target in ("status", "execute") else D
-        setattr(mod, target, fake)
-        if target == "decode":
-            I.decode = fake
-        try:
-            h = X.run(["--only", corpus, "--states", "2", "--space", "4"], quiet=True)
-        finally:
-            I.status, I.execute, D.decode, I.decode = real_status, real_execute, real_decode, real_decode
-        caught = len(h.bad)
-        print(f"{name:28} {corpus:9} mismatches {caught}")
-        if not caught:
-            missed.append(name)
+    with ProcessPoolExecutor(min(len(SABOTAGE), os.cpu_count() or 1)) as pool:
+        for (name, _t, _f, corpus), caught in zip(SABOTAGE, pool.map(plant, range(len(SABOTAGE)))):
+            print(f"{name:28} {corpus:9} mismatches {caught}", flush=True)
+            if not caught:
+                missed.append(name)
     if missed:
         print("not caught:", ", ".join(missed))
     return 1 if missed else 0
