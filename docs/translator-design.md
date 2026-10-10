@@ -133,8 +133,11 @@ check, read by the sweep), `data.csv` (ranges),
   12–14, memory, OUT sequence, interrupt/fault.
 - Block differential (`make test-blocks`): the generated program as emitted,
   run from executed leaders to the first transfer with random states; flags
-  compared where live at the successor reached; calls also run the return
-  protocol (right IP reaches the return site, wrong IP `rt_ret_mismatch`).
+  compared where live at the successor reached (at a cell walk: live at the
+  transfer; the walk reads no flags); calls also run the return protocol
+  (right IP reaches the return site, wrong IP `rt_ret_mismatch`). Register
+  calls and jumps that can enter a self-modified region also run with the
+  target in each region.
 - Host run (`make test-host`, gate 5): `build/host/swotl.elf` on Unicorn
   68020 from the MZ entry to milestones m1–m3 (`make test-host-all`: m1–m7
   and c6-flight-keys, whose film recorder writes files, kept in memory;

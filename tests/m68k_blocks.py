@@ -32,7 +32,7 @@ import m68k_diff as D  # noqa: E402
 import uc as U  # noqa: E402
 import x86_diff as X  # noqa: E402
 from translator import emit, image, smc  # noqa: E402
-from translator.decode import DecodeError  # noqa: E402
+from translator.decode import DecodeError, Reg  # noqa: E402
 from translator.interp import State, UndefinedFlag, step  # noqa: E402
 from translator.ir import FLAG_BIT, STATUS  # noqa: E402
 from translator.lower import LOADSEG  # noqa: E402
@@ -183,6 +183,25 @@ def walks(p: emit.Program, h, m, addr, stop_names, cases: int) -> tuple[int, lis
     return count, bad
 
 
+def walk_entry(u, run, reg: str) -> dict | None:
+    """Entry registers that bring `reg` to a chosen value at the block's last
+    instruction: {"target": entry register to set, others: 0}, through mov and
+    add/sub of registers; None for any other writer."""
+    force = {}
+    for o in reversed(run[:-1]):
+        i = u.insns[o]
+        if not i.operands or not isinstance(i.operands[0], Reg) or i.operands[0].name != reg:
+            continue
+        src = i.operands[1] if len(i.operands) > 1 else None
+        if i.op == "mov" and isinstance(src, Reg) and src.width == 16:
+            reg = src.name
+        elif i.op in ("add", "sub") and isinstance(src, Reg) and src.name != reg:
+            force[src.name] = 0
+        else:
+            return None
+    return dict(force, target=reg)
+
+
 def cross_entry_cases():
     from cross_flags_cases import run
     n, bad, _stats = run()
@@ -229,7 +248,9 @@ def main(argv=None) -> int:
     reloc = {name: relocated(mods[name]) for name in p.units}
     count, bad, skipped, exits = Counter(), [], Counter(), Counter()
     walks_at = {emit.walk_label(mo, lo) for mo, lo, _ in p.smc_forms}
-    for mod, run in picks:
+
+    def block_cases(mod, run, states, force=None):
+        """`states` cases of one block; `force`: registers set after the random state."""
         u = p.units[mod]
         data = reloc[mod]
         last = u.insns[run[-1]]
@@ -241,10 +262,11 @@ def main(argv=None) -> int:
         m.inside = {addr[emit.label(mod, o)] for o in run[1:]} - {end}
         m.extra_stops = stops = stop_names
         empty = end == addr[emit.label(mod, run[0])]  # lowers to no code (bra to next)
-        for _ in range(args.states):
+        for _ in range(states):
             regs, flags, flagsx, _ = h.state({"regs": {"cs": cs}, "ip": ip})
             # keep CX small so REP blocks stay short
             regs["cx"] &= 0x3F
+            regs.update(force or {})
             patches = []
             sp_lin = regs["ss"] * 16 + regs["sp"]
             stack = bytearray(h.rng.randrange(256) for _ in range(8))
@@ -323,7 +345,7 @@ def main(argv=None) -> int:
                     diffs.append(f"vector 68k={info['d6']} x86={exc}")
             elif stop in walks_at:  # call into a self-modified region (D16)
                 mip, mcs = info["d7"], cs
-                live = set(STATUS)
+                live = p.live_out[(mod, run[-1])]  # the walk reads no flags (smc.py)
                 exits["walk"] += 1
             elif stop == "rt_stop_unknown":
                 mip, mcs = info["d7"], cs
@@ -388,6 +410,9 @@ def main(argv=None) -> int:
                 st = " ".join(f"{k}={v:04x}" for k, v in regs.items())
                 bad.append(f"{mod}+{run[0]:05X}..{run[-1]:05X} [{st}]: {'; '.join(diffs[:6])}")
             m.restore(set(mwrites) | set(patched))
+
+    for mod, run in picks:
+        block_cases(mod, run, args.states)
     if not args.only:
         n, wbad = walks(p, h, m, addr, stop_names, args.walks)
         count["walks"] += n
@@ -395,6 +420,17 @@ def main(argv=None) -> int:
     n, failures = cross_entry_cases()
     count["cross predecessors"] += n
     bad += failures
+    # every executed indirect call or jump through a register that can enter a
+    # self-modified region, with the register in each region (walk entry)
+    if not args.only:
+        for mod, run in allb:
+            i = p.units[mod].insns[run[-1]]
+            if i.op in ("call", "jmp") and isinstance(i.operands[0], Reg):
+                for lo, hi, _walk in p.ctx(mod, run[-1], Counter()).smc_targets:
+                    force = walk_entry(p.units[mod], run, i.operands[0].name)
+                    if force:
+                        force[force.pop("target")] = h.rng.randrange(lo, hi + 1)
+                        block_cases(mod, run, 2, force)
     total = sum(v for k, v in count.items() if k != "return checks")
     print(f"blocks {len(picks)} of {len(allb)} executed; cases {total}", dict(count))
     print("exits", dict(exits))

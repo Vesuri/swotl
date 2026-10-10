@@ -230,6 +230,13 @@ def folded_word_as_byte(self, out):
                    one, line) for line in out]
 
 
+def walk_entry_flag(self, out):
+    """A live flag wrong on entry to a cell walk (D16): CF flipped in the state
+    block just before the walk is called."""
+    return [x for line in out for x in
+            (["\teori.b #1,G_FL+1(a6)", line] if re.match(r"^\tjsr \w+_walk$", line) else [line])]
+
+
 def wrong_mirror(self, out):
     """D1: SP/BP converted with a wrong mirror constant."""
     return [line.replace("eori.w #$7fff,", "eori.w #$7ffe,") for line in out]
@@ -285,6 +292,7 @@ SABOTAGE = [
     ("carry X trusted across EA clobber", trust_x_across_ea, "boundary"),
     ("word store in swapped byte order", word_store_swapped, "boundary"),
     ("predecessor drops successor flag store", no_predecessor_store, "cross-block"),
+    ("live flag wrong at a walk entry", walk_entry_flag, "program"),
     ("mask trusts dirty upper word", trust_dirty_upper_word, "boundary"),
     ("DX result dropped while live", drop_live_dx, "boundary"),
     ("high-byte write corrupts low byte", high_byte_written_low, "boundary"),
