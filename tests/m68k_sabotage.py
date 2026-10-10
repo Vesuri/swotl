@@ -280,6 +280,7 @@ SABOTAGE = [
     ("TOP off by one", top_off_by_one, "boundary"),
     ("word at its byte address", word_at_byte_address, "boundary"),
     ("adc/rcl ignore CF", drop_after("move.b G_FL+1(a6),d7", "lsr.b #1,d7"), "boundary"),
+    ("adc/sbb Z preset dropped while ZF live", sub(r"^\tori\.b #4,ccr$", "\tnop"), "boundary"),
     ("SP not 16-bit", sub(r"(add|sub)q\.w #2,d4", r"\1q.l #2,d4"), "boundary"),
     ("DF ignored", sub(r"^\ttst\.b G_DF\(a6\)$", "\tcmp.b d0,d0"), "boundary"),
     ("partial flag merge as full store", no_merge, "boundary"),

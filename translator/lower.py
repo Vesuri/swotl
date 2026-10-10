@@ -605,9 +605,13 @@ class Lowering:
             r = "d7"
             self.load_dest(a, "d7")
         self.af_pre(r, s)
-        self.e("ori.b #4,ccr")
+        ok = CCR_OK[kind]
+        if "ZF" in self.c.need:
+            self.e("ori.b #4,ccr")  # addx/subx only clear Z
+        else:
+            ok = ok - {"ZF"}
         self.e(f"{m68}.{sz} {s},{r}")
-        self.finish_flags(kind, CCR_OK[kind], r)
+        self.finish_flags(kind, ok, r)
         self.af_post(r)
         if r == "d7":
             self.store_dest(a, "d7")

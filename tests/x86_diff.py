@@ -472,6 +472,7 @@ def boundary(h: Harness) -> None:
     restoration_tradeoff_cases(h)
     mirror_cases(h)
     fold_cases(h)
+    carry_cases(h)
 
 
 def address_guard_cases(h):
@@ -1040,6 +1041,26 @@ def fold_cases(h):
                                           "mem": [(0x50000 + bx, m.to_bytes(2, "little")),
                                                   (0x50000 + 0x0100, m.to_bytes(2, "little")),
                                                   (0x50000 + 0xFFFE, m.to_bytes(2, "little"))]})
+
+
+def carry_cases(h):
+    """R3: ADC/SBB (register, memory, immediate; 8 and 16 bits) at the carry and
+    sign edges with CF in 0 and 1, all flags live, ZF dead with CF live
+    (INC after) and CF dead (CLC after)."""
+    edges = (0, 1, 0x7FFF, 0x8000, 0xFFFF)
+    forms = {"11d8": "r", "19d8": "r", "10d8": "r", "18d8": "r", "1107": "m", "1907": "m",
+             "1307": "m", "1b07": "m", "83d001": "i", "83d8ff": "i", "153412": "i", "1d0080": "i"}
+    for form, kind in forms.items():
+        for ax in edges:
+            for other in edges if kind != "i" else (0,):
+                for cf in (0, 1):
+                    for tail in ("", "41", "f8"):
+                        bx = other if kind == "r" else 0x0400
+                        h.case(bytes.fromhex(form + tail), f"b:carry{form}{tail and '-' + tail}",
+                               n=1 + bool(tail), block=bool(tail),
+                               overrides={"regs": {"ax": ax, "bx": bx, "ds": 0x5000, "cs": 0x2000},
+                                          "flags": {"CF": cf}, "ip": 0x100,
+                                          "mem": [(0x50000 + bx, other.to_bytes(2, "little"))]})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

@@ -19,12 +19,12 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
 - **Bench** (§4): frames 4–11 mean 37.74 fields (5.36M cycles) at
   `b9b6374`, 37.56 at `63a99fe` (R1a), 34.41 (4.89M cycles) at R1b, 33.69
   at R1d; window 2.20M guest instructions, SPAZ 0.22%.
-- **Meter after R2** (m4, 49 frames; weights recalibrated after R1, §4):
-  289,665,173 model cycles (generated 208.9M, cell walk 77.4M, runtime
-  3.4M); 17,976,252 guest instructions, 15.92 model cycles each (generated
+- **Meter after R3a** (m4, 49 frames; weights recalibrated after R1, §4):
+  286,795,180 model cycles (generated 206.0M, cell walk 77.4M, runtime
+  3.4M); 17,976,252 guest instructions, 15.76 model cycles each (generated
   + walk); R1 292,676,869 (275,119,407 under the previous weights). Round 2
   kept (previous weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b
-  −1.916%, R1d −1.231%; (current) R2 −1.029%.
+  −1.916%, R1d −1.231%; (current) R2 −1.029%, R3a −0.991%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -364,7 +364,10 @@ taken `beq.s` costs 4.6 cycles). Plant: the stub returns to the wrong point.
 
 ### R3. Flags
 
-- adc/sbb skip `ori.b #4,ccr` when ZF is dead (64K executions).
+- R3a: adc/sbb skip `ori.b #4,ccr` when ZF is dead (64K executions).
+  Kept: −0.991% (−2,869,993 model cycles: 728K presets in m4), static
+  code −4,606 bytes; 6 presets left. Coverage: ADC/SBB boundary cases
+  (1,320); plant: the preset dropped while ZF is live.
 - **N/Z provenance:** a later move of the last flag result (a plain store
   after R1) leaves N and Z equal to SF and ZF.
   - SF/ZF-only readers use the CCR.
