@@ -3,45 +3,17 @@
 Rules for building the offline x86 -> IR -> 68020 translator, taken from the
 sibling ports. Format: **rule** — why — *provenance*. Abbreviations: SL Slicks,
 RoF Rescue on Fractalus, RV Revs, VT Vette, PK Pokeri. Paths are relative to
-each project. Target-side Amiga lessons live in `amiga-lessons.md`, the
-measurement method in `method-lessons.md`/`perf-method.md`, and x86 facts in
-[x86-notes.md](x86-notes.md).
+each project. Target-side Amiga lessons live in [amiga-lessons.md](amiga-lessons.md), the
+measurement and validation method in AmigaXDev `docs/reference/measurement-method.md` and
+`docs/reference/validation-harness.md`, and x86 facts in [x86-notes.md](x86-notes.md).
 
-## How Slicks drifted
+## Guardrails
 
-SL planned exactly this pipeline (`docs/architecture.md`: MZ -> decoded x86
--> typed IR -> blocks -> liveness/flag demand -> 68020 regalloc -> direct asm).
-It shipped 0.90 after 695 commits without one: `git log --all --name-only`
-has no decoder, IR or backend file, ever. Sequence:
-
-| When (2026) | Commit | What happened |
-|---|---|---|
-| 09-20 23:26 | `b847552` | Baseline: architecture, phases 0–7, `mz_info.py`, Unicorn Compack unpacker, Ghidra scripts. Planned layout `src/ir/`, `src/m68k/`, `src/runtime/`. |
-| 09-21 00:10–08:10 | `c689892`..`095cbe3` | Phases 1–2 done well: proved runtime image, 286 reference, execution/interrupt/port/VGA traces, no writes to executed code. |
-| 09-21 09:43–11:31 | `b56ec8d`..`3b73a2a` | VGA leaf primitives recovered and **hand-written** in 68020 (`native/`), each with an x86-vs-68020 Unicorn differential (`718b3c7`). Legitimate device seam; sets the hand-writing precedent. |
-| 09-21 12:50 | `4508f2c` | "Translate first control-flow routine" = hand-written `sgfx_checker_fill.s` for a routine the trace never reached. PROJECT.md ticks Phase 5 "first translated application block". "Translate" now means hand-translate. |
-| 09-21 13:20 | `38cb3be` | Captured DOS title frame bytes displayed on A1200 (later removed as non-runtime content). |
-| 09-21 14:07–20:34 | `e2af7e1`..`b6283e8` | Nine more callers hand-"translated" (title page, crop, palette, UI, input dispatch, post-title init), ~20–60 min each. |
-| 09-21 23:07 | `dbe9fab` / `7c89a44` | Captured race frame shortcut added, removed 16 min later. |
-| 09-22 00:35 | `78038f7` | **Pivot.** First game logic in C (`src/game/track_scene.c`). PROJECT.md layout deletes `src/ir`, `src/m68k`, `src/runtime`; adds `src/game/` "direct ... translations". ~25 h after baseline. |
-| 09-22 01:56 | `7c7cc42` | `race_runtime.c` (445 lines C). |
-| 09-22 08:11 | `7d9d7b0` | Invented collision response in C ("exact DOS fixed-point impulse remains to be transliterated"). Replaced by `19ca5f1` "Recover exact DOS car collision response" (09-23). A run of "Recover exact DOS ..." commits follows. |
-| 09-25..10-02 | `f4728a1`, `fa6060d`, `d71b7af`, `974ff50` | Clean-up of drift: fabricated results overlay, speculative names, invented menu presentation (fidelity audit F01–F19), 2,035 lines of oracle-tested translations never linked. |
-| 10-01 | `9018da5` | phases.md: "Phases 2–4 ... deliberately not completed"; architecture.md: "The shipped port did not complete it". |
-
-Causes (from the record):
-
-- Rules banned the *emulation* failure mode (generated C, CPU struct,
-  dispatcher) but not the *hand-port* failure mode. Hand-written C/asm game
-  logic satisfied every rule. *SL AGENTS.md*
-- Gate 5 ("translated end-to-end skeleton") was satisfiable without gates 3–4,
-  and was ticked from hand-written code. *SL `4508f2c`*
-- "Immediate next step" always named a visible milestone ("recognizable
-  reference-derived frame region"), never a translator milestone. *SL PROJECT.md at `4508f2c`*
-- Hand work gave a visible result per hour; the translator gave nothing visible
-  for days. Each hand routine passed its oracle, so every step looked correct.
-- No stopping rule between a device-leaf seam (VGA plot) and its callers
-  (title page, input dispatch, race loop).
+Slicks planned this pipeline and shipped without it: its rules banned the emulation failure
+mode but not hand-porting, its end-to-end gate could be ticked from hand-written code, and each
+hand routine passed its oracle. The account and the generic translator rules are in AmigaXDev
+`docs/playbooks/new-port-playbook.md` §7; the numbered rules below are SWOTL's own, cited by
+number from code, tests and [x86-notes.md](x86-notes.md).
 
 Guardrails for SWOTL (feed into `architecture.md`/`phases.md`):
 

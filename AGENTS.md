@@ -29,16 +29,35 @@ audio the game has; RTSEGA, RTSTANDY and SFXA (PC speaker) are out.
 - Tests settle correctness: x86 semantics vs Unicorn, generated 68k on the
   host 68k core, whole game in lockstep with DOSBox. Never compare the port
   with itself.
-- Reuse the sibling ports (`~/Projects/Slicks`, `Revs`, `Vette`, `Pokeri`,
-  `Rescue on Fractalus`) and their lessons in `docs/`; do not re-derive.
+- Reuse what the sibling ports learned (Slicks, Revs, Vette, Pokeri, Rescue on
+  Fractalus): it is merged in AmigaXDev's docs (below); do not re-derive.
+
+## Shared environment and knowledge
+
+The Amiga toolchain, emulators, Kickstarts, WHDLoad and Unicorn come from AmigaXDev
+(`make setup` there); `amiga/env.sh` sources `~/.local/share/amiga/env.sh`. Generic
+lessons live in AmigaXDev and are edited there; this repo's docs keep what is specific
+to SWOTL.
+
+| AmigaXDev doc | For |
+|---|---|
+| `docs/environment.md` | shared variables and paths |
+| `docs/playbooks/new-port-playbook.md` | port phases, translator rules and guardrails (§7) |
+| `docs/reference/measurement-method.md` | profiling, A/B, pricing, when to stop |
+| `docs/reference/validation-harness.md` | oracles, differentials, sabotage, determinism |
+| `docs/reference/m68k-optimisation.md` | 68020 cost model and code generation |
+| `docs/reference/amiga-hardware.md` | takeover, interrupts, copper, AGA, Paula, framework |
+| `docs/reference/headless-fsuae.md` | launcher, gdb stub, diag runs |
+| `docs/reference/port-toolchain.md` | flags, linking, audits, Ghidra, release images |
+| `docs/native-port-validation.md` | crash dumps, installer updates, release archive checks |
 
 ## Pointers
 
 - Method: `docs/architecture.md`, `docs/phases.md`,
   `docs/plan-reference-map.md`, `docs/translator-design.md`,
   `docs/translation-lessons.md`, `docs/x86-notes.md`
-- Process: `docs/method-lessons.md`, `docs/perf-method.md`,
-  `docs/speed-plan.md` (speed work: its rules bind every agent)
+- Process: `docs/perf-method.md`, `docs/speed-plan.md` (speed work: its rules
+  bind every agent)
 - Amiga: `docs/amiga-arch.md`, `docs/amiga-lessons.md`,
   `docs/m68k-optimisation.md`, `src/platform/amiga/framework/README.md`
 - Tools: `docs/toolchain.md`, `docs/headless-fsuae.md`,
@@ -51,5 +70,5 @@ audio the game has; RTSEGA, RTSTANDY and SFXA (PC speaker) are out.
   reference`, `make coverage`; map `make map`, `make ghidra`;
   translator `make gen`, `make test` (G2 lint, decoder, x86 and 68020
   differentials, block differential, G1, host run), `make test-sabotage`;
-  runtime on host / A1200 model `make test-host` (`test-host-all`: m1–m7, c6), `make test-amiga`; all step gates `make gates`; `SetPatch` expected
-  at `~/.local/share/amiga/SetPatch`. Facts: `docs/source-inventory.md`.
+  runtime on host / A1200 model `make test-host` (`test-host-all`: m1–m7, c6), `make test-amiga`; all step gates `make gates`; `SetPatch` from
+  `$SETPATCH`. Facts: `docs/source-inventory.md`.

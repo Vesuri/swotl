@@ -54,7 +54,7 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     native work needs per-routine authorization.
 15. Microbenchmark the remaining [arch] 68020 costs on the A1200 model
     (`mulu.l`/`divu.l`, unaligned word/long); shifts, swaps, loads, stores and
-    branches are measured (`m68k-optimisation.md` §1–2).
+    branches are measured (`m68k-optimisation.md`).
 16. Lookup-table policy with no Fast RAM (tables are Chip reads).
 24. Lockstep RAM compare (phase 6): undefined flags and FLAGS words pushed
     below SP (PUSHF, interrupt frames) differ from DOSBox by design. The host

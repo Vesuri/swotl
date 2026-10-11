@@ -1,5 +1,10 @@
 # Amiga lessons
 
+The maintained, merged version of these rules is AmigaXDev `docs/reference/amiga-hardware.md`
+(with `docs/reference/port-toolchain.md` for §L); add or correct generic lessons there. This
+numbered register stays because SWOTL's code and [amiga-arch.md](amiga-arch.md) cite its items
+by number (L2, L8, …).
+
 Target-side rules from the sibling ports. Format: **rule** — why — *provenance*.
 Abbreviations: SL Slicks (DOS→A1200 AGA), PK Pokeri (68008→Amiga), RoF Rescue on
 Fractalus (Atari→A500), RV Revs (BBC→A500), VT Vette (Mac→A1200). Paths are relative
@@ -7,7 +12,7 @@ to each project; `git:<hash>` = deleted file, read with `git show <hash>^:<path>
 **[000]** marks numbers measured on a 68000/OCS machine: re-measure before relying on
 them here. Structure for this port: [amiga-arch.md](amiga-arch.md). Elsewhere:
 [toolchain.md](toolchain.md), [headless-fsuae.md](headless-fsuae.md),
-[method-lessons.md](method-lessons.md), [perf-method.md](perf-method.md),
+[perf-method.md](perf-method.md),
 [m68k-optimisation.md](m68k-optimisation.md), [whdload.md](whdload.md),
 [release.md](release.md), [translation-lessons.md](translation-lessons.md).
 
@@ -312,8 +317,8 @@ them here. Structure for this port: [amiga-arch.md](amiga-arch.md). Elsewhere:
 
 90. **Two framework lineages exist.** This repo has SL's DanceDiverse3 set: C++ bodies only
     for GCC (`ASSEMBLER` undefined), AGA `setPlayfield`/`Palette24Bit`, no copper NOP
-    prefill. RV/VT carry the template set: vasm asm bridges, NOP prefill and fixed OCS
-    `setPlayfield`. Fixes do not carry over automatically. — *SL `framework/README.md`; RV/VT
+    prefill. RV/VT carry the template set: vasm asm bridges and NOP prefill (VT also
+    fixed its interlace, window and hires fetch). Fixes do not carry over automatically. — *SL `framework/README.md`; RV/VT
     `framework/UPSTREAM.md`*
 91. **`--gc-sections` hides dormant link traps until the first caller; partial-link the
     framework (`ld -r`) to see them.** — VT found `isLongFrame`'s bridge with no asm and

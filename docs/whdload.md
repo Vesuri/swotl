@@ -2,8 +2,8 @@
 
 Lessons from the sibling slaves, with SWOTL's planned use. `[PLAN]` = SWOTL
 intent, not measured. Provenance: `Sl` Slicks, `Ve` Vette, `Rv` Revs, `Po`
-Pokeri, `RoF` Rescue on Fractalus (`~/Projects/<name>/docs/whdload*.md` and
-`whdload/*.s`), `SDK` `~/.local/share/amiga/WHDLoad` (`Src/sources/whdload/kick.readme`,
+Pokeri, `RoF` Rescue on Fractalus (each project's `docs/whdload*.md` and
+`whdload/*.s`; the merged rules are in AmigaXDev `docs/playbooks/new-port-playbook.md` §13), `SDK` `~/.local/share/amiga/WHDLoad` (`Src/sources/whdload/kick.readme`,
 `Docs/en/{howto,opt,cache}.html`). Release packaging: [release.md](release.md).
 
 ## Model: kickemu, not takeover

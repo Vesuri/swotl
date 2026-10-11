@@ -28,7 +28,7 @@ slave: [whdload.md](whdload.md).
 Not used: the framework's `Production`/`Part`/`Script` timeline and module player
 (RV, VT `framework/UPSTREAM.md`). `Swotl` follows `ProductionRunner`'s takeover through
 `AmigaHardware` but owns Exec's VERTB vector, not the level-3 autovector (L10, L13). The
-Template (`~/Projects/dA JoRMaS/Template/C++`) has no AGA 256-colour palette; the vendored
+template (dA JoRMaS `Template/C++`) has no AGA 256-colour palette; the vendored
 DanceDiverse3 set (`Palette24Bit`, `setPalette24Bit`) is kept for it.
 
 ## Lifecycle

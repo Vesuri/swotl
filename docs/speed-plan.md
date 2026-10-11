@@ -342,7 +342,7 @@ Exact by construction:
   masks ≈ 0.8, `bd.l` ≈ 0.7, folding ≈ 0.8, spills ≈ 0.4, minus
   conversions ≈ 1). Static code shrinks by ≈ 10–15%.
 - Precedent for the biased base and `.w` index: Vette's C2P tables
-  addressed from their midpoint ([m68k-optimisation.md](m68k-optimisation.md) §2).
+  addressed from their midpoint (AmigaXDev `docs/reference/m68k-optimisation.md` §2).
 - R1b updates `translator-design.md` (register contract, D11) in the same
   commit.
 

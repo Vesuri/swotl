@@ -35,10 +35,9 @@ provenance is in brackets.
 | WHDLoad dev files | `~/.local/share/amiga/WHDLoad-20.0` (`$WHDLOAD`; 19.2 in `WHDLoad`) | see [whdload.md](whdload.md), [release.md](release.md) |
 | Kickstart | `~/.local/share/amiga/Kickstarts/kick40063.A600` (`$KICKSTART`) | see [headless-fsuae.md](headless-fsuae.md) |
 
-- The toolchain comes from BartmanAbyss `vscode-amiga-debug`. Its gcc, gdb, elf2hunk and FS-UAE are matched builds, which is what makes source-level debugging work. [RoF `docs/toolchain.md`]
-- The toolchain must sit at a space-free path. GCC LTO bakes the install path into `COLLECT_LTO_WRAPPER` and `posix_spawnp`s it, so a path like `…/Secret Weapons of Luftwaffe/…` breaks. Hence `~/.local`. [RoF]
-- Slicks flags: `-m68020 -msoft-float -O2 -nostdlib -fomit-frame-pointer -ffunction-sections -fdata-sections -Wall -Wextra -Werror`, vasm `-m68020 -Felf -quiet -x -no-opt`, link `-Wl,--emit-relocs,--gc-sections,-Ttext=0,-Map=…`, then `elf2hunk X.elf X.exe` under `.DELETE_ON_ERROR`. [Slicks `amiga/Makefile`]
-- Pokeri and Vette audit every link and fail the build if 32-bit software mul/div (`__mulsi3` and similar) is linked. [Pokeri `amiga/ARCH.md`, Vette old `docs/toolchain.md`]
+- Generic toolchain rules (space-free install path, matched gcc/gdb/elf2hunk/FS-UAE, flags,
+  link audits, `elf2hunk`): AmigaXDev `docs/reference/port-toolchain.md`; paths and variables:
+  AmigaXDev `docs/environment.md`.
 - `brew install` on this machine triggers a Privileges.app elevation prompt. The user must start installs or approve the prompt. [RoF, Vette]
 
 ## Archives
@@ -59,11 +58,9 @@ provenance is in brackets.
 | JDK | OpenJDK 21.0.12.1 at `/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home` |
 | Project | per-repo `tools/ghidra-proj/` (git-ignored; it is the annotation database and must not be shared) |
 
-- Set `JAVA_HOME` (the Slicks Makefile exports it). `/usr/bin/java` is the macOS stub ("Unable to locate a Java Runtime"). Headless gives "no TTY detected" instead of prompting. [Slicks, Vette; stub verified]
-- The `.gitignore` entry `tools/ghidra` has no trailing slash, because a trailing slash does not match a symlink to a directory. [RoF, Vette]
-- Do not open a project in the GUI and headless at the same time, because Ghidra locks it. [RoF, Revs, Vette]
-- `MarkEntries` must be a `-preScript`, so new entries are disassembled by the analysis that follows. `-noanalysis` is only for export-only runs. [Vette, Revs]
-- Re-run against an existing program with `-process <name>` instead of `-import`. [RoF, Revs]
+- Headless Ghidra rules (`JAVA_HOME`, the symlink ignore entry, no GUI beside headless,
+  `MarkEntries` as a `-preScript`, `-process` for re-runs): AmigaXDev
+  `docs/reference/port-toolchain.md` §Analysis tools.
 - Slicks x86 real-mode invocation (raw runtime image):
   ```sh
   "$GHIDRA/support/analyzeHeadless" tools/ghidra-proj Slicks \
