@@ -106,6 +106,8 @@ class Ctx:
     vram: bool = False                        # graphics driver: stores to A000h mark rows (D9)
     driver_call: bool = False                 # PLINK thunk jump into the graphics driver (D9)
     ret_mismatch: str = "rt_ret_mismatch"     # a return check's mismatch branch (emit.py: local)
+    bp_direct: bool = False                   # guarded copy: [bp+d] direct (region.py, R6)
+    retry: str = ""                           # where a divide error re-executes (default: label)
 
 
 class Lowering:
@@ -194,6 +196,9 @@ class Lowering:
         if regs[0] in MIRROR and len(regs) == 1 and not m.disp & 0xFFFF:
             r = GREG[regs[0]]
             return Opnd(f"0({base},{r}.w)", f"-1({base},{r}.w)")
+        if self.c.bp_direct and direct_disp(m):
+            d = signed(m.disp)      # exact under the region guard (bp_offsets)
+            return Opnd(f"({sx(-d)},{base},d5.w)", f"({sx(-d - 1)},{base},d5.w)")
         self.mirror_d7(m)
         return Opnd(f"0({base},d7.w)", f"-1({base},d7.w)")
 
@@ -1051,6 +1056,13 @@ class Lowering:
             for d, r in ((m.disp, "d6"), (m.disp + 2, "d7")):
                 self.e(f"move.w ({sx(0x7FFE - (d & 0xFFFF))},{base}),{r}")
             return zx
+        if self.c.bp_direct and direct_pair(m):
+            d = signed(m.disp)      # exact under the region guard (bp_offsets)
+            if zx:
+                self.e("moveq #0,d7")
+            self.e(f"move.w ({sx(-d - 1)},{base},d5.w),d6")
+            self.e(f"move.w ({sx(-d - 3)},{base},d5.w),d7")
+            return zx
         self.mirror_d7(m)
         self.e(f"move.w -1({base},d7.w),d6")
         self.e("subq.w #2,d7")
@@ -1646,7 +1658,7 @@ class Lowering:
         self.e(f"move.l {self.vector(vec)},d6")
         if self.c.program:
             self.e("jsr rt_fault")
-            self.e(f"bra {self.c.label}")
+            self.e(f"bra {self.c.retry or self.c.label}")
         else:
             self.e("jmp T_FAULT")
 
@@ -1659,6 +1671,43 @@ class Lowering:
 # software interrupt is a runtime service, which reads no guest flags and leaves
 # those it does not define unchanged in the state block.
 GUEST_VECTORS = {0x00, 0x05, 0x08, 0x23, 0x24}
+
+
+def signed(v: int) -> int:
+    v &= 0xFFFF
+    return v - 0x10000 if v & 0x8000 else v
+
+
+def direct_disp(m: Mem) -> bool:
+    """[bp+d] that a guarded copy addresses as (-d,aS,d5.w) (d 0 is direct anyway)."""
+    return m.base == "bp" and not m.index and signed(m.disp) not in (0, -0x8000)
+
+
+def direct_pair(m: Mem) -> bool:
+    """Far pointer at [bp+d] read directly in a guarded copy (offset and segment)."""
+    return m.base == "bp" and not m.index and -0x7FFE <= signed(m.disp) <= 0x7FFD
+
+
+def far_pair(i: Insn) -> bool:
+    """Reads a far pointer from its memory operand (Lowering.far_pair)."""
+    return i.op in ("les", "lds") or i.op in ("jmpf", "callf") and isinstance(i.operands[0], Mem)
+
+
+def bp_offsets(i: Insn) -> list[int]:
+    """Signed offsets from BP that `i` addresses directly in a guarded copy; each
+    is exact while 0 <= BP + d <= FFFFh (region.py)."""
+    if i.op == "lea":
+        return []
+    out = []
+    for o in i.operands:
+        if not isinstance(o, Mem):
+            continue
+        if far_pair(i):
+            if direct_pair(o):
+                out += [signed(o.disp), signed(o.disp) + 2]
+        elif direct_disp(o):
+            out.append(signed(o.disp))
+    return out
 
 
 def areg(o) -> bool:

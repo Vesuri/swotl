@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import m68k_diff as D  # noqa: E402
 import uc as U  # noqa: E402
 import x86_diff as X  # noqa: E402
-from translator import emit, image, smc  # noqa: E402
+from translator import emit, image, region, smc  # noqa: E402
 from translator.decode import DecodeError, Reg  # noqa: E402
 from translator.interp import State, UndefinedFlag, step  # noqa: E402
 from translator.ir import FLAG_BIT, STATUS  # noqa: E402
@@ -57,6 +57,12 @@ def program_image(p: emit.Program, cache: Path) -> tuple[bytes, dict]:
         body += lines
         order += [emit.label(mod, o) for o in sorted(p.units[mod].insns)]
         order += [emit.walk_label(m, lo) for m, lo, _ in sorted(p.smc_forms) if m == mod]
+        for _ws, starts, nodes, _rng in p.comps:   # R6 guarded copies and their guards
+            if next(iter(nodes))[0] == mod:
+                order += [emit.copy_label(*n) for n in sorted(nodes)]
+                order += [f"{emit.label(*n)}_bpg" for n in sorted(starts)]
+                order += [f"{emit.label(*p.fall[n])}_bpr" for n in sorted(nodes)
+                          if p.node_insn(n).op in region.REGUARD and p.fall.get(n) in nodes]
     src = [equates()] + [f"{n}\tequ\t${a:x}" for n, a in STUB_AT.items()]
     src += [f"\torg\t${D.CODE:x}", "labels:"] + [f"\tdc.l\t{x}" for x in order]
     src += body + [HELPERS]
@@ -93,6 +99,23 @@ def blocks(p: emit.Program, executed: dict[str, set[int]]):
                     break
                 k = nxt[1]
             yield mod, run
+
+
+def copy_blocks(p: emit.Program, nodes: set, executed: dict[str, set[int]]):
+    """Blocks of a guarded copy (R6): from its executed leaders, within it."""
+    for mod, off in sorted(nodes):
+        if (mod, off) not in p.leaders or off not in executed.get(mod, ()):
+            continue
+        u, run, k = p.units[mod], [], off
+        while True:
+            run.append(k)
+            if u.insns[k].op in TRANSFER or k in u.manager_calls:
+                break
+            nxt = p.fall.get((mod, k))
+            if nxt is None or nxt in p.leaders or nxt not in nodes:
+                break
+            k = nxt[1]
+        yield mod, run
 
 
 def region_images(p: emit.Program) -> dict[tuple[str, int, int], list[bytes]]:
@@ -224,7 +247,8 @@ def main(argv=None) -> int:
     img, addr = program_image(p, cache)
     by_addr: dict[int, list[str]] = {}
     for x, a in addr.items():
-        by_addr.setdefault(a, []).append(x)
+        if not x.endswith(("_bpg", "_bpr")):    # R6 guards run inside a block
+            by_addr.setdefault(a, []).append(x)
     stop_names = {a: xs[0] for a, xs in by_addr.items()}
     text_next = {}
     for mod in p.units:
@@ -232,6 +256,11 @@ def main(argv=None) -> int:
         for o, nx in zip(offs, offs[1:]):
             text_next[(mod, o)] = addr[emit.label(mod, nx)]
     node_of = {emit.label(m, o): (m, o) for m in p.units for o in p.units[m].insns}
+    copy_next = {}
+    for _ws, _starts, nodes, _rng in p.comps:
+        ns = sorted(nodes)
+        node_of.update((emit.copy_label(*n), n) for n in ns)
+        copy_next.update((a, addr[emit.copy_label(*b)]) for a, b in zip(ns, ns[1:]))
     executed = M.executed(M.runs())
     allb = list(blocks(p, executed))
     rng = random.Random(args.seed)
@@ -251,7 +280,7 @@ def main(argv=None) -> int:
     count, bad, skipped, exits = Counter(), [], Counter(), Counter()
     walks_at = {emit.walk_label(mo, lo) for mo, lo, _ in p.smc_forms}
 
-    def block_cases(mod, run, states, force=None, posted=None):
+    def block_cases(mod, run, states, force=None, posted=None, copy=False):
         """`states` cases of one block; `force`: registers set after the random
         state; `posted` (at a poll point): an interrupt posted, rt_irq modelled as
         taking it ("taken") or as the bench watch leaving it set ("watch"); the
@@ -263,10 +292,12 @@ def main(argv=None) -> int:
         code = bytes(data[lo:hi])
         cs = (LOADSEG + u.cs[run[0]]) & 0xFFFF
         ip = u.insns[run[0]].ip
-        end = text_next.get((mod, run[-1]))  # first address after the block's code
-        m.inside = {addr[emit.label(mod, o)] for o in run[1:]} - {end}
+        lab = emit.copy_label if copy else emit.label
+        # first address after the block's code
+        end = (copy_next if copy else text_next).get((mod, run[-1]))
+        m.inside = {addr[lab(mod, o)] for o in run[1:]} - {end}
         m.extra_stops = stops = stop_names
-        empty = end == addr[emit.label(mod, run[0])]  # lowers to no code (bra to next)
+        empty = end == addr[lab(mod, run[0])]  # lowers to no code (bra to next)
         for _ in range(states):
             regs, flags, flagsx, _ = h.state({"regs": {"cs": cs}, "ip": ip})
             # keep CX small so REP blocks stay short
@@ -307,7 +338,7 @@ def main(argv=None) -> int:
                 continue
             umem = {a: umem.get(a, h.oracle.e.read(a, 1)[0]) for a in set(umem) | uwrites}
             h.oracle.restore(uwrites | {a for a0, d in patches for a in range(a0, a0 + len(d))})
-            entry = addr[emit.label(mod, run[0])]
+            entry = addr[lab(mod, run[0])]
             if posted:
                 m.irq_calls, m.irq_keep = [], posted == "watch"
             mo, mf, mfx, mmem, mouts, mwrites, info = m.run(entry, case, h.rng,
@@ -396,6 +427,8 @@ def main(argv=None) -> int:
             if stop in node_of and last.op in ("call", "callf") and not diffs:
                 ret_ip = last.next_ip + (2 if run[-1] in u.manager_calls else 0)
                 site = emit.label(mod, run[-1] + last.size + (2 if run[-1] in u.manager_calls else 0))
+                if copy and site + "_bp" in addr:   # past the guard after the call (BP in range)
+                    site += "_bp"
                 # popped IP/CS with undefined upper words (speed-plan R4, R5)
                 for good, bad_cs in ((True, False), (False, False)) + \
                         (((False, True),) if last.op == "callf" else ()):
@@ -427,6 +460,31 @@ def main(argv=None) -> int:
 
     for mod, run in picks:
         block_cases(mod, run, args.states)
+    # R6: every executed block of a guarded copy with BP at both ends of the
+    # range its guard admits and inside it; every guard just inside and outside
+    if not args.only:
+        for _ws, starts, nodes, rng in p.comps:
+            bmin, bmax = 0x7FFF - rng[1], 0x7FFF - rng[0]
+            for mod, run in copy_blocks(p, nodes, executed):
+                for bp in (bmin, bmax, h.rng.randrange(bmin, bmax + 1)):
+                    block_cases(mod, run, 1, {"bp": bp}, copy=True)
+                count["copy blocks"] += 1
+            guards = [(f"{emit.label(*n)}_bpg", n) for n in sorted(starts)]
+            guards += [(f"{emit.label(*p.fall[n])}_bpr", p.fall[n]) for n in sorted(nodes)
+                       if p.node_insn(n).op in region.REGUARD and p.fall.get(n) in nodes]
+            for g, n in guards:
+                fast, exact = emit.copy_label(*n), emit.label(*n)
+                for bp in sorted({bmin - 1, bmin, bmax, bmax + 1} & set(range(0x10000))):
+                    want = fast if bmin <= bp <= bmax else exact
+                    m.e.reg_write(U.M68K["d5"], upper_rng.randrange(0x10000) << 16 | bp ^ 0x7FFF)
+                    m.extra_stops = {addr[fast]: fast, addr[exact]: exact}
+                    m.inside, m.stop, m.entry = set(), None, None
+                    m.e.start(addr[g], 0xFFFFFFFF, 1000)
+                    if m.stop != want:
+                        bad.append(f"guard {g} at BP {bp:04x} (admits {bmin:04x}..{bmax:04x}) "
+                                   f"reached {m.stop}, want {want}")
+                    count["guard decisions"] += 1
+        m.extra_stops = stop_names
     if not args.only:
         n, wbad = walks(p, h, m, addr, stop_names, args.walks)
         count["walks"] += n

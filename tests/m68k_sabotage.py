@@ -19,12 +19,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import m68k_blocks as B  # noqa: E402
 import m68k_diff as D  # noqa: E402
-from translator import emit as E, flags as F, lower as L  # noqa: E402
+from translator import emit as E, flags as F, lower as L, region as R  # noqa: E402
 
 real_run = L.Lowering.run
 real_helpers = D.HELPERS
 real_poll_stub = E.poll_stub
 real_mismatch_stub = E.mismatch_stub
+real_bp_range = R.bp_range
 real_carry_ccr = F.carry_ccr
 real_flags_dead = L.Lowering.flags_dead
 
@@ -323,6 +324,19 @@ def return_check_32(self, out):
             and out[k + 1:k + 2] == [f"\tbne {E.RM}"] else x for k, x in enumerate(out)]
 
 
+def direct_bp_off_by_one(self, out):
+    """R6: a guarded copy's direct [bp+d] one byte off."""
+    def fix(m):
+        return f"({int(m.group(1).replace('$', '0x'), 0) + 1},{m.group(2)},d5.w)"
+    return [re.sub(r"\((-?\$?[0-9a-f]+),(a[0-3]),d5\.w\)", fix, x) for x in out]
+
+
+def wide_bp_range(insns):
+    """R6: the region guard admits BP one past each end of its range."""
+    r = real_bp_range(insns)
+    return r and (max(r[0] - 1, -0x8000), min(r[1] + 1, 0x7FFF))
+
+
 SABOTAGE = [
     ("jb/jae swapped", sub(r"\bbcs\b", "bcc"), "forms,boundary"),
     ("TOP off by one", top_off_by_one, "boundary"),
@@ -363,6 +377,8 @@ SABOTAGE = [
     ("REP fast path converts SI/DI as 32 bits", string_pointer_32, "boundary"),
     ("return check compares 32 bits", return_check_32, "program"),
     ("return-check trampoline falls through", "mismatch stub", "program"),
+    ("region guard admits one past its range", "bp range", "boundary"),
+    ("direct [bp+d] one byte off", direct_bp_off_by_one, "boundary"),
 ]
 
 
@@ -380,6 +396,8 @@ def plant(k: int) -> tuple[int, int]:
         L.Lowering.flags_dead = lambda self, kind: True
     elif fn == "mismatch stub":     # emit.mismatch_stub (R5)
         E.mismatch_stub = lambda lab: [f"{lab}:"]
+    elif fn == "bp range":  # region.bp_range (R6)
+        R.bp_range = wide_bp_range
     else:
         L.Lowering.run = text(fn)
     try:
@@ -401,6 +419,7 @@ def plant(k: int) -> tuple[int, int]:
         D.HELPERS = real_helpers
         E.poll_stub = real_poll_stub
         E.mismatch_stub = real_mismatch_stub
+        R.bp_range = real_bp_range
         F.carry_ccr = real_carry_ccr
         L.Lowering.flags_dead = real_flags_dead
 

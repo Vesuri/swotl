@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import uc as U  # noqa: E402
 import x86_diff as X  # noqa: E402
-from translator import flags as F  # noqa: E402
+from translator import flags as F, region  # noqa: E402
 from translator.decode import DecodeError, decode  # noqa: E402
 from translator.interp import State, UndefinedFlag, step  # noqa: E402
 from translator.ir import FLAG_BIT, FLAGS, STATUS  # noqa: E402
@@ -86,6 +86,26 @@ def lower_case(insns, cs: int, tag: str, end_ip: int) -> tuple[list[str], Counte
         stats.update(lw.stats)
     lines += [f"{tag}_end:", f"\tmove.l #{hx(end_ip)},d7", "\tjmp T_END"]
     return lines, stats
+
+
+def lower_region_case(insns, cs: int, tag: str, end_ip: int):
+    """R6: the run behind a region guard, as a guarded copy (direct [bp+d]) with
+    the exact lowering as its fallback; None where no region applies."""
+    rng = region.bp_range(insns)
+    if rng is None or any(region.writes_bp(i) for i in insns):
+        return None
+    lives = F.seq_lives(insns)
+    stats = Counter()
+    lines = [f"{tag}:"] + region.guard(rng, f"{tag}_x")
+    for k, lw in enumerate(F.plan(insns, lives, set(),
+                                  lambda k: Ctx(cs=hx(cs), label=f"{tag}_{k}", bp_direct=True))):
+        lines.append(f"{tag}_{k}:")
+        lines.extend(lw.out)
+        stats.update(lw.stats)
+    lines += [f"{tag}_end:", f"\tmove.l #{hx(end_ip)},d7", "\tjmp T_END"]
+    exact, _ = lower_case(insns, cs, f"{tag}_x", end_ip)
+    stats["region case"] += 1
+    return lines + exact, stats
 
 
 def irq_diffs(f: dict, irq: int, pending: int) -> list[str]:
@@ -318,6 +338,11 @@ class Harness(X.Harness):
             return
         self.lowered.update(st)
         self.pending.append((label, code, case, undef, oracle, text, regs, flags, insns[-1].op))
+        guarded = lower_region_case(insns, cs, f"c{len(self.pending)}", insns[-1].next_ip)
+        if guarded:     # the same case through a region guard (speed-plan R6)
+            self.lowered.update(guarded[1])
+            self.pending.append((label + " bp-region", code, case, undef, oracle, guarded[0],
+                                 regs, flags, insns[-1].op))
         if len(self.pending) >= BATCH:
             self.flush()
 

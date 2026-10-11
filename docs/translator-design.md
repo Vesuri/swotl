@@ -21,6 +21,7 @@ Overview and guardrails: [architecture.md](architecture.md).
 | `translator/check.py` | G1 header/digest/regeneration check, G2 lint |
 | `translator/lower.py` | one decoded instruction -> 68020 text under the register contract (templates per op family; the IR stays the semantic reference) |
 | `translator/flags.py` | flag demand: per-instruction store set and CCR fusion with the next reader, or one past plain instructions |
+| `translator/region.py` | BP-stable components, their direct-access range and guards (speed-plan R6) |
 | `translator/emit.py` | program mode: global flag liveness, per-function return sets, leaders, labels, transfers, `build/gen/<module>.s`, `program.s` (assembly root, dispatch table) |
 | `translator/support.py` | state-block equates, flag/BCD helpers (`build/gen/support.s`) |
 | `src/runtime/` | runtime (C + `rt_entry.s`): machine model of the reference (PSP, environment, MCBs, IVT values), EXEC of `SWOTL.EXE`, INT 21h/10h/67h services, `rt_*` entries, dispatch lookup with PLINK residency; platform interface `platform.h` |
@@ -79,6 +80,18 @@ diffs directly); relocated words in instructions are emitted as
   Byte and word memory operands fold into the 68k op (source, read-modify-
   write destination, INC/DEC/NEG/NOT, CMP with an immediate) where AF and
   PF are dead.
+- BP regions (D2, speed-plan R6, `region.py`): a BP-stable component (the
+  code after a BP write up to the next, calls continuing at their return
+  site) chosen in `annotations/bp-regions.csv` (`tools/bp_regions.py`, from
+  a meter run) gets a guarded copy (`<label>_bp`) in which `[bp+d]` and far
+  pointers at `[bp+d]` are `(−d,aS,d5.w)` / `(−d−1,aS,d5.w)`: d5.w
+  sign-extends to 32767 − BP, so this is exact while 0 ≤ BP + d ≤ FFFFh.
+  One range check on d5.w covers every displacement of the component: at
+  its entry after the BP write (`<S>_bpg`) and after each call or software
+  interrupt in it (`<S>_bpr`); a failure continues in the exact code, as do
+  exits, BP writes, poll stubs and divide-error retries. Entries and those
+  return points are leaders (a guard clobbers the CCR). Tools that hook an
+  instruction's label (host run) hook its copy too.
 - Flags (D6): a setter stores the defined flags live after it (`flags.py`,
   global liveness in `emit.py`). The next instruction reads the CCR directly
   when it is not a leader, reads only flags the setter's 68k op holds with
@@ -132,7 +145,8 @@ diffs directly); relocated words in instructions are emitted as
 `tables.csv` (cs: word tables sized by evidence other than an MS C bounds
 check, read by the sweep), `data.csv` (ranges),
 `hle.csv` (guest range, service, reason, oracle; starts empty), `names.csv`
-(name, evidence class).
+(name, evidence class), `bp-regions.csv` (BP writes whose component gets a
+guarded copy; a profile choice, `tools/bp_regions.py`).
 
 ### Tests
 
@@ -140,7 +154,8 @@ check, read by the sweep), `data.csv` (ranges),
   space, boundary, blocks) lowered in test mode (every exit through a stub,
   all flags live at the end), Unicorn x86-16 vs Unicorn 68020 on the same
   guest-memory layout; registers, segments, CS:IP, defined flags, FLAGS
-  12–14, memory, OUT sequence, interrupt/fault.
+  12–14, memory, OUT sequence, interrupt/fault. A case with a direct
+  `[bp+d]` form also runs behind a region guard (copy, exact fallback).
 - Block differential (`make test-blocks`): the generated program as emitted,
   run from executed leaders to the first transfer with random states; flags
   compared where live at the successor reached (at a cell walk: live at the
@@ -148,6 +163,9 @@ check, read by the sweep), `data.csv` (ranges),
   (right IP reaches the return site, wrong IP or CS `rt_ret_mismatch`;
   upper words of the popped IP/CS random). Register calls and jumps that
   can enter a self-modified region also run with the target in each region.
+  Every executed block of a guarded copy runs with BP at both ends of the
+  range its guard admits and inside it; every guard runs just inside and
+  outside that range.
 - Host run (`make test-host`, gate 5): `build/host/swotl.elf` on Unicorn
   68020 from the MZ entry to milestones m1–m3 (`make test-host-all`: m1–m7
   and c6-flight-keys, whose film recorder writes files, kept in memory;

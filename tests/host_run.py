@@ -281,8 +281,9 @@ class Host:
 
         self.dead_flags = None
         for r in image.rows("flags.csv"):
-            a = self.syms[emit.label(r["module"], int(r["save"], 16))]
-            e.hook_range(U.HOOK_CODE, dead_pushf, a, a)
+            lab = emit.label(r["module"], int(r["save"], 16))
+            for a in {self.syms[x] for x in (lab, lab + "_bp") if x in self.syms}:  # R6 copy
+                e.hook_range(U.HOOK_CODE, dead_pushf, a, a)
 
         @U.MEM_CB
         def read(h, kind, addr, size, value, user):
@@ -469,6 +470,10 @@ class Host:
         self.irq_i, self.visit_n, self.visits, self.group = 0, None, {}, None
         self.irq_lost: str | None = None
         makes = 0
+        # an instruction's label and its guarded copy's (R6) are one guest instruction
+        at = {lab: {self.syms[x] for x in (lab, lab + "_bp") if x in self.syms}
+              for lab in {t[0] for t, _ in steps} | {lab for _, lab, _, _ in self.irqs}}
+        canon = {a: lab for lab, addrs in at.items() for a in addrs}
 
         @U.CODE_CB
         def hit(h, addr, size, user):
@@ -477,7 +482,7 @@ class Host:
             if self.step == len(steps) or self.release is not None:
                 return
             (lab, _, n), key = steps[self.step]
-            if self.syms[lab] != addr:
+            if addr not in at[lab]:
                 return
             self.hits += 1
             if self.hits < n:
@@ -506,12 +511,13 @@ class Host:
             n = len(self.services)
             if n != self.visit_n:  # executions of each poll point since the service event
                 self.visit_n, self.visits = n, {}
-            self.visits[addr] = self.visits.get(addr, 0) + 1
+            here = canon[addr]
+            self.visits[here] = self.visits.get(here, 0) + 1
             svc, lab, hits, _ = self.irqs[self.irq_i]
             if n > svc and not self.irq_lost:
                 self.irq_lost = f"reference irq #{self.irq_i} at {lab} svc={svc} hits={hits} " \
                                 f"not reached (service events {n})"
-            if n != svc or self.syms[lab] != addr or self.visits[addr] != hits + 1:
+            if n != svc or here != lab or self.visits[here] != hits + 1:
                 return
             post_group(self.r("a7"))
 
@@ -548,9 +554,9 @@ class Host:
                 self.e.stop()
 
         # static hooks (Unicorn retranslates on every hook change)
-        for a in {self.syms[t[0]] for t, _ in steps}:
+        for a in {a for t, _ in steps for a in at[t[0]]}:
             self.e.hook_range(U.HOOK_CODE, hit, a, a)
-        for a in {self.syms[lab] for _, lab, _, _ in self.irqs}:
+        for a in {a for _, lab, _, _ in self.irqs for a in at[lab]}:
             self.e.hook_range(U.HOOK_CODE, poll, a, a)
         self.e.hook_range(U.HOOK_CODE, back, self.syms["rt_irq_back"], self.syms["rt_irq_back"])
         self.e.reg_write(U.M68K["sr"], 0x2700)

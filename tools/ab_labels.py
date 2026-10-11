@@ -28,8 +28,15 @@ import cost_meter as M  # noqa: E402
 import profile_report as P  # noqa: E402
 
 
+def canon(name: str) -> str:
+    """A guarded copy's label (R6) is its instruction's."""
+    return name.removesuffix("_bp")
+
+
 def label_cycles(capture: Path, syms: list) -> tuple[Counter, Counter]:
-    """Per label: cycles of its span and executions of its first PC."""
+    """Per label: cycles of its span and executions of its first PC. A region
+    guard (R6) belongs to the instruction it follows."""
+    syms = [(a, n) for a, n in syms if not n.endswith(("_bpg", "_bpr"))]
     prof = P.decode(capture)
     addrs = np.array([a for a, _ in syms], dtype=np.int64)
     names = [n for _, n in syms]
@@ -42,9 +49,9 @@ def label_cycles(capture: Path, syms: list) -> tuple[Counter, Counter]:
             i = int(np.searchsorted(addrs, pc, side="right")) - 1
             if i < 0 or not P.GUEST.match(names[i]) and "walk" not in names[i]:
                 continue
-            cyc[names[i]] += cc
+            cyc[canon(names[i])] += cc
             if pc in first and pc == addrs[i]:
-                execs[names[i]] += nn
+                execs[canon(names[i])] += nn
     return cyc, execs
 
 
@@ -96,11 +103,14 @@ def main(argv=None) -> int:
     ap.add_argument("--objdump", default=M.OBJDUMP)
     args = ap.parse_args(argv)
     meter = json.loads(args.meter.read_text())
-    weights = {k: v["execs"] for k, v in meter["labels"].items() if v.get("execs")}
+    weights = Counter()
+    for k, v in meter["labels"].items():
+        if v.get("execs"):
+            weights[canon(k)] += v["execs"]
     a = label_cycles(args.capture_a, P.symbols(args.objdump, str(args.elf_a)))
     b = label_cycles(args.capture_b, P.symbols(args.objdump, str(args.elf_b)))
     ba, bb = bodies(args.elf_a, args.objdump), bodies(args.elf_b, args.objdump)
-    changed = {k for k in weights if ba.get(k) != bb.get(k)}
+    changed = {k for k in weights if ba.get(k) != bb.get(k) or k + "_bp" in bb}
     d, den, cov = mix_delta(a, b, weights)
     print(f"all labels: mix-adjusted delta {100 * d:+.3f}% (weight covered {100 * cov:.1f}%)")
     d, den, cov = mix_delta(a, b, weights, changed)

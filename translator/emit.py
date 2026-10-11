@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from . import cfg, image, smc
+from . import cfg, image, region, smc
 from .decode import Far, Rel
 from .flags import ALL, plan, transfer
 from .lower import Ctx, LowerError, hx
@@ -79,6 +79,21 @@ def poll_stub(lab: str, ip: int, cs: str) -> list[str]:
 # through. Any choice is correct: vasm sizes the branch.
 RM = "__ret_mismatch"
 NEAR = 96  # estimated bytes within which bne.s is chosen (real 0.69-1.18x; reach 126)
+SIZED = ".?"  # a guarded copy's branch (R6), sized at the end of module_text (same rule)
+
+
+def size_branches(lines: list[str]) -> None:
+    """Resolve SIZED branches to .s within NEAR estimated bytes of their label,
+    else .w (vasm runs out of passes relaxing them itself)."""
+    at, pos = {}, [0]
+    for x in lines:
+        if not x.startswith("\t"):
+            at[x.split(":")[0]] = len(pos) - 1
+        pos.append(pos[-1] + est_bytes(x))
+    for k, x in enumerate(lines):
+        if SIZED + " " in x:
+            dist = abs(pos[at[x.split()[-1]]] - pos[k])
+            lines[k] = x.replace(SIZED, ".s" if dist <= NEAR else ".w")
 
 
 def mismatch_stub(lab: str) -> list[str]:
@@ -98,12 +113,17 @@ def est_bytes(line: str) -> int:
     return n
 
 
+def copy_label(mod: str, off: int) -> str:
+    """The instruction in its BP component's guarded copy (R6)."""
+    return f"{TAG[mod]}_{off:05X}_bp"
+
+
 def cs_expr(cs: int) -> str:
     return f"LOADSEG+{hx(cs)}"
 
 
 class Program:
-    def __init__(self, units: dict[str, cfg.Unit] | None = None):
+    def __init__(self, units: dict[str, cfg.Unit] | None = None, components: bool = True):
         self.units = units or cfg.build()
         self.indirect: dict[tuple[str, int], tuple[list, list]] = {}
         for r in image.rows("indirect.csv"):
@@ -145,6 +165,7 @@ class Program:
         self.returns()
         self.liveness()
         self.leaders = self.find_leaders()
+        self.components(components)
 
     # -- graph ----------------------------------------------------------------
     def node_insn(self, n):
@@ -297,6 +318,26 @@ class Program:
                     self.live_in[n] = new
                     changed = True
 
+    def components(self, enabled: bool) -> None:
+        """R6: the BP-stable components chosen by profile (annotations/bp-regions.csv)
+        get a guarded copy; their entries and the instructions after a call or
+        software interrupt in them become leaders (a guard clobbers the CCR)."""
+        chosen = {(r["module"], int(r["writer"], 16))
+                  for r in (image.rows("bp-regions.csv") if enabled else ())}
+        for n in chosen - region.writers(self) if chosen else ():
+            raise LowerError(f"bp-regions.csv: {n[0]}+{n[1]:05X} is no BP write")
+        self.comps = []
+        for ws, starts, nodes in region.components(self, chosen):
+            rng = region.bp_range([self.node_insn(n) for n in nodes])
+            if rng is None:
+                raise LowerError(f"bp-regions.csv: {sorted(ws)} has no direct access")
+            self.comps.append((ws, starts, nodes, rng))
+        self.guard_at = {w: k for k, c in enumerate(self.comps) for w in c[0]}
+        for ws, starts, nodes, _ in self.comps:
+            self.leaders |= starts
+            self.leaders |= {self.fall[n] for n in nodes if self.node_insn(n).op in region.REGUARD
+                             and self.fall.get(n) in nodes}
+
     def find_leaders(self) -> set:
         jump_preds = Counter()
         fall_preds = Counter()
@@ -406,43 +447,96 @@ class Program:
             out.append(cur)
         return out
 
+    def copy_ctx(self, mod: str, off: int, stats: Counter, comp: int) -> Ctx:
+        """A guarded copy's instruction (R6): targets in the component stay in
+        the copy, [bp+d] is direct, a divide error re-executes in the exact code."""
+        c = self.ctx(mod, off, stats)
+        u, nodes, near = self.units[mod], self.comps[comp][2], c.near
+        cs = u.cs[off]
+
+        def near_copy(ip):
+            t = u.off_of(cs, ip)
+            return copy_label(mod, t) if (mod, t) in nodes else near(ip)
+
+        c.near, c.label, c.retry, c.bp_direct = near_copy, copy_label(mod, off), label(mod, off), True
+        return c
+
+    def copy_runs(self, mod: str, comp: int) -> list[list[int]]:
+        out, cur = [], []
+        for o in sorted(o for _, o in self.comps[comp][2]):
+            if cur and self.fall.get((mod, cur[-1])) != (mod, o):
+                out.append(cur)
+                cur = []
+            cur.append(o)
+        return out + [cur]
+
+    def run_text(self, mod: str, run: list[int], stats: Counter, stubs: list[str],
+                 comp: int | None = None) -> tuple[list[str], bool]:
+        """One run (exact, or in component `comp`'s copy): its lines and whether it
+        ends without falling through. Poll stubs go to `stubs`."""
+        u = self.units[mod]
+        insns = [u.insns[o] for o in run]
+        lives = [self.live_out[(mod, o)] for o in run]
+        leaders = {k for k, o in enumerate(run) if (mod, o) in self.leaders}
+        ctx = ((lambda k: self.ctx(mod, run[k], stats)) if comp is None
+               else (lambda k: self.copy_ctx(mod, run[k], stats, comp)))
+        try:
+            lws = plan(insns, lives, leaders, ctx, program=True)
+        except LowerError as e:
+            raise LowerError(f"{mod}+{run[0]:05X} run: {e}") from None
+        lab = label if comp is None else copy_label
+        lines: list[str] = []
+        for o, lw in zip(run, lws):
+            n = u.insns[o]
+            lines.append(f"{lab(mod, o)}:\t; {u.cs[o]:04X}:{n.ip:04X} {n}")
+            if (mod, o) in self.loop_heads:
+                assert (mod, o) in self.leaders, (mod, o)
+                lines.extend(poll(lab(mod, o)))
+                stub = poll_stub(lab(mod, o), u.ip_of(o), cs_expr(u.cs[o]))
+                if comp is not None:    # a handler may change BP: on in the exact code
+                    stub[-1] = f"\tbra {label(mod, o)}_np"
+                stubs += stub
+                stats["interrupt poll"] += 1
+            lines.extend(lw.out)
+            stats.update(lw.stats)
+            f = self.fall.get((mod, o))
+            if comp is None and (mod, o) in self.guard_at:
+                k = self.guard_at[(mod, o)]
+                lines.append(f"{label(*f)}_bpg:")
+                lines += region.entry(self.comps[k][3], copy_label(*f), label(*f), SIZED)
+                stats["region guard"] += 1
+            elif comp is not None and n.op in region.REGUARD and f in self.comps[comp][2]:
+                lines.append(f"{label(*f)}_bpr:")   # guest code ran: BP may have changed
+                lines += region.guard(self.comps[comp][3], label(*f), SIZED)
+                stats["region guard"] += 1
+        # fall-through out of the run into something not decoded here (or, from a
+        # copy, into the exact code)
+        last = run[-1]
+        i = u.insns[last]
+        closed = i.op in TERMINAL
+        if not closed:
+            nxt = last + i.size + (2 if last in u.manager_calls else 0)
+            if nxt not in u.insns:
+                lines.append(f"\tbra {smc_label(mod, nxt) if nxt in u.smc_entries else stop_label(mod, last)}")
+                closed = True
+            elif comp is not None:
+                lines.append(f"\tbra{SIZED} {label(mod, nxt)}")
+                closed = True
+        return lines, closed
+
     def module_text(self, mod: str) -> tuple[list[str], Counter]:
         u = self.units[mod]
         stats = Counter()
         lines: list[str] = []
         stubs: list[str] = []  # poll stubs, placed after the next run that cannot fall through
+        copies: list[int] = []  # guarded copies (R6), placed there too
+        copied: set[int] = set()
         tramps = 0             # return-check trampolines placed (RM)
         last_tramp = None      # line index of the latest
         pending: list[int] = []  # RM lines waiting for the next trampoline
-        for run in self.runs(mod):
-            start = len(lines)
-            insns = [u.insns[o] for o in run]
-            lives = [self.live_out[(mod, o)] for o in run]
-            leaders = {k for k, o in enumerate(run) if (mod, o) in self.leaders}
-            try:
-                lws = plan(insns, lives, leaders, lambda k: self.ctx(mod, run[k], stats),
-                           program=True)
-            except LowerError as e:
-                raise LowerError(f"{mod}+{run[0]:05X} run: {e}") from None
-            for o, lw in zip(run, lws):
-                n = u.insns[o]
-                lines.append(f"{label(mod, o)}:\t; {u.cs[o]:04X}:{n.ip:04X} {n}")
-                if (mod, o) in self.loop_heads:
-                    assert (mod, o) in self.leaders, (mod, o)
-                    lines.extend(poll(label(mod, o)))
-                    stubs += poll_stub(label(mod, o), u.ip_of(o), cs_expr(u.cs[o]))
-                    stats["interrupt poll"] += 1
-                lines.extend(lw.out)
-                stats.update(lw.stats)
-            # fall-through out of the run into something not decoded here
-            last = run[-1]
-            i = u.insns[last]
-            closed = i.op in TERMINAL
-            if not closed:
-                nxt = last + i.size + (2 if last in u.manager_calls else 0)
-                if nxt not in u.insns:
-                    lines.append(f"\tbra {smc_label(mod, nxt) if nxt in u.smc_entries else stop_label(mod, last)}")
-                    closed = True
+
+        def place(start: int, closed: bool) -> None:
+            nonlocal tramps, last_tramp, pending
             pending += [k for k in range(start, len(lines)) if lines[k] == f"\tbne {RM}"]
             if closed and pending:
                 base = pending[0] if last_tramp is None else last_tramp
@@ -457,12 +551,35 @@ class Program:
                     lines[k] = f"\tbne.{'s' if min(back, fwd) <= NEAR else 'w'} " \
                                f"{prev if back < fwd else here}"
                 last_tramp = len(lines)
-                lines += mismatch_stub(here)
+                lines.extend(mismatch_stub(here))
                 tramps += 1
                 pending = []
+
+        for run in self.runs(mod):
+            start = len(lines)
+            text, closed = self.run_text(mod, run, stats, stubs)
+            lines += text
+            copies += [self.guard_at[(mod, o)] for o in run if (mod, o) in self.guard_at
+                       and self.guard_at[(mod, o)] not in copies]
+            place(start, closed)
             if closed:
                 lines += stubs
                 stubs = []
+                for k in copies:
+                    if k in copied:
+                        continue
+                    copied.add(k)
+                    for crun in self.copy_runs(mod, k):
+                        start = len(lines)
+                        text, cclosed = self.run_text(mod, crun, stats, stubs, k)
+                        assert cclosed, (mod, crun)
+                        lines += text
+                        place(start, True)
+                    lines += stubs
+                    stubs = []
+                    stats["guarded copy"] += 1
+                copies = []
+        assert not copies, (mod, copies)
         if pending:
             here = f"{TAG[mod]}_rm{tramps}"
             for k in pending:
@@ -487,6 +604,7 @@ class Program:
             lines += [f"{s}:\t; transfer out of the translated modules",
                       f"\tmove.l #{hx(u.ip_of(off))},d7", "\tjmp rt_stop_unknown"]
             stats["stop_unknown site"] += 1
+        size_branches(lines)
         stats["guest instructions"] += len(u.insns)
         stats["68k lines"] += sum(1 for x in lines if x.startswith("\t"))
         return lines, stats

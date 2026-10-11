@@ -15,18 +15,20 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   2026-10-08: intervals 29, 26, 36, 26, 31, 26, 32, 28). One executable;
   the spread is trajectory noise (§5.1). Frames fixture (§4, 2026-10-10,
   3 runs each): medians 25, 25, 25 at `420d81b` (before R1), 24, 24, 24
-  at `c6a7de1` (R1d).
+  at `c6a7de1` (R1d); 2026-10-11: 23, 23, 23.5 at R5 (`714d61e`), 23,
+  22.5, 23 at R6.
 - **Bench** (§4): frames 4–11 mean 37.74 fields (5.36M cycles) at
   `b9b6374`, 37.56 at `63a99fe` (R1a), 34.41 (4.89M cycles) at R1b, 33.69
-  at R1d, 33.37 at R3a, 33.27 (4.73M cycles) at R3b; window 2.20M guest
+  at R1d, 33.37 at R3a, 33.27 (4.73M cycles) at R3b, 31.74 at R5, 29.67
+  at R6; window 2.20M guest
   instructions, SPAZ 0.22%.
-- **Meter after R5** (m4, 49 frames; weights recalibrated after R1, §4):
-  273,009,058 model cycles (generated 196.2M, cell walk 73.6M, runtime
-  3.2M); 17,976,252 guest instructions, 15.01 model cycles each (generated
+- **Meter after R6** (m4, 49 frames; weights recalibrated after R1, §4):
+  269,698,189 model cycles (generated 192.9M, cell walk 73.6M, runtime
+  3.2M); 17,976,252 guest instructions, 14.82 model cycles each (generated
   + walk); R1 292,676,869 (275,119,407 under the previous weights). Round 2
   kept (previous weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b
   −1.916%, R1d −1.231%; (current) R2 −1.029%, R3a −0.991%, R3b −0.188%,
-  R4 −2.646%, R5 −2.036%.
+  R4 −2.646%, R5 −2.036%, R6 −1.213%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -471,6 +473,50 @@ operations, runtime entries) and cleans the register there. The remaining
 - **Coverage:** the 2,133 retained T2 boundary cases, region entries from
   every kind of predecessor, guard edges. Plant: guard off by one.
 - Price ≈ 2.5–3.5% (wrap arithmetic 5.09% now).
+- Re-price (census of `714d61e`, m4): only BP qualifies. A native SI/DI/BX
+  cannot index reversed memory (it would add, not subtract). `[bp+d]`
+  executes 1.19M times (−4 to −6 bytes each direct).
+  - Exactness: d5.w sign-extends to 32767 − BP, so `(−d,aS,d5.w)` is
+    exact while 0 ≤ BP + d ≤ FFFFh.
+  - Guest code may change BP, so a call, `int` or poll inside a region
+    needs the guard again (calls, `int`) or leaves the copy (poll stubs).
+  - Components after a BP write, priced by the profile: ≈ −4.3M executed
+    bytes net of guards (≈ −1.5%), ≈ 16K instructions copied.
+- Kept: −1.213% (−3,310,870 model cycles, all generated code).
+  - Executed bytes −3.63M (bytes −5.55M, loop bytes +1.93M); reads and
+    writes −23,038 each; taken +49,773 (each entry guard's branch into
+    its copy).
+  - Static code +128,030 bytes (1,051,540 → 1,179,570, +12.2%).
+  - vasm runs out of passes relaxing the copies' guards and exits (the
+    trampoline plant's image failed), so they are sized like the return
+    checks: `.s` within 96 estimated bytes, else `.w`. That costs 64K
+    against vasm's own choice (−1.236%).
+- Shape: `translator/region.py`; 82 components (96 BP writes, 16,624
+  instructions copied) from `annotations/bp-regions.csv`, which
+  `tools/bp_regions.py` writes from a meter run (positive gain only).
+  - Copies are placed after the next run that cannot fall through.
+  - Entry guard `<S>_bpg` after the BP write; re-guard `<S>_bpr` after
+    each call or `int`.
+  - Poll stubs, BP writes, exits and divide-error retries continue in
+    the exact code.
+  - The host run and `ab_labels.py` count a copy's labels as its
+    instruction's.
+- Coverage:
+  - Every 68k-differential case with a direct form also runs behind a
+    region guard (10,877 cases, the T2 edges among them).
+  - The block differential runs the 1,443 executed copy blocks with BP
+    at both ends of the admitted range and inside it, plus 1,950 guard
+    decisions just inside and outside that range.
+- Plants: the guard admits one past its range (193 of 60,131); direct
+  `[bp+d]` one byte off (618 of 60,131).
+- FS-UAE check (bench, 68020): frames 4–11 79,473 and 79,467 → 74,276
+  lines (31.74 → 29.67 fields, −6.5%), guest RAM at frame 12 equal.
+  `ab_labels.py`: −4.70% on all labels, −10.1% on the 7,987 changed ones.
+  Same sign as the meter.
+- Frames fixture against R5 (3 runs each, frames 4–11):
+  - Sums 185, 184, 203 → 182, 181, 182: ranges apart.
+  - Medians 23, 23, 23.5 → 23, 22.5, 23: they overlap, so no
+    frame-time claim (≈ 460 ms per drawn frame).
 
 ### R7. Cell walk, run-time matching kept
 
