@@ -8,7 +8,7 @@ tmp/sweep/<module>.cls; functions at the MZ entry, PLINK thunk targets and
 resolved far-call targets), imports it into tools/ghidra-proj/ as program
 <module> at its link linear address (x86 real mode, BinaryLoader), seeds the
 entries (ghidra_scripts/MarkEntries.java, pre-analysis) and exports
-tmp/ghidra/<module>.txt (ExportListing.java). DATA.OVL has no code and is
+tmp/ghidra/<module>.txt (AmigaXDev's ExportAuditListing.java). DATA.OVL has no code and is
 not imported. Addresses in Ghidra are link addresses (load segment 0).
 """
 
@@ -25,6 +25,9 @@ import swotl_model as M
 
 GHIDRA = M.REPO / "tools/ghidra/ghidra_12.1_PUBLIC/support/analyzeHeadless"
 # Ghidra 12.1 needs JDK 21 (AmigaXDev installs Homebrew openjdk@21); GHIDRA_JAVA_HOME overrides.
+# This repo's x86 MarkEntries.java first, then AmigaXDev's shared scripts (ExportAuditListing.java).
+SCRIPT_PATH = ";".join((str(M.REPO / "ghidra_scripts"), os.environ.get("AMIGA_GHIDRA_SCRIPTS")
+                        or os.path.expanduser("~/.local/share/amiga/ghidra_scripts")))
 JAVA_HOME = os.environ.get("GHIDRA_JAVA_HOME") or "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
 PROJECT = M.REPO / "tools/ghidra-proj"
 OUT = M.REPO / "tmp/ghidra"
@@ -77,9 +80,9 @@ def main() -> int:
                     w.writerow([f"0x{m.to_link(off):05x}", "code", ""])
         cmd = [str(GHIDRA), str(PROJECT), "SWOTL", "-import", str(binary), "-overwrite",
                "-processor", "x86:LE:16:Real Mode", "-loader", "BinaryLoader",
-               "-loader-baseAddr", f"0x{m.link_lo:x}", "-scriptPath", str(M.REPO / "ghidra_scripts"),
+               "-loader-baseAddr", f"0x{m.link_lo:x}", "-scriptPath", SCRIPT_PATH,
                "-preScript", "MarkEntries.java", str(entries),
-               "-postScript", "ExportListing.java", str(OUT / f"{name}.txt")]
+               "-postScript", "ExportAuditListing.java", str(OUT / f"{name}.txt")]
         log = OUT / f"{name}.log"
         with log.open("w") as fh:
             status = subprocess.run(cmd, env=env, stdout=fh, stderr=subprocess.STDOUT).returncode

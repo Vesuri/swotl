@@ -65,12 +65,14 @@ provenance is in brackets.
   ```sh
   "$GHIDRA/support/analyzeHeadless" tools/ghidra-proj Slicks \
     -import disasm/runtime.bin -processor "x86:LE:16:Real Mode" \
-    -loader BinaryLoader -loader-baseAddr 0x10100 -scriptPath ghidra_scripts \
-    -preScript MarkEntries.java -postScript ExportListing.java "$ABS/disasm/listing.txt"
+    -loader BinaryLoader -loader-baseAddr 0x10100 -scriptPath "ghidra_scripts;$AMIGA_GHIDRA_SCRIPTS" \
+    -preScript MarkEntries.java -postScript ExportAuditListing.java "$ABS/disasm/listing.txt"
   ```
   Slicks also imported its relocation-normalised MZ (`runtime.exe`) with the default loader. It kept separate projects per input (`ghidra-proj`, `-normalized-proj`, `-live-proj`, `-live-normalized-proj`, `-gameplay-proj`). [Slicks `Makefile`]
-- Slicks scripts: `MarkEntries.java`, `ExportListing.java`, `SeedLiveMap.java` (live entry points and VGA sites from reference traces), plus `entrypoints.csv` and `vga-symbols.csv`. Earlier ports add `ApplyNames.java` (`disasm/symbols.csv` → project), `DumpHwAccesses`, `DumpCallGraph`, `DumpZeroPage`. [Slicks `ghidra_scripts/`, RoF, Revs]
-- SWOTL: `make ghidra` (`tools/ghidra_import.py`): one program per in-scope module at its link address, entries from the sweep (`ghidra_scripts/MarkEntries.java`), listings `tmp/ghidra/<module>.txt`. Ghidra's auto-analysis decodes more than the sweep proves; the sweep is the classification of record.
+- AmigaXDev ships the generic scripts in `$AMIGA_GHIDRA_SCRIPTS` (`ExportAuditListing`, `ExportListing`,
+  `DumpCallGraph`, `DumpZeroPage`, the Mac scripts); a project keeps only its CPU-specific ones.
+- Slicks scripts: `MarkEntries.java`, `SeedLiveMap.java` (live entry points and VGA sites from reference traces), plus `entrypoints.csv` and `vga-symbols.csv`. Earlier ports add `ApplyNames.java` (`disasm/symbols.csv` → project), `DumpHwAccesses`, `DumpCallGraph`, `DumpZeroPage`. [Slicks `ghidra_scripts/`, RoF, Revs]
+- SWOTL: `make ghidra` (`tools/ghidra_import.py`): one program per in-scope module at its link address, entries from the sweep (`ghidra_scripts/MarkEntries.java`), listings `tmp/ghidra/<module>.txt` (AmigaXDev's `ExportAuditListing.java`). Ghidra's auto-analysis decodes more than the sweep proves; the sweep is the classification of record.
 - Track only curated `disasm/symbols.csv`. Listings and images are regenerable and ignored (SWOTL `.gitignore` already does this). [RoF]
 
 ## PC reference emulators

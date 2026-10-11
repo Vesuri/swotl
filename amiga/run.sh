@@ -25,7 +25,7 @@ rsync -a --exclude '*.pdf' ../ref/ "$DH1/"
 # A resumed .uss saved by a halted GDB session makes any build look frozen.
 rm -f "$RUN"/state/*.uss
 
-if [ "${DEBUG:-0}" = 1 ]; then fsuae_claim_port; else fsuae_stop_previous; fi
+fsuae_prepare
 # Model, memory, sound and window: fsuae_options in $FSUAE_COMMON.
 KICKSTART="$ROM" AMIGA_MODEL=A1200 CPU="${CPU:-${AMIGA_CPU:-}}"
 CHIP_KB=2048 FAST_KB="${FAST_KB:-${FAST_MEMORY:-8192}}"

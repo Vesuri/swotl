@@ -16,6 +16,7 @@ PYTHON   = python3
 SDKDIR   = $(abspath $(dir $(shell which $(CC)))../m68k-amiga-elf/sys-include)
 SUPPORT  = $(abspath $(dir $(shell which $(CC)))../../support)
 REPO      = ..
+AMIGA_PYLIB ?= $(HOME)/.local/share/amiga/pylib
 AMIGA_SRC = $(REPO)/src/platform/amiga
 FRAMEWORK = $(AMIGA_SRC)/framework
 RUNTIME   = $(REPO)/src/runtime
@@ -54,7 +55,7 @@ obj out:
 	mkdir -p $@
 
 verify-runtime: obj/gcc8_c_support.o
-	$(PYTHON) $(REPO)/tools/verify_amiga_runtime.py $(OBJDUMP) $<
+	PYTHONPATH='$(AMIGA_PYLIB)' $(PYTHON) -m amigaxdev.dos.verify_amiga_runtime $(OBJDUMP) $<
 
 obj/main.o: $(REPO)/src/main.cpp | obj
 	$(CC) $(CPPFLAGS) -c -o $@ $<

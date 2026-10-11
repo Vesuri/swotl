@@ -1,7 +1,7 @@
 # dA JoRMaS Amiga framework
 
 These sources come from `dA JoRMaS/Productions/DanceDiverse3/Source`, by way
-of the Slicks 'N' Slide port (`~/Projects/Slicks`, commit `a09987d`, the last
+of the Slicks 'N' Slide port (the Slicks repo, commit `a09987d`, the last
 revision carrying the complete set). The port uses the framework's
 `AmigaHardware`, `Bitmap`, `CopperList`, and `Palette24Bit` classes for its AGA
 display; `Palette`, `Sprite`, and `Util` come with them because those classes
@@ -17,3 +17,8 @@ Slicks' later fixes carried here: the unused blitter-queue allocation leak
 `compat-include/stdint.h` is local, in the template's `compat-include/`
 style: it lets the C++ sources include the runtime's C headers, taking the
 fixed-width types from `SASCCompat.h`.
+
+Framework base: AmigaXDev commit 2e02af5, the canonical tree in `$AMIGA_FRAMEWORK` (the C++
+lineage this copy shares with Slicks byte for byte). Compare with it and take fixes from it with
+`python3 -m amigaxdev.framework diff "Secret Weapons of Luftwaffe"` (run from the directory above
+this repository).

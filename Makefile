@@ -4,6 +4,8 @@
 .PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae host test-host test-host-all test-amiga amiga amiga-release smoke smoke-release size clean
 
 PYTHON ?= python3
+# AmigaXDev's shared Python package (amigaxdev.dos.mz_info).
+AMIGA_PYLIB ?= $(HOME)/.local/share/amiga/pylib
 REFERENCE_ROOT ?= tmp/pc-root
 REF_HASHES ?= tmp/ref.sha256
 
@@ -42,7 +44,7 @@ help:
 	@echo "  make clean   remove Amiga build output"
 
 inspect:
-	$(PYTHON) tools/mz_info.py ref/SWOTL.EXE
+	PYTHONPATH='$(AMIGA_PYLIB)' $(PYTHON) -m amigaxdev.dos.mz_info ref/SWOTL.EXE
 	$(PYTHON) tools/ovl_info.py ref/*.OVL
 
 hash:
