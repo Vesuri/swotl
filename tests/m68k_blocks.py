@@ -163,7 +163,7 @@ def walks(p: emit.Program, h, m, addr, stop_names, cases: int) -> tuple[int, lis
                     diffs.append(f"ip 68k={info['d7']:04x} x86={out['ip']:04x}")
                 for r in D.REGS:
                     if mo[r] != out[r]:
-                        diffs.append(f"{r} 68k={mo[r]:x} x86={out[r]:04x}")
+                        diffs.append(f"{r} 68k={mo[r]:04x} x86={out[r]:04x}")
                 for sname in ("es", "ss", "ds"):
                     if mo[sname] != out[sname]:
                         diffs.append(f"{sname} 68k={mo[sname]:04x} x86={out[sname]:04x}")
@@ -370,10 +370,8 @@ def main(argv=None) -> int:
             if mcs != out["cs"] and stop != "rt_stop_unknown":
                 diffs.append(f"cs 68k={mcs:04x} x86={out['cs']:04x}")
             for r in D.REGS:
-                if mo[r] & 0xFFFF != out[r]:
-                    diffs.append(f"{r} 68k={mo[r] & 0xFFFF:04x} x86={out[r]:04x}")
-                if mo[r] >> 16:
-                    diffs.append(f"{r} upper {mo[r] >> 16:04x}")
+                if mo[r] != out[r]:
+                    diffs.append(f"{r} 68k={mo[r]:04x} x86={out[r]:04x}")
             for sname in ("es", "ss", "ds"):
                 if mo[sname] != out[sname]:
                     diffs.append(f"{sname} 68k={mo[sname]:04x} x86={out[sname]:04x}")

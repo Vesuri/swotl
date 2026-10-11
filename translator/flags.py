@@ -162,7 +162,7 @@ def plan(insns, lives, leaders, ctx_for, program: bool = False) -> list[Lowering
         nxt = insns[k + 1] if k + 1 < len(insns) else None
         if nxt is not None and k + 1 not in leaders and nxt.op in ("adc", "sbb", "rcl", "rcr"):
             c = ctx_for(k)
-            c.live, c.ccr_in, c.x_in = set(lives[k]), ccr_in, x_in
+            c.live, c.ccr_in, c.x_in, c.keep_x = set(lives[k]), ccr_in, x_in, True
             c.need = may & set(lives[k])
             if "CF" not in set(lives[k + 1]) - writes(nxt)[0]:
                 c.need.discard("CF")

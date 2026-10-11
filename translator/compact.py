@@ -1,14 +1,14 @@
 """Exact native word-mask compaction within one guest instruction.
 
-Only the documented zero-extended guest-register entry contract is seeded.
-Unknown instructions, control flow and labels discard facts. A redundant
-mask still defines CCR: keep that definition with TST unless a later full
-CCR writer is reached before any possible reader.
+No register is known zero at entry (guest upper words are undefined,
+speed-plan R4); facts come from moveq, immediate moves and masks within the
+instruction. Unknown instructions, control flow and labels discard facts. A
+redundant mask still defines CCR: keep that definition with TST unless a
+later full CCR writer is reached before any possible reader.
 """
 import re
 from collections import Counter
 
-ENTRY_ZERO = frozenset({'d0', 'd1', 'd2', 'd3', 'd4', 'd5', 'a4', 'a5'})
 WORD_WRITERS = frozenset({'add', 'addi', 'addq', 'sub', 'subi', 'subq', 'and',
     'or', 'eor', 'neg', 'not', 'clr', 'ext', 'lsl', 'lsr', 'asr', 'asl', 'rol',
     'ror', 'roxl', 'roxr', 'addx', 'subx', 'negx'})
@@ -55,7 +55,7 @@ def ccr_dead(lines, at):
 
 
 def compact(lines):
-    known, out, stats = set(ENTRY_ZERO), [], Counter()
+    known, out, stats = set(), [], Counter()
     for at, line in enumerate(lines):
         p = parts(line)
         if p is None:

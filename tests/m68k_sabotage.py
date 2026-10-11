@@ -25,6 +25,7 @@ real_run = L.Lowering.run
 real_helpers = D.HELPERS
 real_poll_stub = E.poll_stub
 real_carry_ccr = F.carry_ccr
+real_flags_dead = L.Lowering.flags_dead
 
 
 def text(fn):
@@ -265,9 +266,10 @@ def native_index_added(self, out):
 
 
 def linear_retf_stack(self, out):
-    """Independent-oracle plant: lose 16-bit SP wrap between RETF pops."""
+    """Independent-oracle plant: lose 16-bit SP wrap in RETF's pops (R4: SP's
+    upper word is undefined, so the wrap lives in the word index)."""
     if self.i.op == "retf":
-        return [line.replace("subq.w #2,d4", "subq.l #2,d4") for line in out]
+        return [line.replace("(a2,d4.w)", "(a2,d4.l)") for line in out]
     return out
 
 
@@ -284,13 +286,43 @@ def provenance_any_move(lines, ccr, res, nz):
     return real_carry_ccr(lines, ccr, res, nz)
 
 
+
+def trust_register_upper_word(self, out):
+    """R4: a 32-bit consumer copies the guest register whole instead of zero-extending."""
+    result = []
+    for line in out:
+        m = re.match(r"^\tmove\.w ([ad][0-5]),(d[67])$", line)
+        if m and m.group(1) in ("d0", "d1", "d2", "d3", "d4", "d5", "a4", "a5") \
+                and result and result[-1] == f"\tmoveq #0,{m.group(2)}":
+            result[-1] = f"\tmove.l {m.group(1)},{m.group(2)}"
+        else:
+            result.append(line)
+    return result
+
+
+def string_pointer_32(self, out):
+    """R4: the REP fast path converts SI/DI to pointers with all 32 bits."""
+    result, k = [], 0
+    while k < len(out):
+        m = re.match(r"^\tmove\.w (a[45]),d6$", out[k])
+        if m and out[k + 1:k + 4] == ["\teori.w #$8000,d6", out[k + 2], f"\tsuba.w d6,{m.group(1)}"]:
+            base = re.match(r"^\tmovea\.l (a[0-7]),", out[k + 2]).group(1)
+            result += ["\tmove.l #$8000,d6", f"\tadd.l {base},d6", f"\tsub.l {m.group(1)},d6",
+                       f"\tmovea.l d6,{m.group(1)}"]
+            k += 4
+        else:
+            result.append(out[k])
+            k += 1
+    return result
+
+
 SABOTAGE = [
     ("jb/jae swapped", sub(r"\bbcs\b", "bcc"), "forms,boundary"),
     ("TOP off by one", top_off_by_one, "boundary"),
     ("word at its byte address", word_at_byte_address, "boundary"),
     ("adc/rcl ignore CF", drop_after("move.b G_FL+1(a6),d7", "lsr.b #1,d7"), "boundary"),
     ("adc/sbb Z preset dropped while ZF live", sub(r"^\tori\.b #4,ccr$", "\tnop"), "boundary"),
-    ("SP not 16-bit", sub(r"(add|sub)q\.w #2,d4", r"\1q.l #2,d4"), "boundary"),
+    ("SP not 16-bit", sub(r"\(a2,d4\.w\)", "(a2,d4.l)"), "boundary"),
     ("DF ignored", sub(r"^\ttst\.b G_DF\(a6\)$", "\tcmp.b d0,d0"), "boundary"),
     ("partial flag merge as full store", no_merge, "boundary"),
     ("shift count mod 16", sub(r"moveq #\$1f,d7", "moveq #$f,d7"), "boundary"),
@@ -319,6 +351,9 @@ SABOTAGE = [
     ("RETF CS pop uses linear SP", linear_retf_stack, "boundary"),
     ("address restoration copies stale scratch", address_copy_from_stale_scratch, "boundary"),
     ("N/Z provenance trusts a move of another value", "provenance", "boundary"),
+    ("32-bit consumer trusts a register's upper word", trust_register_upper_word, "boundary"),
+    ("SI/DI in place with flags live", "flags dead", "boundary"),
+    ("REP fast path converts SI/DI as 32 bits", string_pointer_32, "boundary"),
 ]
 
 
@@ -332,6 +367,8 @@ def plant(k: int) -> tuple[int, int]:
         E.poll_stub = lambda lab, ip, cs: real_poll_stub(lab, ip, cs)[:-1] + [f"\tbra {lab}"]
     elif fn == "provenance":    # flags.carry_ccr (R3b)
         F.carry_ccr = provenance_any_move
+    elif fn == "flags dead":    # Lowering.flags_dead (R4)
+        L.Lowering.flags_dead = lambda self, kind: True
     else:
         L.Lowering.run = text(fn)
     try:
@@ -353,6 +390,7 @@ def plant(k: int) -> tuple[int, int]:
         D.HELPERS = real_helpers
         E.poll_stub = real_poll_stub
         F.carry_ccr = real_carry_ccr
+        L.Lowering.flags_dead = real_flags_dead
 
 
 def main() -> int:

@@ -6,7 +6,9 @@ Same corpora and states as tests/x86_diff.py (forms, space, boundary, blocks).
 Each case is lowered in test mode (every transfer leaves through a stub that
 reports CS:IP; flags live at the end of the case), assembled with vasm in
 batches and run on the 68020 core over the same guest RAM (reversed below a6
-as the register contract maps it, SP/BP mirrored; translator/lower.py). Compared: registers, segment registers, CS:IP, defined
+as the register contract maps it, SP/BP mirrored; translator/lower.py; guest
+registers enter with upper words 0, FFFFh or random). Compared: registers
+(low words), segment registers, CS:IP, defined
 flags (undefined ones masked by the IR), FLAGS bits 12-14, every written byte,
 the OUT sequence and the raised interrupt/fault. Checked on the 68k side alone:
 the poll-point contract of runtime.h (G_IRQ never set without rt_irq_pending;
@@ -114,6 +116,7 @@ class M68k:
         self.outs: list = []
         self.stop: str | None = None
         self.irq_rng = random.Random(1)
+        self.upper_rng = random.Random(4)   # guest registers' upper words (speed-plan R4)
         # rt_irq called at a poll point: None stops there (a block exit); a
         # list records (d6, d7) and returns, G_IRQ and rt_irq_pending cleared
         # (an interrupt taken) or, with irq_keep, left set (the bench watch).
@@ -188,8 +191,9 @@ class M68k:
         e = self.e
         for a, data in patches:
             self.gwrite(a, data)
-        for r in REGS:
-            e.reg_write(U.M68K[M68[r]], regs[r] ^ MIRROR.get(r, 0))
+        for r in REGS:   # upper words undefined (R4): 0, FFFFh or random
+            hi = (0, 0xFFFF, self.upper_rng.randrange(1, 0xFFFF))[self.upper_rng.randrange(3)]
+            e.reg_write(U.M68K[M68[r]], hi << 16 | regs[r] ^ MIRROR.get(r, 0))
         for s, a in (("es", "a1"), ("ss", "a2"), ("ds", "a3")):
             e.reg_write(U.M68K[a], TOP - regs[s] * 16 - 0x7FFF)
         e.reg_write(U.M68K["a6"], TOP)
@@ -218,7 +222,7 @@ class M68k:
         self.writes, self.outs, self.stop = set(), [], None
         self.entry = entry if skip_entry else None
         err = e.start(entry, 0xFFFFFFFF, 4_000_000)
-        out = {r: self.r(M68[r]) ^ MIRROR.get(r, 0) for r in REGS}
+        out = {r: (self.r(M68[r]) ^ MIRROR.get(r, 0)) & 0xFFFF for r in REGS}
         st = e.read(STATE, 16)
         for s, at in (("es", 12), ("ss", 14), ("ds", 16)):
             out[s] = int.from_bytes(st[16 - at:16 - at + 2], "big")
@@ -230,7 +234,6 @@ class M68k:
         d6, d7 = self.r("d6") & 0xFFFF, self.r("d7") & 0xFFFF
         info = {"stop": self.stop, "err": err, "d6": d6, "d7": d7, "d6.l": self.r("d6"),
                 "irq": irq_diffs(f, st[16 - 8], e.read(PENDING, 1)[0]),
-                "upper": {r: out[r] >> 16 for r in REGS},
                 "a7": self.r("a7"), "segbase": {a: self.r(a) for a in ("a1", "a2", "a3")}}
         mem = {a: self.gread(a, 1)[0] for a in sorted(self.writes)}
         return out, f, fx, mem, list(self.outs), set(self.writes), info
@@ -362,10 +365,8 @@ class Harness(X.Harness):
         if not want and stop in ("T_INT", "T_FAULT", None):
             diffs.append(f"exit {stop} without x86 interrupt")
         for r in REGS:
-            if mo[r] & 0xFFFF != out[r]:
-                diffs.append(f"{r} 68k={mo[r] & 0xFFFF:04x} x86={out[r]:04x}")
-            if mo[r] >> 16:
-                diffs.append(f"{r} upper word {mo[r] >> 16:04x}")
+            if mo[r] != out[r]:
+                diffs.append(f"{r} 68k={mo[r]:04x} x86={out[r]:04x}")
         for sname, a in (("es", "a1"), ("ss", "a2"), ("ds", "a3")):
             if mo[sname] != out[sname]:
                 diffs.append(f"{sname} 68k={mo[sname]:04x} x86={out[sname]:04x}")

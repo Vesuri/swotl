@@ -20,12 +20,13 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   `b9b6374`, 37.56 at `63a99fe` (R1a), 34.41 (4.89M cycles) at R1b, 33.69
   at R1d, 33.37 at R3a, 33.27 (4.73M cycles) at R3b; window 2.20M guest
   instructions, SPAZ 0.22%.
-- **Meter after R3b** (m4, 49 frames; weights recalibrated after R1, §4):
-  286,257,092 model cycles (generated 205.5M, cell walk 77.4M, runtime
-  3.4M); 17,976,252 guest instructions, 15.73 model cycles each (generated
+- **Meter after R4** (m4, 49 frames; weights recalibrated after R1, §4):
+  278,683,219 model cycles (generated 197.9M, cell walk 77.4M, runtime
+  3.4M); 17,976,252 guest instructions, 15.31 model cycles each (generated
   + walk); R1 292,676,869 (275,119,407 under the previous weights). Round 2
   kept (previous weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b
-  −1.916%, R1d −1.231%; (current) R2 −1.029%, R3a −0.991%, R3b −0.188%.
+  −1.916%, R1d −1.231%; (current) R2 −1.029%, R3a −0.991%, R3b −0.188%,
+  R4 −2.646%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -395,6 +396,32 @@ After R1, addressing reads only low words. The translator tracks where a
 guest register's 32 bits are consumed (`mulu`/`divu` operands, `.l`
 operations, runtime entries) and cleans the register there. The remaining
 `and.l #$ffff` masks and the `moveq #0` before loads go. Price ≈ 0.8–1.2%.
+
+- Contract (user 2026-10-10): no guest register's upper word is defined. The
+  68k and block differentials seed each one (0, FFFFh or random) at case
+  entry and compare low words; their upper-word-0 checks go.
+- Consumers of 32 bits: segment loads (`moveq #0` + `move.w`), the REP
+  fast path's guards and pointers, the cell walk's entry IP (`call dx`).
+  The runtime already masks what it takes.
+- Re-price (census of `ea2cf7b`, m4: masks 959K executions, 1.94%;
+  `moveq #0` 1.03M, 0.70%): ≈ −2.6% (7.8M executed bytes).
+  - SI/DI loads and pops as `movea.w` (484K + 128K, −8 / −6 bytes).
+  - Dead-flag add/sub/inc/dec and string updates on a4/a5 in place
+    (614K, −4 to −6 bytes).
+  - Segment reads straight into their word destination (95K, −4).
+  - Segment loads cleaned by `moveq #0` (100K, −4).
+  - Back: segment loads from data registers and `call dx` (+2 each).
+  - Mul/div masks stay for R9, return pops for R5.
+- Kept: −2.646% (−7,573,873 model cycles, all generated code: −6.14M
+  executed bytes, reads and writes ±0), static code −28,758 bytes. A carry
+  pair's setter keeps the X-producing op (`Ctx.keep_x`). Coverage: the
+  harness's dirty upper words (71 mismatches before the change); SI/DI
+  written, added to in place, feeding ADC/SBB, read by the REP fast path,
+  LODSB and segment loads; segment loads and reads (2,322 boundary cases).
+  Plants: a 32-bit consumer trusts a register's upper word; SI/DI in place
+  with flags live; the REP fast path converts SI/DI as 32 bits. "SP not
+  16-bit" and "RETF CS pop uses linear SP" (D1) moved from `.l` SP updates,
+  exact under R4, to `.l` stack indexes.
 
 ### R5. Calls, returns, dispatch
 

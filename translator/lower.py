@@ -2,7 +2,8 @@
 register contract of docs/translator-design.md §Generated code contract.
 
 Registers: d0 AX, d1 CX, d2 DX, d3 BX, d4 SP, d5 BP, a4 SI, a5 DI hold 16-bit
-values zero-extended to 32 bits (every write keeps the upper word 0); SP and BP
+values in their low words, upper words undefined (speed-plan R4: a consumer of
+32 bits zero-extends first, `read_zx`); SP and BP
 are mirrored (MIRROR: the register holds offset ^ 7FFFh). Guest RAM is reversed
 (D1): a6 = TOP, the guest byte at linear L lives at TOP - L, so a little-endian
 word is a native word at TOP - L - 1; the state block is above TOP. a1/a2/a3 =
@@ -90,6 +91,7 @@ class Ctx:
     live: set = field(default_factory=lambda: set(STATUS))  # status flags live after
     ccr_in: set = field(default_factory=set)  # flags valid in the CCR at entry
     x_in: bool = False                       # preceding instruction proved X = guest CF
+    keep_x: bool = False                      # the next instruction takes CF from X (carry pair)
     dead_dx: bool = False                    # proved overwritten before read in this block
     fuse: bool = False                        # try to leave `need`-free flags in the CCR
     reloc: frozenset = frozenset()            # byte positions of relocated segment words
@@ -200,7 +202,7 @@ class Lowering:
         return "a0"
 
     def getreg(self, r: str, dst: str) -> None:
-        """Guest register into data register `dst`: 16-bit ones zero-extended, 8-bit
+        """Guest register into data register `dst`: 16-bit ones in the low word, 8-bit
         ones in the low byte (other bits unspecified). Keeps X."""
         if r in HALF:
             full, sh = HALF[r]
@@ -227,7 +229,6 @@ class Lowering:
             else:
                 self.e(f"move.b {src},{g}")
         elif GREG[r][0] == "a":
-            self.e(f"and.l #$ffff,{src}")
             self.e(f"movea.l {src},{GREG[r]}")
         else:
             self.e(f"move.w {src},{GREG[r]}")
@@ -236,7 +237,7 @@ class Lowering:
 
     def read(self, o, dst: str, pos: int | None = None) -> None:
         """Operand value into the low byte/word of data register `dst` (upper bits
-        unspecified except for 16-bit registers)."""
+        unspecified)."""
         w = o.width
         if isinstance(o, Reg):
             if o.name in SEGBASE or o.name == "cs":
@@ -249,6 +250,22 @@ class Lowering:
             self.e(f"move.{SZ[w]} {self.ea(o).at(w)},{dst}")
         else:
             raise LowerError(f"read {o}")
+
+    def read_zx(self, o, dst: str) -> None:
+        """16-bit operand value into data register `dst`, zero-extended (for a
+        consumer of all 32 bits: segment bases, the cell walk's entry IP)."""
+        if isinstance(o, Imm) or isinstance(o, Reg) and o.name == "cs":
+            self.read(o, dst)
+            return
+        self.e(f"moveq #0,{dst}")
+        if isinstance(o, Mem):
+            self.e(f"move.w {self.ea(o).w},{dst}")
+        elif o.name in SEGBASE:
+            self.e(f"move.w {SEGSLOT[o.name]}(a6),{dst}")
+        else:
+            self.e(f"move.w {GREG[o.name]},{dst}")
+            if o.name in MIRROR:
+                self.e(f"eori.w #$7fff,{dst}")
 
     def write(self, o, src: str) -> None:
         """Data register `src` into a register or memory operand (src clobbered)."""
@@ -269,11 +286,12 @@ class Lowering:
         if s == "cs":
             self.e(f"move.l #{self.c.cs},{dst}")
         else:
-            self.e(f"moveq #0,{dst}")
             self.e(f"move.w {SEGSLOT[s]}(a6),{dst}")
 
-    def putseg(self, s: str, src: str) -> None:
-        self.e(f"and.l #$ffff,{src}")
+    def putseg(self, s: str, src: str, clean: bool = False) -> None:
+        """Segment register from the low word of `src` (`clean`: zero-extended)."""
+        if not clean:
+            self.e(f"and.l #$ffff,{src}")
         self.e(f"move.w {src},{SEGSLOT[s]}(a6)")
         self.e(f"lsl.l #4,{src}")
         self.e(f"lea -$7fff(a6),{SEGBASE[s]}")
@@ -515,6 +533,9 @@ class Lowering:
             m68, ok = "sub", CCR_OK["sub"]  # the result is needed: subtract a copy
         if isinstance(a, Reg) and a.name in MIRROR and self.mirrored_alu(op, a, b, need):
             return
+        if op in ("add", "sub") and areg(a) and self.flags_dead(kind):
+            self.areg_add(op, GREG[a.name], b)
+            return
         r = self.dest_reg(a)
         if r and (writes or m68 == "cmp"):
             # in place on a data register
@@ -542,6 +563,27 @@ class Lowering:
         self.af_post("d6")
         if writes:
             self.store_dest(a, "d6")
+
+    def flags_dead(self, kind: str) -> bool:
+        """No flag of `kind` stored, left in the CCR or carried in X: the 68k op
+        may set none."""
+        return not self.c.need & FLAG_KINDS[kind][0] and not self.c.fuse and not self.c.keep_x
+
+    def areg_add(self, op: str, r: str, b) -> None:
+        """add/sub on SI/DI with dead flags, in place on the address register (only
+        its low word is the guest value, R4)."""
+        if isinstance(b, Imm):
+            v = (b.value if op == "add" else -b.value) & 0xFFFF
+            if 1 <= v <= 8:
+                self.e(f"addq.w #{v},{r}")
+            elif v >= 0xFFF8:
+                self.e(f"subq.w #{0x10000 - v},{r}")
+            elif v:
+                self.e(f"lea {sx(v - 0x10000 if v & 0x8000 else v)}({r}),{r}")
+        else:
+            s = self.src_operand(b, areg=True, mem=True)
+            self.e(f"{'adda' if op == 'add' else 'suba'}.w {s},{r}")
+        self.stats["SI/DI in place"] += 1
 
     def mirrored_alu(self, op: str, a: Reg, b, need: set) -> bool:
         """add sub xor or and on a mirrored register, and or/and/test of it
@@ -624,6 +666,10 @@ class Lowering:
         need = self.c.need
         ok = CCR_OK.get(kind, set())
         opnd = {"addq": "#1,", "subq": "#1,", "neg": "", "not": ""}[m68]
+        if m68 in ("addq", "subq") and areg(a) and self.flags_dead(kind):
+            self.e(f"{m68}.w #1,{GREG[a.name]}")
+            self.stats["SI/DI in place"] += 1
+            return
         if isinstance(a, Reg) and a.name in MIRROR and m68 != "neg":
             # NOT commutes with the mirror; inc/dec invert in place, their
             # flags (if any) set on a native copy in d6
@@ -884,10 +930,22 @@ class Lowering:
         pos = i.size - 2 if isinstance(b, Imm) and w == 16 else None
         self.check_reloc({pos} if pos is not None else set())
         if isinstance(a, Reg) and a.name in SEGBASE:
-            self.read(b, "d7")
-            self.putseg(a.name, "d7")
+            self.read_zx(b, "d7")
+            self.putseg(a.name, "d7", clean=True)
             return
-        if isinstance(b, Reg) and (b.name in SEGBASE or b.name == "cs"):
+        if isinstance(b, Reg) and b.name in SEGBASE:
+            # straight into the word destination (no zero-extension, R4)
+            src = f"{SEGSLOT[b.name]}(a6)"
+            if isinstance(a, Mem):
+                self.e(f"move.w {src},{self.ea(a).w}")
+            elif GREG[a.name][0] == "a":
+                self.e(f"movea.w {src},{GREG[a.name]}")
+            else:
+                self.e(f"move.w {src},{GREG[a.name]}")
+                if a.name in MIRROR:
+                    self.e(f"eori.w #$7fff,{GREG[a.name]}")
+            return
+        if isinstance(b, Reg) and b.name == "cs":
             self.getseg(b.name, "d6")
             self.write(a, "d6")
             return
@@ -916,7 +974,10 @@ class Lowering:
                         r = GREG[HALF[a.name][0]] if a.name in HALF else GREG[a.name]
                         self.e(f"move.{SZ[w]} #{v},{r}")
                 else:
-                    self.e(f"move.l #{v},{GREG[a.name]}")
+                    self.e(f"movea.w #{v},{GREG[a.name]}")
+                return
+            if isinstance(b, Mem) and a.name in GREG and GREG[a.name][0] == "a":
+                self.e(f"movea.w {self.ea(b).w},{GREG[a.name]}")
                 return
             if isinstance(b, Mem) and (a.name in GREG and GREG[a.name][0] == "d"):
                 self.e(f"move.w {self.ea(b).w},{GREG[a.name]}")
@@ -961,7 +1022,7 @@ class Lowering:
             self.e(f"movea.l d7,{GREG[r.name]}")
 
     def offset_d7(self, m: Mem) -> None:
-        """d7 := the operand's offset, zero-extended."""
+        """d7 := the operand's offset (low word)."""
         regs = [x for x in (m.base, m.index) if x]
         if not regs:
             self.e(f"move.l #{hx(m.disp)},d7")
@@ -978,24 +1039,28 @@ class Lowering:
     def op_lds(self):
         self.lxs("ds")
 
-    def far_pair(self, m: Mem) -> None:
+    def far_pair(self, m: Mem, zx: bool = False) -> bool:
         """Far pointer in memory: offset word -> d6, segment word (at offset+2, 64 KiB
-        wrap) -> d7; low words valid."""
+        wrap) -> d7; low words valid. `zx`: zero-extend d7 where that is one
+        moveq; returns whether it did."""
         base = self.seg_base(m.seg)
         if not (m.base or m.index):
+            if zx:
+                self.e("moveq #0,d7")
             for d, r in ((m.disp, "d6"), (m.disp + 2, "d7")):
                 self.e(f"move.w ({sx(0x7FFE - (d & 0xFFFF))},{base}),{r}")
-            return
+            return zx
         self.mirror_d7(m)
         self.e(f"move.w -1({base},d7.w),d6")
         self.e("subq.w #2,d7")
         self.e(f"move.w -1({base},d7.w),d7")
+        return False
 
     def lxs(self, seg: str) -> None:
         r, m = self.i.operands
-        self.far_pair(m)
+        clean = self.far_pair(m, zx=True)
         self.putreg(r.name, "d6")
-        self.putseg(seg, "d7")
+        self.putseg(seg, "d7", clean)
 
     def op_xchg(self):
         a, b = self.i.operands
@@ -1027,6 +1092,8 @@ class Lowering:
         elif isinstance(o, Mem) and o.width == 16:
             mem = self.ea(o)    # 16-bit addressing never reads SP
             self.push(mem.w)
+        elif isinstance(o, Reg) and o.name in SEGBASE:
+            self.push(f"{SEGSLOT[o.name]}(a6)")
         else:   # SP: the value before the push (286 on)
             self.read(o, "d7")
             self.push("d7")
@@ -1038,7 +1105,15 @@ class Lowering:
             if o.name in MIRROR:
                 self.e(f"eori.w #$7fff,{GREG[o.name]}")
             return
-        self.e("moveq #0,d6")
+        if isinstance(o, Reg) and o.name in GREG and GREG[o.name][0] == "a":
+            self.e(f"movea.w -1(a2,d4.w),{GREG[o.name]}")
+            self.e("subq.w #2,d4")
+            return
+        if isinstance(o, Reg) and o.name in SEGBASE:
+            self.e("moveq #0,d6")
+            self.pop("d6")
+            self.putseg(o.name, "d6", clean=True)
+            return
         self.pop("d6")
         self.write(o, "d6")
 
@@ -1189,14 +1264,10 @@ class Lowering:
             self.e(f"move.{sz} {k}({src},d7.w),d0")
         else:  # cmps scas: d7 - d6
             self.compare_pair(f"{k}({src},d7.w)", f"{k}(a1,d6.w)")
-        if op in ("movs", "cmps", "lods"):
-            self.e("move.l a4,d7")
-            self.e(f"{add},d7")
-            self.e("movea.l d7,a4")
+        if op in ("movs", "cmps", "lods"):     # low words (R4)
+            self.e(f"{add},a4")
         if op in ("movs", "cmps", "stos", "scas"):
-            self.e("move.l a5,d7")
-            self.e(f"{add},d7")
-            self.e("movea.l d7,a5")
+            self.e(f"{add},a5")
         if i.rep:
             self.e("subq.w #1,d1")
             if op in ("cmps", "scas"):
@@ -1223,20 +1294,23 @@ class Lowering:
         if n == 2:
             self.e("add.l d7,d7")
         if uses_si:
-            self.e("move.l d7,d6")
-            self.e("add.l a4,d6")
+            self.e("moveq #0,d6")
+            self.e("move.w a4,d6")
+            self.e("add.l d7,d6")
             self.e("cmp.l #$10000,d6")
             self.e(f"bcc {slow}")
-        self.e("add.l a5,d7")
+        self.e("moveq #0,d6")
+        self.e("move.w a5,d6")
+        self.e("add.l d6,d7")
         self.e("cmp.l #$10000,d7")
         self.e(f"bcc {slow}")
         ptrs = [("a4", src)] if uses_si else []
         ptrs.append(("a5", "a1"))
-        for p, base in ptrs:        # offset <-> base + 8000h - offset
-            self.e("move.l #$8000,d6")
-            self.e(f"add.l {base},d6")
-            self.e(f"sub.l {p},d6")
-            self.e(f"movea.l d6,{p}")
+        for p, base in ptrs:        # base + 8000h - offset = base - (offset ^ 8000h signed)
+            self.e(f"move.w {p},d6")
+            self.e("eori.w #$8000,d6")
+            self.e(f"movea.l {base},{p}")
+            self.e(f"suba.w d6,{p}")
         loop = self.local()
         self.e("subq.w #1,d1")
         self.at(loop)
@@ -1259,10 +1333,10 @@ class Lowering:
             self.e("addq.w #1,d1")
             self.at(done)
             self.compare_pair("(a4)", "(a5)")
-        for p, base in ptrs:
-            self.e("move.l #$8000,d6")
-            self.e(f"add.l {base},d6")
-            self.e(f"sub.l {p},d6")
+        for p, base in ptrs:        # offset = (base - pointer) ^ 8000h, low word
+            self.e(f"move.w {base},d6")
+            self.e(f"sub.w {p},d6")
+            self.e("eori.w #$8000,d6")
             self.e(f"movea.l d6,{p}")
         self.e(f"bra {end}")
         self.stats["string fast path"] += 1
@@ -1390,12 +1464,17 @@ class Lowering:
         if done:
             self.at(done)
 
+    def target_d7(self, t) -> None:
+        """Indirect near target into d7, zero-extended where a cell walk may take
+        it (its entry IP, smc.py)."""
+        (self.read_zx if self.c.smc_targets else self.read)(t, "d7")
+
     def op_jmp(self):
         t = self.i.operands[0]
         if isinstance(t, Rel):
             self.goto_near(t.target)
             return
-        self.read(t, "d7")
+        self.target_d7(t)
         self.dispatch_near("jmp")
 
     def op_call(self):
@@ -1405,7 +1484,7 @@ class Lowering:
             self.push(const=hx(i.next_ip))
             self.goto_near(t.target, "jsr")
         else:
-            self.read(t, "d7")
+            self.target_d7(t)
             self.push(const=hx(i.next_ip))
             self.dispatch_near("jsr")
         self.return_check(i.next_ip, None)
@@ -1581,6 +1660,11 @@ class Lowering:
 # software interrupt is a runtime service, which reads no guest flags and leaves
 # those it does not define unchanged in the state block.
 GUEST_VECTORS = {0x00, 0x05, 0x08, 0x23, 0x24}
+
+
+def areg(o) -> bool:
+    """SI or DI (held in an address register)."""
+    return isinstance(o, Reg) and o.name in GREG and GREG[o.name][0] == "a"
 
 
 def reads(i: Insn, program: bool = False) -> set:

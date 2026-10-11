@@ -475,6 +475,7 @@ def boundary(h: Harness) -> None:
     carry_cases(h)
     shift_fuse_cases(h)
     provenance_cases(h)
+    upper_word_cases(h)
 
 
 def address_guard_cases(h):
@@ -1105,6 +1106,50 @@ def provenance_cases(h):
                                    overrides={"regs": {"ax": ax, "bx": bx, "cx": cx, "ds": 0x5000,
                                                        "cs": 0x2000}, "flags": {"CF": k & 1},
                                               "ip": 0x100})
+
+
+
+def upper_word_cases(h):
+    """R4: SI/DI written from immediates, memory, the stack and far pointers, added
+    to in place with dead flags (CMP after) and with live ones, then read by 32-bit
+    consumers (REP MOVSB / STOSW fast path, LODSB, MOV DS,SI); segment registers
+    loaded from registers, memory and the stack and read into words; values 0, 1,
+    7FFFh, 8000h, FFFEh, FFFFh; SI/DI add/sub feeding ADC/SBB (carry pairs)."""
+    le = lambda v: (v & 0xffff).to_bytes(2, "little").hex()
+    edges = (0, 1, 0x7fff, 0x8000, 0xfffe, 0xffff)
+    ops = ("", "46", "4f", "47", "4e", "81c60001", "83c608", "83c6f8", "81ee0080", "01c7",
+           "03363412", "29df", "01ee", "29f6", "01fe", "81c7ffff")
+    uses = ("f3a4", "ac", "8ede", "f3ab", "aa")
+    base = {"cs": 0x2000, "ds": 0x5000, "es": 0x6000, "ss": 0x7000, "sp": 0xfffe}
+    for k, v in enumerate(edges):
+        mem = [(0x51234, bytes.fromhex(le(v ^ 0x8001))), (0x5abcd, bytes.fromhex(le(v) + le(v ^ 1)))]
+        regs = dict(base, ax=v ^ 0xffff, bx=0xabcd, bp=v, cx=3 if k & 1 else 0x8000)
+        for setup in ("be" + le(v), "bf" + le(v)):
+            for op in ops:
+                for kill in ("", "39c0"):
+                    for use in uses:
+                        code = setup + op + kill + use
+                        h.case(bytes.fromhex(code), "b:upper" + (op or "mov"),
+                               n=2 + bool(op) + bool(kill), block=True,
+                               overrides={"regs": regs, "flags": {"DF": 0}, "ip": 0x100,
+                                          "mem": mem})
+        for load in ("8b363412", "8b3f", "5e", "5f", "c43e3412", "c5378b3f", "8b7602"):
+            for use in uses:
+                h.case(bytes.fromhex(load + use), "b:upperload", n=2 + (load == "c5378b3f"),
+                       block=True, overrides={"regs": dict(regs, bx=0xabcd), "flags": {"DF": 0},
+                                              "ip": 0x100, "mem": mem + [(0x7fffe, bytes.fromhex(le(v)))]})
+        for pair in ("2b36341213" + "3e3412", "83c602" "83d700", "01c6" "11df", "29fe" "19c7"):
+            for kill in ("", "39c0"):
+                h.case(bytes.fromhex(pair + kill + "ac"), "b:uppercarry", n=3 + bool(kill),
+                       block=True, overrides={"regs": dict(regs, si=v, di=v ^ 0xffff),
+                                              "flags": {"DF": 0, "CF": k & 1}, "ip": 0x100,
+                                              "mem": mem})
+        for seg in ("8ed8", "8ec5", "8ede", "8e1e3412", "07", "1f", "1e", "8cd8", "8cc5", "8cde",
+                    "8c063412", "c41e3412"):
+            for use in ("", "ac"):
+                h.case(bytes.fromhex(seg + use), "b:upperseg", n=1 + bool(use), block=True,
+                       overrides={"regs": dict(regs, si=v), "ip": 0x100,
+                                  "mem": mem + [(0x7fffe, bytes.fromhex(le(v)))]})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

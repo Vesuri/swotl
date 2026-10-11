@@ -48,8 +48,8 @@ Registers (D4, fixed program-wide; spill audit 0):
 
 | 68k | Guest | Rule |
 |---|---|---|
-| d0 d1 d2 d3 d4 d5 | AX CX DX BX SP BP | 16-bit, upper word always 0; SP and BP mirrored: offset ^ 7FFFh |
-| a4 a5 | SI DI | same (not mirrored); written via `movea.l` of a cleaned value |
+| d0 d1 d2 d3 d4 d5 | AX CX DX BX SP BP | low word; upper word undefined (speed-plan R4); SP and BP mirrored: offset ^ 7FFFh |
+| a4 a5 | SI DI | same (not mirrored); `movea.w` loads, dead-flag add/sub/inc/dec in place |
 | a1 a2 a3 | ES SS DS base | a6 − seg*16 − 7FFFh, recomputed on every segment write |
 | a6 | guest RAM | TOP = linear 0, byte-exact and reversed (linear L at TOP − L); state block above |
 | d6 d7 a0 | scratch | a0 also CS base (`lea (-cs*16-7FFFh,a6)`); CS is static per instruction |
@@ -63,6 +63,10 @@ bits 12–15; `G_ES`/`G_SS`/`G_DS` segment values. Run-time CS =
 diffs directly); relocated words in instructions are emitted as
 `LOADSEG+value`.
 
+- Upper words (speed-plan R4): a lowering that reads a guest register's 32
+  bits zero-extends it first (`read_zx`: segment loads, the cell walk's entry
+  IP from an indirect call); the REP fast path converts SI/DI from their low
+  words; the runtime masks what it takes.
 - Memory (D1, speed-plan R1): a little-endian word at linear L is the native
   word at TOP − L − 1 (68020 allows odd addresses), no byte swaps. The byte
   at offset o is `(7FFFh−o,aS)`, the word `(7FFEh−o,aS)`; a computed offset
