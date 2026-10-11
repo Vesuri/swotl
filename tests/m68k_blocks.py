@@ -14,7 +14,8 @@ runtime entry. Compared: registers, segment registers, written bytes, OUT
 sequence, interrupt/fault, the successor reached (CS:IP), and the flags live
 at that successor (flags.py; undefined ones masked by the IR). Calls also check
 the return protocol: resuming at the native return address with the right
-guest IP reaches the return site, with a wrong one rt_ret_mismatch.
+guest IP reaches the return site, with a wrong IP or CS rt_ret_mismatch
+(upper words of the popped IP and CS undefined).
 """
 
 from __future__ import annotations
@@ -243,6 +244,7 @@ def main(argv=None) -> int:
         k = lines.index(next(x for x in lines if x.startswith(first + ":")))
         print("\n".join(lines[k:k + 400]).split(emit.label(mo, picks[0][1][-1]) + ":")[0][-6000:])
     h = X.Harness(args.seed)
+    upper_rng = random.Random(5)
     m = D.M68k(h.bg, STUB_AT)
     m.load(img)
     reloc = {name: relocated(mods[name]) for name in p.units}
@@ -394,20 +396,24 @@ def main(argv=None) -> int:
             if stop in node_of and last.op in ("call", "callf") and not diffs:
                 ret_ip = last.next_ip + (2 if run[-1] in u.manager_calls else 0)
                 site = emit.label(mod, run[-1] + last.size + (2 if run[-1] in u.manager_calls else 0))
-                for good in (True, False):
+                # popped IP/CS with undefined upper words (speed-plan R4, R5)
+                for good, bad_cs in ((True, False), (False, False)) + \
+                        (((False, True),) if last.op == "callf" else ()):
                     a7 = m.r("a7")
                     native = int.from_bytes(m.e.read(a7, 4), "big")
                     m.e.reg_write(U.M68K["a7"], a7 + 4)
-                    m.e.reg_write(U.M68K["d7"], ret_ip if good else ret_ip ^ 0x55)
-                    m.e.reg_write(U.M68K["d6"], cs)
+                    popped = ret_ip if good or bad_cs else ret_ip ^ 0x55
+                    m.e.reg_write(U.M68K["d7"], upper_rng.randrange(0x10000) << 16 | popped)
+                    m.e.reg_write(U.M68K["d6"], upper_rng.randrange(0x10000) << 16
+                                  | (cs ^ 0x55 if bad_cs else cs))
                     m.extra_stops = {addr[site]: site} if site in addr else {}
                     saved_inside, m.inside = m.inside, set()
                     m.stop, m.entry = None, None
                     m.e.start(native, 0xFFFFFFFF, 1000)
                     want = site if good else "rt_ret_mismatch"
                     if m.stop != want:
-                        diffs.append(f"return protocol: {'right' if good else 'wrong'} IP "
-                                     f"reached {m.stop}, want {want}")
+                        diffs.append(f"return protocol: {'right' if good else 'wrong'} "
+                                     f"{'CS' if bad_cs else 'IP'} reached {m.stop}, want {want}")
                     m.e.reg_write(U.M68K["a7"], a7)
                     m.e.write(a7, native.to_bytes(4, "big"))
                     m.inside = saved_inside

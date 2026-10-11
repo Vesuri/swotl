@@ -72,6 +72,32 @@ def poll_stub(lab: str, ip: int, cs: str) -> list[str]:
             "\tjsr rt_irq", f"\tbra {lab}_np"]
 
 
+# A return check's mismatch branch (lower.return_check) targets a module-local
+# trampoline, so vasm can encode it as bne.s/bne.w instead of bne.l to the
+# runtime (speed-plan R5). The lowering emits RM; module_text names the
+# trampoline nearest by estimated bytes, placed after a run that cannot fall
+# through. Any choice is correct: vasm sizes the branch.
+RM = "__ret_mismatch"
+NEAR = 96  # estimated bytes within which bne.s is chosen (real 0.69-1.18x; reach 126)
+
+
+def mismatch_stub(lab: str) -> list[str]:
+    return [f"{lab}:", "\tjmp rt_ret_mismatch"]
+
+
+def est_bytes(line: str) -> int:
+    """Rough encoded size of one emitted line (labels 0): picks trampolines only."""
+    if not line.startswith("\t"):
+        return 0
+    op, _, args = line.strip().partition(" ")
+    n = 2 + 2 * args.count("#") + 2 * args.count("(") + 2 * args.count("G_")
+    if op.endswith(".l") and "#" in args:
+        n += 2
+    if op.split(".")[0] in ("jsr", "jmp", "bra", "bsr") or op[0] == "b" and "." not in op:
+        n = max(n, 4)
+    return n
+
+
 def cs_expr(cs: int) -> str:
     return f"LOADSEG+{hx(cs)}"
 
@@ -366,7 +392,7 @@ class Program:
                    smc_targets=tuple(sorted((u.ip_of(lo), u.ip_of(hi), walk_label(mod, lo))
                                             for lo, hi in smc_t)),
                    manager=off in u.manager_calls, program=True, vram=mod == GRAPHICS_DRIVER,
-                   driver_call=mod == M.ROOT and off in self.driver_jumps)
+                   driver_call=mod == M.ROOT and off in self.driver_jumps, ret_mismatch=RM)
 
     def runs(self, mod: str) -> list[list[int]]:
         u = self.units[mod]
@@ -385,7 +411,11 @@ class Program:
         stats = Counter()
         lines: list[str] = []
         stubs: list[str] = []  # poll stubs, placed after the next run that cannot fall through
+        tramps = 0             # return-check trampolines placed (RM)
+        last_tramp = None      # line index of the latest
+        pending: list[int] = []  # RM lines waiting for the next trampoline
         for run in self.runs(mod):
+            start = len(lines)
             insns = [u.insns[o] for o in run]
             lives = [self.live_out[(mod, o)] for o in run]
             leaders = {k for k, o in enumerate(run) if (mod, o) in self.leaders}
@@ -413,9 +443,31 @@ class Program:
                 if nxt not in u.insns:
                     lines.append(f"\tbra {smc_label(mod, nxt) if nxt in u.smc_entries else stop_label(mod, last)}")
                     closed = True
+            pending += [k for k in range(start, len(lines)) if lines[k] == f"\tbne {RM}"]
+            if closed and pending:
+                base = pending[0] if last_tramp is None else last_tramp
+                at = [0]  # estimated byte position of lines[base + j]
+                for x in lines[base:]:
+                    at.append(at[-1] + est_bytes(x))
+                here = f"{TAG[mod]}_rm{tramps}"
+                prev = f"{TAG[mod]}_rm{tramps - 1}"
+                for k in pending:
+                    back = at[k - base] if last_tramp is not None else 1 << 30
+                    fwd = at[-1] - at[k - base]
+                    lines[k] = f"\tbne.{'s' if min(back, fwd) <= NEAR else 'w'} " \
+                               f"{prev if back < fwd else here}"
+                last_tramp = len(lines)
+                lines += mismatch_stub(here)
+                tramps += 1
+                pending = []
             if closed:
                 lines += stubs
                 stubs = []
+        if pending:
+            here = f"{TAG[mod]}_rm{tramps}"
+            for k in pending:
+                lines[k] = f"\tbne.w {here}"
+            lines += mismatch_stub(here)
         lines += stubs  # after the last run, with the entries below
         for off in sorted(u.smc_entries):
             lo, _ = self.region(mod, off)

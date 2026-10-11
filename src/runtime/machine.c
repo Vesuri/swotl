@@ -416,21 +416,36 @@ static int resident(uint16_t overlay)
     return rd16(lin((uint16_t)load_segment, 0) + overlay_table + 16u * (overlay - 1u)) & 0x8000;
 }
 
+/* First table row at or above each recent CS:IP (the table is constant, so
+ * nothing invalidates it; residency is still read on every lookup). */
+static struct {
+    uint32_t key, row1;     /* row1 = row + 1, 0 = empty */
+} lookup_cache[64];
+
 void *rt_lookup(uint32_t cs, uint32_t ip)
 {
     if ((cs & 0xffff) == BIOS_INT08_SEG && (ip & 0xffff) == BIOS_INT08_OFF) {
         return rt_bios_int08;
     }
     uint32_t key = (cs & 0xffff) << 16 | (ip & 0xffff);
-    uint32_t lo = 0, hi = dispatch_count;
-    while (lo < hi) {
-        uint32_t mid = (lo + hi) / 2;
-        const struct rt_dispatch_row *r = &dispatch_table[mid];
-        if (((uint32_t)r->cs << 16 | r->ip) < key) {
-            lo = mid + 1;
-        } else {
-            hi = mid;
+    uint32_t lo;
+    uint32_t slot = (key ^ key >> 16) & 63;
+    if (lookup_cache[slot].row1 && lookup_cache[slot].key == key) {
+        lo = lookup_cache[slot].row1 - 1;
+    } else {
+        uint32_t hi = dispatch_count;
+        lo = 0;
+        while (lo < hi) {
+            uint32_t mid = (lo + hi) / 2;
+            const struct rt_dispatch_row *r = &dispatch_table[mid];
+            if (((uint32_t)r->cs << 16 | r->ip) < key) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
         }
+        lookup_cache[slot].key = key;
+        lookup_cache[slot].row1 = lo + 1;
     }
     for (; lo < dispatch_count; ++lo) {
         const struct rt_dispatch_row *r = &dispatch_table[lo];

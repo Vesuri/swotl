@@ -24,6 +24,7 @@ from translator import emit as E, flags as F, lower as L  # noqa: E402
 real_run = L.Lowering.run
 real_helpers = D.HELPERS
 real_poll_stub = E.poll_stub
+real_mismatch_stub = E.mismatch_stub
 real_carry_ccr = F.carry_ccr
 real_flags_dead = L.Lowering.flags_dead
 
@@ -316,6 +317,12 @@ def string_pointer_32(self, out):
     return result
 
 
+def return_check_32(self, out):
+    """R5: a return check compares all 32 bits of the popped IP."""
+    return [x.replace("cmp.w", "cmp.l", 1) if x.startswith("\tcmp.w #") and x.endswith(",d7")
+            and out[k + 1:k + 2] == [f"\tbne {E.RM}"] else x for k, x in enumerate(out)]
+
+
 SABOTAGE = [
     ("jb/jae swapped", sub(r"\bbcs\b", "bcc"), "forms,boundary"),
     ("TOP off by one", top_off_by_one, "boundary"),
@@ -354,6 +361,8 @@ SABOTAGE = [
     ("32-bit consumer trusts a register's upper word", trust_register_upper_word, "boundary"),
     ("SI/DI in place with flags live", "flags dead", "boundary"),
     ("REP fast path converts SI/DI as 32 bits", string_pointer_32, "boundary"),
+    ("return check compares 32 bits", return_check_32, "program"),
+    ("return-check trampoline falls through", "mismatch stub", "program"),
 ]
 
 
@@ -369,6 +378,8 @@ def plant(k: int) -> tuple[int, int]:
         F.carry_ccr = provenance_any_move
     elif fn == "flags dead":    # Lowering.flags_dead (R4)
         L.Lowering.flags_dead = lambda self, kind: True
+    elif fn == "mismatch stub":     # emit.mismatch_stub (R5)
+        E.mismatch_stub = lambda lab: [f"{lab}:"]
     else:
         L.Lowering.run = text(fn)
     try:
@@ -389,6 +400,7 @@ def plant(k: int) -> tuple[int, int]:
         L.Lowering.run = real_run
         D.HELPERS = real_helpers
         E.poll_stub = real_poll_stub
+        E.mismatch_stub = real_mismatch_stub
         F.carry_ccr = real_carry_ccr
         L.Lowering.flags_dead = real_flags_dead
 

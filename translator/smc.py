@@ -37,7 +37,7 @@ def _reload_cell(base: str) -> list[str]:
 
 
 def _ret_cell(base: str) -> list[str]:
-    return ["\tmoveq #0,d7", "\tmove.w -1(a2,d4.w),d7", "\tsubq.w #2,d4", "\trts"]
+    return ["\tmove.w -1(a2,d4.w),d7", "\tsubq.w #2,d4", "\trts"]
 
 
 # form -> (decoded text with HOLE in each word, lowering)

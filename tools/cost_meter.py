@@ -205,7 +205,7 @@ class Program:
         name = self.symbol(pc)
         if name.endswith("_walk") or "_walk_" in name:
             return "walk"
-        if P.GUEST.match(name):
+        if P.GUEST.match(name) or P.TRAMPOLINE.match(name):
             return "generated"
         if name in platform:
             return "platform"

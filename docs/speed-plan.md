@@ -20,13 +20,13 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   `b9b6374`, 37.56 at `63a99fe` (R1a), 34.41 (4.89M cycles) at R1b, 33.69
   at R1d, 33.37 at R3a, 33.27 (4.73M cycles) at R3b; window 2.20M guest
   instructions, SPAZ 0.22%.
-- **Meter after R4** (m4, 49 frames; weights recalibrated after R1, §4):
-  278,683,219 model cycles (generated 197.9M, cell walk 77.4M, runtime
-  3.4M); 17,976,252 guest instructions, 15.31 model cycles each (generated
+- **Meter after R5** (m4, 49 frames; weights recalibrated after R1, §4):
+  273,009,058 model cycles (generated 196.2M, cell walk 73.6M, runtime
+  3.2M); 17,976,252 guest instructions, 15.01 model cycles each (generated
   + walk); R1 292,676,869 (275,119,407 under the previous weights). Round 2
   kept (previous weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b
   −1.916%, R1d −1.231%; (current) R2 −1.029%, R3a −0.991%, R3b −0.188%,
-  R4 −2.646%.
+  R4 −2.646%, R5 −2.036%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -432,6 +432,32 @@ operations, runtime entries) and cleans the register there. The remaining
 - **`rt_lookup` on interrupt delivery:** cache the CS:IP → entry result per
   vector, invalidated on IVT writes and module loads (runtime surface).
 - Price ≈ 1.5–2%.
+- Re-price (meter of `f8da724`, m4): ≈ −0.4 to −0.7% (1.2–1.9M executed
+  bytes).
+  - Return checks: 319K `bne.l` (−2 bytes as `bne.w`, −4 as `bne.s`).
+  - ret/retf/iret pops without `moveq #0` (≈ 293K, −2 bytes): every
+    consumer reads the low word (`cmp.w`, the runtime masks).
+  - `jsr` → `bsr.w`: vasm already relaxes local calls in reach (2,035
+    sites); the 118K `jsr` left are runtime entries and calls out of
+    reach.
+  - `rt_lookup`: the binary search's result per CS:IP is cached (the
+    table is constant, residency is still checked on every lookup), so
+    nothing needs invalidating.
+- Kept: −2.036% (−5,674,160 model cycles), static code −22,240 bytes.
+  - Generated −1.70M: −293,098 `moveq`, −1.57M executed bytes (bytes
+    −3.06M, loop bytes +1.49M), reads and writes ±0.
+  - Walk −3.80M: its ret cell lost 2 bytes, so the per-cell bound check
+    (`bcs`, displacement 126) fits `bcs.s` (−3.95M loop bytes). Layout
+    luck, but encoded; R7 reshapes the walk.
+  - Runtime −174K (`rt_lookup`).
+  - Return checks: 4,853 `bne.s` and 6,471 `bne.w` to 2,551 trampolines,
+    none `bne.l`. vasm cannot relax them itself (it runs out of passes), so
+    `emit.py` sizes each branch: `bne.s` within 96 estimated bytes (real
+    0.69–1.18× the estimate; an out-of-range `bne.s` fails the build).
+  - Coverage: the return protocol seeds random upper words in the popped
+    IP/CS and adds a wrong-CS case for far calls.
+  - Plants: a return check compares 32 bits; a trampoline that falls
+    through.
 
 ### R6. Wrap-free register-relative accesses under region guards (D2)
 

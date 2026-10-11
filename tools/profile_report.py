@@ -29,6 +29,8 @@ PREFIX = {"R": "SWOTL.EXE", "SPZ": "SPAZ.OVL", "VGA": "RTSVGA.OVL", "FE": "FRONT
           "CMP": "CAMPAIGN.OVL", "NCP": "NOTCAMP.OVL", "FLT": "FLIGHT.OVL",
           "RPL": "REPLAY.OVL", "PNL": "PANEL.OVL"}
 GUEST = re.compile(r"^(R|SPZ|VGA|FE|CMP|NCP|FLT|RPL|PNL)_([0-9A-F]{5})(\w*)$")
+# return-check trampolines (translator/emit.py mismatch_stub): generated code
+TRAMPOLINE = re.compile(r"^(R|SPZ|VGA|FE|CMP|NCP|FLT|RPL|PNL)_rm\d+$")
 DEFAULT_GEN = Path(__file__).resolve().parents[1] / "build/gen"
 IRQ_MARKER = 0x7FFFFFFF
 NO_PC = -1      # record without a PC frame: code outside the profiled ranges
@@ -115,7 +117,8 @@ def roles(objdump, elf):
         if not m:
             continue
         addr, op, arg = int(m.group(1), 16), m.group(2), m.group(3)
-        if "rt_ret_mismatch" in arg or (op.startswith("cmp") and prev == "call"):
+        if "rt_ret_mismatch" in arg or re.search(r"<\w+_rm\d+>", arg) \
+                or (op.startswith("cmp") and prev == "call"):
             r = "return check"
         elif "rt_irq" in arg or (op == "tst.b" and arg == "(-8,a6)"):
             r = "poll point"

@@ -90,10 +90,12 @@ diffs directly); relocated words in instructions are emitted as
   stored as result / `a^b^r` bytes only when live. adc/sbb/rcl/rcr derive X
   from `G_FL` and preset Z for `addx`/`subx`.
 - Calls (D1): the guest stack stays byte-exact (return CS:IP pushed as the
-  CPU does); a guest call is `jsr`, `ret`/`retf` pop into d7/d6 and `rts`;
-  the return site checks d7 (and d6) against its own IP/CS and jumps to
-  `rt_ret_mismatch` otherwise. A PLINK manager call's return site is 2 bytes
-  later (the manager advances the return IP).
+  CPU does); a guest call is `jsr`, `ret`/`retf` pop into the low words of
+  d7/d6 and `rts`; the return site checks d7 (and d6) with `cmp.w` against
+  its own IP/CS and otherwise branches (`bne.s`/`bne.w`) to a module-local
+  trampoline `<tag>_rm<n>` (`jmp rt_ret_mismatch`) after a run that cannot
+  fall through. A PLINK manager call's return site is 2 bytes later (the
+  manager advances the return IP).
 - Indirect transfers (D7): compare chain over the known targets
   (`annotations/indirect.csv`); a proved switch table falls back to
   `rt_stop_unknown`, other sites to `rt_dispatch_near`/`rt_dispatch_far`
@@ -143,9 +145,9 @@ check, read by the sweep), `data.csv` (ranges),
   run from executed leaders to the first transfer with random states; flags
   compared where live at the successor reached (at a cell walk: live at the
   transfer; the walk reads no flags); calls also run the return protocol
-  (right IP reaches the return site, wrong IP `rt_ret_mismatch`). Register
-  calls and jumps that can enter a self-modified region also run with the
-  target in each region.
+  (right IP reaches the return site, wrong IP or CS `rt_ret_mismatch`;
+  upper words of the popped IP/CS random). Register calls and jumps that
+  can enter a self-modified region also run with the target in each region.
 - Host run (`make test-host`, gate 5): `build/host/swotl.elf` on Unicorn
   68020 from the MZ entry to milestones m1–m3 (`make test-host-all`: m1–m7
   and c6-flight-keys, whose film recorder writes files, kept in memory;

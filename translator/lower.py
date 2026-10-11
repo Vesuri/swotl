@@ -105,6 +105,7 @@ class Ctx:
     program: bool = False                     # program mode (return checks, runtime calls)
     vram: bool = False                        # graphics driver: stores to A000h mark rows (D9)
     driver_call: bool = False                 # PLINK thunk jump into the graphics driver (D9)
+    ret_mismatch: str = "rt_ret_mismatch"     # a return check's mismatch branch (emit.py: local)
 
 
 class Lowering:
@@ -1397,10 +1398,10 @@ class Lowering:
         if not self.c.program:
             return
         self.e(f"cmp.w #{hx(ip)},d7")
-        self.e("bne.l rt_ret_mismatch")  # external: 32-bit displacement
+        self.e(f"bne {self.c.ret_mismatch}")
         if cs is not None:
             self.e(f"cmp.w #{cs},d6")
-            self.e("bne.l rt_ret_mismatch")  # external: 32-bit displacement
+            self.e(f"bne {self.c.ret_mismatch}")
         self.stats["return check"] += 1
 
     def dispatch_near(self, how: str) -> None:
@@ -1596,11 +1597,11 @@ class Lowering:
         self.ret(far=True)
 
     def ret(self, far: bool) -> None:
+        """Popped IP/CS in the low words of d7/d6: their consumers (return checks,
+        the runtime) read only those (speed-plan R5)."""
         i = self.i
-        self.e("moveq #0,d7")
         self.pop("d7")
         if far:
-            self.e("moveq #0,d6")
             self.pop("d6")
         if i.operands:
             self.sub_const(i.operands[0].value, "d4")
@@ -1612,9 +1613,7 @@ class Lowering:
         self.e("subq.w #4,d7")
         self.e("move.w -1(a2,d7.w),d7")
         self.e("jsr __set_flags")
-        self.e("moveq #0,d7")
         self.pop("d7")
-        self.e("moveq #0,d6")
         self.pop("d6")
         self.e("subq.w #2,d4")
         self.e("rts")
