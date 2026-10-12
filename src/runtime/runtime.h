@@ -47,10 +47,30 @@ static inline uint32_t lin(uint16_t seg, uint16_t off) { return ((uint32_t)seg <
  * order and back (the same call both ways). */
 static inline uint8_t rd8(uint32_t a) { return *(rt_guest - a); }
 static inline void wr8(uint32_t a, uint8_t v) { *(rt_guest - a) = v; }
-static inline uint16_t rd16(uint32_t a) { return rd8(a) | (uint16_t)rd8(a + 1) << 8; }
-static inline void wr16(uint32_t a, uint16_t v) { wr8(a, (uint8_t)v); wr8(a + 1, (uint8_t)(v >> 8)); }
-static inline uint32_t rd32(uint32_t a) { return rd16(a) | (uint32_t)rd16(a + 2) << 16; }
-static inline void wr32(uint32_t a, uint32_t v) { wr16(a, (uint16_t)v); wr16(a + 2, (uint16_t)(v >> 16)); }
+/* A guest word or dword is a native one ending at the guest address, at any
+ * alignment (the 68020's; gcc would split it into bytes). */
+typedef uint16_t __attribute__((may_alias)) rt_u16;
+typedef uint32_t __attribute__((may_alias)) rt_u32;
+static inline uint16_t rd16(uint32_t a)
+{
+    uint16_t v;
+    __asm__("move.w %1,%0" : "=d"(v) : "m"(*(const rt_u16 *)(rt_guest - a - 1)));
+    return v;
+}
+static inline void wr16(uint32_t a, uint16_t v)
+{
+    __asm__("move.w %1,%0" : "=m"(*(rt_u16 *)(rt_guest - a - 1)) : "d"(v));
+}
+static inline uint32_t rd32(uint32_t a)
+{
+    uint32_t v;
+    __asm__("move.l %1,%0" : "=d"(v) : "m"(*(const rt_u32 *)(rt_guest - a - 3)));
+    return v;
+}
+static inline void wr32(uint32_t a, uint32_t v)
+{
+    __asm__("move.l %1,%0" : "=m"(*(rt_u32 *)(rt_guest - a - 3)) : "d"(v));
+}
 static inline uint8_t *rt_span(uint32_t a, uint32_t n) { return rt_guest - a - n + 1; }
 static inline void rt_span_order(uint8_t *span, uint32_t n)
 {
@@ -160,7 +180,8 @@ void rt_int33(void);
 
 /* ports.c */
 extern uint32_t rt_pit_divisor;    /* channel 0 reload, 1..65536 */
-extern uint8_t rt_opl[256];         /* AdLib registers as written */
+extern uint8_t rt_opl[256];         /* AdLib registers as written (rt_entry.s rt_out8) */
+extern uint8_t rt_opl_index;
 
 /* stop: report and halt, never resumes */
 void rt_stop(const char *what, uint32_t a, uint32_t b) __attribute__((noreturn));

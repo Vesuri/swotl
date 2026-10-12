@@ -362,7 +362,8 @@ SABOTAGE = [
     ("fused setter stores nothing", drop_fused_store, "program"),
     ("RMW word at its byte address", rmw_word_at_byte_address, "forms"),
     ("sti does not re-arm G_IRQ", sub(r"^\tmove\.b rt_irq_pending,G_IRQ\(a6\)$", "\tnop"), "boundary"),
-    ("popf/iret do not re-arm G_IRQ", "helpers", "boundary"),
+    ("popf/iret do not re-arm G_IRQ", ("helpers", "\tmove.b\trt_irq_pending,G_IRQ(a6)", "\tnop"),
+     "boundary"),
     ("REP fast path without wrap guard", no_wrap_guard, "boundary"),
     ("REPE/REPNE run-out leaves CX FFFFh", no_runout_fix, "boundary"),
     ("carry X trusted across EA clobber", trust_x_across_ea, "boundary"),
@@ -396,14 +397,19 @@ SABOTAGE = [
     ("mov run skips the opcode compare", walk_plant("\tcmp.w d1,d7", "\tcmp.w d7,d7"), "walk"),
     ("divide fault leaves DX:AX swapped", fault_keeps_dx_swapped, "boundary"),
     ("divide reads DX from the dividend", "divide source", "boundary"),
+    ("parity table one entry off", ("helpers", "__parity(pc,", "__parity+1(pc,"), "boundary"),
+    ("CCR-to-FLAGS table one entry off", ("helpers", "__ccr_flags(pc,", "__ccr_flags+2(pc,"),
+     "boundary"),
+    ("FLAGS-to-CCR table one entry off", ("helpers", "__sahf_ccr(pc,", "__sahf_ccr+1(pc,"),
+     "boundary"),
 ]
 
 
 def plant(k: int) -> tuple[int, int, int, int]:
     """Plant SABOTAGE[k] and run its corpus: (mismatches, cases, x86 sides replayed, of)."""
     name, fn, corpus = SABOTAGE[k]
-    if fn == "helpers":     # __set_flags (translator/support.py)
-        D.HELPERS = real_helpers.replace("\tmove.b\trt_irq_pending,G_IRQ(a6)", "\tnop")
+    if isinstance(fn, tuple):   # flag helpers (translator/support.py)
+        D.HELPERS = real_helpers.replace(fn[1], fn[2])
         assert D.HELPERS != real_helpers
     elif fn == "poll stub":     # emit.poll_stub (R2)
         E.poll_stub = lambda lab, ip, cs: real_poll_stub(lab, ip, cs)[:-1] + [f"\tbra {lab}"]

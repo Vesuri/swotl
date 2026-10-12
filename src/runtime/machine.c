@@ -155,19 +155,24 @@ void rt_start(uint8_t *mem)
     rt_set_flags_word(0x7202);
 }
 
-static int parity_even(uint8_t v)
-{
-    v ^= v >> 4;
-    v ^= v >> 2;
-    v ^= v >> 1;
-    return !(v & 1);
-}
+/* FLAGS bit 2 (PF) | bit 1 per byte value: even parity */
+#define P2(n) n, n ^ 4, n ^ 4, n
+#define P4(n) P2(n), P2(n ^ 4), P2(n ^ 4), P2(n)
+#define P6(n) P4(n), P4(n ^ 4), P4(n ^ 4), P4(n)
+static const uint8_t parity_flags[256] = {P6(6), P6(2), P6(2), P6(6)};
+#undef P2
+#undef P4
+#undef P6
+
+/* FLAGS CF, OF, ZF, SF per CCR image (C, V, Z, N) */
+static const uint16_t ccr_flags[16] = {
+    0x000, 0x001, 0x800, 0x801, 0x040, 0x041, 0x840, 0x841,
+    0x080, 0x081, 0x880, 0x881, 0x0c0, 0x0c1, 0x8c0, 0x8c1,
+};
 
 uint16_t rt_flags_word(void)
 {
-    uint8_t c = G_CCR;
-    uint16_t f = 2 | (c & CCR_C ? 0x01 : 0) | (c & CCR_Z ? 0x40 : 0) | (c & 8 ? 0x80 : 0) |
-                 (c & 2 ? 0x800 : 0) | (parity_even(G_PF) ? 0x04 : 0) | (G_AF & 0x10) |
+    uint16_t f = ccr_flags[G_CCR & 15] | parity_flags[G_PF] | (G_AF & 0x10) |
                  (G_TF ? 0x100 : 0) | (G_IF ? 0x200 : 0) | (G_DF ? 0x400 : 0);
     return f | (G_FX & 0xf000);
 }

@@ -23,14 +23,14 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   at R6, 74,336 → 74,373 lines at R7 (no walk in its window), 74,318 →
   74,096 lines at R8 (means of 3); window 2.20M guest
   instructions, SPAZ 0.22%.
-- **Meter after R9** (m4, 49 frames; weights recalibrated after R1, §4):
-  241,365,369 model cycles (generated 188.9M, cell walk 49.2M, runtime
-  3.2M); 17,976,252 guest instructions, 13.25 model cycles each (generated
+- **Meter after R10** (m4, 49 frames; weights recalibrated after R1, §4):
+  240,644,109 model cycles (generated 188.9M, cell walk 49.2M, runtime
+  2.5M); 17,976,252 guest instructions, 13.25 model cycles each (generated
   + walk); R1 292,676,869 (275,119,407 under the previous weights). Round 2
   kept (previous weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b
   −1.916%, R1d −1.231%; (current) R2 −1.029%, R3a −0.991%, R3b −0.188%,
   R4 −2.646%, R5 −2.036%, R6 −1.213%, R7 −9.037%; R8 0 (layout only:
-  bench −0.30%); R9 −1.615%.
+  bench −0.30%); R9 −1.615%; R10 −0.299%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -656,6 +656,34 @@ Price ≈ 0.5%.
 - "No PC" (2.72%, outside the executable and ROM): identify it before
   pricing.
 - Price ≈ 1–2%.
+- Re-price (meter of `e73421f`, m4): runtime 3.24M model cycles (1.34%).
+  Flag helpers (`__set_flags`, `__set_flags_lo`, `__flags_word`,
+  `__getpf`; popf/iret/pushf) 0.37%, 190–230 cycles per call; interrupt
+  path 0.49% (`rt_irq_c`, `push_frame`, `rt_flags_word`, `guest_vector`,
+  `load_regs`/`save_regs` 243 per pair); VRAM marks 0.13% (two `divu` per
+  span); port output 0.08% (three calls deep per OPL write); `rt_lookup`
+  0.06%. Bench capture (FS-UAE): runtime/platform 1.50%, no PC 0.02%
+  (2.72% was the frames fixture's).
+  - Flag helpers inline with tables (parity, CCR nibble): ≈ −0.25%.
+  - Guest words in one `move.w`, flags word by table, registers by
+    `movem`/no dead zero-extension: ≈ −0.2%.
+  - `divu #320` by table; OPL writes answered in `rt_out8`: ≈ −0.14%.
+  - ≈ −0.6% in all.
+- Kept: −0.299% (−721,260 model cycles, all runtime: −374K executed bytes,
+  −22.5K reads, −27.6K writes, −22.4K taken), runtime static +100 bytes.
+  Flag helpers −37% (`__set_flags` 231 → 155 cycles per call with
+  `__set_flags_lo` inlined, `__flags_word` 194 → 112), interrupt path −18%
+  (`rd16`/`wr16`/`rd32`/`wr32` one `move` at any alignment; `load_regs`/
+  `save_regs` by `movem.w`), port output −47% (`rt_out8` answers AdLib
+  writes and the PIC EOI), VRAM marks −6% (the model prices `divu` at 23
+  cycles; the 68020 takes ≈ 44). Not taken: the guest-vector bounds cache
+  (IVT writes are not seen), `present` (its reads and writes are the copy).
+- Coverage: PF from every byte (`add al,0`, then PUSHF, LAHF, JP, JNP);
+  PUSHF/LAHF from every CF PF AF ZF SF OF IF DF combination; SAHF from every
+  AH; POPF from every combination of its 8 flag bits with bits 12-15: 2,816
+  boundary cases.
+- Plants: each helper table read one entry off (parity, CCR → FLAGS,
+  FLAGS → CCR).
 
 ### R11. Re-profile
 

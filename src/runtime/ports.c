@@ -3,7 +3,8 @@
 #include "runtime.h"
 #include "platform.h"
 
-/* PIC: EOI and the mask register (reference mask F8h: IRQ 0-2 enabled). */
+/* PIC: the mask register (reference mask F8h: IRQ 0-2 enabled); the
+ * non-specific EOI is answered in rt_out8 (rt_entry.s). */
 static uint8_t pic_mask = 0xf8;
 
 /* PIT: per channel the access mode of its control word (1 lo, 2 hi, 3 lo/hi)
@@ -13,8 +14,9 @@ static uint8_t pit_access[3] = {3, 3, 3}, pit_high[3];
 static uint16_t pit_reload[3];
 uint32_t rt_pit_divisor = 0x10000;
 
-/* AdLib: index register and the written OPL2 register file (D10). */
-static uint8_t opl_index;
+/* AdLib: index register and the written OPL2 register file (D10); rt_out8
+ * (rt_entry.s) answers its byte writes. */
+uint8_t rt_opl_index;
 uint8_t rt_opl[256];
 
 static void pit_control(uint8_t v)
@@ -63,17 +65,10 @@ void rt_port_out(uint32_t port, uint32_t value, uint32_t width)
     uint8_t v = (uint8_t)value;
     if (width == 8) {
         switch (port) {
-        case 0x20:
-            if (v == 0x20) {
-                return;             /* non-specific EOI */
-            }
-            break;
         case 0x21: pic_mask = v; return;
         case 0x40: case 0x41: case 0x42: pit_data((uint8_t)(port - 0x40), v); return;
         case 0x43: pit_control(v); return;
         case 0x201: return;         /* joystick one-shots */
-        case 0x388: opl_index = v; return;
-        case 0x389: rt_opl[opl_index] = v; return;
         }
     }
     rt_stop("unsupported port out (port, width)", port, width);

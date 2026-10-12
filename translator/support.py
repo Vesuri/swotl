@@ -17,81 +17,73 @@ def equates() -> str:
     return "\n".join(lines) + "\n"
 
 
+def _table(label: str, size: str, values) -> list[str]:
+    values = list(values)
+    return [f"{label}:"] + [f"\tdc.{size}\t" + ",".join(f"${v:x}" for v in values[k:k + 16])
+                            for k in range(0, len(values), 16)]
+
+
+# FLAGS bit 2 (PF) per result byte: even parity
+_PARITY = [0 if bin(v).count("1") & 1 else 4 for v in range(256)]
+# FLAGS CF, OF, ZF, SF per CCR image (C, V, Z, N)
+_CCR_FLAGS = [(c & 1) | (c & 2) << 10 | (c & 4) << 4 | (c & 8) << 4 for c in range(16)]
+# CCR image (C, Z, N) per FLAGS byte bits CF << 2 | SF << 1 | ZF (`and #$c1`, `rol.b #2`)
+_SAHF_CCR = [(i >> 2 & 1) | (i & 1) << 2 | (i >> 1 & 1) << 3 for i in range(8)]
+# (code ends word-aligned: the word table first)
+TABLES = [";", "; tables of the flag helpers"] + _table("__ccr_flags", "w", _CCR_FLAGS) + \
+    _table("__sahf_ccr", "b", _SAHF_CCR) + _table("__parity", "b", _PARITY)
+
+
 HELPERS = r"""
 ; d7 := PF (0/1): even parity of G_PF
 __getpf:
-	move.l	d6,-(a7)
+	moveq	#0,d7
 	move.b	G_PF(a6),d7
-	move.b	d7,d6
-	lsr.b	#4,d6
-	eor.b	d6,d7
-	move.b	d7,d6
-	lsr.b	#2,d6
-	eor.b	d6,d7
-	move.b	d7,d6
-	lsr.b	#1,d6
-	eor.b	d6,d7
-	not.b	d7
-	and.l	#1,d7
-	move.l	(a7)+,d6
+	move.b	__parity(pc,d7.w),d7
+	lsr.b	#2,d7
 	rts
 
 ; d7.w := FLAGS (bit 1 set, bits 12-15 from G_FX)
 __flags_word:
 	move.l	d6,-(a7)
-	jsr	__getpf
-	lsl.w	#2,d7
-	or.w	#2,d7
-	move.b	G_FL+1(a6),d6
-	btst	#0,d6
-	beq	.1
-	or.w	#1,d7
-.1:	btst	#2,d6
-	beq	.2
-	or.w	#$40,d7
-.2:	btst	#3,d6
-	beq	.3
-	or.w	#$80,d7
-.3:	btst	#1,d6
-	beq	.4
-	or.w	#$800,d7
-.4:	move.b	G_AF(a6),d6
+	moveq	#0,d6
+	move.b	G_PF(a6),d6
+	moveq	#2,d7
+	or.b	__parity(pc,d6.w),d7
+	moveq	#$0f,d6
+	and.b	G_FL+1(a6),d6
+	or.w	__ccr_flags(pc,d6.w*2),d7
+	move.b	G_AF(a6),d6
 	and.w	#$10,d6
 	or.w	d6,d7
 	tst.b	G_TF(a6)
-	beq	.5
+	beq	.1
 	or.w	#$100,d7
-.5:	tst.b	G_IF(a6)
-	beq	.6
+.1:	tst.b	G_IF(a6)
+	beq	.2
 	or.w	#$200,d7
-.6:	tst.b	G_DF(a6)
-	beq	.7
+.2:	tst.b	G_DF(a6)
+	beq	.3
 	or.w	#$400,d7
-.7:	or.w	G_FX(a6),d7
+.3:	or.w	G_FX(a6),d7
 	move.l	(a7)+,d6
 	rts
 
 ; CF PF AF ZF SF from the low byte of d7 (SAHF); OF kept
 __set_flags_lo:
 	move.l	d6,-(a7)
-	moveq	#0,d6
-	btst	#0,d7
-	beq	.1
-	or.b	#1,d6
-.1:	btst	#6,d7
-	beq	.2
-	or.b	#4,d6
-.2:	btst	#7,d7
-	beq	.3
-	or.b	#8,d6
-.3:	and.b	#2,G_FL+1(a6)
+	move.w	d7,d6
+	and.w	#$c1,d6
+	rol.b	#2,d6
+	move.b	__sahf_ccr(pc,d6.w),d6
+	and.b	#2,G_FL+1(a6)
 	or.b	d6,G_FL+1(a6)
 	move.b	d7,d6
 	and.b	#$10,d6
 	move.b	d6,G_AF(a6)
 	btst	#2,d7
 	seq	d6
-	and.b	#1,d6
+	neg.b	d6
 	move.b	d6,G_PF(a6)
 	move.l	(a7)+,d6
 	rts
@@ -99,12 +91,22 @@ __set_flags_lo:
 ; all flags from d7.w (POPF, IRET); G_FX := bits 12-14
 __set_flags:
 	move.l	d6,-(a7)
-	jsr	__set_flags_lo
-	and.b	#$fd,G_FL+1(a6)
+	move.w	d7,d6
+	and.w	#$c1,d6
+	rol.b	#2,d6
+	move.b	__sahf_ccr(pc,d6.w),d6
 	btst	#11,d7
 	beq	.1
-	or.b	#2,G_FL+1(a6)
-.1:	btst	#8,d7
+	addq.b	#2,d6
+.1:	move.b	d6,G_FL+1(a6)
+	move.b	d7,d6
+	and.b	#$10,d6
+	move.b	d6,G_AF(a6)
+	btst	#2,d7
+	seq	d6
+	neg.b	d6
+	move.b	d6,G_PF(a6)
+	btst	#8,d7
 	sne	d6
 	neg.b	d6
 	move.b	d6,G_TF(a6)
@@ -255,4 +257,4 @@ __aad:
 	jsr	__szp_al
 	move.l	(a7)+,d6
 	rts
-"""
+""" + "\n".join(TABLES) + "\n"

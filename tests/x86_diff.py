@@ -478,6 +478,7 @@ def boundary(h: Harness) -> None:
     provenance_cases(h)
     upper_word_cases(h)
     muldiv_source_cases(h)
+    flags_word_cases(h)
 
 
 def address_guard_cases(h):
@@ -1175,6 +1176,30 @@ def muldiv_source_cases(h):
                                  (bytes((0xf7, 0x46 | op << 3, 2)), 0x71002)):
                     h.case(code, "b:muldiv-mem", overrides={"regs": regs, "ip": 0x100,
                                                             "mem": [(at, le(src))]})
+
+
+def flags_word_cases(h):
+    """R10: the flags-word helpers over every pattern. PF from each AL value
+    (ADD AL,0, then PUSHF, LAHF, JP, JNP); PUSHF/LAHF from every CF PF AF ZF SF
+    OF IF DF combination; SAHF from every AH; POPF from every combination of
+    bits 0, 2, 4, 6, 7, 9, 10, 11 with bits 12-15 0, 1000h, 7000h, F000h."""
+    names = ("CF", "PF", "AF", "ZF", "SF", "OF", "IF", "DF")
+    for al in range(256):
+        for tail in (b"\x9c", b"\x9f", b"\x7a\x10", b"\x7b\x10"):
+            h.case(b"\x04\x00" + tail, "b:flags-parity", n=2, block=True,
+                   overrides={"regs": {"ax": h.rng.randrange(256) << 8 | al}})
+    for k in range(256):
+        flags = {f: k >> j & 1 for j, f in enumerate(names)}
+        h.case(b"\x9c", "b:flags-pushf", overrides={"flags": flags,
+                                                     "flagsx": (0, 0x1000, 0x3000, 0x7000)[k & 3]})
+        h.case(b"\x9f", "b:flags-lahf", overrides={"flags": flags})
+        h.case(b"\x9e", "b:flags-sahf", overrides={"regs": {"ax": k << 8 | h.rng.randrange(256)}})
+    for k in range(256):
+        low = sum((k >> j & 1) << b for j, b in enumerate((0, 2, 4, 6, 7, 9, 10, 11)))
+        for high in (0, 0x1000, 0x7000, 0xf000):
+            word = low | high | h.rng.choice((0, 2, 0x28, 0x2a))
+            h.case(b"\x9d", "b:flags-popf",
+                   overrides={"mem": [(lambda r: r["ss"] * 16 + r["sp"], word.to_bytes(2, "little"))]})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:
