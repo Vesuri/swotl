@@ -63,8 +63,7 @@ Breaking any of these voids the step, whatever it measures.
    poll point, fail-loud stop or wrap handling; no "usually true" or "never
    seen" assumption; no annotation asserting what the translator must prove.
 4. **D16:** every cell is matched at run time against the writer forms
-   from the guest RAM bytes, except through R7b's cache (D3), which is used
-   only while its exact validity condition holds.
+   from the guest RAM bytes (R7b's cache, D3, not built: §10).
 5. **Gates stay green and unchanged** at every commit: `make test`,
    `make test-sabotage`, `make test-host-all`, `make test-amiga`, `make
    smoke` (`make gates` runs all five). Never edit, skip, mask, loosen or re-record a test, reference or
@@ -111,13 +110,13 @@ Breaking any of these voids the step, whatever it measures.
 - **Code growth** only with lower model cycles (D2). Stop and ask before
   the payload exceeds 1,325,164 bytes by more than 25% (open-work 19).
 - **FS-UAE check** after every third kept step and after R1, R6, R7 and
-  R7b: a bench run (§4) per arm with a capture; the meter's Δ must have the
+  R8: a bench run (§4) per arm with a capture; the meter's Δ must have the
   sign of `ab_labels.py`'s mix-adjusted Δ over the changed labels. If they
   disagree, stop: fix the meter, never tune lowerings to FS-UAE noise.
   Report the bench's frames 4–11 cycles (they include layout effects).
 - **Frame-rate claims:** the bench (§4) for build-to-build progress; the
   target itself is the frames fixture (§4, with the interval lists),
-  measured after R1, R6, R7b and R11. Neither is a per-step gate.
+  measured after R1, R6, R8 and R11. Neither is a per-step gate.
 
 **Stop and ask the user** when: a gate fails for a reason that is not a
 plain bug; a step needs any of §2 beyond what was approved; references
@@ -565,34 +564,7 @@ operations, runtime entries) and cleans the register there. The remaining
 
 ### R7b. Cell cache (D3)
 
-- **What is cached:** each decoded cell (kind and operand) at its walk
-  position. Walks reuse it while no write can have reached the walk region
-  since decoding. A dirty or bypassed cache runs R7's matching walk, which
-  decodes again.
-- **Exact invalidation covers every write path:**
-  - generated stores through DS, ES and SS, including string ops and
-    interrupt frames;
-  - runtime writes (DOS reads, EMS copies, all R1a accessors);
-  - the walk's own DS reload cells.
-- **Candidate mechanism, segment-window gating:**
-  - Loading a writable segment register whose 64 KiB window overlaps the
-    region marks the cache dirty.
-  - The cache is bypassed while any writable segment register overlaps it.
-  - Runtime accessors mark writes that overlap the region.
-  - A segment load proven not to overlap (a constant, or a copy of a
-    checked register) skips the check.
-  - Any other mechanism must cover the same paths.
-- **Price:** walk ≈ 9–10% of CPU after R7 → ≈ 3%, minus the gating cost
-  on segment loads (≈ 45K per 100 fields): ≈ 5–7% net. Re-price with the meter,
-  gating included.
-- **Coverage:**
-  - Walk snapshots (`make test-blocks`) hitting the cache.
-  - Writes into the region between walks, through each segment register
-    and through the runtime.
-  - DS reload cells whose window overlaps the region.
-  - Plants: the gating check skipped on one segment load; an accessor
-    that doesn't mark.
-- Update `translator-design.md` D16 in the same commit.
+Not built (user, 2026-10-12): re-priced in §10.
 
 ### R8. Branch-target alignment
 
@@ -635,14 +607,14 @@ from the top while the meter finds a gain.
   pop uses linear SP", "mask trusts dirty upper word".
 - **D2.** R6 may grow the code beyond +5% when each guarded copy lowers
   model cycles; the +25% stop in §3 remains.
-- **D3.** Cell cache (R7b) with exact invalidation.
+- **D3.** Cell cache (R7b) with exact invalidation (not built, §10).
 - **D4.** Deterministic frame bench (§4).
 - Native replacement is not part of this plan (§2.2).
 
 ## 9. Projection
 
 R1–R10 with R7b ≈ 28–34% of CPU: from 24.5 fields to ≈ 16–18
-(320–360 ms). The 12-field target needs ≈ 50% less time than today.
+(320–360 ms); R7b (priced 5–7%) is not built. The 12-field target needs ≈ 50% less time than today.
 Translation alone is not expected to get there: the remaining generated
 code would still cost ≈ 10 cycles per guest instruction (≈ 6–7 code bytes
 and ≈ 1.3 data accesses each), against the 80286's ≈ 6 clocks. At R11,
@@ -664,3 +636,9 @@ history at `781975e` and §5.)
   R7 under the meter.
 - R1c "SI/DI mirrored like SP/BP": census −1.0% (SI/DI serve as data
   registers far more than as lone indexes); not built.
+- R7b "cell cache (D3)": re-priced on the R7 meter at about −1.7% at best;
+  not built (user, 2026-10-12). After R7, matching is 6 of the 17 loop
+  bytes per mov cell (at most −11.1M). Every walk plants a RET in the
+  region and restores it (65.6K CS stores per window), so the restored
+  cells decode again. The other costs are a check on 110K segment loads,
+  invalidation at the CS stores and the run setup.

@@ -27,7 +27,7 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     and moves and clicks the menu pointer. INT 33h motion and buttons are
     transcribed from DOSBox-X but untested: no reference has mouse input
     (needs scripted motion in the DOSBox-X mouse patch). The D16
-    cell walk is a per-cell form match (perf: speed-plan R7, R7b);
+    cell walk is a per-cell form match (perf: speed-plan R7);
     find-first gives platform files
     no DOS time/date; table targets added by
     `annotations/tables.csv` that no reference run executed are checked by
@@ -39,8 +39,9 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     check yet (L5, SL `restore_status`); keyboard and mouse input from the
     takeover are untested by any reference (scripted input enters past the
     CIA and JOY0DAT reads).
-14b. Speed: [speed-plan.md](speed-plan.md) round 2, R7b–R11 left (next: R7b,
-    cell cache; FS-UAE check and frames fixture after R7b;
+14b. Speed: [speed-plan.md](speed-plan.md) round 2, R8–R11 left (next: R8,
+    branch-target alignment; R7b not built, §10; FS-UAE check and frames
+    fixture after R8;
     R1c skipped by its census; flag candidates
     after R3b in §7). Target ≤12 fields on 68020 + 8 MB
     Fast; run medians 24.5–28.5 fields at `781975e` (trajectory noise);
