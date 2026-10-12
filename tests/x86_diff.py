@@ -477,6 +477,7 @@ def boundary(h: Harness) -> None:
     shift_fuse_cases(h)
     provenance_cases(h)
     upper_word_cases(h)
+    muldiv_source_cases(h)
 
 
 def address_guard_cases(h):
@@ -1151,6 +1152,29 @@ def upper_word_cases(h):
                 h.case(bytes.fromhex(seg + use), "b:upperseg", n=1 + bool(use), block=True,
                        overrides={"regs": dict(regs, si=v), "ip": 0x100,
                                   "mem": mem + [(0x7fffe, bytes.fromhex(le(v)))]})
+
+
+def muldiv_source_cases(h):
+    """R9: word MUL/IMUL/DIV/IDIV with DX live, from every register (DIV/IDIV DX
+    always fault, restoring DX) and from memory ([disp], [bx+si], [bp+d8])."""
+    le = lambda v: v.to_bytes(2, "little")
+    pairs = ((0, 0), (0, 0xffff), (0x7fff, 0xffff), (0x8000, 0), (0xffff, 0xffff),
+             (1, 0x8000), (0x1234, 0x5678))
+    base = dict(cs=0x2000, ds=0x5000, ss=0x7000, sp=0xfffe)
+    for op in (4, 5, 6, 7):
+        for src in (0, 1, 0xff, 0x7fff, 0x8000, 0xffff):
+            for dx, ax in pairs:
+                for r, name in enumerate(("ax", "cx", "dx", "bx", "sp", "bp", "si", "di")):
+                    regs = dict(base, ax=ax, dx=dx)
+                    regs[name] = src
+                    h.case(bytes((0xf7, 0xc0 | op << 3 | r)), f"b:muldiv-src/{name}",
+                           overrides={"regs": regs, "ip": 0x100})
+                regs = dict(base, ax=ax, dx=dx, bx=0x1200, si=0x34, bp=0x1000)
+                for code, at in ((bytes((0xf7, 0x06 | op << 3, 0x34, 0x12)), 0x51234),
+                                 (bytes((0xf7, op << 3)), 0x51234),
+                                 (bytes((0xf7, 0x46 | op << 3, 2)), 0x71002)):
+                    h.case(code, "b:muldiv-mem", overrides={"regs": regs, "ip": 0x100,
+                                                            "mem": [(at, le(src))]})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

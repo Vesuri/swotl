@@ -30,6 +30,7 @@ real_bp_range = R.bp_range
 real_carry_ccr = F.carry_ccr
 real_flags_dead = L.Lowering.flags_dead
 real_walk = S.walk
+real_muldiv_source = L.Lowering.muldiv_source
 RECORD = Path(__file__).resolve().parent.parent / "tmp/test/x86-side-boundary.pkl"
 
 
@@ -116,17 +117,16 @@ def drop_live_dx(self, out):
     if self.i.width != 16:
         return out
     if self.i.op in ("mul", "imul"):
-        return [s for s in out if s not in ("\tmove.l d0,d2", "\tclr.w d2", "\tswap d2")]
+        return [s for s in out if s not in ("\tmove.l d0,d2", "\tswap d2")]
     if self.i.op in ("div", "idiv"):
-        result = []
-        for line in out:
-            if line == "\tmove.w d7,d2":
-                assert result[-1] == "\tswap d7"
-                result.pop()
-            else:
-                result.append(line)
-        return result
+        # R9: the remainder's swap after the quotient is read
+        return [x for k, x in enumerate(out) if not (x == "\tswap d2" and out[k - 1] == "\tmove.w d2,d0")]
     return out
+
+
+def fault_keeps_dx_swapped(self, out):
+    """R9: a divide fault leaves DX:AX in d2 (the fault path's swap back dropped)."""
+    return [x for k, x in enumerate(out) if not (x == "\tswap d2" and out[k - 1].endswith(":"))]
 
 
 def high_byte_written_low(self, out):
@@ -394,6 +394,8 @@ SABOTAGE = [
     ("mov run counts one cell past the bound", walk_plant("\tlsr.l #2,d6", "\tlsr.l #2,d6\n\taddq.l #1,d6"),
      "walk"),
     ("mov run skips the opcode compare", walk_plant("\tcmp.w d1,d7", "\tcmp.w d7,d7"), "walk"),
+    ("divide fault leaves DX:AX swapped", fault_keeps_dx_swapped, "boundary"),
+    ("divide reads DX from the dividend", "divide source", "boundary"),
 ]
 
 
@@ -413,6 +415,8 @@ def plant(k: int) -> tuple[int, int, int, int]:
         E.mismatch_stub = lambda lab: [f"{lab}:"]
     elif fn == "bp range":  # region.bp_range (R6)
         R.bp_range = wide_bp_range
+    elif fn == "divide source":     # Lowering.muldiv_source (R9)
+        L.Lowering.muldiv_source = lambda self, o, div: real_muldiv_source(self, o, False)
     elif corpus == "walk":  # smc.walk (R7)
         S.walk = fn
     else:
@@ -442,6 +446,7 @@ def plant(k: int) -> tuple[int, int, int, int]:
         S.walk = real_walk
         F.carry_ccr = real_carry_ccr
         L.Lowering.flags_dead = real_flags_dead
+        L.Lowering.muldiv_source = real_muldiv_source
 
 
 def slow_first(k: int) -> tuple:

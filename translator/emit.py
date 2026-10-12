@@ -102,6 +102,35 @@ LABEL_ONLY = re.compile(r"^[^\s;][^:\s]*:\s*(;.*)?$")
 ALIGN = "\tds.b\t0\t; align "   # a pad of 0 or 2 bytes, set by gen.pad (R8)
 
 
+BRANCH = re.compile(r"^\t(bra(\.[swl])?|jmp)\s+([\w.]+)\s*(;.*)?$")
+
+
+def skippable(line: str) -> bool:
+    """A line that emits no code: a label alone, blank, or a comment."""
+    return bool(LABEL_ONLY.match(line)) or not line.strip() or line.strip().startswith(";")
+
+
+def drop_next_branches(lines: list[str], stats: Counter) -> None:
+    """A `bra`/`jmp` to a label that follows it with no code between goes:
+    execution falls through to the same instruction. vasm runs out of passes
+    on some images that have one (speed-plan R7, R9). Before `align`, so no pad
+    follows a dropped branch."""
+    drop = []
+    for k, x in enumerate(lines):
+        m = BRANCH.match(x)
+        if not m:
+            continue
+        j = k + 1
+        while j < len(lines) and skippable(lines[j]):
+            if LABEL_ONLY.match(lines[j]) and lines[j].split(":")[0] == m.group(3):
+                drop.append(k)
+                break
+            j += 1
+    for k in reversed(drop):
+        del lines[k]
+    stats["branch to the next line dropped"] += len(drop)
+
+
 def align(lines: list[str], residues: dict[str, int], stats: Counter) -> None:
     """R8: an alignment pad before each listed label that only transfers reach
     (the instruction before it, past label-only and comment lines, is
@@ -117,8 +146,7 @@ def align(lines: list[str], residues: dict[str, int], stats: Counter) -> None:
         if r is None:
             continue
         j = k - 1
-        while j >= 0 and (LABEL_ONLY.match(lines[j]) or not lines[j].strip()
-                          or lines[j].strip().startswith(";")):
+        while j >= 0 and skippable(lines[j]):
             j -= 1
         if j >= 0 and UNCONDITIONAL.match(lines[j]):
             at.append((j + 1, f"{r} {name}"))
@@ -638,6 +666,7 @@ class Program:
             lines += [f"{s}:\t; transfer out of the translated modules",
                       f"\tmove.l #{hx(u.ip_of(off))},d7", "\tjmp rt_stop_unknown"]
             stats["stop_unknown site"] += 1
+        drop_next_branches(lines, stats)
         align(lines, self.align, stats)
         size_branches(lines)
         stats["guest instructions"] += len(u.insns)

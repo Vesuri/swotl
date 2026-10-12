@@ -23,14 +23,14 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   at R6, 74,336 → 74,373 lines at R7 (no walk in its window), 74,318 →
   74,096 lines at R8 (means of 3); window 2.20M guest
   instructions, SPAZ 0.22%.
-- **Meter after R7** (m4, 49 frames; weights recalibrated after R1, §4):
-  245,326,091 model cycles (generated 192.9M, cell walk 49.2M, runtime
-  3.2M); 17,976,252 guest instructions, 13.47 model cycles each (generated
+- **Meter after R9** (m4, 49 frames; weights recalibrated after R1, §4):
+  241,365,369 model cycles (generated 188.9M, cell walk 49.2M, runtime
+  3.2M); 17,976,252 guest instructions, 13.25 model cycles each (generated
   + walk); R1 292,676,869 (275,119,407 under the previous weights). Round 2
   kept (previous weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b
   −1.916%, R1d −1.231%; (current) R2 −1.029%, R3a −0.991%, R3b −0.188%,
   R4 −2.646%, R5 −2.036%, R6 −1.213%, R7 −9.037%; R8 0 (layout only:
-  bench −0.30%).
+  bench −0.30%); R9 −1.615%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -618,6 +618,33 @@ captures per arm.
 
 DX extraction without `clr.w` and masks once R4 allows dirty upper words.
 Price ≈ 0.5%.
+
+- Re-price (meter of `0a64eea`, m4): word `mul` 365K executions (329K
+  memory sources), word `div` 40K; byte forms 5K.
+  - `mul`: DX as `move.l d0,d2` + `swap d2` (no `clr.w`), no `and.l
+    #$ffff,d0` (−8 bytes; −6 with DX dead).
+  - Source straight into `mulu.w`/`muls.w` (memory, AX–BX): −2 bytes.
+  - `div`: DX:AX built in d2 (`swap d2`, `move.w d0,d2`), quotient and
+    remainder read from it (−4 bytes); the fault path swaps d2 back (a
+    `divu`/`divs` overflow leaves its destination unchanged). Source DX
+    still goes through d6.
+  - ≈ −3.8M executed bytes, ≈ −1.5%.
+- Kept: −1.615% (−3,960,722 model cycles, all generated code: −3.77M
+  executed bytes, −1.26M instructions, reads and writes ±0), static code
+  −9,714 bytes. Per form: word `mul` −22 to −23%, `div` −7 to −11%.
+  - vasm does not widen `mulu`/`muls`/`divu`'s (d16,An) to a 32-bit
+    displacement as it does `move`'s: absolute offsets FFFEh and FFFFh go
+    through d6 (FFFEh: under the plants' one-byte displacement shifts).
+  - A `bra`/`jmp` to the next line is dropped (`emit.drop_next_branches`,
+    5 sites, none executed in m4): the trampoline plant's image ran out of
+    vasm passes again (R7).
+- Coverage: word mul/imul/div/idiv with DX live from every register (DIV DX
+  always faults) and from `[disp]`, `[bx+si]`, `[bp+d8]`, edge values: 1,848
+  boundary cases. `tests/test_next_branch.py` covers the branch drop.
+- Plants (of 62,147): "DX result dropped while live" moved to the new
+  templates (1,558); a divide fault leaves DX:AX swapped (1,612); a divide
+  reads DX from the dividend being built (30); the branch drop skips
+  instructions (20 of 64).
 
 ### R10. Runtime surface
 

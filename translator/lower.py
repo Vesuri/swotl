@@ -849,11 +849,27 @@ class Lowering:
         self.e("move.w d7,G_FL(a6)")
         self.stats["flag store"] += 1
 
+    def muldiv_source(self, o, div: bool) -> str:
+        """Word operand for `mulu`/`divu`: memory (multiply only) or AX-BX
+        straight, else read into d6. A divide builds DX:AX in d2, so DX is read.
+        Absolute offsets FFFEh and FFFFh are read into d6 too: vasm does not
+        widen `mulu`'s (d16,An) to a 32-bit displacement, at FFFFh or under the
+        sabotage plants' one-byte displacement shifts at FFFEh."""
+        if isinstance(o, Mem) and not div and (o.base or o.index or o.disp & 0xFFFF < 0xFFFE):
+            return self.ea(o).w
+        if isinstance(o, Reg) and o.name in ("ax", "cx", "dx", "bx") and not (div and o.name == "dx"):
+            return GREG[o.name]
+        self.read(o, "d6")
+        return "d6"
+
     def muldiv(self, op: str) -> None:
         i = self.i
         w = i.width
-        self.read(i.operands[0], "d6")
         signed = op in ("imul", "idiv")
+        if w == 16:
+            src = self.muldiv_source(i.operands[0], op in ("div", "idiv"))
+        else:
+            self.read(i.operands[0], "d6")
         if w == 8:
             self.e("ext.w d6" if signed else "and.w #$ff,d6")
         if op in ("mul", "imul"):
@@ -865,13 +881,11 @@ class Lowering:
                 else:
                     self.e("ext.w d0")
                     self.e("muls.w d6,d0")
-                    self.e("and.l #$ffff,d0")
                     self.mul_flags(["move.b d0,d7", "ext.w d7", "cmp.w d0,d7"])
             else:
-                self.e(f"{'muls' if signed else 'mulu'}.w d6,d0")
+                self.e(f"{'muls' if signed else 'mulu'}.w {src},d0")
                 if not self.c.dead_dx or op == "mul" and self.c.need & {"CF", "OF"}:
                     self.e("move.l d0,d2")
-                    self.e("clr.w d2")
                     self.e("swap d2")
                 else:
                     self.stats["dead DX result omitted"] += 1
@@ -879,7 +893,6 @@ class Lowering:
                     self.mul_flags(["tst.w d2"])
                 else:
                     self.mul_flags(["move.w d0,d7", "ext.l d7", "cmp.l d0,d7"])
-                self.e("and.l #$ffff,d0")
             self.ccr = set()
             return
         fault, end = self.local(), self.local()
@@ -909,21 +922,22 @@ class Lowering:
             self.e("move.b d0,d7")
             self.e("move.w d7,d0")
         else:
-            self.e("move.l d2,d7")
-            self.e("swap d7")
-            self.e("move.w d0,d7")
-            self.e("tst.w d6")
+            # DX:AX in d2; an overflowing divu/divs leaves it unchanged
+            self.e("swap d2")
+            self.e("move.w d0,d2")
+            self.e(f"tst.w {src}")
             self.e(f"beq {fault}")
-            self.e(f"{div}.w d6,d7")
+            self.e(f"{div}.w {src},d2")
             self.e(f"bvs {fault}")
-            self.e("move.w d7,d0")
+            self.e("move.w d2,d0")
             if not self.c.dead_dx:
-                self.e("swap d7")
-                self.e("move.w d7,d2")
+                self.e("swap d2")
             else:
                 self.stats["dead DX result omitted"] += 1
         self.e(f"bra {end}")
         self.at(fault)
+        if w == 16:
+            self.e("swap d2")
         self.exit_fault(0)
         self.at(end)
         self.ccr = set()

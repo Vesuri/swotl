@@ -106,7 +106,7 @@ test-x86:
 	$(PYTHON) tests/x86_diff.py
 
 test-sabotage: host
-	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align
+	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch
 
 test-m68k:
 	$(PYTHON) tests/m68k_diff.py
@@ -123,7 +123,7 @@ JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc)
 RUN = @mkdir -p tmp/test; if $(2) > tmp/test/$(1).log 2>&1; then echo "ok    $(1)"; \
 	else echo "FAIL  $(1) (tmp/test/$(1).log)"; tail -n 15 tmp/test/$(1).log; exit 1; fi
 SHARDS = forms.0/4 forms.1/4 forms.2/4 forms.3/4 space.0/1 boundary.0/1 blocks.0/1
-TESTS = t-align t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
+TESTS = t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
 	t-blocks t-guards $(HOST_MILESTONES:%=t-host-%)
 
 test: host
@@ -136,6 +136,10 @@ t-align:
 	$(call RUN,align,$(PYTHON) tests/test_align.py)
 t-sab-align:
 	$(call RUN,sabotage-align,$(PYTHON) tests/test_align.py --sabotage)
+t-next-branch:
+	$(call RUN,next-branch,$(PYTHON) tests/test_next_branch.py)
+t-sab-next-branch:
+	$(call RUN,sabotage-next-branch,$(PYTHON) tests/test_next_branch.py --sabotage)
 
 t-dosbox-retf:
 	$(call RUN,dosbox-retf,$(PYTHON) tests/test_dosbox_retf.py)
