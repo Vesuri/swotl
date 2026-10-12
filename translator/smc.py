@@ -10,6 +10,10 @@ form with its operand words read from guest RAM and returns at the planted
 RET; any other byte, or a cell past the region, stops (rt_stop_unknown).
 Each form's text is checked against the decoder, so the lowering below is
 the lowering of the decoded instruction with the run-time operand.
+Mov cells run as a counted run (R7): the mov cells that fit before the
+bound are counted once, and each cell is still matched from guest RAM when
+it runs (one long read: opcode word low, operand word high); the first
+other cell leaves the run for the other forms.
 No poll point: the block has no loop, and the reference takes no
 interrupt inside it.
 """
@@ -22,9 +26,30 @@ from .lower import LowerError, hx
 HOLE = 0x1234
 
 
-def _mov_cell(base: str) -> list[str]:
-    return ["\tmove.w #$7fff,d7", "\tsub.w -2(a0),d7", "\tsub.w d3,d7",
-            "\tmove.b d0,0(a3,d7.w)", "\tsubq.l #4,a0"]
+MOV = "8887ww"
+UNROLL = 4
+
+
+def _mov_run(code: bytes, bound: str, other: str) -> list[str]:
+    """Mov cells from a0 (checked against the bound) while they match: d6 =
+    the cells after this one up to the bound, d1 = the opcode word, d2 =
+    7FFFh - BX (the store's index is d2 - w, as 7FFFh - (BX + w) for DS:BX+w);
+    a0 two bytes above the cell, so -(a0) reads the cell's 4 bytes and steps
+    to the next. d1/d2 are guest registers, saved around the run."""
+    part = ["\tmove.l -(a0),d7", "\tcmp.w d1,d7", "\tbne.s .mx", "\tswap d7",
+            "\tneg.w d7", "\tadd.w d2,d7", "\tmove.b d0,0(a3,d7.w)"]
+    lines = ["\tsub.l a0,d6", "\tneg.l d6", "\tlsr.l #2,d6",
+             "\tmovem.l d1-d2,-(sp)", f"\tmove.w #{hx(code[1] << 8 | code[0])},d1",
+             "\tmove.w #$7fff,d2", "\tsub.w d3,d2", "\taddq.l #2,a0",
+             f"\tmoveq #{UNROLL - 1},d7", "\tand.w d6,d7", f"\tlsr.w #{UNROLL.bit_length() - 1},d6",
+             "\tadd.w d7,d7", "\tmove.w .mt(pc,d7.w),d7", "\tjmp .mt(pc,d7.w)",
+             ".mt:\tdc.w " + ",".join(f".m{k}-.mt" for k in reversed(range(UNROLL)))]
+    for k in range(UNROLL):
+        lines += [f".m{k}:"] + part
+    return lines + ["\tdbra d6,.m0", "\tsubq.l #2,a0", "\tmovem.l (sp)+,d1-d2", "\tbra .stop",
+                    ".mx:", "\taddq.l #2,a0", "\tmovem.l (sp)+,d1-d2",
+                    "\tmove.l a6,d6", f"\tsub.l #{bound},d6"] + (
+                        [f"\tbra {other}"] if other == ".stop" else [])   # else falls into .f1
 
 
 def _reload_cell(base: str) -> list[str]:
@@ -42,7 +67,7 @@ def _ret_cell(base: str) -> list[str]:
 
 # form -> (decoded text with HOLE in each word, lowering)
 FORMS = {
-    "8887ww": (["mov byte ds:[bx+0x1234], al"], _mov_cell),
+    MOV: (["mov byte ds:[bx+0x1234], al"], _mov_run),
     "2e8b1eww2e8e1eww": (["mov bx, word cs:[0x1234]", "mov ds, word cs:[0x1234]"],
                          _reload_cell),
     "c3": (["ret"], _ret_cell),
@@ -85,12 +110,15 @@ def walk(label: str, cs: str, first_ip: int, last_ip: int, forms: list[str]) -> 
              f"\tlea (-{base}-1,a6),a0", "\tsuba.l d7,a0",
              f"\tcmp.w #{hx(first_ip)},d7", "\tblo .stop",
              ".cell:", "\tcmpa.l d6,a0", "\tblo .stop"]
-    # the mov cell first: it is nearly every cell
-    order = sorted(forms, key=lambda f: f != "8887ww")
+    # the mov cells first: they are nearly every cell
+    order = sorted(forms, key=lambda f: f != MOV)
     for k, form in enumerate(order):
         code, fixed = _check(form)
         nxt = f".f{k + 1}" if k + 1 < len(order) else ".stop"
         lines.append(f".f{k}:")
+        if form == MOV:
+            lines += _mov_run(code, f"{base}+{hx(last_ip)}+1", nxt)
+            continue
         p = 0
         while p < len(fixed):
             off = fixed[p]

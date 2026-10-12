@@ -236,10 +236,13 @@ guarded copy; a profile choice, `tools/bp_regions.py`).
   so cells are matched at run time against the forms the writers produce
   (`annotations/self-modifying.csv` kind `form`: `mov [bx+w],al`, the
   `bx`/`ds` reload, the planted `ret`), each checked against the decoder,
-  operand words read from guest RAM; anything else stops. `call dx` sites
+  operand words read from guest RAM; anything else stops. Mov cells run
+  counted (R7): the cells that fit before the bound are counted once, each
+  still matched when it runs (one long read: opcode and operand). `call dx` sites
   range-check into the walk. The EGA/Tandy and/or variant ([2581]=0) is out
   of scope. Checked by `make test-blocks` (walks over every snapshot image
-  vs x86).
+  vs x86; per entry, mov cells to the bound and past it, a RET at the
+  bound, unknown cells).
 - Audits (`make gen`): spills, full-flag materializations, PF/AF stores,
   dispatcher exits, `stop_unknown` sites against `tests/audit.csv` (above
   expected fails), plus flag stores/merges/loads and return checks; HLE count.

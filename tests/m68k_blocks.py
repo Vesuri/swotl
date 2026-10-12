@@ -148,8 +148,59 @@ def cells(data: bytes, start: int, forms: list[str]) -> list[str]:
     return out
 
 
-def walks(p: emit.Program, h, m, addr, stop_names, cases: int) -> tuple[int, list[str]]:
+def walks(p: emit.Program, h, m, addr, stop_names, cases: int,
+          edges: int = 8) -> tuple[int, list[str]]:
     count, bad = 0, []
+
+    def one(mod, u, cs, lo, data, e, code, n, want, what, edge=False):
+        """Walk from `e` over `code` (the region image, patched): `n` x86
+        instructions, then the 68k reaches `want` (T_RET, or rt_stop_unknown
+        at the x86's IP). False when the case stores over its own bytes (an
+        edge case also when the x86 then ran them into an exception)."""
+        nonlocal count
+        ip = u.ip_of(e)
+        regs, flags, flagsx, _ = h.state({"regs": {"cs": cs}, "ip": ip})
+        ret_ip = h.rng.randrange(0x10000)
+        sp_lin = regs["ss"] * 16 + regs["sp"]
+        patches = [(sp_lin, ret_ip.to_bytes(2, "little")),
+                   (cs * 16 + u.ip_of(lo), bytes(code))]
+        case = (regs, flags, flagsx, ip, patches)
+        err, out, fl, umem, ints, outs, uwrites = h.oracle.run(case, n)
+        patched = {a: d[a - a0] for a0, d in patches for a in range(a0, a0 + len(d))}
+        umem = {a: umem.get(a, h.oracle.e.read(a, 1)[0]) for a in set(umem) | uwrites}
+        h.oracle.restore(uwrites | set(patched))
+        if uwrites & set(patched) or edge and (err or ints):
+            return False  # stores over the cells or the return word
+        m.inside, m.extra_stops = set(), stop_names
+        mo, mf, mfx, mmem, mouts, mwrites, info = m.run(
+            addr[emit.walk_label(mod, lo)], case, h.rng, init={"d7": ip}, irq=False)
+        diffs = []
+        if info["err"] or info["stop"] != want:
+            diffs.append(f"stop {info['stop']} err {info['err']}")
+        diffs += info["irq"]
+        if info["d7"] != out["ip"]:
+            diffs.append(f"ip 68k={info['d7']:04x} x86={out['ip']:04x}")
+        for r in D.REGS:
+            if mo[r] != out[r]:
+                diffs.append(f"{r} 68k={mo[r]:04x} x86={out[r]:04x}")
+        for sname in ("es", "ss", "ds"):
+            if mo[sname] != out[sname]:
+                diffs.append(f"{sname} 68k={mo[sname]:04x} x86={out[sname]:04x}")
+        for f in sorted(STATUS) + ["DF", "IF"]:
+            if mf[f] != fl >> FLAG_BIT[f] & 1:
+                diffs.append(f"{f} 68k={mf[f]} x86={fl >> FLAG_BIT[f] & 1}")
+        for a in sorted(set(umem) | mwrites):
+            want_b = umem.get(a, patched.get(a, h.bg[a]))
+            got = mmem.get(a, m.gread(a, 1)[0])
+            if got != want_b:
+                diffs.append(f"mem {a:05x} 68k={got:02x} x86={want_b:02x}")
+                break
+        count += 1
+        if diffs:
+            bad.append(f"{mod}+{e:05X} walk {what}: {'; '.join(diffs[:6])}")
+        m.restore(set(mwrites) | set(patched))
+        return True
+
     for (mod, lo, hi), images in region_images(p).items():
         u = p.units[mod]
         cs = (LOADSEG + u.segment(lo)) & 0xFFFF
@@ -163,47 +214,50 @@ def walks(p: emit.Program, h, m, addr, stop_names, cases: int) -> tuple[int, lis
                 at = e - lo + sum(len(smc._parse(f)[0]) for f in chain[:k])
                 code[at] = 0xC3
                 n = sum(len(smc.FORMS[f][0]) for f in chain[:k]) + 1
-                ip = u.ip_of(e)
-                regs, flags, flagsx, _ = h.state({"regs": {"cs": cs}, "ip": ip})
-                ret_ip = h.rng.randrange(0x10000)
-                sp_lin = regs["ss"] * 16 + regs["sp"]
-                patches = [(sp_lin, ret_ip.to_bytes(2, "little")),
-                           (cs * 16 + u.ip_of(lo), bytes(code))]
-                case = (regs, flags, flagsx, ip, patches)
-                err, out, fl, umem, ints, outs, uwrites = h.oracle.run(case, n)
-                patched = {a: d[a - a0] for a0, d in patches for a in range(a0, a0 + len(d))}
-                umem = {a: umem.get(a, h.oracle.e.read(a, 1)[0]) for a in set(umem) | uwrites}
-                h.oracle.restore(uwrites | set(patched))
-                if uwrites & set(patched):
-                    continue  # stores over the cells or the return word
-                m.inside, m.extra_stops = set(), stop_names
-                mo, mf, mfx, mmem, mouts, mwrites, info = m.run(
-                    addr[emit.walk_label(mod, lo)], case, h.rng, init={"d7": ip}, irq=False)
-                diffs = []
-                if info["err"] or info["stop"] != "T_RET":
-                    diffs.append(f"stop {info['stop']} err {info['err']}")
-                diffs += info["irq"]
-                if info["d7"] != out["ip"]:
-                    diffs.append(f"ip 68k={info['d7']:04x} x86={out['ip']:04x}")
-                for r in D.REGS:
-                    if mo[r] != out[r]:
-                        diffs.append(f"{r} 68k={mo[r]:04x} x86={out[r]:04x}")
-                for sname in ("es", "ss", "ds"):
-                    if mo[sname] != out[sname]:
-                        diffs.append(f"{sname} 68k={mo[sname]:04x} x86={out[sname]:04x}")
-                for f in sorted(STATUS) + ["DF", "IF"]:
-                    if mf[f] != fl >> FLAG_BIT[f] & 1:
-                        diffs.append(f"{f} 68k={mf[f]} x86={fl >> FLAG_BIT[f] & 1}")
-                for a in sorted(set(umem) | mwrites):
-                    want = umem.get(a, patched.get(a, h.bg[a]))
-                    got = mmem.get(a, m.gread(a, 1)[0])
-                    if got != want:
-                        diffs.append(f"mem {a:05x} 68k={got:02x} x86={want:02x}")
-                        break
-                count += 1
-                if diffs:
-                    bad.append(f"{mod}+{e:05X} walk of {k} cells: {'; '.join(diffs[:6])}")
-                m.restore(set(mwrites) | set(patched))
+                one(mod, u, cs, lo, data, e, code, n, "T_RET", f"of {k} cells")
+    # R7 edges, for `edges` entries per image: mov cells up to the region's
+    # last IP and past it, the stop at the bound (the counted run's residue
+    # varies with the entry), a RET in the last cell before the bound, and an
+    # unknown cell (also one that matches a form's first bytes only) at the
+    # first, a middle and the last position
+    for (mod, lo, hi), images in region_images(p).items():
+        u = p.units[mod]
+        cs = (LOADSEG + u.segment(lo)) & 0xFFFF
+        forms = p.smc_forms[(mod, lo, hi)]
+        mov, _ = smc._parse(smc.MOV)
+        for data in images:
+            for e in h.rng.sample(sorted(o for o in u.smc_entries if lo <= o <= hi), edges):
+                chain = cells(data, e - lo, forms)
+                q, ops = e - lo, []     # the operands of the image's own mov cells
+                for f in chain:
+                    if f == smc.MOV:
+                        ops.append(data[q + 2:q + 4])
+                    q += len(smc._parse(f)[0])
+                ops = ops or [data[e - lo + 2:e - lo + 4]]
+                at = e - lo + sum(len(smc._parse(f)[0]) for f in chain)
+                n = sum(len(smc.FORMS[f][0]) for f in chain)
+                full, q, nf = bytearray(data), at, n
+                while q <= hi - lo + 8:     # two mov cells past the bound too
+                    full[q:q + 4] = mov[:2] + h.rng.choice(ops)
+                    nf += q <= hi - lo
+                    q += 4
+                q -= 8
+                if nf:
+                    one(mod, u, cs, lo, data, e, full, nf, "rt_stop_unknown",
+                        f"of {nf} cells to the bound", True)
+                if q > at:
+                    last = bytearray(full)
+                    last[q - 4] = 0xC3
+                    one(mod, u, cs, lo, data, e, last, nf, "T_RET",
+                        f"of {nf - 1} cells, RET at the bound", True)
+                for j in sorted({1, len(chain) // 2, len(chain)} & set(range(1, len(chain) + 1))):
+                    bad_cell = bytearray(data)
+                    c = e - lo + sum(len(smc._parse(f)[0]) for f in chain[:j])
+                    junk = h.rng.choice((b"\x90", b"\x88\x86", b"\x2e\x8b\x1f"))
+                    bad_cell[c:c + len(junk)] = junk
+                    one(mod, u, cs, lo, data, e, bad_cell,
+                        sum(len(smc.FORMS[f][0]) for f in chain[:j]), "rt_stop_unknown",
+                        f"of {j} cells, unknown cell {junk.hex()}", True)
     return count, bad
 
 

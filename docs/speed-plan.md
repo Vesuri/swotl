@@ -20,15 +20,15 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
 - **Bench** (§4): frames 4–11 mean 37.74 fields (5.36M cycles) at
   `b9b6374`, 37.56 at `63a99fe` (R1a), 34.41 (4.89M cycles) at R1b, 33.69
   at R1d, 33.37 at R3a, 33.27 (4.73M cycles) at R3b, 31.74 at R5, 29.67
-  at R6; window 2.20M guest
+  at R6, 74,336 → 74,373 lines at R7 (no walk in its window); window 2.20M guest
   instructions, SPAZ 0.22%.
-- **Meter after R6** (m4, 49 frames; weights recalibrated after R1, §4):
-  269,698,189 model cycles (generated 192.9M, cell walk 73.6M, runtime
-  3.2M); 17,976,252 guest instructions, 14.82 model cycles each (generated
+- **Meter after R7** (m4, 49 frames; weights recalibrated after R1, §4):
+  245,326,091 model cycles (generated 192.9M, cell walk 49.2M, runtime
+  3.2M); 17,976,252 guest instructions, 13.47 model cycles each (generated
   + walk); R1 292,676,869 (275,119,407 under the previous weights). Round 2
   kept (previous weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b
   −1.916%, R1d −1.231%; (current) R2 −1.029%, R3a −0.991%, R3b −0.188%,
-  R4 −2.646%, R5 −2.036%, R6 −1.213%.
+  R4 −2.646%, R5 −2.036%, R6 −1.213%, R7 −9.037%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -184,6 +184,9 @@ lines.
   sum within 2 of 94,498 lines (single frames within 16), window guest
   instructions within 0.02%, start fields 1523 and 1508. Not comparable to P
   (different frames and tick rate); compare arms by the frames 4–11 sum.
+  Its window (the static opening view) runs no cell walk: the FS-UAE check
+  of a walk change uses a frames-fixture capture per arm (cycles per mov
+  cell, `move.b d0` executions in the walk).
 - **Stops are free (S0).** Fields from `rt_run_guest` to m1b-logo
   (`VGA_039AD`), 68020: 99–100 with no stop between (3 runs), 99–100 with
   110, 364 and 731 stops (5 runs). `amiga_io_frames` counts the fields
@@ -529,6 +532,36 @@ operations, runtime entries) and cleans the register there. The remaining
     R1).
 - This is S5's direction, now judged by the meter. Price ≈ 3–4% (13.2%
   now, ≈ 32 cycles per cell).
+- Re-price (meter of `4daf37b`, m4): walk 73.6M model cycles, 32,799
+  entries, ≈ 1.94M mov cells (28 loop bytes, 2 reads, 1 taken each),
+  ≈ 5K reload cells.
+  - Mov run: the cells left to the bound counted once (dbra), four cells
+    per loop pass; each cell one `move.l -(a0)` (opcode word low, operand
+    high), opcode compared with a register, address `(7FFFh − BX) − w`
+    from a register: 17 loop bytes, 1 read, ¼ taken per cell.
+  - Two guest registers saved around each run (≈ 38K runs).
+  - ≈ −14 cycles per cell, net ≈ −24M (≈ −9%).
+- Kept: −9.037% (−24,372,098 model cycles, all in the walk: loop bytes
+  −19.1M, reads −1.82M, writes +79,812 for the saved registers); static
+  walk +116 bytes.
+  - The run's exit falls into the next form: a `bra` to the next line
+    made vasm run out of passes on the trampoline plant's image.
+- Coverage: per region image, 8 entries with mov cells to the bound and
+  two past it (stop at the bound), a RET in the last cell before it, and
+  an unknown cell (`90`; `88 86` and `2E 8B 1F`, which match a form's
+  first bytes only) at the first, a middle and the last position: 210
+  cases (434 walks in all). A case whose stores overwrite its own cells is skipped, as is
+  one where the x86 then raises an exception.
+- Plants: the run counts one cell past the bound (47 of 9,865); the
+  opcode compare always matches (407 of 9,865).
+- FS-UAE check:
+  - Bench: frames 4–11 74,336 → 74,373 lines, guest RAM at frame 12
+    equal. Its window has no walk; the +37 is layout.
+  - Frames fixture capture per arm (100 fields after frame 11): walk
+    31.28 → 23.57 cycle units per mov cell (−24.6%), 19.64% → 16.35% of
+    the window (178,442 and 197,157 cells).
+  - `ab_labels.py` there: −8.87% on the changed labels, −3.87% on all.
+    Same sign as the meter.
 
 ### R7b. Cell cache (D3)
 

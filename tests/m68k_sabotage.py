@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import m68k_blocks as B  # noqa: E402
 import m68k_diff as D  # noqa: E402
-from translator import emit as E, flags as F, lower as L, region as R  # noqa: E402
+from translator import emit as E, flags as F, lower as L, region as R, smc as S  # noqa: E402
 
 real_run = L.Lowering.run
 real_helpers = D.HELPERS
@@ -28,6 +28,7 @@ real_mismatch_stub = E.mismatch_stub
 real_bp_range = R.bp_range
 real_carry_ccr = F.carry_ccr
 real_flags_dead = L.Lowering.flags_dead
+real_walk = S.walk
 
 
 def text(fn):
@@ -331,6 +332,15 @@ def direct_bp_off_by_one(self, out):
     return [re.sub(r"\((-?\$?[0-9a-f]+),(a[0-3]),d5\.w\)", fix, x) for x in out]
 
 
+def walk_plant(old, new):
+    """R7: the cell walk with one line replaced (smc.walk)."""
+    def walk(*a):
+        out = real_walk(*a)
+        assert old in out
+        return [new if x == old else x for x in out]
+    return walk
+
+
 def wide_bp_range(insns):
     """R6: the region guard admits BP one past each end of its range."""
     r = real_bp_range(insns)
@@ -379,6 +389,9 @@ SABOTAGE = [
     ("return-check trampoline falls through", "mismatch stub", "program"),
     ("region guard admits one past its range", "bp range", "boundary"),
     ("direct [bp+d] one byte off", direct_bp_off_by_one, "boundary"),
+    ("mov run counts one cell past the bound", walk_plant("\tlsr.l #2,d6", "\tlsr.l #2,d6\n\taddq.l #1,d6"),
+     "walk"),
+    ("mov run skips the opcode compare", walk_plant("\tcmp.w d1,d7", "\tcmp.w d7,d7"), "walk"),
 ]
 
 
@@ -398,13 +411,15 @@ def plant(k: int) -> tuple[int, int]:
         E.mismatch_stub = lambda lab: [f"{lab}:"]
     elif fn == "bp range":  # region.bp_range (R6)
         R.bp_range = wide_bp_range
+    elif corpus == "walk":  # smc.walk (R7)
+        S.walk = fn
     else:
         L.Lowering.run = text(fn)
     try:
         if corpus == "cross-block":
             total, failures = B.cross_entry_cases()
             return len(failures), total
-        if corpus == "program":
+        if corpus in ("program", "walk"):
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 B.main(["--blocks", "1500", "--states", "1"])
@@ -420,6 +435,7 @@ def plant(k: int) -> tuple[int, int]:
         E.poll_stub = real_poll_stub
         E.mismatch_stub = real_mismatch_stub
         R.bp_range = real_bp_range
+        S.walk = real_walk
         F.carry_ccr = real_carry_ccr
         L.Lowering.flags_dead = real_flags_dead
 
