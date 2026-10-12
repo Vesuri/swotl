@@ -18,6 +18,7 @@ sites and starts without a fall-through predecessor.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 
 from . import cfg, image, region, smc
@@ -96,6 +97,38 @@ def size_branches(lines: list[str]) -> None:
             lines[k] = x.replace(SIZED, ".s" if dist <= NEAR else ".w")
 
 
+UNCONDITIONAL = re.compile(r"^\t(bra\S*|jmp|rts|rte)(\s|$)")
+LABEL_ONLY = re.compile(r"^[^\s;][^:\s]*:\s*(;.*)?$")
+ALIGN = "\tds.b\t0\t; align "   # a pad of 0 or 2 bytes, set by gen.pad (R8)
+
+
+def align(lines: list[str], residues: dict[str, int], stats: Counter) -> None:
+    """R8: an alignment pad before each listed label that only transfers reach
+    (the instruction before it, past label-only and comment lines, is
+    unconditional), so the pad never runs (annotations/align.csv,
+    tools/align_targets.py). gen.pad sizes the pads (vasm's cnop does not
+    converge in this program)."""
+    at = []
+    for k, x in enumerate(lines):
+        if not LABEL_ONLY.match(x):
+            continue
+        name = x.split(":")[0]
+        r = residues.get(name)
+        if r is None:
+            continue
+        j = k - 1
+        while j >= 0 and (LABEL_ONLY.match(lines[j]) or not lines[j].strip()
+                          or lines[j].strip().startswith(";")):
+            j -= 1
+        if j >= 0 and UNCONDITIONAL.match(lines[j]):
+            at.append((j + 1, f"{r} {name}"))
+            stats["alignment pad"] += 1
+        else:
+            stats["alignment not applied"] += 1
+    for j, r in reversed(at):
+        lines.insert(j, ALIGN + r)
+
+
 def mismatch_stub(lab: str) -> list[str]:
     return [f"{lab}:", "\tjmp rt_ret_mismatch"]
 
@@ -125,6 +158,7 @@ def cs_expr(cs: int) -> str:
 class Program:
     def __init__(self, units: dict[str, cfg.Unit] | None = None, components: bool = True):
         self.units = units or cfg.build()
+        self.align = {r["label"]: int(r["residue"]) for r in image.rows("align.csv")}
         self.indirect: dict[tuple[str, int], tuple[list, list]] = {}
         for r in image.rows("indirect.csv"):
             def parse(col):
@@ -604,6 +638,7 @@ class Program:
             lines += [f"{s}:\t; transfer out of the translated modules",
                       f"\tmove.l #{hx(u.ip_of(off))},d7", "\tjmp rt_stop_unknown"]
             stats["stop_unknown site"] += 1
+        align(lines, self.align, stats)
         size_branches(lines)
         stats["guest instructions"] += len(u.insns)
         stats["68k lines"] += sum(1 for x in lines if x.startswith("\t"))

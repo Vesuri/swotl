@@ -9,7 +9,8 @@
 Run: the host run (tests/host_run.py, the reference's interrupts replayed)
 from the milestone's first snapshot to its last (default m4-demo-frames: 49
 drawn frames of the demo flight). A Unicorn block hook counts executions of
-every translated block and every taken transfer; blocks expand to executed
+every translated block and every taken transfer (and its target: `targets`,
+for R8's alignment); blocks expand to executed
 68k instructions over the disassembly of the image that ran. Features per
 instruction, all static except taken: encoded bytes and taken transfers,
 each split by whether the instruction lies in an innermost loop of <= 256
@@ -226,7 +227,8 @@ def load_model() -> dict:
 # --- the run -------------------------------------------------------------------
 
 def run(milestone: str, elf: Path, gen: Path, timeout: int) -> tuple[Counter, Counter, dict]:
-    """Block counts {(addr, size): n} and taken counts {pc: n} over the window."""
+    """Block counts {(addr, size): n}, taken counts {block: n} and taken transfers
+    {(block, target): n} (in meta["into"]) over the window."""
     import host_run
     import uc as U
     host_run.ELF = elf
@@ -234,7 +236,7 @@ def run(milestone: str, elf: Path, gen: Path, timeout: int) -> tuple[Counter, Co
     trace = REPO / f"tmp/pc-runs/ref-{milestone}/trace"
     script["irqs"], script["releases"] = host_run.reference_inputs(trace)
     h = host_run.Host(host_run.image.M.REF, None)
-    blocks, taken = Counter(), Counter()
+    blocks, taken, into = Counter(), Counter(), Counter()
     state = {"open": False, "prev": None}
     first = h.syms[script["snapshots"][0][0]]
 
@@ -249,6 +251,7 @@ def run(milestone: str, elf: Path, gen: Path, timeout: int) -> tuple[Counter, Co
             prev = state["prev"]
             if prev is not None and prev[0] + prev[1] != addr:
                 taken[prev] += 1
+                into[(prev, addr)] += 1
             key = (addr, size)
             blocks[key] += 1
             state["prev"] = key
@@ -261,6 +264,7 @@ def run(milestone: str, elf: Path, gen: Path, timeout: int) -> tuple[Counter, Co
             "irq_lost": h.irq_lost, "label": script["snapshots"][-1][0]}
     if h.stopped_at != meta["label"] or h.irq_lost:
         raise SystemExit(f"meter run failed: {meta}")
+    meta["into"] = into
     return blocks, taken, meta
 
 
@@ -282,6 +286,19 @@ def expand(prog: Program, blocks: Counter, taken_blocks: Counter):
         i = bisect.bisect_left(prog.addrs, addr + size) - 1
         taken[int(prog.addrs[i])] += k
     return n, taken
+
+
+def targets(prog: Program, into: Counter) -> dict:
+    """Taken transfers into generated code from outside a cached loop, per
+    target as "LABEL+offset" (tools/align_targets.py, speed-plan R8)."""
+    out = Counter()
+    for ((addr, size), dst), k in into.items():
+        i = bisect.bisect_left(prog.addrs, addr + size) - 1
+        if prog.feat[int(prog.addrs[i])][2] or prog.cls.get(dst) not in ("generated", "walk"):
+            continue
+        lab = prog.symbol(dst)
+        out[f"{lab}+{dst - prog.by_name[lab]}"] += k
+    return dict(out)
 
 
 def report(prog: Program, n: Counter, taken: Counter, coef: dict, gen: Path) -> dict:
@@ -404,6 +421,7 @@ def plant_check(base_json: Path, objdump: str) -> int:
     elf = work / "swotl.elf"
     prog = Program(elf, objdump, (host / "host.o", host / "host_s.o"))
     blocks, taken_blocks, meta = run(base["meta"]["milestone"], elf, work / "gen", 3600)
+    meta.pop("into")
     n, taken = expand(prog, blocks, taken_blocks)
     coef = load_model()
     res = report(prog, n, taken, coef, work / "gen")
@@ -522,6 +540,7 @@ def main(argv=None) -> int:
     blocks, taken_blocks, meta = run(args.milestone, args.elf.resolve(), args.gen, args.timeout)
     n, taken = expand(prog, blocks, taken_blocks)
     res = report(prog, n, taken, load_model(), args.gen)
+    res["targets"] = targets(prog, meta.pop("into"))
     res["meta"] = meta
     res["static"] = static_size(prog)
     print(summary(res))

@@ -17,7 +17,7 @@ Overview and guardrails: [architecture.md](architecture.md).
 | `translator/cfg.py` | recursive descent from `annotations/` seeds; CS along flow; PLINK manager calls and parent chain; self-modified regions recorded, not decoded |
 | `translator/ir.py`, `sem.py` | IR ops; lifting of every decoded instruction |
 | `translator/interp.py` | host IR interpreter (the semantics under test) |
-| `translator/gen.py` | `make gen`: `build/gen/<module>.ir` with hash header; coverage report (G6) |
+| `translator/gen.py` | `make gen`: `build/gen/<module>.ir` with hash header; coverage report (G6); sizes the R8 alignment pads by assembling the program (vasm) |
 | `translator/check.py` | G1 header/digest/regeneration check, G2 lint |
 | `translator/lower.py` | one decoded instruction -> 68020 text under the register contract (templates per op family; the IR stays the semantic reference) |
 | `translator/flags.py` | flag demand: per-instruction store set and CCR fusion with the next reader, or one past plain instructions |

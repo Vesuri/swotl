@@ -104,7 +104,7 @@ provenance is in brackets.
 - Slicks rule: every instruction semantic and every lowering is differentially tested against an independent x86 oracle (Unicorn x86-16 vs Unicorn 68020 on assembled bytes). [Slicks `AGENTS.md`, `docs/validation-harness.md`]. Details are in [translation-lessons.md](translation-lessons.md).
 - Slicks: no LLVM and no generated-C backend until there is a measured need. [Slicks `docs/toolchain.md`]
 - SWOTL translator and tests (Python 3.12, stdlib + capstone; numpy for `tools/profile_report.py`): `make gen` (build/gen: `.ir`, `.s`,
-  audit), `make gen-check` (G1), `make lint` (G2), `make test` (lint, decoder vs Capstone, x86
+  audit; runs vasm to size the alignment pads), `make gen-check` (G1), `make lint` (G2), `make test` (lint, decoder vs Capstone, x86
   differential vs Unicorn, 68020 instruction differential, generated-program block differential,
   guard plants, gen-check, host run m1–m3; ~6 min), `make test-sabotage` (x86, 68020 and runtime plants, one plant per
   worker process; the 68020 plants reuse the x86 side `make test`'s boundary run records in

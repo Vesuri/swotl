@@ -6,6 +6,9 @@ Output per module `build/gen/<module>.ir` (decoded IR listing) and
 state equates, runtime xrefs, module includes, dispatch table); never edited by hand
 (G1). Header: generator version, SHA-256 of the inputs (translator sources,
 tools/swotl_model.py, annotations/, the module file) and of the body.
+Alignment pads (R8, emit.align) are sized here: the program is assembled
+with vasm and each pad set to 0 or 2 bytes until the label after it sits at
+its residue mod 4 (a few rounds; a label still off is counted, not fixed).
 Prints the audit (spills, flag materializations, dispatcher exits, stop
 sites, return checks) against tests/audit.csv, where a count above its
 expected value fails, and the coverage report (G6): executed instruction
@@ -17,7 +20,11 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
+import struct
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import csv
@@ -66,6 +73,60 @@ def listing(u: cfg.Unit) -> bytes:
     return ("\n".join(out) + "\n").encode()
 
 
+VASM = os.environ.get("VASM") or str(Path.home() / ".local/vasmm68k_mot")
+PAD_ROUNDS = 4
+
+
+def symbols(elf: bytes) -> dict[str, int]:
+    """Symbol values of a big-endian ELF32 object (section offsets)."""
+    shoff, = struct.unpack(">I", elf[32:36])
+    shentsize, shnum = struct.unpack(">HH", elf[46:50])
+    secs = [struct.unpack(">10I", elf[shoff + k * shentsize:shoff + k * shentsize + 40])
+            for k in range(shnum)]
+    out = {}
+    for sec in (x for x in secs if x[1] == 2):      # SHT_SYMTAB
+        strtab = secs[sec[6]][4]
+        for k in range(sec[5] // 16):
+            name, value = struct.unpack(">II", elf[sec[4] + 16 * k:sec[4] + 16 * k + 8])
+            end = elf.index(b"\0", strtab + name)
+            out[elf[strtab + name:end].decode()] = value
+    return out
+
+
+def pad(texts: dict[str, list[str]], stats: Counter) -> None:
+    """Size the alignment pads (emit.ALIGN) of the module texts in place: assemble,
+    set each pad so the label after it lands on its residue, assuming the code
+    after it moves with it, and repeat."""
+    marks, label = [], {}
+    for f, lines in texts.items():
+        for k, x in enumerate(lines):
+            if x.startswith(emit.ALIGN):
+                r, label[(f, k)] = x[len(emit.ALIGN):].split()
+                marks.append((f, k, int(r)))
+    if not marks:
+        return
+    size = {(f, k): 0 for f, k, _ in marks}
+    with tempfile.TemporaryDirectory() as tmp:
+        for _ in range(PAD_ROUNDS + 1):
+            for f, lines in texts.items():
+                (Path(tmp) / f).write_text("\n".join(lines) + "\n")
+            subprocess.run([VASM, "-quiet", "-m68020", "-Felf", "-x", "-nowarn=62", "-o", "p.o",
+                            "program.s"], cwd=tmp, check=True)
+            at = symbols((Path(tmp) / "p.o").read_bytes())
+            shift, off = 0, 0
+            for f, k, r in sorted(marks, key=lambda m: at[label[m[:2]]]):
+                if (at[label[(f, k)]] + shift) % 4 != r:
+                    new = size[(f, k)] ^ 2
+                    shift += new - size[(f, k)]
+                    size[(f, k)] = new
+                    texts[f][k] = f"\tds.b\t{new}\t; align {r} {label[(f, k)]}"
+                    off += 1
+            if not off:
+                break
+    stats["aligned label"] = len(marks) - off
+    stats["alignment missed"] = off
+
+
 def write(out: Path, file: str, module: str, body: bytes) -> None:
     (out / file).write_bytes(header(module, body) + body)
 
@@ -76,17 +137,25 @@ def generate(out: Path) -> tuple[dict[str, cfg.Unit], Counter, dict[str, Counter
     prog = emit.Program(units)
     total, per = Counter(), {}
     files: list[str] = []
+    texts: dict[str, list[str]] = {}
     for name, u in units.items():
         if not u.insns and not u.smc_entries:
             continue  # DATA.OVL: DGROUP, no code
         write(out, f"{name}.ir", name, listing(u))
         lines, stats = prog.module_text(name)
-        write(out, f"{name}.s", name, ("\n".join(lines) + "\n").encode())
+        texts[f"{name}.s"] = lines
         files.append(f"{name}.s")
         per[name] = stats
         total.update(stats)
-    write(out, "support.s", SUPPORT, support.HELPERS.encode())
     files.append("support.s")
+    texts["support.s"] = support.HELPERS.rstrip("\n").split("\n")
+    texts["program.s"] = (support.equates() + prog.program_text(files)).rstrip("\n").split("\n")
+    pads = Counter()
+    pad(texts, pads)
+    total.update(pads)
+    for f in files[:-1]:
+        write(out, f, f.removesuffix(".s"), ("\n".join(texts[f]) + "\n").encode())
+    write(out, "support.s", SUPPORT, support.HELPERS.encode())
     write(out, "program.s", PROGRAM, (support.equates() + prog.program_text(files)).encode())
     # D8 poll points for the reference tracer (SWOTL_POLLS): DOSBox-X takes
     # hardware interrupts only there, so the host can replay them exactly

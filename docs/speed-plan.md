@@ -16,11 +16,12 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   the spread is trajectory noise (§5.1). Frames fixture (§4, 2026-10-10,
   3 runs each): medians 25, 25, 25 at `420d81b` (before R1), 24, 24, 24
   at `c6a7de1` (R1d); 2026-10-11: 23, 23, 23.5 at R5 (`714d61e`), 23,
-  22.5, 23 at R6.
+  22.5, 23 at R6; 2026-10-12: 24, 21.5, 22 at R8.
 - **Bench** (§4): frames 4–11 mean 37.74 fields (5.36M cycles) at
   `b9b6374`, 37.56 at `63a99fe` (R1a), 34.41 (4.89M cycles) at R1b, 33.69
   at R1d, 33.37 at R3a, 33.27 (4.73M cycles) at R3b, 31.74 at R5, 29.67
-  at R6, 74,336 → 74,373 lines at R7 (no walk in its window); window 2.20M guest
+  at R6, 74,336 → 74,373 lines at R7 (no walk in its window), 74,318 →
+  74,096 lines at R8 (means of 3); window 2.20M guest
   instructions, SPAZ 0.22%.
 - **Meter after R7** (m4, 49 frames; weights recalibrated after R1, §4):
   245,326,091 model cycles (generated 192.9M, cell walk 49.2M, runtime
@@ -28,7 +29,8 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   + walk); R1 292,676,869 (275,119,407 under the previous weights). Round 2
   kept (previous weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b
   −1.916%, R1d −1.231%; (current) R2 −1.029%, R3a −0.991%, R3b −0.188%,
-  R4 −2.646%, R5 −2.036%, R6 −1.213%, R7 −9.037%.
+  R4 −2.646%, R5 −2.036%, R6 −1.213%, R7 −9.037%; R8 0 (layout only:
+  bench −0.30%).
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -573,6 +575,44 @@ and their cost difference. If that is positive, align the hot targets
 (`cnop 0,4`), chosen by profile within the size budget. The meter is
 layout-blind, so this step alone is accepted by `ab_labels.py`, with three
 captures per arm.
+
+- Price (bench capture of `83296eb`): a taken transfer from outside a
+  cached loop to a target at an address = 2 mod 4 costs ≈ 3.4 more units
+  (2-byte target instruction ≈ 2.5), mostly on the branch itself. Matched
+  over (branch, target instruction, size): 1.37% of the window
+  (196,278 such transfers), loops 0.08%.
+- Shape: a chunk is the code from a label that only transfers reach (the
+  instruction before it is `bra`, `jmp`, `rts` or `rte`) to the next such
+  instruction. A pad before the chunk never runs, so it costs no cycles,
+  and it moves every target in the chunk.
+  - The meter now reports taken transfers per target (`targets`, from
+    outside a cached loop). `tools/align_targets.py` sets, per chunk, the
+    residue mod 4 of the chunk's first label that aligns the most of them
+    and writes `annotations/align.csv` when the counts differ by ≥ 64:
+    510 of 1,120 chunks.
+  - `emit.align` places a pad mark only after an unconditional transfer.
+    `gen.pad` sizes each mark to 0 or 2 bytes by assembling the program
+    and reading the label addresses, repeating until the labels sit on
+    their residues (510 of 510, host and Amiga ELF). vasm's `cnop` never
+    converges here: one `cnop` anywhere after the start of the program
+    hits its pass limit, while a fixed `ds.b 2` at the same spot
+    assembles.
+- Kept:
+  - Meter unchanged (245,326,091; layout-blind). Payload +502 bytes (251
+    pads).
+  - Bench frames 4–11: control 74,390, 74,264, 74,300 lines; R8 74,048,
+    74,084, 74,155 (−0.30%, ranges apart). Guest RAM equal in all six
+    runs.
+  - `ab_labels.py` per pair: all labels −0.68%, −0.89%, −0.81%; changed
+    labels −0.29%, −0.75%, −0.57%. Far transfers to = 2 mod 4 targets
+    196K → 104K per window (matched extra 1.37% → 0.57%).
+  - Frames fixture (3 runs): medians 24, 21.5, 22 fields (R7 21.5 in one
+    run; trajectory noise, §5.1).
+- Coverage: the pads change no executed instruction. `tests/test_align.py`
+  covers the guard (a pad only after `bra`/`jmp`/`rts`/`rte`, past
+  label-only and comment lines). Its plant, a guard that accepts any
+  instruction, fails 7 of 16 cases (`make test-sabotage`).
+- `make gen` assembles the program up to 5 times (+15–20 s).
 
 ### R9. Multiply/divide
 
