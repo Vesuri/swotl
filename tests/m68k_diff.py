@@ -16,15 +16,23 @@ once IF is set, a pending interrupt re-arms G_IRQ).
 
 Shared by both sides: the case bytes and state; the 68k side never sees the
 x86 results or the IR (the IR only supplies the undefined-flag mask).
+
+--record PATH saves each case's x86 side (IR mask or skip, Unicorn result);
+--replay PATH reuses it for a case whose state and bytes match, under the
+same sources and Unicorn, and runs any other case live (m68k_sabotage sets
+REPLAY: the plants reuse make test's boundary run).
 """
 
 from __future__ import annotations
 
+import hashlib
 import os
+import pickle
 import random
 import subprocess
 import sys
 import tempfile
+import zlib
 from collections import Counter
 from pathlib import Path
 
@@ -55,6 +63,7 @@ MIRROR = {"sp": 0x7FFF, "bp": 0x7FFF}   # held as offset ^ 7FFFh
 M68 = {"ax": "d0", "cx": "d1", "dx": "d2", "bx": "d3", "sp": "d4", "bp": "d5", "si": "a4",
        "di": "a5"}
 BATCH = 1500
+REPLAY: Path | None = None   # set by m68k_sabotage
 
 
 def assemble(src: str, out: Path) -> bytes:
@@ -263,7 +272,35 @@ class M68k:
             self.gwrite(a, self.bg[a:a + 1])
 
 
+def sources_key() -> str:
+    """What a recorded x86 side depends on: the test and translator sources, Unicorn."""
+    h = hashlib.sha256()
+    root = Path(__file__).resolve().parent.parent
+    for f in sorted([*root.glob("tests/*.py"), *root.glob("translator/*.py")]):
+        h.update(f.name.encode() + f.read_bytes())
+    st = os.stat(U.LIB)
+    h.update(f"{U.LIB} {st.st_size} {st.st_mtime_ns}".encode())
+    return h.hexdigest()
+
+
+def runs(mem: dict) -> list:
+    """{address: byte} as [(first address, bytes)] (a REP store writes 64 KiB)."""
+    out = []
+    for a in sorted(mem):
+        if out and out[-1][0] + len(out[-1][1]) == a:
+            out[-1][1].append(mem[a])
+        else:
+            out.append((a, bytearray([mem[a]])))
+    return [(a, bytes(d)) for a, d in out]
+
+
+def unruns(rs: list) -> dict:
+    return {a + k: v for a, d in rs for k, v in enumerate(d)}
+
+
 class Harness(X.Harness):
+    recording = False   # --record
+
     def __init__(self, seed: int):
         super().__init__(seed)
         self.m = M68k(self.bg)
@@ -272,6 +309,19 @@ class Harness(X.Harness):
         self.lowered = Counter()
         self.tmp = Path(tempfile.mkdtemp(prefix="m68k-diff-"))
         self.nbatch = 0
+        self.seed = seed
+        self.record: list | None = [] if self.recording else None   # [(case key, x86 side)]
+        self.replay: list = []
+        self.replayed = self.ncases = 0
+        if REPLAY and REPLAY.exists():
+            key, rec = pickle.loads(zlib.decompress(REPLAY.read_bytes()))
+            if key == sources_key():
+                self.replay = rec
+
+    def save(self, path: Path) -> None:
+        part = path.with_name(path.name + ".part")
+        part.write_bytes(zlib.compress(pickle.dumps((sources_key(), self.record), 5), 1))
+        part.replace(path)
 
     def case(self, code: bytes, label: str, n: int = 1, overrides=None, block=False):
         regs, flags, flagsx, ip = self.state(overrides)
@@ -286,23 +336,24 @@ class Harness(X.Harness):
             patches.append((a(regs) if callable(a) else a, data))
         patches.append((cs * 16 + ip, code))
         case = (regs, flags, flagsx, ip, patches)
-        # IR side: only the undefined-flag mask (and decode).
-        s = State(dict(regs, flagsx=flagsx), dict(flags), self.mem, ip)
-        s.port_in = lambda port, w: X.port_value(port, w // 8)
-        for a, data in patches:
-            self.mem[a:a + len(data)] = data
-        insns = []
-        try:
-            for _ in range(n):
-                ex, insn = step(s)
-                insns.append(insn)
-                if ex.kind in ("int", "fault"):
-                    break
-        except (UndefinedFlag, DecodeError) as e:
-            self.undefined[type(e).__name__] += 1
-            self.reset(patches, s.writes, set())
+        key = hashlib.blake2b(repr((self.seed, n, sorted(regs.items()), sorted(flags.items()),
+                                    flagsx, ip, patches)).encode(), digest_size=16).digest()
+        k, self.ncases = self.ncases, self.ncases + 1
+        if k < len(self.replay) and self.replay[k][0] == key:
+            side = self.replay[k][1]
+            self.replayed += 1
+        else:
+            side = self.x86_side(code, n, case)
+        if self.record is not None:
+            self.record.append((key, side))
+        if side[0] == "undefined":
+            self.undefined[side[1]] += 1
             return
-        undef = set(s.undef)
+        if side[0] == "skipped":
+            self.skipped[side[1]] += 1
+            return
+        _, undef, (err, out, fl, mem, ints, outs) = side
+        oracle = (err, out, fl, unruns(mem), ints, outs)
         # decode the whole run statically (the 68k side runs what the bytes say)
         insns, k, at = [], 0, ip
         while len(insns) < n:
@@ -310,26 +361,6 @@ class Harness(X.Harness):
             insns.append(i)
             k += i.size
             at = i.next_ip
-        self.reset(patches, s.writes, set())
-        err, out, fl, umem, ints, outs, uwrites = self.oracle.run(case, n)
-        code_span = set(range(cs * 16 + ip, cs * 16 + ip + len(code)))
-        if code_span & uwrites:
-            self.skipped["writes its own code"] += 1
-            self.oracle.restore(uwrites | {a for a, d in patches for a in range(a, a + len(d))})
-            return
-        if X.restarted(cs * 16 + ip, len(code), s.writes, ip, out, ints):
-            self.skipped["oracle: store into its code's page restarts it"] += 1
-            self.oracle.restore(uwrites | {a for a, d in patches for a in range(a, a + len(d))})
-            return
-        why = X.oracle_deviation(code, regs) if n == 1 else None
-        if why:
-            self.skipped[f"oracle: {why}"] += 1
-            self.oracle.restore(uwrites | {a for a, d in patches for a in range(a, a + len(d))})
-            return
-        oracle = (err, out, fl, {a: umem.get(a, self.oracle.e.read(a, 1)[0])
-                                 for a in set(umem) | uwrites}, ints, outs)
-        self.oracle.restore(uwrites | set(umem) | {a for a, d in patches
-                                                   for a in range(a, a + len(d))})
         tag = f"c{len(self.pending)}"
         try:
             text, st = lower_case(insns, cs, tag, insns[-1].next_ip)
@@ -345,6 +376,44 @@ class Harness(X.Harness):
                                  regs, flags, insns[-1].op))
         if len(self.pending) >= BATCH:
             self.flush()
+
+    def x86_side(self, code: bytes, n: int, case) -> tuple:
+        """("undefined", why) | ("skipped", why) | ("ok", undefined flags, Unicorn result)."""
+        regs, flags, flagsx, ip, patches = case
+        cs = regs["cs"]
+        # IR side: only the undefined-flag mask (and decode).
+        s = State(dict(regs, flagsx=flagsx), dict(flags), self.mem, ip)
+        s.port_in = lambda port, w: X.port_value(port, w // 8)
+        for a, data in patches:
+            self.mem[a:a + len(data)] = data
+        insns = []
+        try:
+            for _ in range(n):
+                ex, insn = step(s)
+                insns.append(insn)
+                if ex.kind in ("int", "fault"):
+                    break
+        except (UndefinedFlag, DecodeError) as e:
+            self.reset(patches, s.writes, set())
+            return ("undefined", type(e).__name__)
+        undef = set(s.undef)
+        self.reset(patches, s.writes, set())
+        err, out, fl, umem, ints, outs, uwrites = self.oracle.run(case, n)
+        code_span = set(range(cs * 16 + ip, cs * 16 + ip + len(code)))
+        why = None
+        if code_span & uwrites:
+            why = "writes its own code"
+        elif X.restarted(cs * 16 + ip, len(code), s.writes, ip, out, ints):
+            why = "oracle: store into its code's page restarts it"
+        elif n == 1 and (dev := X.oracle_deviation(code, regs)):
+            why = f"oracle: {dev}"
+        if why:
+            self.oracle.restore(uwrites | {a for a, d in patches for a in range(a, a + len(d))})
+            return ("skipped", why)
+        mem = {a: umem.get(a, self.oracle.e.read(a, 1)[0]) for a in set(umem) | uwrites}
+        self.oracle.restore(uwrites | set(umem) | {a for a, d in patches
+                                                   for a in range(a, a + len(d))})
+        return ("ok", undef, (err, out, fl, runs(mem), ints, outs))
 
     def flush(self) -> None:
         if not self.pending:
@@ -436,8 +505,22 @@ class Harness(X.Harness):
 
 
 def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    record = None
+    if "--record" in argv:
+        k = argv.index("--record")
+        record = Path(argv[k + 1])
+        del argv[k:k + 2]
+    if "--replay" in argv:
+        global REPLAY
+        k = argv.index("--replay")
+        REPLAY = Path(argv[k + 1])
+        del argv[k:k + 2]
+    Harness.recording = record is not None
     h = X.run(argv, harness=Harness)
     h.flush()
+    if record:
+        h.save(record)
     total = sum(h.count.values())
     groups = Counter()
     for k, v in h.count.items():

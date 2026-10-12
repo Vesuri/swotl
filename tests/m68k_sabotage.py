@@ -2,7 +2,8 @@
 """Sabotage the 68020 differential (translation-lessons #42): each planted fault in
 the lowering's output must produce mismatches. Exit 1 if one passes unnoticed.
 Corpus "program" runs the generated-program block differential (m68k_blocks).
-The plants run in parallel, one at a time per worker process.
+The plants run in parallel, one at a time per worker process. The x86 side of
+make test's boundary run (RECORD) is reused wherever a plant's case matches it.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ real_bp_range = R.bp_range
 real_carry_ccr = F.carry_ccr
 real_flags_dead = L.Lowering.flags_dead
 real_walk = S.walk
+RECORD = Path(__file__).resolve().parent.parent / "tmp/test/x86-side-boundary.pkl"
 
 
 def text(fn):
@@ -395,8 +397,8 @@ SABOTAGE = [
 ]
 
 
-def plant(k: int) -> tuple[int, int]:
-    """Plant SABOTAGE[k] and run its corpus: (mismatches, cases)."""
+def plant(k: int) -> tuple[int, int, int, int]:
+    """Plant SABOTAGE[k] and run its corpus: (mismatches, cases, x86 sides replayed, of)."""
     name, fn, corpus = SABOTAGE[k]
     if fn == "helpers":     # __set_flags (translator/support.py)
         D.HELPERS = real_helpers.replace("\tmove.b\trt_irq_pending,G_IRQ(a6)", "\tnop")
@@ -418,18 +420,20 @@ def plant(k: int) -> tuple[int, int]:
     try:
         if corpus == "cross-block":
             total, failures = B.cross_entry_cases()
-            return len(failures), total
+            return len(failures), total, 0, 0
         if corpus in ("program", "walk"):
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 B.main(["--blocks", "1500", "--states", "1"])
             return (int(re.search(r"(\d+) mismatches", out.getvalue()).group(1)),
-                    int(re.search(r"cases (\d+)", out.getvalue()).group(1)))
+                    int(re.search(r"cases (\d+)", out.getvalue()).group(1)), 0, 0)
+        D.REPLAY = RECORD
         h = D.X.run(["--only", corpus, "--states", "1", "--space", "2", "--blocks", "1500"],
                     quiet=True, harness=D.Harness)
         h.flush()
-        return len(h.bad), sum(h.count.values())
+        return len(h.bad), sum(h.count.values()), h.replayed, h.ncases
     finally:
+        D.REPLAY = None
         L.Lowering.run = real_run
         D.HELPERS = real_helpers
         E.poll_stub = real_poll_stub
@@ -440,14 +444,25 @@ def plant(k: int) -> tuple[int, int]:
         L.Lowering.flags_dead = real_flags_dead
 
 
+def slow_first(k: int) -> tuple:
+    """Submission order: plants that run two corpora or patch more than the lowered
+    text may stray from the recording (live x86 side), then boundary plants."""
+    _name, fn, corpus = SABOTAGE[k]
+    return ("," not in corpus and callable(fn), "boundary" not in corpus)
+
+
 def main() -> int:
     missed = []
+    replayed = cases = 0
     with ProcessPoolExecutor(min(len(SABOTAGE), os.cpu_count() or 1)) as pool:
-        results = pool.map(plant, range(len(SABOTAGE)))
-        for (name, _fn, corpus), (bad, total) in zip(SABOTAGE, results):
+        futures = {k: pool.submit(plant, k) for k in sorted(range(len(SABOTAGE)), key=slow_first)}
+        for k, (name, _fn, corpus) in enumerate(SABOTAGE):
+            bad, total, r, n = futures[k].result()
+            replayed, cases = replayed + r, cases + n
             print(f"{name:36} {corpus:15} mismatches {bad} of {total}", flush=True)
             if not bad:
                 missed.append(name)
+    print(f"x86 side replayed from {RECORD.name}: {replayed} of {cases} cases")
     if missed:
         print("not caught:", ", ".join(missed))
     return 1 if missed else 0

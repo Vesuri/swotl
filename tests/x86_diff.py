@@ -193,7 +193,8 @@ class Oracle:
 class Harness:
     def __init__(self, seed: int):
         self.rng = random.Random(seed)
-        bg = bytes(random.Random(seed ^ 0x5EED).randrange(256) for _ in range(RAM))
+        # One repeated byte, as the per-byte fresh generator always gave (open-work 14c).
+        bg = bytes([random.Random(seed ^ 0x5EED).randrange(256)]) * RAM
         self.bg = bg
         self.mem = bytearray(bg)
         self.oracle = Oracle(bg)

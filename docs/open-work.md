@@ -52,6 +52,10 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     conversion, R6 growth, cell cache, frame bench). Meter and frame bench in
     place (§4); kept: T8 −0.24%, T7 −0.005%, R1a −0.0001%, R1b −1.92%, R1d −1.23%, R2 −1.03%, R3a −0.99%, R3b −0.19%, R4 −2.65%, R5 −2.04%, R6 −1.21%, R7 −9.04%. Projection ≈ 16–18 fields;
     native work needs per-routine authorization.
+14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`
+    `Harness`: each byte drew from a fresh generator with the same seed).
+    A random background is stronger but changes every corpus case; needs
+    user approval.
 15. Microbenchmark the remaining [arch] 68020 costs on the A1200 model
     (`mulu.l`/`divu.l`, unaligned word/long); shifts, swaps, loads, stores and
     branches are measured (`m68k-optimisation.md`).

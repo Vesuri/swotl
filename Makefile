@@ -163,6 +163,10 @@ t-x86-%:
 	$(call RUN,x86-$*,$(PYTHON) tests/x86_diff.py --only $(CORPUS) --shard $(SHARD))
 t-m68k-%:
 	$(call RUN,m68k-$*,$(PYTHON) tests/m68k_diff.py --only $(CORPUS) --shard $(SHARD))
+# its x86 side is reused by the sabotage plants (tests/m68k_sabotage.py)
+t-m68k-boundary.0-of-1:
+	$(call RUN,m68k-boundary.0-of-1,$(PYTHON) tests/m68k_diff.py --only boundary --shard 0/1 \
+		--record tmp/test/x86-side-boundary.pkl)
 t-blocks:
 	$(call RUN,blocks,$(PYTHON) tests/m68k_blocks.py)
 t-guards:
