@@ -39,9 +39,9 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     check yet (L5, SL `restore_status`); keyboard and mouse input from the
     takeover are untested by any reference (scripted input enters past the
     CIA and JOY0DAT reads).
-14b. Speed: [speed-plan.md](speed-plan.md) round 2 done (R11 re-profile);
-    round 3: R12, R13 kept; R11's re-price has no further step
-    (re-profile next, §7 R11); R7b not built, §10; rerun
+14b. Speed: [speed-plan.md](speed-plan.md) round 3 done (R12, R13 kept;
+    R14 re-profile); round 4: translator items R14a–R14i (§7 R14), then
+    interrupt delivery; R7b not built, §10; rerun
     `tools/align_targets.py` when the code changes;
     `tools/profile_report.py` roles still match the old poll point and
     state block forms;
@@ -49,7 +49,7 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     after R3b in §7). Target ≤12 fields on 68020 + 8 MB
     Fast; run medians 24.5–28.5 fields at `781975e` (trajectory noise);
     frames fixture medians 24 fields at R1d (25 before R1), 22.5–23 at R6,
-    21.5–24 at R8, 20 at R10 (R9 20.5);
+    21.5–24 at R8, 20 at R10 (R9 20.5), 19–19.5 at R13;
     meter 225,516,608 model cycles (weights recalibrated at R11; it
     underrates removed instructions, §4), static generated code 1,161,334
     bytes. User

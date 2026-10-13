@@ -18,7 +18,8 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   at `c6a7de1` (R1d); 2026-10-11: 23, 23, 23.5 at R5 (`714d61e`), 23,
   22.5, 23 at R6; 2026-10-12: 24, 21.5, 22 at R8; 2026-10-13: 20, 20,
   20 at R10 (`570ec2d`; sums 177–178) against 20.5, 20.5, 20.5 at R9
-  (sums 179).
+  (sums 179); 19, 19, 19.5 at R13 (`84d262d`, R14: sums 172, 173,
+  166).
 - **Bench** (§4): frames 4–11 mean 37.74 fields (5.36M cycles) at
   `b9b6374`, 37.56 at `63a99fe` (R1a), 34.41 (4.89M cycles) at R1b, 33.69
   at R1d, 33.37 at R3a, 33.27 (4.73M cycles) at R3b, 31.74 at R5, 29.67
@@ -42,6 +43,10 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   90.58%, runtime/platform 6.04%, no PC 1.45%; 1,604,428 guest
   instructions, 16.05 cycles each (the window's mix: the cell walk of
   SWOTL.EXE+06A4D is 16.9%).
+- **R14 capture** (frames fixture at `84d262d`, 100 fields): generated code
+  90.29% (cell walk 16.82%), runtime/platform 6.13% (interrupt delivery
+  ≈ 4.1%), no PC 1.66%, Kickstart 0.98%, IRQ transition 0.94%; 1,655,592
+  guest instructions, 15.5 cycles each.
 - **Round 1:** kept T3 (block-local byte order), T4-local (carry in X),
   T6 (masks), T10, T11; rejected T2 (size), T4 cross-block, T7, T8,
   T12–T15; T5 not built. Cycles/guest 15.65 → 14.6–15.0, code payload
@@ -241,30 +246,30 @@ weigh these differently.
 
 Replan column: share of all CPU in the replan capture (`781975e`). R11
 column: share of the meter's model cycles (m4, R11 weights, `570ec2d`),
-by the 68k instruction's role (`tmp/` census over the meter's per-PC
+R14 column the same at `84d262d`, by the 68k instruction's role (`tmp/` census over the meter's per-PC
 counts; profile_report's role column still matches the old poll and state
 block forms).
 
-| Cost | Replan | R11 meter | R11 executions (m4) |
-|---|---:|---:|---:|
-| Cell walk (D16), run-time matching | 13.20% | 20.63% | — |
-| Byte swaps `ror/rol.w #8` (+ store copies) | 5.69% + 0.68% | 0.47% | 609K |
-| Index formation in d7 (`move.w #7FFFh−d,d7` + `sub.w Rn,d7`; mirrored + disp) | 1.55% + 3.54% | 4.04% | 1.96M `move.w #N,d7` |
-| Poll points (`tst.b G_IRQ(a6)`, `bne`) | 1.77% + 1.46% | 3.52% | 980K |
-| Flag image (CCR to and from G_FL, state block flags) | 1.60% + 0.55% + 0.93% | 2.28% | 583K spills |
-| Stack accesses `(d,a2,d4.w)` + SP steps `addq/subq.w #2,d4` | — | 2.95% + 0.88% | 2.0M steps |
-| SP/BP mirror conversions `eori.w #$7fff` | — | 0.53% | — |
-| SI/DI address-register shuffles | 2.06% | (in index formation) | — |
-| Upper-word masks `and.l #$ffff` | 1.64% | 0.00% | — |
-| Accesses at disp ≥ 8000h (`bd.l`) | 1.68% | none (R1b: always d16) | — |
-| Return checks (`cmp.w #ip,d7`, `bne` to the trampoline) | 1.28% | 0.72% | — |
-| `jsr`/`bsr`/`rts`/`jmp` | 2.40% | 1.32% | — |
-| Segment fields (DS/SS/ES in the state block) | — | 0.85% | — |
-| mul/div | — | 4.71% | 399K `mulu.w`, 45K `divu.w` |
-| `repe cmpsw` (the view vs the previous frame) / `rep stosw`; their loop bodies | — | 6.57% / 4.53%; 6.21% / 4.38% | 7,840 / 6,225 runs, 953K / 850K words |
-| Runtime | 1.16%, 1.85%, ≈2.5% | 1.02% (capture: 6.04%) | — |
-| Other memory ops / register ops / branches outside cached loops | 12.62% / ≈8% | 11.68% / 7.03% / 3.47% | — |
-| Other code inside cached loops (loop bodies) | — | 23.19% | — |
+| Cost | Replan | R11 meter | R14 meter | R11 executions (m4) |
+|---|---:|---:|---:|---:|
+| Cell walk (D16), run-time matching | 13.20% | 20.63% | 21.84% | — |
+| Byte swaps `ror/rol.w #8` (+ store copies) | 5.69% + 0.68% | 0.47% | 0.49% | 609K |
+| Index formation in d7 (`move.w #7FFFh−d,d7` + `sub.w Rn,d7`; mirrored + disp) | 1.55% + 3.54% | 4.04% | 4.10% | 1.96M `move.w #N,d7` |
+| Poll points (`tst.b G_IRQ(a6)`, `bne`) | 1.77% + 1.46% | 3.52% | 3.73% | 980K |
+| Flag image (CCR to and from G_FL, state block flags) | 1.60% + 0.55% + 0.93% | 2.28% | 2.42% | 583K spills |
+| Stack accesses `(d,a2,d4.w)` + SP steps `addq/subq.w #2,d4` | — | 2.95% + 0.88% | 3.09% + 0.92% | 2.0M steps |
+| SP/BP mirror conversions `eori.w #$7fff` | — | 0.53% | 0.54% | — |
+| SI/DI address-register shuffles | 2.06% | (in index formation) | (in index formation) | — |
+| Upper-word masks `and.l #$ffff` | 1.64% | 0.00% | 0.00% | — |
+| Accesses at disp ≥ 8000h (`bd.l`) | 1.68% | none (R1b: always d16) | none | — |
+| Return checks (`cmp.w #ip,d7`, `bne` to the trampoline) | 1.28% | 0.72% | 0.76% | — |
+| `jsr`/`bsr`/`rts`/`jmp` | 2.40% | 1.32% | 1.37% | — |
+| Segment fields (DS/SS/ES in the state block) | — | 0.85% | 0.90% | — |
+| mul/div | — | 4.71% | 4.99% | 399K `mulu.w`, 45K `divu.w` |
+| `repe cmpsw` (the view vs the previous frame) / `rep stosw`; their loop bodies | — | 6.57% / 4.53%; 6.21% / 4.38% | 3.74% / 2.51%; 3.28% / 2.30% | 7,840 / 6,225 runs, 953K / 850K words |
+| Runtime | 1.16%, 1.85%, ≈2.5% | 1.02% (capture: 6.04%) | 1.08% (capture: 6.13%) | — |
+| Other memory ops / register ops / branches outside cached loops | 12.62% / ≈8% | 11.68% / 7.03% / 3.47% | 12.02% / 7.38% / 3.67% | — |
+| Other code inside cached loops (loop bodies) | — | 23.19% | 24.98% | — |
 
 The meter's runtime is the host run's (the reference's interrupts
 replayed); the frames capture adds the CIA timer at its own rate (1,032
@@ -790,6 +795,47 @@ from the top while the meter finds a gain.
 - Plants: a held value survives register writes (2,517 of 65,647), survives
   a block leader (program blocks, 26 of 9,865).
 
+### R14. Re-profile (round 4)
+
+- Done 2026-10-13 at `84d262d`: frames fixture (§1), R14 capture (§1),
+  §6 re-priced from the meter (`tmp/` census).
+- Translator work items, priced on the meter of `84d262d` (one step each,
+  re-priced before coding):
+  - R14a. High-byte register idioms: `sub/xor rh,rh` as `andi.w #$00ff`
+    (flags, when live, from `moveq #0`; PF even, AF 0); `or/and/test
+    rh,rh` as a copy and `andi.w #$ff00` (N, Z exact, V = C = 0);
+    `and/or/xor rh,imm` with dead flags as a word op with the shifted
+    immediate. Today ror, ror, op, bfins: 1.32% (204K executions at 13–22
+    cycles). ≈ −0.9%.
+  - R14b. A conditional jump passes the CCR on: the next Jcc (not a
+    leader) reads the setter's CCR instead of `G_FL` (`cmp; jl; jne`).
+    What-if: −0.226% (83,844 flag loads).
+  - R14c. `test`/`cmp` with a memory first operand without `lea …,a0`
+    (188K executions); `test m,0FFh`/`0FFFFh` as `tst`. ≈ −0.35%.
+  - R14d. The setter's `G_FL` store dropped when only the Jcc chain reads
+    the flags: needs the taken target's live-in apart from the fall-through
+    in `flags.plan`. ≤ −0.5% (≈ 170K stores).
+  - R14e. Flags live at a `ret` reached from a dispatch-table seed: every
+    dynamic return site now (`emit.returns`); a sound narrower set.
+    Ceiling −0.61% (what-if ignoring dynamic return sites, unsound).
+  - R14f. A displacement folded into the access's d8 after a formation of
+    the same register, under a no-wrap guard (R13's not-taken case). ≤
+    −0.71% before the guards.
+  - R14g. `or/and/test` of SI/DI with itself as `tst.w An` (now 4
+    instructions with a write-back; 46K executions at 7.2 cycles).
+    ≈ −0.1%.
+  - R14h. `mul` with DX dead: no `move.l d0,d2; swap d2`. ≤ −0.2%.
+  - R14i. `div`: the normal path falls through, the error path out of line
+    (no taken `bra`; 45K executions). ≈ −0.08%.
+  - Not taken: segment copies by push/pop (964 pairs per window); `move.l
+    #0,Dn` (vasm emits `moveq`).
+- No further translator form (§2): the cell walk (7 instructions per mov
+  cell with its match; R7b declined), poll points, `mulu`/`divu` themselves,
+  string loops (R12), stack accesses.
+- After the translator items: interrupt delivery in the runtime (≈ 4.1% of
+  the capture, ≈ 2,500 cycles per delivered guest interrupt; runtime
+  surface, §2.2).
+
 ## 8. User decisions (approved 2026-10-08)
 
 - **D0.** Per-step acceptance by the meter (§3), instead of FS-UAE frame A/B.
@@ -821,6 +867,11 @@ must fall by 40%. Top guest routines in the R11 capture (self time):
 SWOTL.EXE+06A4D 16.9% (the cell walk), +0BFD1 8.3%, +04DAE 6.5%, +0B54B
 6.2%, RTSVGA.OVL+03B9A 4.1% (its `repe cmpsw` at 03BE9: 2.8%), SWOTL.EXE
 +0B017 3.0%, +109D6 2.7%, +0D5A6 2.6%, SPAZ.OVL+00CEE 2.4%.
+
+At R14 (2026-10-13): 19 fields (380 ms): −37% needed. R14a–i together
+≈ −2 to −3.5% of the meter. Top routines (R14 capture): SWOTL.EXE+06A4D
+16.8% (the cell walk), +0BFD1 7.7%, +0B54B 6.2%, +04DAE 6.2%, +0B017
+3.1%, RTSVGA.OVL+03B9A 3.0%, SWOTL.EXE+109D6 2.7%, +0D5A6 2.7%.
 
 ## 10. Rejected and not built
 
