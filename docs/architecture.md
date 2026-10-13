@@ -47,17 +47,17 @@ root EXE + .OVL images (proved against DOSBox captures)
 7. Unresolved indirect control flow, writes to translated code and unknown
    ports/interrupts stop with a report. No interpreter fallback in release.
 
-## Target model (contract: translator-design.md; D8–D11 open)
+## Target model (contract: [translator-design.md](translator-design.md))
 
 - Guest RAM: one contiguous block below a6, byte-exact and reversed (linear
   `seg*16+off` at a6 − linear, so a little-endian word is a native word),
   with the reference load segment, so RAM images diff (reversed) against
   captures.
 - Segments: ES/SS/DS bases cached in a1–a3 and recomputed on every write;
-  CS static per instruction. 64 KiB offset wrap honoured everywhere (phase 7
-  may drop it where analysis rules it out).
-- Registers: AX–DX, SP, BP in d0–d5, SI/DI in a4/a5, zero-extended, SP/BP
-  mirrored (offset ^ 7FFFh); d6/d7/a0 scratch. AH-class halves lowered
+  CS static per instruction. 64 KiB offset wrap honoured everywhere (under
+  an exact guard where a fast form drops it).
+- Registers: AX–DX, SP, BP in d0–d5, SI/DI in a4/a5, low words only (upper
+  words undefined), SP/BP mirrored (offset ^ 7FFFh); d6/d7/a0 scratch. AH-class halves lowered
   explicitly.
 - Flags: virtual; stored only where live, read from the CCR by the next
   instruction where the 68k flags agree; PF/AF only when live.
@@ -71,8 +71,9 @@ root EXE + .OVL images (proved against DOSBox captures)
 - Runtime (`src/runtime/`): the reference machine as the guest sees it
   (DOS 5 PSP/MCBs/environment, IVT values, BIOS/EMS answers) behind
   `platform.h`; one implementation for the host harness and the A1200.
-- Drivers: RTSVGA and SPAZ are replacement candidates at
-  their call interface (G3 table), implemented on the dA JoRMaS layer.
+- Drivers: RTSVGA and SPAZ run translated. RTSVGA's video-memory stores
+  are marked and its published frames' changed rows presented (D9); SPAZ's
+  OPL2 writes reach the runtime's register file (D10: Amiga output open).
 
 ## Oracles
 

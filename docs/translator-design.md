@@ -1,10 +1,12 @@
 # Translator design
 
-Skeleton for phase 5 on (phases 3–4 done: decoder, IR, 68020 backend; phase 5 done: runtime, host and A1200 runs to the logo frame). Fixed parts are decided; decision points D1–D16
-list options, the evidence that settles them (from
-[plan-reference-map.md](plan-reference-map.md)) and the default if evidence
-does not object. Replace each decision with its outcome when settled.
-Overview and guardrails: [architecture.md](architecture.md).
+The translator, runtime and test contract as built. Decisions D1–D16 are
+settled where this file states them (D1 memory and calls, D2 overlays and BP
+regions, D4 registers, D6 flags, D7 indirect transfers, D8 interrupts, D9
+display, D11 strings, D15 memory, D16 self-modified code); the one still open
+is listed at the end. Speed forms are indexed in
+[speed-plan.md](speed-plan.md) §7. Overview and guardrails:
+[architecture.md](architecture.md).
 
 ## Fixed
 
@@ -102,6 +104,14 @@ diffs directly); relocated words in instructions are emitted as
   (unchanged since), which leaves N and Z equal to SF and ZF. PF/AF are
   stored as result / `a^b^r` bytes only when live. adc/sbb/rcl/rcr derive X
   from `G_FL` and preset Z for `addx`/`subx`.
+- Strings (D11): per-element loops, one body per DF. REP with DF = 0,
+  CX ≠ 0 and SI/DI + size × CX < 10000h takes a fast path with host pointers
+  descending: `move -(a4),-(a5)`, `move d,-(a5)`, `move -(a4),d6` + `cmp
+  -(a5),d6` or `cmp -(a5),d` with `db<cc>`, the last pair's flags
+  recomputed. REP STOSW and REPE CMPSW move or compare two words per
+  `move.l`/`cmp.l` (speed-plan R12: an odd element alone, a mismatching
+  long's guest-first word first). Checked by the boundary corpus (guard and
+  stop edges, overlap) and sabotage plants.
 - Calls (D1): the guest stack stays byte-exact (return CS:IP pushed as the
   CPU does); a guest call is `jsr`, `ret`/`retf` pop into the low words of
   d7/d6 and `rts`; the return site checks d7 (and d6) with `cmp.w` against
@@ -251,12 +261,8 @@ guarded copy; a profile choice, `tools/bp_regions.py`).
   dispatcher exits, `stop_unknown` sites against `tests/audit.csv` (above
   expected fails), plus flag stores/merges/loads and return checks; HLE count.
 
-## Decision points
+## Open decision
 
-| # | Decision | Options | Evidence | Default |
-|---|---|---|---|---|
-| D8 | Interrupt delivery | (a) runtime runs translated guest ISRs at safe points (loop back-edges, calls); (b) HLE of the game's ISRs | [external-surface.md](external-surface.md): guest installs INT 00h/05h/08h (SPAZ tick)/23h/24h; INT 09h/1Ch stay BIOS | (a) |
-| D9 | Graphics drivers | (a) HLE at RTSVGA's call table on the dA JoRMaS layer; (b) translate driver + emulate VGA ports/memory | chained mode 13h via INT 10h, no VGA ports, no page flip; entries = PLINK thunks with id 3 | (a), with RTSVGA itself as oracle |
-| D10 | Sound | SPAZ HLE at its table; AdLib music method open (OPL -> Paula) | 2.5; open-work AdLib item | HLE |
-| D11 | String ops | per-element loops, one body per DF; REP with DF = 0, CX ≠ 0 and SI/DI + size × CX < 10000h: host pointers descending (base + 8000h − offset), `move -(a4),-(a5)` / `move d,-(a5)` / `move -(a4),d6` + `cmp -(a5),d6` / `cmp -(a5),d` with `db<cc>`, last pair's flags recomputed; REP STOSW and REPE CMPSW two words per `move.l`/`cmp.l` (R12: odd element alone, a mismatching long's low word first) (done) | boundary corpus (guard and stop edges, overlap), sabotage | done |
-
+| # | Decision | Options | Status |
+|---|---|---|---|
+| D10 | Sound | SPAZ runs translated; its OPL2 writes reach `rt_out8` (register file in `src/runtime/ports.c`). The Amiga output of that FM music is open: software OPL, offline conversion, or Paula instruments | open-work 17 |

@@ -54,7 +54,7 @@ to SWOTL.
 ## Pointers
 
 - Method: `docs/architecture.md`, `docs/phases.md`,
-  `docs/plan-reference-map.md`, `docs/translator-design.md`,
+  `docs/translator-design.md`,
   `docs/translation-lessons.md`, `docs/x86-notes.md`
 - Process: `docs/perf-method.md`, `docs/speed-plan.md` (speed work: its rules
   bind every agent)
