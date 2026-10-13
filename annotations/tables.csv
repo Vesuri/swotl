@@ -3,3 +3,4 @@ SWOTL.EXE,0x0530e,8,"index 2*[25d0], [25d0] = [si+16h]|[si+12h]|[si+14h] (+E996,
 SWOTL.EXE,0x0532c,8,"same index; table cs:0983 ends at code cs:0993"
 SWOTL.EXE,0x0534a,8,"same index; table cs:09A1 ends at code cs:09B1 (first entry's target)"
 SWOTL.EXE,0x058d1,8,"index 2*[25d0] (bp); table cs:0F4E ends at code cs:0F5E (mov bp,[25d0])"
+SWOTL.EXE,0x0ec5b,8,"index 2*[25d0], same three flag words and setter +E996 as +530E; table cs:A2B2 ends at code cs:A2C2; DOSBox-X c7-demo-dispatch executes row 0 and returns at +EC60"

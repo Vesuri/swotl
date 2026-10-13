@@ -33,7 +33,7 @@ help:
 	@echo "  make test-sabotage      planted IR/decoder/runtime faults must fail the differentials and host run"
 	@echo "  make host               link generated program + runtime for Unicorn 68020 -> build/host/swotl.elf"
 	@echo "  make test-host          run it from the MZ entry to milestones m1-m3 against the reference"
-	@echo "  make test-host-all      the same to every milestone, m1-m7, and c6-flight-keys (~3-5 min)"
+	@echo "  make test-host-all      the same to every milestone, m1-m7, and coverage c6-c8 (~3-5 min)"
 	@echo "  make test-amiga         m1b-logo on the A1200 model (FS-UAE + GDB capture, amiga/milestone.gdb.in; AMIGA_CPU=68030)"
 	@echo "  make gates              the step gates: test, then test-sabotage, test-host-all and test-amiga + smoke at once (~8 min)"
 	@echo "  make amiga   build amiga/out/Swotl.exe"
@@ -123,7 +123,7 @@ JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc)
 RUN = @mkdir -p tmp/test; if $(2) > tmp/test/$(1).log 2>&1; then echo "ok    $(1)"; \
 	else echo "FAIL  $(1) (tmp/test/$(1).log)"; tail -n 15 tmp/test/$(1).log; exit 1; fi
 SHARDS = forms.0/4 forms.1/4 forms.2/4 forms.3/4 space.0/1 boundary.0/1 blocks.0/1
-TESTS = t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
+TESTS = t-smc-flow t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
 	t-blocks t-guards $(HOST_MILESTONES:%=t-host-%)
 
 test: host
@@ -159,6 +159,9 @@ t-profile-tools:
 	$(call RUN,profile-tools,$(PYTHON) tests/test_profile_tools.py)
 t-reglive:
 	$(call RUN,reglive,$(PYTHON) tests/test_reglive.py)
+t-smc-flow:
+	$(call RUN,smc-flow,$(PYTHON) tests/test_smc_flow.py)
+
 t-cost-tools:
 	$(call RUN,cost-tools,$(PYTHON) tests/test_cost_meter.py)
 t-lint:
@@ -230,7 +233,7 @@ host: gen-check build/host/swotl.elf
 
 HOST_MILESTONES = m1-mode13h m1b-logo m2-choose-side m3-demo-flight
 HOST_MILESTONES_ALL = $(HOST_MILESTONES) m4-demo-frames m5-player-flight m6-film-room m7-campaign
-HOST_COVERAGE = c6-flight-keys
+HOST_COVERAGE = c6-flight-keys c7-demo-dispatch c8-steep-bank
 AMIGA_MILESTONE ?= m1b-logo
 AMIGA_CPU ?= 68030
 AMIGA_CAPTURE = tmp/amiga-$(AMIGA_MILESTONE)

@@ -252,8 +252,12 @@ guarded copy; a profile choice, `tools/bp_regions.py`).
   `bx`/`ds` reload, the planted `ret`), each checked against the decoder,
   operand words read from guest RAM; anything else stops. Mov cells run
   counted (R7): the cells that fit before the bound are counted once, each
-  still matched when it runs (one long read: opcode and operand). `call dx` sites
-  range-check into the walk. The EGA/Tandy and/or variant ([2581]=0) is out
+  still matched when it runs (one long read: opcode and operand). Unresolved
+  near indirect transfers range-check every walk in their module and CS,
+  regardless of traced targets; proved tables retain their closed target set.
+  The graph includes the walk edge. If every decoded cell instruction preserves
+  arithmetic flags, a call propagates its return site's live flags through the
+  walk; otherwise all flags are live. Return checks remain in place. The EGA/Tandy and/or variant ([2581]=0) is out
   of scope. Checked by `make test-blocks` (walks over every snapshot image
   vs x86; per entry, mov cells to the bound and past it, a RET at the
   bound, unknown cells).

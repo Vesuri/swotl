@@ -348,11 +348,12 @@ def main(argv=None) -> int:
     count, bad, skipped, exits = Counter(), [], Counter(), Counter()
     walks_at = {emit.walk_label(mo, lo) for mo, lo, _ in p.smc_forms}
 
-    def block_cases(mod, run, states, force=None, posted=None, copy=False):
+    def block_cases(mod, run, states, force=None, posted=None, copy=False, memory=(), expected=None):
         """`states` cases of one block; `force`: registers set after the random
         state; `posted` (at a poll point): an interrupt posted, rt_irq modelled as
         taking it ("taken") or as the bench watch leaving it set ("watch"); the
-        poll must call it once with its CS:IP."""
+        poll must call it once with its CS:IP. `memory` adds fixture bytes;
+        `expected` additionally requires the named generated entry."""
         u = p.units[mod]
         data = reloc[mod]
         last = u.insns[run[-1]]
@@ -371,7 +372,7 @@ def main(argv=None) -> int:
             # keep CX small so REP blocks stay short
             regs["cx"] &= 0x3F
             regs.update(force or {})
-            patches = []
+            patches = list(memory)
             sp_lin = regs["ss"] * 16 + regs["sp"]
             stack = bytearray(h.rng.randrange(256) for _ in range(8))
             for k in (1, 3, 5, 7):
@@ -423,6 +424,8 @@ def main(argv=None) -> int:
                         stop = x
                         break
             diffs = []
+            if expected is not None and stop != expected:
+                diffs.append(f"required entry {expected}, reached {stop}")
             if info["err"]:
                 diffs.append(f"68k error {info['err']} stop={stop} pc={pc:x}")
             diffs += info["irq"]
@@ -586,6 +589,33 @@ def main(argv=None) -> int:
                     block_cases(mod, run, 1, posted=posted)
         polls = count - before
         count -= polls
+    # Regression: the original's CS:A2B2 table, including every untraced row.
+    # Enter at the call so SI selects each word; compare the x86 transfer and
+    # require a generated entry, not merely a dispatcher with matching CS:IP.
+    if not args.only:
+        mod, site, table = M.ROOT, 0xEC5B, 0xEC62
+        u = p.units[mod]
+        cs = LOADSEG + u.cs[site]
+        words = bytes(reloc[mod][table:table + 16])
+        for k in range(8):
+            target = u.off_of(u.cs[site], int.from_bytes(words[2*k:2*k+2], "little"))
+            block_cases(mod, [site], 2, {"si": 2*k},
+                        memory=[(cs*16 + 0xA2B2, words)], expected=emit.label(mod, target))
+    # The table discovers eight routine bodies: exercise every block, including
+    # rows not selected by the recorded demo, against original x86 bytes.
+    if not args.only:
+        discovered = {M.ROOT: set(range(0xEC72, 0xEE71))}
+        for mod, run in blocks(p, discovered):
+            block_cases(mod, run, 2)
+    # Untraced call-DX sites in the same CS must also reach the cell walk.
+    # Include both range edges, the reported entry, and both fallback edges.
+    if not args.only:
+        mod = M.ROOT
+        for site in (0x4F7B, 0x50A5, 0xEC17):
+            for target in (0x209C, 0x209D, 0x2BDE, 0x404D, 0x404E):
+                want = (emit.walk_label(mod, 0x6A4D) if 0x209D <= target <= 0x404D
+                        else "rt_dispatch_near")
+                block_cases(mod, [site], 2, {"dx": target}, expected=want)
     total = sum(v for k, v in count.items() if k != "return checks")
     print(f"blocks {len(picks)} of {len(allb)} executed; cases {total}", dict(count))
     print(f"poll cases {sum(polls.values()) - polls['return checks']} (interrupt posted)")

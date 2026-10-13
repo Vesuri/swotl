@@ -13,8 +13,8 @@ to every return site), an
 unresolved indirect transfer at some row of the runtime dispatch table (the
 cfg seeds: MZ entry, PLINK thunks, runtime.csv, indirect.csv targets; any
 other target stops), so each sees the live-in union of that set; a divide
-error continues in the guest INT 00h handler; flow into self-modified code
-sees every flag live; an annotated PUSHF/POPF save reads what is live after
+error continues in the guest INT 00h handler; a flag-preserving cell walk passes its caller continuation's live flags
+through (other self-modified flow sees every flag live); an annotated PUSHF/POPF save reads what is live after
 its POPF. Leaders: seeds, call and far targets, transfer targets, return
 sites and starts without a fall-through predecessor.
 """
@@ -218,6 +218,8 @@ class Program:
         self.int0 = (int0[0]["module"], int(int0[0]["offset"], 16)) if int0 else None
         # D16: self-modified regions, each lowered as one cell walk
         self.smc_forms = image.smc_forms()
+        self.walk_preserves_flags = all(smc.preserves_flags(forms)
+                                        for forms in self.smc_forms.values())
         # D9: the `jmp far` of each PLINK thunk into the graphics driver
         # (thunk: call far manager, dw id, jmp far)
         self.driver_jumps = {at + 7 for at, mod, _ in M.thunks(image.load()) if mod == GRAPHICS_DRIVER}
@@ -292,14 +294,14 @@ class Program:
                 if (op in ("div", "idiv") or op == "aam" and i.operands[0].value == 0) \
                         and self.int0:
                     s = s + [self.int0]
-                self.succ[n] = [x if x in (RET, UNKNOWN) or self.node_insn(x) else SMC
+                self.succ[n] = [x if x in (RET, UNKNOWN, SMC) or self.node_insn(x) else SMC
                                 for x in s]
                 self.fall[n] = fall if fall and self.node_insn(fall) else None
 
     def indirect_succ(self, mod: str, off: int, far: bool) -> list:
         sw, tr = self.indirect.get((mod, off), ([], []))
         self.entries.update(sw + tr)
-        return list(sw) if sw else [UNKNOWN]
+        return list(sw) if sw else [UNKNOWN] + ([SMC] if not far and self.near_walks(mod, off) else [])
 
     def reach(self, t, cache: dict) -> tuple[set, set]:
         """rets reachable from entry t without entering a call (a call continues at
@@ -416,7 +418,11 @@ class Program:
                     elif s == UNKNOWN:
                         out |= unknown
                     elif s == SMC:
-                        out |= ALL
+                        # A matched walk that defines/reads no flags passes its
+                        # caller's requirements through unchanged. The return
+                        # check stops if it does not return to that call site.
+                        out |= (self.live_in.get(self.call_site[n], ALL)
+                                if n in self.call_site and self.walk_preserves_flags else ALL)
                     else:
                         out |= self.live_in[s]
                 i = self.node_insn(n)
@@ -501,6 +507,16 @@ class Program:
                   for cs, ip, oid, far, lab in rows]
         return "\n".join(lines) + "\n"
 
+    def near_walks(self, mod: str, off: int) -> set[tuple[int, int]]:
+        """Walks reachable by a near indirect transfer. An incomplete target census
+        cannot exclude a modified region in the same CS; a proved table can."""
+        u = self.units[mod]
+        sw, tr = self.indirect.get((mod, off), ([], []))
+        if sw:
+            return {r for m, o in sw + tr if m == mod and (r := self.region(m, o))}
+        return {(lo, hi) for m, lo, hi in self.smc_forms
+                if m == mod and u.segment(lo) == u.segment(hi) == u.cs[off]}
+
     def ctx(self, mod: str, off: int, stats: Counter) -> Ctx:
         u = self.units[mod]
         i = u.insns[off]
@@ -528,7 +544,7 @@ class Program:
         sw, tr = self.indirect.get((mod, off), ([], []))
         if i.op in ("jmp", "call") and not isinstance(i.operands[0], Rel):
             near_t = tuple(u.ip_of(o) for m, o in sw + tr if m == mod and not self.region(m, o))
-            smc_t = {self.region(m, o) for m, o in sw + tr if m == mod and self.region(m, o)}
+            smc_t = self.near_walks(mod, off)
         if i.op in ("jmpf", "callf") and not isinstance(i.operands[0], Far):
             keys = []
             for m, o in sw + tr:

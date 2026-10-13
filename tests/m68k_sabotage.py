@@ -257,6 +257,31 @@ def folded_word_as_byte(self, out):
                    one, line) for line in out]
 
 
+def walk_guard_omitted(edge):
+    """Drop one exact region bound; out-of-range transfers must not enter a walk."""
+    def fault(self, out):
+        bounds = {f"cmp.w #{L.hx(span[edge])},d7" for span in self.c.smc_targets}
+        result, k = [], 0
+        while k < len(out):
+            if out[k].strip() in bounds and k + 1 < len(out) and out[k+1].strip().startswith(
+                    "blo " if edge == 0 else "bhi "):
+                k += 2
+            else:
+                result.append(out[k])
+                k += 1
+        return result
+    return fault
+
+
+def table_target_omitted(self, out):
+    """A proved near table routes its first row to the fail-loud fallback."""
+    if not self.c.complete or not self.c.near_targets:
+        return out
+    lab = self.c.near(self.c.near_targets[0])
+    return [line.replace(f"jsr {lab}", "jsr rt_stop_unknown").replace(
+            f"jmp {lab}", "jmp rt_stop_unknown") for line in out]
+
+
 def walk_entry_flag(self, out):
     """A live flag wrong on entry to a cell walk (D16): CF flipped in the state
     block just before the walk is called."""
@@ -486,6 +511,9 @@ SABOTAGE = [
      "boundary"),
     ("FLAGS-to-CCR table one entry off", ("helpers", "__sahf_ccr(pc,", "__sahf_ccr+1(pc,"),
      "boundary"),
+    ("proved near table omits a target", table_target_omitted, "program"),
+    ("walk lower bound omitted", walk_guard_omitted(0), "program"),
+    ("walk upper bound omitted", walk_guard_omitted(1), "program"),
 ]
 
 

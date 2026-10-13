@@ -20,7 +20,7 @@ interrupt inside it.
 
 from __future__ import annotations
 
-from . import decode
+from . import decode, flags
 from .lower import LowerError, hx
 
 HOLE = 0x1234
@@ -99,6 +99,22 @@ def _check(form: str) -> tuple[bytes, list[int]]:
     if texts != FORMS[form][0]:
         raise LowerError(f"self-modified form {form} decodes as {texts}")
     return code, fixed
+
+
+def preserves_flags(forms: list[str]) -> bool:
+    """Prove flag identity from every decoded instruction of the matched forms.
+    Checking empty and full live sets establishes no reads and no definitions;
+    unsupported forms still fail through the normal decoder check."""
+    for form in forms:
+        code, _ = _check(form)
+        pos = 0
+        while pos < len(code):
+            i = decode.decode(code, pos, pos)
+            if any(flags.transfer(i, set(live), program=True) != live
+                   for live in (set(), set(flags.ALL))):
+                return False
+            pos += i.size
+    return True
 
 
 def walk(label: str, cs: str, first_ip: int, last_ip: int, forms: list[str]) -> list[str]:

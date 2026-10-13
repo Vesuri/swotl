@@ -37,8 +37,11 @@ speed work: [speed-plan.md](speed-plan.md).
     Frames fixture 19–19.5 fields against the ≤ 12 bar (§9). Next is the
     user's choice: a re-profile for new translator forms, or native
     replacement, which needs per-routine authorization (§2.2). When the
-    code changes: rerun `tools/align_targets.py`; `tools/profile_report.py`
-    roles still match the old poll point and state block forms.
+    code changes: rerun `tools/align_targets.py`. Current alignment check:
+    234/510 labels at their requested residue (229/497 applied pads);
+    investigate `gen.pad` convergence and refresh stale alignment candidates.
+    `tools/profile_report.py` roles still match the old poll point and state
+    block forms.
 14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`
     `Harness`: each byte drew from a fresh generator with the same seed).
     A random background is stronger but changes every corpus case; needs
@@ -53,14 +56,6 @@ speed work: [speed-plan.md](speed-plan.md).
     not rewritten by the guest); decide whether lockstep needs more (dead
     flag bits in pushed images under the remaining `annotations/flags.csv`
     pair).
-25. Interactive play stops (2026-10-13, `5eb35ed`, A1200 68040, 8 MB
-    Fast, about 2 minutes in): `SWOTL_STOP dispatch: no translated entry at
-    CS:IP 0cbd 2bde` = SWOTL.EXE+758E, a cell walk entry
-    (`annotations/self-modifying.csv`). Four `call dx` sites in 049B route
-    DX 209Dh–404Dh into the walk; +05CB, +06F5 and +A267 (`call dx`)
-    dispatch without that check. Which site made the call, and whether the
-    68040 matters, is not established; no reference covers it (needs a
-    scripted reproduction).
 
 ## Amiga platform
 

@@ -132,6 +132,13 @@ checks; no determinism history needed). They feed the phase 2 map
 | c4-tour | U, T, 1, 1, S | tour of duty menus |
 | c5-records | U, R | combat records (CAMPAIGN) |
 | c6-flight-keys | m5 path, then 47 keys at 30-frame intervals in flight | in-flight controls, gun camera film room (REPLAY, `RP*.TMP` written) |
+| c7-demo-dispatch | no keys | attract-demo call through the eight-word table at +EC62, return at +EC60 |
+| c8-steep-bank | m5 path, then 61 left presses | bank angle above the alternate renderer threshold; +EC17 calls the modified walk at +758E |
+
+Amiga regression: `AMIGA_CPU=68030 bash amiga/play_walk.sh` (then `68040`).
+The bounded `KEYS=` script enters flight and banks with mouse motion;
+`amiga/play_walk.gdb` requires +EC17 with DX=2BDE to execute and return
+before the quit mark. Any runtime stop or missed call fails.
 
 Facts from these runs:
 
