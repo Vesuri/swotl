@@ -10,6 +10,7 @@ struct rt_regs rt_r;
 uint8_t *rt_guest;
 uint16_t rt_entry_cs, rt_entry_ip;
 uint16_t rt_deliver_cs, rt_deliver_ip;
+void *rt_deliver_code;      /* the handler's translated entry (rt_lookup, far) */
 
 /* Command tail of the reference launch (tools/pc_run.py LAUNCH). */
 static const char command_tail[] = " V S 5 N Y Y 64";
@@ -211,8 +212,10 @@ static int guest_vector(uint8_t vector)
     return t >= lo && t < lin(rd16(lo + 2), 0);
 }
 
+void *rt_lookup(uint32_t cs, uint32_t ip, uint32_t far);
+
 /* Returns 0 when serviced, else CS << 16 | IP of the frame pushed for the
- * guest handler at rt_deliver_cs:rt_deliver_ip. */
+ * guest handler at rt_deliver_cs:rt_deliver_ip (entry rt_deliver_code). */
 static uint32_t deliver(uint8_t vector, uint16_t cs, uint16_t ip)
 {
     rt_r.sp = push_frame(cs, ip);
@@ -220,6 +223,7 @@ static uint32_t deliver(uint8_t vector, uint16_t cs, uint16_t ip)
     G_TF = 0;
     rt_deliver_ip = rd16(vector * 4);
     rt_deliver_cs = rd16(vector * 4 + 2);
+    rt_deliver_code = rt_lookup(rt_deliver_cs, rt_deliver_ip, 1);
     return (uint32_t)cs << 16 | ip;
 }
 
@@ -342,8 +346,27 @@ static void bios_tick(void)
     wr32(BIOS_TICKS, t);
 }
 
+/* G_IRQ and rt_irq_pending from what is left: cleared before the ring is
+ * read (a post in between raises both again); with IF = 0 nothing is taken,
+ * so G_IRQ waits for IF (S2). */
+static void irq_settle(void)
+{
+    volatile uint8_t *irq = &G_IRQ;
+    *irq = 0;
+    rt_irq_pending = 0;
+    if (irq_head != rt_irq_tail || bench_watching) {
+        rt_irq_pending = 1;
+        *irq = G_IF;
+    }
+    if (rt_present_due == 1) {      /* a vertical blank since rt_irq_c's check */
+        RT_RAISE_IRQ();
+    }
+}
+
 /* Posted interrupts in order until one runs a guest handler (returned as
- * rt_int_c does; the glue then polls again) or none is left. */
+ * rt_int_c does, the flags settled with its IF = 0: the handler's IRET
+ * re-arms G_IRQ when more are posted, and the glue polls again) or none is
+ * left. */
 uint32_t rt_irq_c(uint32_t d6, uint32_t ip)
 {
     uint16_t cs = (uint16_t)(d6 >> 16);
@@ -355,10 +378,14 @@ uint32_t rt_irq_c(uint32_t d6, uint32_t ip)
     }
     while (G_IF && irq_head != rt_irq_tail) {
         uint8_t irq = rt_irq_ring[irq_head++ % RT_IRQ_RING];
-        bench_post();
+        if (bench_due) {
+            bench_post();
+        }
         uint8_t vector = irq & 0x7f;
         if (guest_vector(vector)) {
-            return deliver(vector, cs, (uint16_t)ip);
+            uint32_t frame = deliver(vector, cs, (uint16_t)ip);
+            irq_settle();
+            return frame;
         }
         if (vector == 9) {
             rt_keyboard_irq();      /* BIOS INT 09h: the next keyboard event */
@@ -370,18 +397,7 @@ uint32_t rt_irq_c(uint32_t d6, uint32_t ip)
         }
         bios_tick();
     }
-    /* Cleared before the ring is read: a post in between raises both again.
-     * With IF = 0 nothing is taken, so G_IRQ waits for IF (S2). */
-    volatile uint8_t *irq = &G_IRQ;
-    *irq = 0;
-    rt_irq_pending = 0;
-    if (irq_head != rt_irq_tail || bench_watching) {
-        rt_irq_pending = 1;
-        *irq = G_IF;
-    }
-    if (rt_present_due == 1) {      /* a vertical blank since the check above */
-        RT_RAISE_IRQ();
-    }
+    irq_settle();
     return 0;
 }
 

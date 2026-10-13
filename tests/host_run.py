@@ -136,7 +136,11 @@ SABOTAGE = {
     "dac": "one DAC gun off at each DAC change",
     "vram": "graphics driver stores to video memory not marked (rt_vram_mark returns at once)",
     "far": "every dispatch row near-only (rt_dispatch_far must stop, R14e)",
+    "sp": "rt_irq delivers with the guest SP from before the frame (its SP reload dropped)",
 }
+# Plants a milestone other than --milestone exercises (the guest's first
+# hardware interrupt handler runs after m1b-logo).
+SABOTAGE_AT = {"sp": "m2-choose-side"}
 
 
 class MemFile:
@@ -198,6 +202,11 @@ class Host:
         e.write(self.syms["rt_present_due"], b"\1")  # a vertical blank is always due
         if sabotage == "vram":
             e.write(self.syms["rt_vram_mark"], b"\x4e\x75")  # rts
+        if sabotage == "sp":    # eori.w #$7fff,d4 after rt_irq_c -> nop; nop
+            a = self.syms["rt_irq"]
+            code = e.read(a, self.syms["rt_irq_back"] - a)
+            k = code.index(bytes.fromhex("0a447fff"))
+            e.write(a + k - 6, bytes.fromhex("4e71") * 5)     # move.w rt_r+8,d4 too
         if sabotage == "far":
             rows = int.from_bytes(e.read(self.syms["dispatch_count"], 4), "big")
             for k in range(rows):
@@ -744,7 +753,7 @@ def main(argv=None) -> int:
     if args.sabotage:
         missed = []
         for name, what in SABOTAGE.items():
-            problems = check(args.milestone, args.timeout, None, name)
+            problems = check(SABOTAGE_AT.get(name, args.milestone), args.timeout, None, name)
             print(f"sabotage {name:5} ({what}): {len(problems)} problems")
             if not problems:
                 missed.append(name)

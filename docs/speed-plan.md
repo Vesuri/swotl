@@ -28,15 +28,16 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   72,728–72,738 → 69,489–69,549 at R14;
   window 2.20M guest
   instructions, SPAZ 0.22%.
-- **Meter after R14** (m4, 49 frames; weights recalibrated at R11, §4):
-  218,711,478 model cycles (generated 167.0M, cell walk 49.2M, runtime
-  2.4M); 17,976,252 guest instructions, 12.03 model cycles each (generated
-  + walk); R14 (a–d, g, i) 219,650,503; R13 225,516,608; R11 238,748,828, 240,644,109 under the R1 weights; R1 292,676,869 under them
+- **Meter after R15** (m4, 49 frames; weights recalibrated at R11, §4):
+  218,511,344 model cycles (generated 167.0M, cell walk 49.2M, runtime
+  2.2M); 17,976,252 guest instructions, 12.03 model cycles each (generated
+  + walk); R14 218,711,478; R14 (a–d, g, i) 219,650,503; R13 225,516,608; R11 238,748,828, 240,644,109 under the R1 weights; R1 292,676,869 under them
   (275,119,407 under the first weights). Round 2 kept (first weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b
   −1.916%, R1d −1.231%; (R1 weights) R2 −1.029%, R3a −0.991%, R3b −0.188%,
   R4 −2.646%, R5 −2.036%, R6 −1.213%, R7 −9.037%; R8 0 (layout only:
   bench −0.30%); R9 −1.615%; R10 −0.299%; (R11 weights) R12 −5.207%, R13 −0.354%,
-  R14 (a–d, g, i) −2.600%, R14e −0.140% (runtime +0.007%), R14f −0.288%.
+  R14 (a–d, g, i) −2.600%, R14e −0.140% (runtime +0.007%), R14f −0.288%,
+  R15 −0.092%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -905,9 +906,41 @@ from the top while the meter finds a gain.
 - No further translator form (§2): the cell walk (7 instructions per mov
   cell with its match; R7b declined), poll points, `mulu`/`divu` themselves,
   string loops (R12), stack accesses.
-- After the translator items: interrupt delivery in the runtime (≈ 4.1% of
-  the capture, ≈ 2,500 cycles per delivered guest interrupt; runtime
-  surface, §2.2).
+
+### R15. Interrupt delivery (runtime)
+
+- Profile at `4d60900` (m4, 441 guest handler deliveries): runtime 2,446,108
+  model cycles in the window, two `rt_irq` round trips per delivery (the second
+  only cleared `G_IRQ`); per delivery `rt_irq_c` ≈ 297, `rt_lookup` ≈ 282,
+  `push_frame` 176, `deliver` ≈ 164, `save_regs`/`load_regs` ≈ 165,
+  `rt_flags_word` 148, `guest_vector` 128.
+- As built (runtime surface, §2.2; delivery order, poll points and the
+  PIT rate unchanged):
+  - `rt_irq_c` settles `G_IRQ` and `rt_irq_pending` after posting a
+    delivery, with the handler's IF = 0, so its IRET re-arms `G_IRQ` when
+    more are queued; a vertical blank seen after the check is raised
+    again. One round trip per delivery: `rt_irq` calls 882 → 441.
+  - `rt_irq` keeps only C's d0/d1/a1 around `rt_irq_c` and reloads SP
+    from `rt_r` (the frame it pushed); `save_regs` stays, so a stop's
+    register dump is current. `load_regs` calls 1,112 → 230.
+  - `deliver()` resolves the handler entry (`rt_lookup`, far) and
+    `deliver_guest` jumps to it, skipping `rt_dispatch_far`'s glue; the
+    near-only row check stays.
+- Kept: 218,711,478 → 218,511,344 (−0.092%): runtime −198,841 (≈ −451 per
+  delivery, −8.1% of runtime), generated −1,293 (40 fewer handler poll
+  stubs), static runtime +44 bytes. Host run m3: 1,105 interrupts
+  replayed; dead stack masked 544 → 488 bytes. Plant: `rt_irq` delivers
+  with the SP from before the frame (caught at m2-choose-side, the first
+  milestone with a guest hardware interrupt handler; `SABOTAGE_AT`).
+- Tried and reverted: a per-vector entry cache for `rt_lookup` (+≈ 10K:
+  the timer handler's row is an overlay row, so `find_row` still ran on
+  every delivery).
+- FS-UAE check (against `4d60900`, 2 bench runs each, interleaved):
+  frames 4–11 69,504–69,590 → 69,438–69,465 lines (−0.14%, ranges
+  apart), guest RAM at frame 12 equal in all four. Same sign as the
+  meter.
+- Not runtime delivery: the translator helpers `__set_flags` (POPF/IRET)
+  and `__flags_word`. CIA-B posting through Exec stays (takeover design).
 
 ## 8. User decisions (approved 2026-10-08)
 

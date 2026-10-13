@@ -35,6 +35,7 @@ G_DS	equ	1
 	xref	rt_entry_ip
 	xref	rt_deliver_cs
 	xref	rt_deliver_ip
+	xref	rt_deliver_code
 	xref	rt_int_c
 	xref	rt_irq_c
 	xref	rt_bios_int08_c
@@ -111,7 +112,8 @@ deliver_guest:	; d7 = CS << 16 | IP of the pushed frame; the handler's IRET pops
 	move.w	rt_deliver_cs,d6
 	moveq	#0,d7
 	move.w	rt_deliver_ip,d7
-	jsr	rt_dispatch_far
+	movea.l	rt_deliver_code,a0	; rt_lookup's far entry (deliver)
+	jsr	(a0)
 	cmp.w	2(a7),d7
 	bne	rt_ret_mismatch
 	cmp.w	(a7),d6
@@ -123,21 +125,30 @@ rt_exit_guest:
 ; Poll point with G_IRQ set (D8): d6 = CS << 16, d7 = IP of the loop head.
 ; Posted interrupts run in order: a guest handler on the frame C pushed, then
 ; the next; BIOS handlers in C.
+; rt_irq_c changes no guest register but SP (the frame it pushes) and no
+; segment, so only C's d0/d1/a1 are kept around it and SP reloaded (rt_r
+; stays current for a stop's register dump).
 rt_irq:
 	bsr	save_regs
+	movem.l	d0-d1/a1,-(a7)
 	move.l	d7,-(a7)
 	move.l	d6,-(a7)
 	jsr	rt_irq_c
 	addq.l	#8,a7
-	tst.l	d0
-	beq	deliver_or_return
+	movea.l	d0,a0
+	movem.l	(a7)+,d0-d1/a1
+	cmpa.w	#0,a0
+	beq.s	irq_done
+	move.w	rt_r+8,d4		; SP below the frame, mirrored
+	eori.w	#$7fff,d4
 	movem.l	d6-d7,-(a7)
-	bsr	deliver_or_return	; the guest handler, IRET checked
+	move.l	a0,d7
+	bsr	deliver_guest		; the guest handler, IRET checked
 rt_irq_back:				; back at the poll point (host run: next interrupt)
 	movem.l	(a7)+,d6-d7
 	tst.b	G_IRQ(a6)
 	bne.s	rt_irq			; more posted at this poll point
-	rts
+irq_done:	rts
 
 ; The BIOS INT 08h handler, reached by a guest handler chaining to the vector
 ; it replaced (jmp far): the tick, then IRET; d7/d6 = popped IP/CS for the
