@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Exercise production Input.cpp through its CIA vector and MMIO registers.
+
+The fake registers model hardware values, not Input::key/moveMouse calls.
+This is handler coverage, not emulator interrupt-routing or physical input
+validation. --sabotage proves the assertions catch decode and wrap faults.
+"""
+import argparse
+from pathlib import Path
+import subprocess
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[1]
+HEADERS = {
+    'Util.h': '#include <stdint.h>\n',
+    'proto/exec.h': '''#pragma once
+#include <stdint.h>
+struct Library {};
+struct Node { int ln_Type, ln_Pri; char *ln_Name; };
+struct Interrupt { Node is_Node; void *is_Data; void (*is_Code)(); };
+#define NT_INTERRUPT 2
+using CONST_STRPTR = const char *;
+void Disable(); void Enable();
+Library *OpenResource(CONST_STRPTR);
+''',
+    'proto/cia.h': '''#include <proto/exec.h>
+Interrupt *AddICRVector(Library *, int, Interrupt *);
+void RemICRVector(Library *, int, Interrupt *);
+''',
+    'exec/interrupts.h': '#include <proto/exec.h>\n',
+    'hardware/cia.h': '#define CIACRAF_SPMODE 0x40\n',
+    'resources/cia.h': '#define CIAANAME "ciaa.resource"\n#define CIAICRB_SP 3\n',
+    'runtime.h': '''#pragma once
+#include <stdint.h>
+#define RT_KEY_E0 0x100
+#define RT_KEY_RING 16
+#define RT_IRQ_RING 32
+extern uint16_t rt_key_ring[RT_KEY_RING];
+extern uint8_t rt_irq_ring[RT_IRQ_RING];
+extern unsigned rt_key_tail, rt_irq_tail, raises;
+#define RT_RAISE_IRQ() (++raises)
+''',
+    'platform.h': '',
+    'AmigaHardware.h': '''#pragma once
+#include <stdint.h>
+extern volatile uint8_t sdr, cra, pra;
+extern volatile uint16_t joy, pot, potgo;
+#define ciaasdrPointer (&sdr)
+#define ciaacraPointer (&cra)
+#define joy0datPointer (&joy)
+#define potinpPointer (&pot)
+#define potgoPointer (&potgo)
+class AmigaHardware {
+public:
+    static bool isLeftMouseButtonPressed() { return !(pra & 64); }
+    static bool isRightMouseButtonPressed() { return !(pot & 1024); }
+};
+''',
+}
+HARNESS = r'''
+#include <cassert>
+#include <cstdio>
+#include <proto/cia.h>
+#include "Input.h"
+#include "AmigaHardware.h"
+extern "C" {
+#include "runtime.h"
+uint32_t plat_mouse(int32_t *, int32_t *);
+uint16_t rt_key_ring[RT_KEY_RING];
+uint8_t rt_irq_ring[RT_IRQ_RING];
+unsigned rt_key_tail, rt_irq_tail, raises;
+}
+volatile uint8_t sdr, cra, pra = 255;
+volatile uint16_t joy, pot = 65535, potgo = 65535;
+static Library resource;
+static Interrupt oldHandler, *owner = &oldHandler;
+static int depth;
+void Disable() { ++depth; }
+void Enable() { assert(depth > 0); --depth; }
+Library *OpenResource(CONST_STRPTR) { return &resource; }
+Interrupt *AddICRVector(Library *, int bit, Interrupt *handler) {
+    assert(bit == 3);
+    if (owner) return owner;
+    owner = handler;
+    return nullptr;
+}
+void RemICRVector(Library *, int bit, Interrupt *handler) {
+    assert(bit == 3 && owner == handler);
+    owner = nullptr;
+}
+static void edge(unsigned wire, unsigned scan, unsigned irq) {
+    unsigned k = rt_key_tail, i = rt_irq_tail;
+    sdr = wire;
+    cra = 0x81;
+    reinterpret_cast<uint32_t (*)()>(owner->is_Code)();
+    assert(cra == 0x81 && depth == 0);
+    assert(rt_key_tail == k + 1 && rt_irq_tail == i + 1);
+    assert(rt_key_ring[k % RT_KEY_RING] == scan);
+    assert(rt_irq_ring[i % RT_IRQ_RING] == irq);
+}
+static void mouse(unsigned counters, unsigned buttons, int dx, int dy) {
+    joy = counters;
+    pra = buttons & 1 ? 0xbf : 0xff;
+    pot = 0xffff ^ ((buttons & 2 ? 1u : 0u) << 10)
+                 ^ ((buttons & 4 ? 1u : 0u) << 8);
+    Input::verticalBlank();
+    int32_t x, y;
+    assert(plat_mouse(&x, &y) == buttons);
+    assert(x == dx && y == dy && depth == 0);
+    assert(plat_mouse(&x, &y) == buttons && x == 0 && y == 0);
+}
+int main() {
+    joy = 0xfafa;
+    assert(Input::begin());
+    assert(owner && owner != &oldHandler && potgo == 0);
+    // Amiga serial wire bytes: inverted rotate-left raw code, including up.
+    // Return (44/C4), left arrow (4F/CF), shift (60/E0).
+    edge(0x77, 0x1c, 9); edge(0x76, 0x9c, 0x89);
+    edge(0x61, 0x14b, 9); edge(0x60, 0x1cb, 0x89);
+    edge(0x3f, 0x2a, 9); edge(0x3e, 0xaa, 0x89);
+    // Both wrap directions, then every combination of three hardware buttons.
+    mouse(0x0302, 0, 8, 9);
+    mouse(0xfcfe, 1, -4, -7);
+    for (unsigned b = 0; b < 8; ++b) mouse(0xfcfe, b, 0, 0);
+    // Pending motion accumulates until the guest consumes it.
+    joy = 0xfdff; Input::verticalBlank();
+    joy = 0x0002; Input::verticalBlank();
+    int32_t x, y;
+    assert(plat_mouse(&x, &y) == 7 && x == 4 && y == 4);
+    Input::end();
+    assert(owner == &oldHandler && depth == 0);
+    puts("Amiga input register paths: ok");
+}
+'''
+
+
+def run(source: str, expected_ok: bool) -> None:
+    (ROOT / 'tmp').mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='input-registers-', dir=ROOT / 'tmp') as name:
+        d = Path(name)
+        for path, text in HEADERS.items():
+            p = d / path
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text)
+        (d / 'Input.cpp').write_text(source)
+        (d / 'probe.cpp').write_text(HARNESS)
+        subprocess.run(['c++', '-std=c++17', '-O2', '-I', str(d), '-I',
+                        str(ROOT / 'src/platform/amiga'), str(d / 'Input.cpp'),
+                        str(d / 'probe.cpp'), '-o', str(d / 'probe')], check=True)
+        result = subprocess.run([str(d / 'probe')], capture_output=True, text=True)
+        assert (result.returncode == 0) == expected_ok, result.stdout + result.stderr
+        print(result.stdout.strip() if expected_ok else 'planted input fault caught')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--sabotage', action='store_true')
+    args = parser.parse_args()
+    source = (ROOT / 'src/platform/amiga/Input.cpp').read_text()
+    run(source, True)
+    if args.sabotage:
+        for old, new in [('(code >> 1) | (code << 7)', '(code << 1) | (code >> 7)'),
+                         ('(int8_t)(x - mouseCounterX)', '(int16_t)(x - mouseCounterX)'),
+                         ('isRightMouseButtonPressed() ? 2 : 0', 'isRightMouseButtonPressed() ? 4 : 0'),
+                         ('AddICRVector(ciaaBase, CIAICRB_SP, savedKeyboardInterrupt);', '(void)savedKeyboardInterrupt;')]:
+            assert source.count(old) == 1
+            run(source.replace(old, new), False)

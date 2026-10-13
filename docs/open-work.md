@@ -26,13 +26,6 @@ speed work: [speed-plan.md](speed-plan.md).
     from `annotations/tables.csv` that no reference executed are checked
     by the instruction differential only; find-first gives platform files
     no DOS time/date.
-14a. Display and takeover: the changed rows of each published frame are
-    converted into the shown bitmap (tears; no double buffer). A double
-    buffer must carry the other buffer's changed rows too (Vette: back
-    buffer inherits the previous update's rectangles). No readable-state
-    restore check after the takeover (L5, SL `restore_status`). Keyboard
-    and mouse input through the takeover are untested by any reference
-    (scripted input enters past the CIA and JOY0DAT reads).
 14b. Speed: [speed-plan.md](speed-plan.md) has no planned step (§1, §7).
     Frames fixture 19–19.5 fields against the ≤ 12 bar (§9). Next is the
     user's choice: a re-profile for new translator forms, or native

@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae host test-host test-host-all test-amiga amiga amiga-release smoke smoke-release size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae host test-host test-host-all test-amiga test-amiga-restore amiga amiga-release smoke smoke-release size clean
 
 PYTHON ?= python3
 # AmigaXDev's shared Python package (amigaxdev.dos.mz_info).
@@ -35,7 +35,7 @@ help:
 	@echo "  make test-host          run it from the MZ entry to milestones m1-m3 against the reference"
 	@echo "  make test-host-all      the same to every milestone, m1-m7, and coverage c6-c8 (~3-5 min)"
 	@echo "  make test-amiga         m1b-logo on the A1200 model (FS-UAE + GDB capture, amiga/milestone.gdb.in; AMIGA_CPU=68030)"
-	@echo "  make gates              the step gates: test, then test-sabotage, test-host-all and test-amiga + smoke at once (~8 min)"
+	@echo "  make gates              the step gates: test, sabotage, host milestones, Amiga, smoke and restoration"
 	@echo "  make amiga   build amiga/out/Swotl.exe"
 	@echo "  make amiga-release  build and verify separate stripped amiga/out/Swotl-release.exe"
 	@echo "  make smoke-release  boot the stripped executable under FS-UAE"
@@ -106,7 +106,7 @@ test-x86:
 	$(PYTHON) tests/x86_diff.py
 
 test-sabotage: host
-	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch
+	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue
 
 test-m68k:
 	$(PYTHON) tests/m68k_diff.py
@@ -123,11 +123,21 @@ JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc)
 RUN = @mkdir -p tmp/test; if $(2) > tmp/test/$(1).log 2>&1; then echo "ok    $(1)"; \
 	else echo "FAIL  $(1) (tmp/test/$(1).log)"; tail -n 15 tmp/test/$(1).log; exit 1; fi
 SHARDS = forms.0/4 forms.1/4 forms.2/4 forms.3/4 space.0/1 boundary.0/1 blocks.0/1
-TESTS = t-smc-flow t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
+TESTS = t-display-queue t-amiga-input t-smc-flow t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
 	t-blocks t-guards $(HOST_MILESTONES:%=t-host-%)
 
 test: host
 	@$(MAKE) -s -k -j$(JOBS) $(TESTS)
+
+t-display-queue:
+	$(call RUN,display-queue,$(PYTHON) tests/test_display_queue.py)
+t-sab-display-queue:
+	$(call RUN,sabotage-display-queue,$(PYTHON) tests/test_display_queue.py --sabotage)
+
+t-amiga-input:
+	$(call RUN,amiga-input,$(PYTHON) tests/test_amiga_input.py)
+t-sab-amiga-input:
+	$(call RUN,sabotage-amiga-input,$(PYTHON) tests/test_amiga_input.py --sabotage)
 
 t-sab-carry-entries:
 	$(call RUN,sabotage-carry-entries,$(PYTHON) tests/test_carry_entries.py --sabotage)
@@ -250,7 +260,11 @@ test-amiga: amiga host
 		-e "s|@OUT@|../$(AMIGA_CAPTURE)|" amiga/milestone.gdb.in > $(AMIGA_CAPTURE)/fixture.gdb
 	. amiga/env.sh && cd amiga && AMIGA_CPU=$(AMIGA_CPU) ./debug.sh "" "../$(AMIGA_CAPTURE)/fixture.gdb" 2>&1 | \
 		tee ../$(AMIGA_CAPTURE)/gdb.log | sed -n 's/^SWOTL_REGS //p' > ../$(AMIGA_CAPTURE)/regs.txt
+	grep -q '^SWOTL_MILESTONE_OK$$' $(AMIGA_CAPTURE)/gdb.log
 	$(PYTHON) tests/host_run.py --milestone $(AMIGA_MILESTONE) --amiga $(AMIGA_CAPTURE)
+
+test-amiga-restore: amiga
+	bash amiga/restore_check.sh
 
 amiga: gen-check
 	. amiga/env.sh && $(MAKE) -C amiga
@@ -269,7 +283,7 @@ smoke: amiga
 	. amiga/env.sh && amiga/debug.sh "" "$(CURDIR)/amiga/diag_smoke.gdb" | grep -q '^SWOTL_SMOKE_OK'
 
 # Step gates (docs/speed-plan.md §2): test first (it writes build/gen and the
-# host image), then the others at once, the two FS-UAE gates in turn. Each
+# host image), then the others at once, the FS-UAE gates in turn. Each
 # logs to tmp/gates/<gate>.log and prints its result and seconds.
 GATE = @mkdir -p tmp/gates; s=$$(date +%s); if $(MAKE) -s $(1) > tmp/gates/$(1).log 2>&1; \
 	then r=ok; else r=FAIL; fi; echo "$(1) $$r $$(( $$(date +%s) - s ))s"; [ $$r = ok ]
@@ -285,6 +299,7 @@ g-host-all:
 g-fsuae:
 	$(call GATE,test-amiga)
 	$(call GATE,smoke)
+	$(call GATE,test-amiga-restore)
 
 clean:
 	$(MAKE) -C amiga clean

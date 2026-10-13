@@ -7,6 +7,8 @@
 class Bitmap;
 class CopperList;
 struct View;
+struct DisplayState;
+struct plat_rect;
 
 // The Amiga application (docs/amiga-arch.md Lifecycle): everything that can
 // fail is opened before the takeover; then the machine is taken from the OS
@@ -29,7 +31,8 @@ public:
     void beginIO();
     void endIO();
 
-    uint32_t setPalette(const uint8_t* dac);
+    void setPalette(const uint8_t* dac);
+    void present(const uint8_t* frame, const struct plat_rect* rects, int32_t n);
 
     // The display and I/O windows (set by the constructor); the VERTB
     // handler's owner (set at the takeover).
@@ -39,12 +42,12 @@ public:
 private:
     void takeOver();
     void handBack();
+    uint16_t restoreStatus() const;
 
-    uint8_t* screenData;
-    uint32_t* copperData;
-    Bitmap* bitmap;
-    CopperList* copperList;
-    uint32_t paletteIndex;
+    uint16_t beginDisplayUpdate();
+    void finishDisplayUpdate(uint16_t back);
+    uint32_t buildPalette(uint16_t back);
+    DisplayState* display;
     struct View* oldActiView;
     uint32_t* oldCopperList;
     struct IntVector oldVerticalBlankVector;

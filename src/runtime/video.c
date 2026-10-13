@@ -89,7 +89,8 @@ uint16_t rt_vdrv_depth;          /* calls into the graphics driver in progress *
 static uint8_t published;        /* a driver call that changed rows has returned */
 volatile uint8_t rt_present_due;
 static struct plat_rect rects[200];
-static uint32_t frame[16000];      /* the presented rectangles in guest order */
+/* Persistent guest-order pixels, plus 32 bytes of Kalms C2P lookahead. */
+static uint32_t frame[16000 + 8];
 
 void rt_vram_stray(void)
 {

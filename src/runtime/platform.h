@@ -29,8 +29,9 @@ void plat_timer_rate(uint32_t divisor);
 /* Mouse counts since the last call (right and down positive) and the
  * buttons held (bit 0 left, 1 right, 2 middle). */
 uint32_t plat_mouse(int32_t *dx, int32_t *dy);
-/* Show rectangles of the 320x200 chunky frame (pixels, ends exclusive, x0
- * and x1 multiples of 32); the rest of the shown frame is unchanged. */
+/* Publish rectangles of the 320x200 chunky frame (pixels, ends exclusive, x0
+ * and x1 multiples of 32); the rest of the frame is unchanged. The platform
+ * may queue the completed image for its next safe display handoff. */
 struct plat_rect { uint16_t x0, y0, x1, y1; };
 void plat_present(const uint8_t *frame, const struct plat_rect *rects, int32_t n);
 /* The DAC changed (256 x 6-bit R, G, B). */

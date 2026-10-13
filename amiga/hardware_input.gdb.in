@@ -1,0 +1,100 @@
+# Expanded by hardware_input.sh: GDB resume commands must be top-level.
+# Requires a Lua-enabled Barto emulator, see docs/headless-fsuae.md.
+set pagination off
+set confirm off
+set $wire = 0
+break *rt_stop
+commands
+  silent
+  x/s *(char **)($sp+4)
+  detach
+  quit 1
+end
+break *amiga_script_mark
+commands
+  silent
+  printf "HARDWARE_INPUT_TIMEOUT wire=%u fields=%u tail=%u repeat=%u\n", $wire, amiga_frames, rt_key_tail, repeatKey
+  detach
+  quit 1
+end
+break *((char *)keyboardHandler + @SDR_OFFSET@)
+commands
+  silent
+  set $sdr = @SDR_REGISTER@ & 255
+  if $wire > 1 || ($wire == 0 && $sdr != 0x77) || ($wire == 1 && $sdr != 0x76)
+    printf "HARDWARE_INPUT_BAD_SERIAL wire=%u sdr=%x\n", $wire, $sdr
+    detach
+    quit 1
+  end
+  set $wire = $wire + 1
+  continue
+end
+break Input::key
+set $edge = 0
+# REPEAT 2
+  continue
+  set $tail = rt_key_tail
+  finish
+  set $scan = rt_key_ring[$tail % 16]
+  if rt_key_tail != (unsigned char)($tail+1) || $scan != (0x1c | ($edge*0x80)) || $wire != $edge+1
+    printf "HARDWARE_INPUT_BAD_SCAN edge=%u scan=%x\n", $edge, $scan
+    detach
+    quit 1
+  end
+  printf "HARDWARE_KEY edge=%u scan=%x\n", $edge, $scan
+  set $edge = $edge + 1
+# END REPEAT
+delete 4
+break *((char *)Input::verticalBlank + @JOY_OFFSET@)
+set $n = 0
+set $totalx = 0
+set $totaly = 0
+set $xwrap = 0
+set $ywrap = 0
+set $buttons_seen = 0
+set $previous_buttons = 0
+set $button_step = 0
+# REPEAT 120
+  continue
+  set $dx = mouseDX
+  set $dy = mouseDY
+  set $x = mouseCounterX
+  set $y = mouseCounterY
+  set $joy = @JOY_REGISTER@ & 65535
+  finish
+  set $mx = (signed char)((unsigned char)mouseCounterX - (unsigned char)$x)
+  set $my = (signed char)((unsigned char)mouseCounterY - (unsigned char)$y)
+  if mouseDX != $dx+$mx || mouseDY != $dy+$my || mouseCounterX != ($joy & 255) || mouseCounterY != ($joy >> 8)
+    printf "HARDWARE_INPUT_BAD_MOUSE\n"
+    detach
+    quit 1
+  end
+  if $mx > 0 && mouseCounterX < $x
+    set $xwrap = $xwrap + 1
+  end
+  if $my < 0 && mouseCounterY > $y
+    set $ywrap = $ywrap + 1
+  end
+  set $totalx = $totalx + $mx
+  set $totaly = $totaly + $my
+  if mouseButtons != $previous_buttons
+    set $expected_button = ($button_step == 0 ? 1 : ($button_step == 1 ? 2 : ($button_step == 2 ? 4 : 0)))
+    if $button_step >= 4 || mouseButtons != $expected_button
+      printf "HARDWARE_INPUT_BAD_BUTTON step=%u got=%u expected=%u\n", $button_step, mouseButtons, $expected_button
+      detach
+      quit 1
+    end
+    set $button_step = $button_step + 1
+    set $previous_buttons = mouseButtons
+  end
+  set $buttons_seen = $buttons_seen | (1 << mouseButtons)
+  set $n = $n + 1
+# END REPEAT
+if $wire != 2 || $totalx <= 0 || $totaly >= 0 || !$xwrap || !$ywrap || $button_step != 4 || ($buttons_seen & 23) != 23
+  printf "HARDWARE_INPUT_MISSING_EVENT wire=%u dx=%d dy=%d xwrap=%u ywrap=%u buttons=%x\n", $wire, $totalx, $totaly, $xwrap, $ywrap, $buttons_seen
+  detach
+  quit 1
+end
+printf "SWOTL_HARDWARE_INPUT_OK wire=%u dx=%d dy=%d xwrap=%u ywrap=%u buttons=%x\n", $wire, $totalx, $totaly, $xwrap, $ywrap, $buttons_seen
+detach
+quit 0

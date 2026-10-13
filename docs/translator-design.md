@@ -206,12 +206,16 @@ guarded copy; a profile choice, `tools/bp_regions.py`).
   find changes. Amiga (machine taken over, `Swotl.cpp`): an 8-plane copper
   display (framework `CopperList`/`Bitmap`), Kalms `c2p1x1_8_c5_bm` per
   rectangle (one call per full-width band, per row otherwise) into the
-  shown bitmap (`amiga_bitmap`), the copper's 24-bit palette MOVEs
-  rewritten per DAC change (`amiga_colours` keeps the LoadRGB32-layout
-  table). Checked by the host run (every byte the guest stores
-  to A0000h lies in the next present's rectangles; sabotage `vram`) and
-  `amiga/display_audit.gdb` + `tests/display_audit.py` (after a present the
-  shown bitplanes equal guest A0000h).
+  inactive bitmap. Both bitmaps retain dirty rows since their own last
+  conversion. A pending frame is withdrawn before reuse; updates can
+  coalesce without waiting before a guest poll. Each bitmap has a complete
+  copper list and palette. VERTB switches lists before input, only at beam
+  lines below 8; a late VBI defers the handoff. `amiga_bitmap` and
+  `amiga_colours` describe the handed-off frame. Checked by the host run
+  (every guest A0000h store lies in the next present's rectangles; sabotage
+  `vram`), `tests/test_display_queue.py` (inheritance and queue races), and
+  `amiga/display_audit.sh` (40 handoffs against published guest snapshots
+  and DAC, no conversion into the shown bitmap, zero late handoffs).
 - Interrupts (D8): poll points at loop heads (targets of backward branches,
   all block leaders, so live flags are in the state block): `tst.b G_IRQ(a6)`
   and `bne` to the poll's stub `X_irq`, placed after the next run that cannot

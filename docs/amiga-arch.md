@@ -67,25 +67,24 @@ own tick units (L18, L19). Shared state is guarded by `Disable`/`Enable` (L20).
 
 ## Display
 
-- **Mode.** SL's exact `setPlayfield` call and validation (L31, L32). Interleaved bitmap,
-  320-byte rows; DIW `$38..$ff`.
-- **Surfaces.** Translated drawing writes a chunky byte-per-pixel surface (or the
-  original's planar VGA layout where its formats require it, as SL's 4×64 KiB logical
-  store did); the platform alone converts to bitplanes. Chunky buffers carry 32 bytes of
-  C2P lookahead (L38).
-- **Conversion.** Kalms `c2p1x1_8_c5_bm` for full rows, `c2p16_interleaved` for 16-px
-  dirty rectangles, `BFINS` for sparse pixels (L38, L39); dirty regions reported by
-  painters, never by framebuffer diffing (L41).
-- **Buffering follows the original.** If the original flips VGA pages (CRTC start
-  address), use two Chip bitmaps and two copper lists with VT's VBI handoff (L27) and
-  back-buffer dirty inheritance (L42). If it draws into the shown page, use SL's single
-  buffer and display-end publication (L43). Either way the choice is measured against
-  Chip headroom (L46).
-- **Palette.** VGA DAC writes update a 768-byte shadow; the platform patches recorded
-  copper words at publication (L35–37).
-- **Publication timing.** Every bitplane-pointer, COP1LC and palette publication is
-  beam-stamped; a standing check requires zero late writes, also on `--cpu=68040`
-  (L26, L29).
+- **Mode.** 320×200, eight non-interleaved planes, 40-byte rows; the framework
+  programs AGA wide fetches and DIW `$38..$ff`. Plane allocations are 8-byte aligned.
+- **Surfaces.** Translated drawing writes guest VGA memory. The runtime snapshots
+  published dirty rectangles into persistent chunky storage with 32 bytes of C2P
+  lookahead; the platform alone converts to bitplanes.
+- **Conversion.** Kalms `c2p1x1_8_c5_bm`: full-width bands in one call, narrower
+  rectangles row by row. Dirty bounds originate in guest painter stores, never
+  framebuffer comparisons.
+- **Buffering.** Two Chip bitmaps and two complete copper lists. Each bitmap retains
+  dirty rows until its own conversion, including updates superseded before a VBI.
+  Main withdraws the pending list before writing its bitmap; VERTB publishes only
+  completed lists. No wait is added before guest interrupt polling.
+- **Palette.** DAC changes rebuild the inactive list's palette and carry forward
+  its dirty pixels, including palette-only updates. The list and bitmap are handed
+  off together; live copper words are never patched.
+- **Publication timing.** Queued handoffs are beam-stamped and deferred if VERTB
+  arrives too late. `amiga/display_audit.sh` requires zero late switches, also on
+  `AMIGA_CPU=68040` (L26, L29).
 - **Copper lists.** Fully written up to the terminator (no NOP prefill in this lineage,
   L22); one owner per write-only register (L30).
 
@@ -131,8 +130,8 @@ audit, `elf2hunk -s` for release (L94, L96–105). Exact flags: [toolchain.md](t
 
 | Check | Proves | Source |
 | --- | --- | --- |
-| Restore status | OS view, vector, DMA and INTENA restored | SL `make amiga-restore-check` |
-| Beam watch | zero publications inside the display window | RV/VT `amiga/beam_watch.gdb` |
+| Restore status | OS view, vector, DMA and INTENA restored | `make test-amiga-restore` |
+| Beam watch | zero late display handoffs; no conversion into the shown bitmap | `amiga/display_audit.sh` |
 | Audio VBI spills | Paula work stays in blanking | SL `g_slicks_audio_vbi_spills` |
 | C2P store verifier | converters write only final, correct plane words | SL `tools/verify_planar_writes.sh` |
 | Allocation audit | zero outstanding blocks, repeat launch, low-Chip failure | SL `tools/memory_audit.py` |

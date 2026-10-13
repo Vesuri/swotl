@@ -1,0 +1,106 @@
+--- a/src/luascript.cpp
++++ b/src/luascript.cpp
+@@ -9,7 +9,10 @@
+ #include "sysconfig.h"
+ #include "sysdeps.h"
+ 
++extern "C" {
+ #include <lualib.h>
++#include <lauxlib.h>
++}
+ 
+ #include "options.h"
+ #include "savestate.h"
+--- a/src/fsuae/fsuae-luascript.c
++++ b/src/fsuae/fsuae-luascript.c
+@@ -39,6 +39,8 @@
+ {
+     int input_event = luaL_checkint(L, -2);
+     int state = luaL_checkint(L, -1);
++    (void)input_event;
++    (void)state;
+     /*
+         fs_uae_process_input_event(input_event, state);
+     */
+--- a/src/fsuae/fsuae-main.c
++++ b/src/fsuae/fsuae-main.c
+@@ -2094,8 +2094,10 @@
+ 
+ #ifdef WITH_LUA
+     amiga_init_lua(fs_emu_acquire_lua, fs_emu_release_lua);
+-    amiga_init_lua_state(fs_emu_get_lua_state());
+-    fs_uae_init_lua_state(fs_emu_get_lua_state());
++    if (fs_emu_get_lua_state()) {
++        amiga_init_lua_state(fs_emu_get_lua_state());
++        fs_uae_init_lua_state(fs_emu_get_lua_state());
++    }
+ #endif
+ 
+     // FS_EMU_VIDEO_FORMAT_BGRA
+--- a/configure.ac
++++ b/configure.ac
+@@ -831,7 +831,7 @@
+ 
+ OPT_FEATURE([USE_JIT_FPU], [jit_fpu], [jit-fpu],
+             [JIT compilation of FPU instructions])
+-DIS_FEATURE([WITH_LUA], [lua], [lua],
++OPT_FEATURE([WITH_LUA], [lua], [lua],
+             [LUA scripting (unfinished)])
+ OPT_FEATURE([WITH_NETPLAY], [netplay], [netplay],
+             [netplay support])
+--- a/src/od-fs/include/uae/uae.h
++++ b/src/od-fs/include/uae/uae.h
+@@ -27,8 +27,7 @@
+ void amiga_on_save_state_finished(uae_callback_function *function);
+ void amiga_on_restore_state_finished(uae_callback_function *function);
+ 
+-/* #ifdef WITH_LUA */
+-#if 0
++#ifdef WITH_LUA
+ #include <lauxlib.h>
+ void amiga_init_lua(void (*lock)(void), void (*unlock)(void));
+ void amiga_init_lua_state(lua_State *L);
+--- a/src/cfgfile.cpp
++++ b/src/cfgfile.cpp
+@@ -3538,6 +3538,8 @@
+ 
+ 	if (!_tcsicmp (option, _T("lua"))) {
+ 		for (i = 0; i < MAX_LUA_STATES; i++) {
++			if (!_tcscmp(p->luafiles[i], value))
++				return 1;
+ 			if (!p->luafiles[i][0]) {
+ 				_tcscpy (p->luafiles[i], value);
+ 				break;
+--- a/src/barto_gdbserver.h
++++ b/src/barto_gdbserver.h
+@@ -2,6 +2,7 @@
+ 
+ namespace barto_gdbserver {
+ 	bool init();
++	bool has_client();
+ 	void close();
+ 	void vsync();
+ 	void vsync_pre();
+--- a/src/barto_gdbserver.cpp
++++ b/src/barto_gdbserver.cpp
+@@ -236,6 +236,7 @@
+ 	std::thread connect_thread;
+ 	SOCKET gdbsocket{ INVALID_SOCKET };
+ 	SOCKET gdbconn{ INVALID_SOCKET };
++	bool has_client() { return gdbconn != INVALID_SOCKET; }
+ 	char socketaddr[sizeof SOCKADDR_INET];
+ 	bool useAck{ true };
+ 	uint32_t baseText{};
+--- a/src/debug.cpp
++++ b/src/debug.cpp
+@@ -138,7 +138,9 @@
+ 	processname = NULL;
+ 	debugmem_enable();
+ 	debug_pc = 0xffffffff;
+-	keybuf_ignore_next_release();
++	// Remote breakpoints have no debugger hotkey release to discard.
++	if (!barto_gdbserver::has_client())
++		keybuf_ignore_next_release();
+ }
+ 
+ void activate_debugger (void)
