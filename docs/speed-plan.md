@@ -26,14 +26,14 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   74,096 lines at R8, 72,773 → 72,506 at R10 (R9 control; means of 3);
   window 2.20M guest
   instructions, SPAZ 0.22%.
-- **Meter after R12** (m4, 49 frames; weights recalibrated at R11, §4):
-  226,316,665 model cycles (generated 174.6M, cell walk 49.2M, runtime
-  2.4M); 17,976,252 guest instructions, 12.45 model cycles each (generated
+- **Meter after R13** (m4, 49 frames; weights recalibrated at R11, §4):
+  225,516,608 model cycles (generated 173.8M, cell walk 49.2M, runtime
+  2.4M); 17,976,252 guest instructions, 12.41 model cycles each (generated
   + walk); R11 238,748,828, 240,644,109 under the R1 weights; R1 292,676,869 under them
   (275,119,407 under the first weights). Round 2 kept (first weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b
   −1.916%, R1d −1.231%; (R1 weights) R2 −1.029%, R3a −0.991%, R3b −0.188%,
   R4 −2.646%, R5 −2.036%, R6 −1.213%, R7 −9.037%; R8 0 (layout only:
-  bench −0.30%); R9 −1.615%; R10 −0.299%; (R11 weights) R12 −5.207%.
+  bench −0.30%); R9 −1.615%; R10 −0.299%; (R11 weights) R12 −5.207%, R13 −0.354%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -728,10 +728,7 @@ from the top while the meter finds a gain.
   20, 20 fields (intervals 28, 20, 27, 20, 20, 20, 23, 20), sums 177–178;
   R9 20.5, 20.5, 20.5, sums 179. 400 ms per drawn frame; R8 gave 21.5–24.
 - Next by the re-price (round 3, one step each, priced here before coding):
-  - R12 (below).
-  - Index formation in d7 (4.04%: `move.w #7FFFh−d,d7`, `sub.w Rn,d7`
-    before `(d,aS,d7.w)`): reuse of a formed index within a block while
-    Rn and the segment are unchanged; price by census first.
+  - R12, R13 (below).
   - Poll points (3.52%) and stack accesses (3.8%) have no exact cheaper
     form under §2 (`(a6)` is guest byte 0; no thinning).
 
@@ -767,6 +764,31 @@ from the top while the meter finds a gain.
   the walk −2.49%, −2.48% (with it +17.9%: the walk label's cycles per
   execution follow the cells each call runs, 1,461 → 2,852 in these
   windows). Frames 4–11 sums 176, 176 → 178, 178 (trajectory, §5.1).
+
+### R13. Index and segment base reuse
+
+- Price (census of `5eb35ed` over the meter's label executions, m4):
+  index formations in d7 (`move.w #7FFFh−d,d7` + `sub.w Rn,d7`; mirrored
+  `move.w d5,d7` + `sub(q).w #d,d7`) run 13.1M bytes; 287K of them
+  (2.2%, 867 sites) form the value d7 already holds (no write to d7 or Rn,
+  no label, call or block leader between). `lea …(a6),a0` segment bases
+  (CS, the code segment's constant base) run 1.04M bytes, 295K repeated
+  (105 sites). Dropping the repeats: ≤ −0.24%.
+  - Not taken: the same Rn with another displacement folded into the
+    access's d8 (13.4% of the bytes, ≤ −0.71% before guards): exact only
+    under a no-wrap guard (R6-style copies).
+- Kept: −0.354% (−800,057 model cycles, all generated code: bytes −1.93M,
+  loop bytes +1.04M (loops shrink into the 256-byte window), taken −18K,
+  −177K instructions, reads and writes ±0), static code −8,868 bytes.
+  Top forms: `mov m8[di], imm` −369K (the walk setup's planted `ret`),
+  `mov r16, m16[disp]` −105K. The census finds no repeat left.
+  `translator/reuse.py`; run fences: leaders and region guards.
+- Coverage: 13 block sequences (a repeated [di], [bx+2], [bp+4], CS:[di];
+  the index register changed between by INC, MOV, LODSB, XCHG, MOV BP,SP,
+  PUSH, the access's own destination; CS, DS, CS) at offsets 0, 1, 7FFFh,
+  8000h, FFFEh, FFFFh and random: 312 boundary cases.
+- Plants: a held value survives register writes (2,517 of 65,647), survives
+  a block leader (program blocks, 26 of 9,865).
 
 ## 8. User decisions (approved 2026-10-08)
 

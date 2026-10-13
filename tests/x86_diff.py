@@ -480,6 +480,7 @@ def boundary(h: Harness) -> None:
     muldiv_source_cases(h)
     flags_word_cases(h)
     string_pair_cases(h)
+    index_reuse_cases(h)
 
 
 def address_guard_cases(h):
@@ -1241,6 +1242,35 @@ def string_pair_cases(h):
                                   "flags": {"DF": 0},
                                   "mem": [(0x60000 + off, b"\x41" * 2 * cx),
                                           (0x50300, bytes(mem))]})
+
+
+def index_reuse_cases(h):
+    """R13: a repeated [di]/[si]/[bx+d]/[bp+d] index and CS base in one block,
+    and the same with the index register changed between (INC, MOV, LODSB,
+    XCHG, the access's own destination, MOV BP,SP), at offsets 0, 1, 7FFFh,
+    8000h, FFFEh, FFFFh and random."""
+    seqs = (("8a05", "8825"),                  # mov al,[di]; mov [di],ah
+            ("8a05", "47", "8805"),            # ... inc di ...
+            ("8a05", "8bf8", "8825"),          # ... mov di,ax ...
+            ("8b4702", "034702"),              # mov ax,[bx+2]; add ax,[bx+2]
+            ("8b4702", "8bd8", "8b4f02"),      # ... mov bx,ax; mov cx,[bx+2]
+            ("8b1f", "8b07"),                  # mov bx,[bx]; mov ax,[bx]
+            ("2e8a05", "2ec605c3"),            # mov al,cs:[di]; mov byte cs:[di],0xc3
+            ("2e8a05", "8825", "2e8a0d"),      # cs, ds, cs again
+            ("8a04", "ac", "8a24"),            # mov al,[si]; lodsb; mov ah,[si]
+            ("8a05", "87f7", "8a25"),          # mov al,[di]; xchg si,di; mov ah,[di]
+            ("8b4604", "8b5604"),              # mov ax,[bp+4]; mov dx,[bp+4]
+            ("8b4604", "8bec", "8b5604"),      # ... mov bp,sp ...
+            ("8b4604", "50", "8b5604"))        # ... push ax ...
+    edges = (0, 1, 0x7FFF, 0x8000, 0xFFFE, 0xFFFF)
+    for seq in seqs:
+        code = b"".join(bytes.fromhex(x) for x in seq)
+        for v in edges + (None,) * 6:
+            for _ in range(2):
+                r = h.rng.randrange(0x10000) if v is None else v
+                h.case(code, "b:index-reuse", n=len(seq), block=True,
+                       overrides={"regs": {"di": r, "si": r ^ 0x5555, "bx": r, "bp": r,
+                                           "ax": h.rng.randrange(0x10000)}, "ip": 0x3000})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

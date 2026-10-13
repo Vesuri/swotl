@@ -542,8 +542,11 @@ class Program:
         leaders = {k for k, o in enumerate(run) if (mod, o) in self.leaders}
         ctx = ((lambda k: self.ctx(mod, run[k], stats)) if comp is None
                else (lambda k: self.copy_ctx(mod, run[k], stats, comp)))
+        fences = {k + 1 for k, o in enumerate(run)
+                  if (comp is None and (mod, o) in self.guard_at)
+                  or (comp is not None and u.insns[o].op in region.REGUARD)}
         try:
-            lws = plan(insns, lives, leaders, ctx, program=True)
+            lws = plan(insns, lives, leaders, ctx, program=True, fences=fences)
         except LowerError as e:
             raise LowerError(f"{mod}+{run[0]:05X} run: {e}") from None
         lab = label if comp is None else copy_label

@@ -40,8 +40,8 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     takeover are untested by any reference (scripted input enters past the
     CIA and JOY0DAT reads).
 14b. Speed: [speed-plan.md](speed-plan.md) round 2 done (R11 re-profile);
-    round 3: R12 kept (string loops by longs); next by R11's re-price:
-    index formation in d7 (census first); R7b not built, §10; rerun
+    round 3: R12, R13 kept; R11's re-price has no further step
+    (re-profile next, §7 R11); R7b not built, §10; rerun
     `tools/align_targets.py` when the code changes;
     `tools/profile_report.py` roles still match the old poll point and
     state block forms;
@@ -50,12 +50,12 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     Fast; run medians 24.5–28.5 fields at `781975e` (trajectory noise);
     frames fixture medians 24 fields at R1d (25 before R1), 22.5–23 at R6,
     21.5–24 at R8, 20 at R10 (R9 20.5);
-    meter 226,316,665 model cycles (weights recalibrated at R11; it
-    underrates removed instructions, §4), static generated code 1,170,202
+    meter 225,516,608 model cycles (weights recalibrated at R11; it
+    underrates removed instructions, §4), static generated code 1,161,334
     bytes. User
     decisions D0–D4 approved (meter acceptance, memory model v2 with harness
     conversion, R6 growth, cell cache, frame bench). Meter and frame bench in
-    place (§4); kept: T8 −0.24%, T7 −0.005%, R1a −0.0001%, R1b −1.92%, R1d −1.23%, R2 −1.03%, R3a −0.99%, R3b −0.19%, R4 −2.65%, R5 −2.04%, R6 −1.21%, R7 −9.04%, R8 bench −0.30% (meter 0), R9 −1.62%, R10 −0.30%, R12 −5.21%. Projection ≈ 16–18 fields;
+    place (§4); kept: T8 −0.24%, T7 −0.005%, R1a −0.0001%, R1b −1.92%, R1d −1.23%, R2 −1.03%, R3a −0.99%, R3b −0.19%, R4 −2.65%, R5 −2.04%, R6 −1.21%, R7 −9.04%, R8 bench −0.30% (meter 0), R9 −1.62%, R10 −0.30%, R12 −5.21%, R13 −0.35%. Projection ≈ 16–18 fields;
     native work needs per-routine authorization.
 14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`
     `Harness`: each byte drew from a fresh generator with the same seed).

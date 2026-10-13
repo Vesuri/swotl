@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 
-from . import reglive
+from . import reglive, reuse
 from .decode import Reg
 from .ir import STATUS
 from .lower import (CCR_OK, GREG, HALF, MIRROR, SZ, Ctx, LowerError, Lowering, fuse_reader,
@@ -97,10 +97,11 @@ def carry_ccr(lines, ccr: set, res, nz: set):
     return ccr, res
 
 
-def plan(insns, lives, leaders, ctx_for, program: bool = False) -> list[Lowering]:
+def plan(insns, lives, leaders, ctx_for, program: bool = False, fences=()) -> list[Lowering]:
     """Lower a run of instructions in fall-through order. `lives[k]`: live-out of
     insns[k]; `leaders`: indices that other control flow reaches; `ctx_for(k)`: a
-    fresh Ctx for insns[k]."""
+    fresh Ctx for insns[k]; `fences`: indices with other code placed before them
+    (region guards), where no register value carries over (reuse, R13)."""
     contexts = [ctx_for(k) for k in range(len(insns))]
     dead_dx = reglive.dead_dx(insns, leaders, contexts)
     original_ctx_for = ctx_for
@@ -206,4 +207,7 @@ def plan(insns, lives, leaders, ctx_for, program: bool = False) -> list[Lowering
         ccr_in = lw.ccr
         x_in = lw.cf_result and lw.x_cf
         out.append(lw)
+    if out:
+        out[0].stats["index reused"] += reuse.reuse([lw.out for lw in out],
+                                                    set(leaders) | set(fences))
     return out

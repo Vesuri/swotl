@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import m68k_blocks as B  # noqa: E402
 import m68k_diff as D  # noqa: E402
-from translator import emit as E, flags as F, lower as L, region as R, smc as S  # noqa: E402
+from translator import emit as E, flags as F, lower as L, region as R, reuse as U, smc as S  # noqa: E402
 
 real_run = L.Lowering.run
 real_helpers = D.HELPERS
@@ -31,6 +31,8 @@ real_carry_ccr = F.carry_ccr
 real_flags_dead = L.Lowering.flags_dead
 real_walk = S.walk
 real_muldiv_source = L.Lowering.muldiv_source
+real_written = U.written
+real_reuse = U.reuse
 RECORD = Path(__file__).resolve().parent.parent / "tmp/test/x86-side-boundary.pkl"
 
 
@@ -416,6 +418,8 @@ SABOTAGE = [
     ("pair loop skips the odd element", pair_odd_dropped, "boundary"),
     ("pair store writes AX in one word", pair_half_store, "boundary"),
     ("pair count keeps the even part", sub(r"^\tandi\.w #1,d7$", "\tnop"), "boundary"),
+    ("held index survives register writes", "reuse writes", "boundary"),
+    ("held index survives a block leader", "reuse leaders", "program"),
     ("parity table one entry off", ("helpers", "__parity(pc,", "__parity+1(pc,"), "boundary"),
     ("CCR-to-FLAGS table one entry off", ("helpers", "__ccr_flags(pc,", "__ccr_flags+2(pc,"),
      "boundary"),
@@ -440,6 +444,10 @@ def plant(k: int) -> tuple[int, int, int, int]:
         E.mismatch_stub = lambda lab: [f"{lab}:"]
     elif fn == "bp range":  # region.bp_range (R6)
         R.bp_range = wide_bp_range
+    elif fn == "reuse writes":      # reuse.written (R13)
+        U.written = lambda line: None if real_written(line) is None else set()
+    elif fn == "reuse leaders":     # reuse.reuse (R13)
+        U.reuse = lambda outs, resets: real_reuse(outs, set())
     elif fn == "divide source":     # Lowering.muldiv_source (R9)
         L.Lowering.muldiv_source = lambda self, o, div: real_muldiv_source(self, o, False)
     elif corpus == "walk":  # smc.walk (R7)
@@ -472,6 +480,8 @@ def plant(k: int) -> tuple[int, int, int, int]:
         F.carry_ccr = real_carry_ccr
         L.Lowering.flags_dead = real_flags_dead
         L.Lowering.muldiv_source = real_muldiv_source
+        U.written = real_written
+        U.reuse = real_reuse
 
 
 def slow_first(k: int) -> tuple:
