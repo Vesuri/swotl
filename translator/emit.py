@@ -4,8 +4,11 @@ module (Motorola syntax, vasm). Generated text is G1-guarded like the IR listing
 Successors: fall-through (a PLINK manager call returns 2 bytes later), direct
 near/far targets (cfg), statically resolved switch tables; a `ret`/`retf`
 continues at the return sites of the calls whose targets reach it without
-crossing a call (native rts; a mismatch stops; calls through the dispatcher
-return from any ret a seed reaches; a ret no call target reaches falls back
+crossing a call (native rts; a mismatch stops; a call through the dispatcher
+returns from any ret reached by a row it may dispatch to: one of its own CS
+for a near call, a far row for a far one (R14e: rt_dispatch_far stops at a
+row only indirect near jmp/call sites target), and on through the rows those
+leave to; a ret no call target reaches falls back
 to every return site), an
 unresolved indirect transfer at some row of the runtime dispatch table (the
 cfg seeds: MZ entry, PLINK thunks, runtime.csv, indirect.csv targets; any
@@ -201,8 +204,12 @@ class Program:
         self.seeds = {(n, off) for n, u in self.units.items() for off in u.seeds}
         self.entries: set = set(self.seeds)
         # run-time dispatch table rows: the static seeds (cfg.seeds)
-        self.dispatch = {(m, o) for m, o, _ in cfg.seeds(image.load())
-                         if m in self.units and o in self.units[m].insns}
+        seeds = [(m, o, why) for m, o, why in cfg.seeds(image.load())
+                 if m in self.units and o in self.units[m].insns]
+        self.dispatch = {(m, o) for m, o, _ in seeds}
+        # R14e: rows a far transfer may enter: every seed but those that are only
+        # targets of indirect near jmp/call sites (rt_dispatch_far stops at the rest)
+        self.far_rows = {(m, o) for m, o, why in seeds if not self.near_only(why)}
         # PUSHF ... POPF pairs that only save and restore FLAGS (annotations/flags.csv):
         # the save reads what is live after the restore.
         self.saves = {(r["module"], int(r["save"], 16)): (r["module"], int(r["restore"], 16))
@@ -231,6 +238,14 @@ class Program:
         self.components(components)
 
     # -- graph ----------------------------------------------------------------
+    def near_only(self, why: str) -> bool:
+        kind, _, site = why.partition(" ")
+        if kind not in ("switch", "traced"):
+            return False
+        mod, _, off = site.partition("+")
+        i = self.units[mod].insns.get(int(off, 16)) if mod in self.units else None
+        return bool(i) and i.op in ("jmp", "call")
+
     def node_insn(self, n):
         return self.units[n[0]].insns.get(n[1])
 
@@ -286,12 +301,13 @@ class Program:
         self.entries.update(sw + tr)
         return list(sw) if sw else [UNKNOWN]
 
-    def reach(self, t, cache: dict) -> tuple[set, bool]:
+    def reach(self, t, cache: dict) -> tuple[set, set]:
         """rets reachable from entry t without entering a call (a call continues at
-        its return site), and whether an unresolved transfer leaves the walk."""
+        its return site), and the dispatch keys (dispatch_key) of the unresolved
+        transfers that leave the walk."""
         if t in cache:
             return cache[t]
-        seen, stack, rets, escapes = {t}, [t], set(), False
+        seen, stack, rets, escapes = {t}, [t], set(), set()
         call_site = self.call_site
         while stack:
             n = stack.pop()
@@ -305,35 +321,59 @@ class Program:
                 if x == self.int0 and self.node_insn(n).op in ("div", "idiv", "aam"):
                     continue
                 if x == UNKNOWN:
-                    escapes = True
+                    escapes.add(self.dispatch_key(n))
                 elif x not in (RET, SMC) and x not in seen and x in self.succ:
                     seen.add(x)
                     stack.append(x)
         cache[t] = (rets, escapes)
         return cache[t]
 
+    def dispatch_key(self, n) -> int | None:
+        """The rows an unresolved transfer at n may reach through the runtime
+        table: a near one looks up its own CS (the link CS), a far one any far
+        row (None)."""
+        return None if self.node_insn(n).op in ("jmpf", "callf") else self.units[n[0]].cs[n[1]]
+
     def returns(self) -> None:
         """ret node -> the return sites it can continue at."""
         self.call_site = {c: site for c, site, _ in self.calls}
         cache: dict = {}
         ret_of: dict = {}
-        dynamic = set()  # return sites of calls that may run any dispatch-table entry
+        # R14e: return sites of calls that may run dispatch-table entries, by the
+        # entries' link CS (None: the far rows); an entry that leaves through the
+        # table passes its sites on to the entries it may reach
+        seeds = [e for e in self.dispatch if e in self.succ]
+        by_cs: dict = {}
+        for e in seeds:
+            by_cs.setdefault(self.units[e[0]].cs[e[1]], []).append(e)
+        far = [e for e in seeds if e in self.far_rows]
+
+        def rows(keys):
+            out = far if None in keys else []
+            return out + [e for k in keys if k is not None for e in by_cs.get(k, ())]
+
+        sites_of = {e: set() for e in seeds}
         for c, site, targets in self.calls:
             for t in targets:
-                if t == UNKNOWN:
-                    dynamic.add(site)
-                    continue
                 if t == SMC:
                     continue
-                rets, escapes = self.reach(t, cache)
-                for r in rets:
-                    ret_of.setdefault(r, set()).add(site)
-                if escapes:
-                    dynamic.add(site)
-        for e in self.dispatch:
-            if e in self.succ:
-                for r in self.reach(e, cache)[0]:
-                    ret_of.setdefault(r, set()).update(dynamic)
+                keys = {self.dispatch_key(c)} if t == UNKNOWN else self.reach(t, cache)[1]
+                if t != UNKNOWN:
+                    for r in self.reach(t, cache)[0]:
+                        ret_of.setdefault(r, set()).add(site)
+                for e in rows(keys):
+                    sites_of[e].add(site)
+        changed = True
+        while changed:
+            changed = False
+            for e in seeds:
+                for e2 in rows(self.reach(e, cache)[1]):
+                    if not sites_of[e] <= sites_of[e2]:
+                        sites_of[e2] |= sites_of[e]
+                        changed = True
+        for e in seeds:
+            for r in self.reach(e, cache)[0]:
+                ret_of.setdefault(r, set()).update(sites_of[e])
         every = frozenset(self.ret_sites)
         self.ret_fallback = 0
         for n in self.succ:
@@ -433,16 +473,17 @@ class Program:
         return next(((lo, hi) for m, lo, hi in self.smc_forms if m == mod and lo <= off <= hi),
                     None)
 
-    def dispatch_rows(self) -> list[tuple[int, int, int, str]]:
-        """Run-time dispatch table: (link CS, IP, overlay id (root 0), label) of every
-        decoded entry, sorted by CS:IP. Overlays sharing an area share CS:IP, so the
-        runtime picks the row whose overlay is resident."""
+    def dispatch_rows(self) -> list[tuple[int, int, int, int, str]]:
+        """Run-time dispatch table: (link CS, IP, overlay id (root 0), far (R14e),
+        label) of every decoded entry, sorted by CS:IP. Overlays sharing an area share
+        CS:IP, so the runtime picks the row whose overlay is resident."""
         out = []
         for mod, off in self.dispatch:
             u = self.units.get(mod)
             if not u or off not in u.insns:
                 continue
-            out.append((u.cs[off], u.ip_of(off), u.module.index + 1, label(mod, off)))
+            out.append((u.cs[off], u.ip_of(off), u.module.index + 1,
+                        int((mod, off) in self.far_rows), label(mod, off)))
         return sorted(out)
 
     def program_text(self, files: list[str]) -> str:
@@ -456,8 +497,8 @@ class Program:
         lines += ["\tcnop\t0,4", "load_segment:\tdc.l\tLOADSEG",
                   f"overlay_table:\tdc.l\t{hx(M.OVL_TABLE)}\t; PLINK records, id 1 first (root offset)",
                   "dispatch_count:", f"\tdc.l\t{len(rows)}", "dispatch_table:"]
-        lines += [f"\tdc.w\t{cs_expr(cs)},{hx(ip)},{oid},0\n\tdc.l\t{lab}"
-                  for cs, ip, oid, lab in rows]
+        lines += [f"\tdc.w\t{cs_expr(cs)},{hx(ip)},{oid},{far}\n\tdc.l\t{lab}"
+                  for cs, ip, oid, far, lab in rows]
         return "\n".join(lines) + "\n"
 
     def ctx(self, mod: str, off: int, stats: Counter) -> Ctx:

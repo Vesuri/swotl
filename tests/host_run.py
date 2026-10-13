@@ -135,6 +135,7 @@ SABOTAGE = {
     "psp": "one command-tail byte of the PSP changed at the guest entry",
     "dac": "one DAC gun off at each DAC change",
     "vram": "graphics driver stores to video memory not marked (rt_vram_mark returns at once)",
+    "far": "every dispatch row near-only (rt_dispatch_far must stop, R14e)",
 }
 
 
@@ -197,6 +198,10 @@ class Host:
         e.write(self.syms["rt_present_due"], b"\1")  # a vertical blank is always due
         if sabotage == "vram":
             e.write(self.syms["rt_vram_mark"], b"\x4e\x75")  # rts
+        if sabotage == "far":
+            rows = int.from_bytes(e.read(self.syms["dispatch_count"], 4), "big")
+            for k in range(rows):
+                e.write(self.syms["dispatch_table"] + 12 * k + 6, b"\0\0")
 
         @U.MEM_CB
         def vram(h, kind, addr, size, value, user):  # the frame exists in mode 13h only

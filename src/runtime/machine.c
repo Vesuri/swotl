@@ -427,7 +427,7 @@ static struct {
     uint32_t key, row1;     /* row1 = row + 1, 0 = empty */
 } lookup_cache[64];
 
-void *rt_lookup(uint32_t cs, uint32_t ip)
+void *rt_lookup(uint32_t cs, uint32_t ip, uint32_t far)
 {
     if ((cs & 0xffff) == BIOS_INT08_SEG && (ip & 0xffff) == BIOS_INT08_OFF) {
         return rt_bios_int08;
@@ -458,6 +458,10 @@ void *rt_lookup(uint32_t cs, uint32_t ip)
             break;
         }
         if (resident(r->overlay)) {
+            if (far && !r->far) {
+                rt_stop("dispatch: far transfer to a near-only entry at CS:IP", cs & 0xffff,
+                        ip & 0xffff);
+            }
             return r->code;
         }
     }

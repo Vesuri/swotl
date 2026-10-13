@@ -96,7 +96,7 @@ static inline void set_zf(int on) { G_CCR = on ? (G_CCR | CCR_Z) : (G_CCR & ~CCR
 
 /* Generated program (build/gen/program.s). */
 struct rt_dispatch_row {
-    uint16_t cs, ip, overlay, pad;
+    uint16_t cs, ip, overlay, far;    /* far: a far transfer may enter (R14e) */
     void *code;
 };
 extern const uint32_t dispatch_count;

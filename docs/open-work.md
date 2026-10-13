@@ -40,8 +40,7 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     takeover are untested by any reference (scripted input enters past the
     CIA and JOY0DAT reads).
 14b. Speed: [speed-plan.md](speed-plan.md) round 3 done (R12, R13 kept;
-    R14 re-profile); round 4: R14a–d, g, i kept (§7 R14), R14e, f, h not
-    built (§10; R14e's near/far row split and R14f wait for the user); next
+    R14 re-profile); round 4: R14a–g, i kept (§7 R14), R14h not built (§10); next
     interrupt delivery; R7b not built, §10; rerun
     `tools/align_targets.py` when the code changes;
     `tools/profile_report.py` roles still match the old poll point and
@@ -51,12 +50,12 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     Fast; run medians 24.5–28.5 fields at `781975e` (trajectory noise);
     frames fixture medians 24 fields at R1d (25 before R1), 22.5–23 at R6,
     21.5–24 at R8, 20 at R10 (R9 20.5), 19–19.5 at R13;
-    meter 219,652,369 model cycles (weights recalibrated at R11; it
-    underrates removed instructions, §4), static generated code 1,130,278
+    meter 218,711,478 model cycles (weights recalibrated at R11; it
+    underrates removed instructions, §4), static generated code 1,156,498
     bytes. User
     decisions D0–D4 approved (meter acceptance, memory model v2 with harness
     conversion, R6 growth, cell cache, frame bench). Meter and frame bench in
-    place (§4); kept: T8 −0.24%, T7 −0.005%, R1a −0.0001%, R1b −1.92%, R1d −1.23%, R2 −1.03%, R3a −0.99%, R3b −0.19%, R4 −2.65%, R5 −2.04%, R6 −1.21%, R7 −9.04%, R8 bench −0.30% (meter 0), R9 −1.62%, R10 −0.30%, R12 −5.21%, R13 −0.35%, R14 −2.60%. Projection ≈ 16–18 fields;
+    place (§4); kept: T8 −0.24%, T7 −0.005%, R1a −0.0001%, R1b −1.92%, R1d −1.23%, R2 −1.03%, R3a −0.99%, R3b −0.19%, R4 −2.65%, R5 −2.04%, R6 −1.21%, R7 −9.04%, R8 bench −0.30% (meter 0), R9 −1.62%, R10 −0.30%, R12 −5.21%, R13 −0.35%, R14 −2.60%, R14e −0.14%, R14f −0.29%. Projection ≈ 16–18 fields;
     native work needs per-routine authorization.
 14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`
     `Harness`: each byte drew from a fresh generator with the same seed).

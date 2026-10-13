@@ -29,14 +29,14 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   window 2.20M guest
   instructions, SPAZ 0.22%.
 - **Meter after R14** (m4, 49 frames; weights recalibrated at R11, §4):
-  219,652,369 model cycles (generated 168.0M, cell walk 49.2M, runtime
-  2.4M); 17,976,252 guest instructions, 12.08 model cycles each (generated
-  + walk); R13 225,516,608; R11 238,748,828, 240,644,109 under the R1 weights; R1 292,676,869 under them
+  218,711,478 model cycles (generated 167.0M, cell walk 49.2M, runtime
+  2.4M); 17,976,252 guest instructions, 12.03 model cycles each (generated
+  + walk); R14 (a–d, g, i) 219,650,503; R13 225,516,608; R11 238,748,828, 240,644,109 under the R1 weights; R1 292,676,869 under them
   (275,119,407 under the first weights). Round 2 kept (first weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b
   −1.916%, R1d −1.231%; (R1 weights) R2 −1.029%, R3a −0.991%, R3b −0.188%,
   R4 −2.646%, R5 −2.036%, R6 −1.213%, R7 −9.037%; R8 0 (layout only:
   bench −0.30%); R9 −1.615%; R10 −0.299%; (R11 weights) R12 −5.207%, R13 −0.354%,
-  R14 (a–d, g, i) −2.600%.
+  R14 (a–d, g, i) −2.600%, R14e −0.140% (runtime +0.007%), R14f −0.288%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -832,7 +832,7 @@ from the top while the meter finds a gain.
   - Not taken: segment copies by push/pop (964 pairs per window); `move.l
     #0,Dn` (vasm emits `moveq`).
 - Built together (user 2026-10-13: combine before validating): R14a, b, c,
-  d, g, i. R14e, f, h not built (§10).
+  d, g, i; then R14e, f together. R14h not built (§10).
   - As built: R14a `sub/xor rh,rh` → `and.w #$ff` (+ `moveq #0,d6` when
     flags are live); `or/and/test rh,rh` → `move.w`, `and.w #$ff00,d6`
     (not with PF live); dead-flag immediates as word ops. R14b in
@@ -869,6 +869,34 @@ from the top while the meter finds a gain.
     memory trusts all ones; SI/DI self-test sets no flags; divide error
     branch dropped. "Divide fault leaves DX:AX swapped" now plants into the
     cold code too.
+  - R14e as built: a dispatch row's fourth word says whether a far
+    transfer may enter (`emit.far_rows`: every seed but those only
+    indirect near `jmp`/`call` sites target; 335 far, 340 near-only);
+    `rt_dispatch_far` (also interrupt delivery and the guest entry) stops
+    at a near-only row. A call through the dispatcher returns from the rets
+    of the rows it may reach (near: its own link CS; far: the far rows),
+    and on through the rows those leave to (`emit.dispatch_key`). Kept:
+    generated −322,560 (−0.147%: writes −47.7K, taken −38.3K), runtime
+    +14,416 (the far flag), static −920 bytes.
+  - R14f as built: `reuse.fold` after R13. A formation (`move.w`, then
+    `add/sub` to d7) that differs from the held one only in its constant
+    is dropped; d7-indexed accesses until d7 is next written take the
+    difference in their d8. Folded only when the dropped lines outnumber
+    the guards (`cmp.w`/`bgt`, `cmp.w`/`blt`, one per sign of the
+    differences) after the first formation; a failed guard runs the
+    original lines out of line (`cold`, `{label}_f<n>s`) back to
+    `{label}_f<n>j`. A group ends at a label, leader, branch, call, local
+    label or other d7 use; ended so with d7 not rewritten, its last
+    formation stays. 750 guarded groups. Kept: −630,882 (−0.288%:
+    instructions −299K, loop bytes −1.10M), static +27,140 bytes.
+  - R14e+f: 219,650,503 → 218,711,478 (−0.428%). Coverage: 11 boundary
+    sequences (`index_fold_cases`: [bx+si+d], [di+d], [bx+d] bytes,
+    [bp+si+d]; INC BX, JZ, a +80h displacement, MOV SI,[..] and MOV
+    BX,[..], JMP [..] between or after) at every base within 10 of 0 and
+    8000h and random. Plants: fold guard admits one past (17), slow path
+    skipped (82), fold survives a base write (1,236), fold survives a
+    block leader (25, program corpus); host run: every row near-only
+    (`rt_dispatch_far` stops at the guest entry).
   - FS-UAE check (against `43d386f`, 2 bench runs each, interleaved):
     frames 4–11 72,728–72,738 → 69,489–69,549 lines (−4.4%, ranges
     apart), guest RAM at frame 12 equal in all four; `ab_labels.py` all
@@ -914,7 +942,7 @@ SWOTL.EXE+06A4D 16.9% (the cell walk), +0BFD1 8.3%, +04DAE 6.5%, +0B54B
 +0B017 3.0%, +109D6 2.7%, +0D5A6 2.6%, SPAZ.OVL+00CEE 2.4%.
 
 At R14 (2026-10-13): 19 fields (380 ms): −37% needed. R14a–i together
-≈ −2 to −3.5% of the meter; built: −2.600%. Top routines (R14 capture): SWOTL.EXE+06A4D
+≈ −2 to −3.5% of the meter; built: −2.600%, R14e, f −0.428%. Top routines (R14 capture): SWOTL.EXE+06A4D
 16.8% (the cell walk), +0BFD1 7.7%, +0B54B 6.2%, +04DAE 6.2%, +0B017
 3.1%, RTSVGA.OVL+03B9A 3.0%, SWOTL.EXE+109D6 2.7%, +0D5A6 2.7%.
 
@@ -933,18 +961,6 @@ history at `781975e` and §5.)
   R7 under the meter.
 - R1c "SI/DI mirrored like SP/BP": census −1.0% (SI/DI serve as data
   registers far more than as lone indexes); not built.
-- R14e "return sites of a dispatched call narrowed to the seeds of its CS
-  (near; far: any) and on through the seeds those leave to": meter ±0. 407
-  of 421 such sites are far calls through pointers with no traced target
-  (any row); only CF is live there, at 11 sites. Sound narrower set: a
-  near/far row split (the runtime stops a far dispatch into a row seeded
-  only by near transfers), what-if −0.126% (−40K writes): a runtime
-  dispatch change, needs the user.
-- R14f "displacement folded into d8 under a no-wrap guard": census at R14:
-  422K foldable formations, 229K of them the only fold after their
-  formation (a guard costs what it saves); net of one guard per sign
-  ≤ −0.26%, before the exact slow-path copies a failed guard needs. Not
-  built.
 - R14h "mul with DX dead": DX is live after every hot `mul` (≤ 10K
   executions with DX possibly dead, ≈ 0.01%). Not built.
 - R7b "cell cache (D3)": re-priced on the R7 meter at about −1.7% at best;

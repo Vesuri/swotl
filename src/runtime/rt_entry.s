@@ -223,12 +223,18 @@ port_out:
 ; Indirect transfer outside the compiled compare chain: d6 CS, d7 IP. Jumps to
 ; the translated entry (a jsr caller's return address stays on a7).
 rt_dispatch_near:
-rt_dispatch_far:
 	movem.l	d0-d1/a1,-(a7)
+	moveq	#0,d0
+	bra.s	dispatch
+rt_dispatch_far:	; stops at a row no far transfer may enter
+	movem.l	d0-d1/a1,-(a7)
+	moveq	#1,d0
+dispatch:
+	move.l	d0,-(a7)
 	move.l	d7,-(a7)
 	move.l	d6,-(a7)
 	jsr	rt_lookup
-	addq.l	#8,a7
+	lea	12(a7),a7
 	movea.l	d0,a0
 	movem.l	(a7)+,d0-d1/a1
 	jmp	(a0)

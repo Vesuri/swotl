@@ -245,4 +245,8 @@ def plan(insns, lives, leaders, ctx_for, program: bool = False, fences=(),
     if out:
         out[0].stats["index reused"] += reuse.reuse([lw.out for lw in out],
                                                     set(leaders) | set(fences))
+        out[0].stats["index folded"] += reuse.fold([lw.out for lw in out],
+                                                   set(leaders) | set(fences),
+                                                   [c.label for c in contexts],
+                                                   [lw.cold for lw in out])
     return out

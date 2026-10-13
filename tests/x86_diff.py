@@ -484,6 +484,7 @@ def boundary(h: Harness) -> None:
     high_byte_idiom_cases(h)
     memory_compare_cases(h)
     index_self_test_cases(h)
+    index_fold_cases(h)
 
 
 def address_guard_cases(h):
@@ -1338,6 +1339,34 @@ def index_self_test_cases(h):
                            f"b:index-self-test{op:02x}", n=1 + bool(tail), block=True,
                            overrides={"regs": dict(cs=0x2000, ss=0x7000, sp=0xfffe, si=v,
                                                    di=v ^ 0x8000), "ip": 0x100})
+
+
+def index_fold_cases(h):
+    """R14f: accesses through one base with different displacements in a block,
+    with the base just inside and across each 64 KiB wrap edge of the folded
+    offsets (both guard outcomes), a base register written between, a jump
+    between, a displacement out of the 8-bit range and a load into d7."""
+    seqs = (("8b4002", "8b5004", "8948fe"),           # [bx+si+2], [bx+si+4], [bx+si-2]
+            ("8b4002", "8b5004", "034802", "8948fe"),  # back to +2
+            ("8b4502", "8b5506", "0145fa", "8b4dfe"),  # [di+d]
+            ("8a4701", "8a6702", "8a4f03", "886ffd"),  # [bx+d] bytes
+            ("8b4204", "8b5206", "8b4a7e"),            # [bp+si+d] (SS)
+            ("8b4002", "43", "8b5004", "8b4806"),      # inc bx between
+            ("8b4002", "8b5004", "7402", "89ca", "8b4806"),  # jz between
+            ("8b4002", "8b908000", "8b4806"),          # +80h: out of range
+            ("8b7002", "8b4004", "8b5006"),            # mov si,[bx+si+2] first
+            ("8b4002", "8b5004", "ff6006"),            # jmp [bx+si+6]
+            ("8b4002", "8b5004", "8b4806", "8b5808"))  # mov bx,[bx+si+8] last
+    edges = [b + d for b in (0, 0x8000) for d in range(-10, 11)]
+    for seq in seqs:
+        code = b"".join(bytes.fromhex(x) for x in seq)
+        for v in edges + [None] * 6:
+            r = h.rng.randrange(0x10000) if v is None else v & 0xFFFF
+            for si in (0, h.rng.randrange(0x10000)):
+                h.case(code, "b:index-fold", n=len(seq), block=True,
+                       overrides={"regs": {"si": si, "bx": (r - si) & 0xFFFF, "di": r,
+                                           "bp": (r - si) & 0xFFFF, "ss": 0x5000, "ds": 0x3000,
+                                           "cx": h.rng.randrange(0x10000)}, "ip": 0x3000})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

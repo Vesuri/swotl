@@ -35,6 +35,10 @@ real_written = U.written
 real_op_jcc = L.Lowering.op_jcc
 real_plan = F.plan
 real_reuse = U.reuse
+real_fold = U.fold
+real_guard_lines = U.guard_lines
+real_slow_path = U.slow_path
+real_base_written = U.base_written
 RECORD = Path(__file__).resolve().parent.parent / "tmp/test/x86-side-boundary.pkl"
 
 
@@ -45,6 +49,16 @@ def text(fn):
         self.cold = fn(self, self.cold) if self.cold else self.cold
         return self.out
     return run
+
+
+def guard_one_past(ds, slow):
+    """R14f: each fold guard admits one value past its limit."""
+    out = real_guard_lines(ds, slow)
+    for k, x in enumerate(out):
+        m = re.match(r"^\tcmp\.w #(-?\d+),d7$", x)
+        if m:
+            out[k] = f"\tcmp.w #{int(m.group(1)) + (1 if 'bgt' in out[k + 1] else -1)},d7"
+    return out
 
 
 def sub(pattern, repl):
@@ -463,6 +477,10 @@ SABOTAGE = [
     ("TEST of memory trusts all ones", test_mask_dropped, "boundary"),
     ("SI/DI self-test sets no flags", index_self_test_unset, "boundary"),
     ("divide error branch dropped", sub(r"^\tbvs \w+_dz$", "\tnop"), "boundary"),
+    ("folded index guard admits one past", "fold guard", "boundary"),
+    ("folded index slow path skipped", "fold slow", "boundary"),
+    ("folded index survives a base write", "fold base", "boundary"),
+    ("folded index survives a block leader", "fold leaders", "program"),
     ("parity table one entry off", ("helpers", "__parity(pc,", "__parity+1(pc,"), "boundary"),
     ("CCR-to-FLAGS table one entry off", ("helpers", "__ccr_flags(pc,", "__ccr_flags+2(pc,"),
      "boundary"),
@@ -492,6 +510,14 @@ def plant(k: int) -> tuple[int, int, int, int]:
         U.written = lambda line: None if real_written(line) is None else set()
     elif fn == "reuse leaders":     # reuse.reuse (R13)
         U.reuse = lambda outs, resets: real_reuse(outs, set())
+    elif fn == "fold guard":        # reuse.guard_lines (R14f)
+        U.guard_lines = guard_one_past
+    elif fn == "fold slow":         # reuse.slow_path (R14f)
+        U.slow_path = lambda slow, join, lines: real_slow_path(slow, join, [])
+    elif fn == "fold base":         # reuse.base_written (R14f)
+        U.base_written = lambda w, regs: "d7" in w
+    elif fn == "fold leaders":      # reuse.fold (R14f)
+        U.fold = lambda outs, resets, labels, colds: real_fold(outs, set(), labels, colds)
     elif fn == "chain taken":       # flags.plan (R14d)
         F.plan = chain_ignores_targets
     elif fn == "jcc ccr":           # Lowering.op_jcc (R14b)
@@ -531,6 +557,10 @@ def plant(k: int) -> tuple[int, int, int, int]:
         L.Lowering.muldiv_source = real_muldiv_source
         U.written = real_written
         U.reuse = real_reuse
+        U.fold = real_fold
+        U.guard_lines = real_guard_lines
+        U.slow_path = real_slow_path
+        U.base_written = real_base_written
         L.Lowering.op_jcc = real_op_jcc
         F.plan = real_plan
 

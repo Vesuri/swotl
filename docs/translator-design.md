@@ -114,8 +114,11 @@ diffs directly); relocated words in instructions are emitted as
   `rt_stop_unknown`, other sites to `rt_dispatch_near`/`rt_dispatch_far`
   (target in d7, CS in d6). Table rows (`program.s`): the cfg seeds (MZ
   entry, PLINK thunks, `runtime.csv`, `indirect.csv` targets) as (CS, IP,
-  overlay id, label); overlays sharing an area share CS:IP, so the row whose
+  overlay id, far, label); overlays sharing an area share CS:IP, so the row whose
   overlay is resident (PLINK record bit 15) wins; anything else stops.
+  `far` = 0 for a row seeded only as a target of indirect near `jmp`/`call`
+  sites: `rt_dispatch_far` (and interrupt delivery, the guest entry) stops
+  there (R14e).
 - Runtime entries (`jsr`, contract in registers): `rt_int` (d7 next IP, d6
   CS << 16 | vector; the runtime writes the CPU's IRET frame below SS:SP;
   services read no guest flags and leave undefined-by-them flags in the
@@ -125,7 +128,8 @@ diffs directly); relocated words in instructions are emitted as
   `rt_stop_unknown` (prints and halts; never resumes).
 - Returns: a `ret` continues at the return sites of the calls whose targets
   reach it without entering a call (the divide-error edge is not flow);
-  calls through the dispatcher return from any `ret` a table row reaches.
+  calls through the dispatcher return from any `ret` a table row reaches
+  (far calls: a far row, R14e).
 - Generated files: `build/gen/<module>.s`, `support.s` and `program.s`
   (equates, runtime xrefs, includes, dispatch table, `load_segment`,
   `overlay_table`), header = SHA-256 of translator sources, annotations and
