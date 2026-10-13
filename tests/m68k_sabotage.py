@@ -32,6 +32,8 @@ real_flags_dead = L.Lowering.flags_dead
 real_walk = S.walk
 real_muldiv_source = L.Lowering.muldiv_source
 real_written = U.written
+real_op_jcc = L.Lowering.op_jcc
+real_plan = F.plan
 real_reuse = U.reuse
 RECORD = Path(__file__).resolve().parent.parent / "tmp/test/x86-side-boundary.pkl"
 
@@ -40,6 +42,7 @@ def text(fn):
     def run(self):
         out = real_run(self)
         self.out = fn(self, out)
+        self.cold = fn(self, self.cold) if self.cold else self.cold
         return self.out
     return run
 
@@ -350,6 +353,34 @@ def direct_bp_off_by_one(self, out):
     return [re.sub(r"\((-?\$?[0-9a-f]+),(a[0-3]),d5\.w\)", fix, x) for x in out]
 
 
+def test_mask_dropped(self, out):
+    """R14c: TEST of memory trusts every immediate as all ones (its AND dropped)."""
+    if self.i.op == "test":
+        return [x for x in out if not re.match(r"^\tand\.[bw] #", x)]
+    return out
+
+
+def index_self_test_unset(self, out):
+    """R14g: OR/AND/TEST of SI or DI with itself sets no flags (its move dropped)."""
+    a = self.i.operands
+    if self.i.op in ("or", "and", "test") and L.areg(a[0]) and a[1] == a[0]:
+        return [x for x in out if not re.match(r"^\tmove\.w a[45],d6$", x)]
+    return out
+
+
+def jump_passes_every_flag(self):
+    """R14b: a conditional jump claims every flag (and X) in the CCR it passes on."""
+    real_op_jcc(self)
+    if self.ccr or self.c.ccr_in:
+        self.ccr = set(L.ALLC) | {"X"}
+
+
+def chain_ignores_targets(insns, lives, leaders, ctx_for, program=False, fences=(), taken=None):
+    """R14d: a jump chain's targets taken to need no flags."""
+    taken = [None if t is None else set() for t in (taken or [None] * len(insns))]
+    return real_plan(insns, lives, leaders, ctx_for, program, fences, taken)
+
+
 def walk_plant(old, new):
     """R7: the cell walk with one line replaced (smc.walk)."""
     def walk(*a):
@@ -420,6 +451,18 @@ SABOTAGE = [
     ("pair count keeps the even part", sub(r"^\tandi\.w #1,d7$", "\tnop"), "boundary"),
     ("held index survives register writes", "reuse writes", "boundary"),
     ("held index survives a block leader", "reuse leaders", "program"),
+    ("high-byte clear keeps bit 8", sub(r"^\tand\.w #\$ff,(d[0-3])$", r"\tand.w #$1ff,\1"),
+     "boundary"),
+    ("high-byte zero flags from 1", sub(r"^\tmoveq #0,d6$", "\tmoveq #1,d6"), "boundary"),
+    ("high-byte self-test flags of the word", sub(r"^\tand\.w #\$ff00,d6$", "\tand.w #$ffff,d6"),
+     "cross-block"),
+    ("high-byte AND immediate clears the low byte",
+     sub(r"^\tand\.w #\$([0-9a-f]*)ff,(d[0-3])$", r"\tand.w #$\g<1>00,\2"), "boundary"),
+    ("jump passes every flag in the CCR", "jcc ccr", "cross-block"),
+    ("jump chain ignores its targets' flags", "chain taken", "cross-block"),
+    ("TEST of memory trusts all ones", test_mask_dropped, "boundary"),
+    ("SI/DI self-test sets no flags", index_self_test_unset, "boundary"),
+    ("divide error branch dropped", sub(r"^\tbvs \w+_dz$", "\tnop"), "boundary"),
     ("parity table one entry off", ("helpers", "__parity(pc,", "__parity+1(pc,"), "boundary"),
     ("CCR-to-FLAGS table one entry off", ("helpers", "__ccr_flags(pc,", "__ccr_flags+2(pc,"),
      "boundary"),
@@ -448,6 +491,10 @@ def plant(k: int) -> tuple[int, int, int, int]:
         U.written = lambda line: None if real_written(line) is None else set()
     elif fn == "reuse leaders":     # reuse.reuse (R13)
         U.reuse = lambda outs, resets: real_reuse(outs, set())
+    elif fn == "chain taken":       # flags.plan (R14d)
+        F.plan = chain_ignores_targets
+    elif fn == "jcc ccr":           # Lowering.op_jcc (R14b)
+        L.Lowering.op_jcc = jump_passes_every_flag
     elif fn == "divide source":     # Lowering.muldiv_source (R9)
         L.Lowering.muldiv_source = lambda self, o, div: real_muldiv_source(self, o, False)
     elif corpus == "walk":  # smc.walk (R7)
@@ -482,6 +529,8 @@ def plant(k: int) -> tuple[int, int, int, int]:
         L.Lowering.muldiv_source = real_muldiv_source
         U.written = real_written
         U.reuse = real_reuse
+        L.Lowering.op_jcc = real_op_jcc
+        F.plan = real_plan
 
 
 def slow_first(k: int) -> tuple:

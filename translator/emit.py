@@ -223,6 +223,7 @@ class Program:
                            and s[0] == n[0] and s[1] <= n[1]}
         self.live_in: dict = {}
         self.live_out: dict = {}
+        self.ccr_only: dict = {}    # label -> live flags only the CCR holds there (R14d)
         self.ret_of: dict = {}
         self.returns()
         self.liveness()
@@ -341,6 +342,13 @@ class Program:
                 if not sites:
                     self.ret_fallback += 1
                 self.ret_of[n] = tuple(sites) if sites else tuple(every)
+
+    def taken_live(self, n) -> set | None:
+        """Live-in of a conditional jump's target (R14d); None for other nodes."""
+        if self.node_insn(n).op != "jcc":
+            return None
+        t = self.succ[n][0]
+        return set(ALL) if t in (RET, UNKNOWN, SMC) else set(self.live_in[t])
 
     def ret_live_of(self, n) -> set:
         out = set()
@@ -535,10 +543,11 @@ class Program:
     def run_text(self, mod: str, run: list[int], stats: Counter, stubs: list[str],
                  comp: int | None = None) -> tuple[list[str], bool]:
         """One run (exact, or in component `comp`'s copy): its lines and whether it
-        ends without falling through. Poll stubs go to `stubs`."""
+        ends without falling through. Poll stubs and out-of-line code go to `stubs`."""
         u = self.units[mod]
         insns = [u.insns[o] for o in run]
         lives = [self.live_out[(mod, o)] for o in run]
+        taken = [self.taken_live((mod, o)) for o in run]
         leaders = {k for k, o in enumerate(run) if (mod, o) in self.leaders}
         ctx = ((lambda k: self.ctx(mod, run[k], stats)) if comp is None
                else (lambda k: self.copy_ctx(mod, run[k], stats, comp)))
@@ -546,7 +555,7 @@ class Program:
                   if (comp is None and (mod, o) in self.guard_at)
                   or (comp is not None and u.insns[o].op in region.REGUARD)}
         try:
-            lws = plan(insns, lives, leaders, ctx, program=True, fences=fences)
+            lws = plan(insns, lives, leaders, ctx, program=True, fences=fences, taken=taken)
         except LowerError as e:
             raise LowerError(f"{mod}+{run[0]:05X} run: {e}") from None
         lab = label if comp is None else copy_label
@@ -563,6 +572,9 @@ class Program:
                 stubs += stub
                 stats["interrupt poll"] += 1
             lines.extend(lw.out)
+            stubs += lw.cold
+            if lw.ccr_only:
+                self.ccr_only[lab(mod, o)] = set(lw.ccr_only)
             stats.update(lw.stats)
             f = self.fall.get((mod, o))
             if comp is None and (mod, o) in self.guard_at:
@@ -593,7 +605,7 @@ class Program:
         u = self.units[mod]
         stats = Counter()
         lines: list[str] = []
-        stubs: list[str] = []  # poll stubs, placed after the next run that cannot fall through
+        stubs: list[str] = []  # poll stubs, cold code: after the next run that cannot fall through
         copies: list[int] = []  # guarded copies (R6), placed there too
         copied: set[int] = set()
         tramps = 0             # return-check trampolines placed (RM)

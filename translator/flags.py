@@ -97,11 +97,27 @@ def carry_ccr(lines, ccr: set, res, nz: set):
     return ccr, res
 
 
-def plan(insns, lives, leaders, ctx_for, program: bool = False, fences=()) -> list[Lowering]:
+def jump_chain(insns, k, leaders, ccr: set, program: bool) -> int:
+    """R14d: the last index of the conditional jumps from k + 1 on that each take
+    their flags from `ccr` (each falls through to the next, none a leader)."""
+    m = k + 1
+    while m + 1 < len(insns) and m + 1 not in leaders and insns[m].op == "jcc" \
+            and insns[m + 1].op == "jcc" and fuse_reader(insns[m + 1]) \
+            and reads(insns[m + 1], program) <= ccr:
+        m += 1
+    return m
+
+
+def plan(insns, lives, leaders, ctx_for, program: bool = False, fences=(),
+         taken=None) -> list[Lowering]:
     """Lower a run of instructions in fall-through order. `lives[k]`: live-out of
     insns[k]; `leaders`: indices that other control flow reaches; `ctx_for(k)`: a
     fresh Ctx for insns[k]; `fences`: indices with other code placed before them
-    (region guards), where no register value carries over (reuse, R13)."""
+    (region guards), where no register value carries over (reuse, R13);
+    `taken[k]`: live-in of a conditional jump's target (None: its live-out).
+    Each lowering's `ccr_only`: flags live at its entry that only the CCR holds
+    (R14d, for the block differential)."""
+    taken = taken or [None] * len(insns)
     contexts = [ctx_for(k) for k in range(len(insns))]
     dead_dx = reglive.dead_dx(insns, leaders, contexts)
     original_ctx_for = ctx_for
@@ -152,6 +168,7 @@ def plan(insns, lives, leaders, ctx_for, program: bool = False, fences=()) -> li
         return lw
 
     out = []
+    only = [set() for _ in insns]
     ccr_in: set = set()
     x_in = False
     chain = {"end": -1}
@@ -179,15 +196,29 @@ def plan(insns, lives, leaders, ctx_for, program: bool = False, fences=()) -> li
         if lw is None and nxt is not None and k + 1 not in leaders and fuse_reader(nxt):
             r = reads(nxt, program)
             if r and r <= ccr_static(i):
-                c = ctx_for(k)
-                c.x_in = x_in
-                c.live, c.ccr_in, c.fuse = set(lives[k]), ccr_in, True
-                c.need = may & (set(lives[k + 1]) - writes(nxt)[0])
-                lw = lower(i, c)
-                if not r <= lw.ccr:
+                # R14d: through a chain of jumps that read the CCR, store what a
+                # target or the chain's end needs (else as for the one reader)
+                for end in sorted({jump_chain(insns, k, leaders, ccr_static(i), program),
+                                   k + 1}, reverse=True):
+                    after = set(lives[end]) - writes(insns[end])[0]
+                    for j in range(k + 1, end):
+                        after |= set(lives[j] if taken[j] is None else taken[j])
+                    c = ctx_for(k)
+                    c.x_in = x_in
+                    c.live, c.ccr_in, c.fuse = set(lives[k]), ccr_in, True
+                    c.need = may & after
+                    lw = lower(i, c)
+                    if r <= lw.ccr and all(reads(insns[j], program) <= lw.ccr
+                                           for j in range(k + 2, end + 1)):
+                        break
                     lw = None
-                else:
+                if lw is not None:
                     lw.stats["CCR fused"] += 1
+                    dropped = may & (set(lives[k + 1]) - writes(nxt)[0]) - c.need
+                    if dropped:
+                        lw.stats["jump chain store dropped"] += 1
+                        for j in range(k + 1, end + 1):
+                            only[j] = dropped & (reads(insns[j], program) | set(lives[j]))
         if lw is None and may and plain(k + 1):
             lw = provenance(k, ccr_in, x_in)
         if lw is None:
@@ -196,7 +227,8 @@ def plan(insns, lives, leaders, ctx_for, program: bool = False, fences=()) -> li
             c.live, c.ccr_in, c.fuse = set(lives[k]), ccr_in, False
             c.need = may & set(lives[k])
             lw = lower(i, c)
-            lw.ccr = set()
+            if i.op != "jcc":       # R14b: a conditional jump passes its CCR on
+                lw.ccr = set()
             if k < chain["end"]:    # between a provenance setter and its reader
                 step = carry_ccr(lw.out, ccr_in, chain["res"], chain["nz"])
                 if step is None:
@@ -204,6 +236,9 @@ def plan(insns, lives, leaders, ctx_for, program: bool = False, fences=()) -> li
                 lw.ccr, chain["res"] = step
             elif k == chain["end"] and not reads(i, program) <= ccr_in:
                 raise LowerError(f"{i}: provenance reader without its flags in the CCR")
+        if not only[k] <= ccr_in:
+            raise LowerError(f"{i}: jump chain without its flags in the CCR")
+        lw.ccr_only = only[k]
         ccr_in = lw.ccr
         x_in = lw.cf_result and lw.x_cf
         out.append(lw)

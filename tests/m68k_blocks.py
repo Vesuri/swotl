@@ -36,7 +36,7 @@ from translator import emit, image, region, smc  # noqa: E402
 from translator.decode import DecodeError, Reg  # noqa: E402
 from translator.interp import State, UndefinedFlag, step  # noqa: E402
 from translator.ir import FLAG_BIT, STATUS  # noqa: E402
-from translator.lower import LOADSEG  # noqa: E402
+from translator.lower import CCR_BIT, LOADSEG  # noqa: E402
 from translator.support import HELPERS, equates  # noqa: E402
 
 M = image.M
@@ -280,6 +280,20 @@ def walk_entry(u, run, reg: str) -> dict | None:
     return dict(force, target=reg)
 
 
+PROBE = D.STUB + 0x800  # move.w ccr,(PROBE+$100).l: the CCR the CPU computes
+
+
+def ccr_at_stop(m) -> int:
+    """The 68k CCR where the run stopped. Unicorn's SR register read can miss
+    lazily computed condition codes, so a probe instruction stores the CCR."""
+    m.e.write(PROBE, bytes.fromhex("42f9") + (PROBE + 0x100).to_bytes(4, "big"))
+    saved = m.extra_stops, m.inside
+    m.extra_stops, m.inside, m.entry = {}, set(), None
+    m.e.start(PROBE, PROBE + 6, 1)
+    m.extra_stops, m.inside = saved
+    return int.from_bytes(m.e.read(PROBE + 0x100, 2), "big") & 0x1F
+
+
 def cross_entry_cases():
     from cross_flags_cases import run
     n, bad, _stats = run()
@@ -462,6 +476,11 @@ def main(argv=None) -> int:
             for sname in ("es", "ss", "ds"):
                 if mo[sname] != out[sname]:
                     diffs.append(f"{sname} 68k={mo[sname]:04x} x86={out[sname]:04x}")
+            # flags a jump chain holds only in the CCR at the stop (R14d)
+            if p.ccr_only.get(stop):
+                ccr = ccr_at_stop(m)
+                for f in p.ccr_only[stop]:
+                    mf[f] = int(bool(ccr & CCR_BIT[f]))
             for f in sorted(live - undef):
                 if mf[f] != fl >> FLAG_BIT[f] & 1:
                     diffs.append(f"{f} 68k={mf[f]} x86={fl >> FLAG_BIT[f] & 1}")

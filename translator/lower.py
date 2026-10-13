@@ -114,6 +114,8 @@ class Lowering:
     def __init__(self, insn: Insn, ctx: Ctx):
         self.i, self.c = insn, ctx
         self.out: list[str] = []
+        self.cold: list[str] = []  # out-of-line code placed after the run (no fall-through)
+        self.ccr_only: set = set()  # live flags only the CCR holds at entry (flags.plan, R14d)
         self.ccr: set = set()      # flags valid in the CCR at the end
         self.stats = Counter()
         self.nl = 0
@@ -535,6 +537,14 @@ class Lowering:
         if op in ("adc", "sbb"):
             self.carry_op(m68, kind, a, b, w)
             return
+        if isinstance(a, Reg) and HALF.get(a.name, ("", 0))[1] and self.high_byte(op, a, b, need):
+            return
+        if op in ("or", "and", "test") and areg(a) and isinstance(b, Reg) and b.name == a.name:
+            # R14g: SI/DI with itself: the value stays; move.w sets the logic flags
+            if need or self.c.fuse:
+                self.e(f"move.w {GREG[a.name]},d6")
+                self.finish_flags("logic", ok, "d6")
+            return
         if op == "cmp" and {"PF", "AF"} & need:
             m68, ok = "sub", CCR_OK["sub"]  # the result is needed: subtract a copy
         if isinstance(a, Reg) and a.name in MIRROR and self.mirrored_alu(op, a, b, need):
@@ -559,12 +569,21 @@ class Lowering:
             self.finish_flags(flagkind, ok)
             return
         # on a copy in d6
-        if isinstance(a, Mem):
-            self.lea(a)
-        s = self.src_operand(b, areg=not (logic or af), mem=False)
-        self.load_dest(a, "d6")
+        if isinstance(a, Mem) and not writes:
+            # R14c: cmp/test of memory: the operand straight into d6, then the source
+            self.e(f"move.{sz} {self.ea(a).at(w)},d6")
+            s = self.src_operand(b, areg=not (logic or af), mem=False)
+            ones = (1 << w) - 1
+            if op == "test" and isinstance(b, Imm) and b.value & ones == ones:
+                s = None    # TEST m,FFh/FFFFh: the move set the logic flags
+        else:
+            if isinstance(a, Mem):
+                self.lea(a)
+            s = self.src_operand(b, areg=not (logic or af), mem=False)
+            self.load_dest(a, "d6")
         self.af_pre("d6", s)
-        self.e(f"{m68}.{sz} {s},d6")
+        if s is not None:
+            self.e(f"{m68}.{sz} {s},d6")
         self.finish_flags(flagkind, ok, "d6")
         self.af_post("d6")
         if writes:
@@ -630,6 +649,37 @@ class Lowering:
         self.finish_flags(kind, CCR_OK[kind], "d6")
         self.af_post("d6")
         return True
+
+    def high_byte(self, op: str, a: Reg, b, need: set) -> bool:
+        """R14a: AH-DH idioms on the word without moving the byte down. SUB/XOR
+        r,r: the byte cleared, flags (CF OF SF 0, ZF PF 1, AF 0) from `moveq #0`;
+        OR/AND/TEST r,r: the value stays, logic flags of the byte from a masked
+        copy; AND/OR/XOR r,imm with dead flags: the word op with the shifted
+        immediate."""
+        r = GREG[HALF[a.name][0]]
+        same = isinstance(b, Reg) and b.name == a.name
+        flags = bool(need) or self.c.fuse or self.c.keep_x
+        if same and op in ("sub", "xor"):
+            self.e(f"and.w #$ff,{r}")
+            if flags:
+                self.e("moveq #0,d6")
+                if "AF" in need and op == "sub":
+                    self.e("move.b d6,G_AF(a6)")    # keeps the CCR: N Z V C of 0
+                    self.stats["AF store"] += 1
+                self.finish_flags({"sub": "sub"}.get(op, "logic"), ALLC, "d6")
+            return True
+        if same and op in ("or", "and", "test") and "PF" not in need:
+            if flags:
+                self.e(f"move.w {r},d6")
+                self.e("and.w #$ff00,d6")
+                self.finish_flags("logic", ALLC)
+            return True
+        if isinstance(b, Imm) and op in ("and", "or", "xor") and not flags:
+            v = (b.value & 0xFF) << 8
+            m68 = {"and": "and", "or": "or", "xor": "eor"}[op]
+            self.e(f"{m68}.w #{hx(v | 0xFF if op == 'and' else v)},{r}")
+            return True
+        return False
 
     def carry_op(self, m68, kind, a, b, w) -> None:
         """adc sbb: addx/subx need X = CF and Z preset to 1. Order: addresses and the
@@ -895,7 +945,9 @@ class Lowering:
                     self.mul_flags(["move.w d0,d7", "ext.l d7", "cmp.l d0,d7"])
             self.ccr = set()
             return
-        fault, end = self.local(), self.local()
+        # R14i: the divide error out of line (`cold`, placed after the run), so
+        # the normal path falls through
+        fault = f"{self.c.label}_dz"
         div = "divs" if signed else "divu"
         if w == 8:
             if signed:
@@ -934,12 +986,11 @@ class Lowering:
                 self.e("swap d2")
             else:
                 self.stats["dead DX result omitted"] += 1
-        self.e(f"bra {end}")
-        self.at(fault)
+        hot, self.out = self.out, [f"{fault}:"]
         if w == 16:
             self.e("swap d2")
         self.exit_fault(0)
-        self.at(end)
+        self.cold, self.out = self.out, hot
         self.ccr = set()
 
     # -- data movement ---------------------------------------------------------
@@ -1626,6 +1677,14 @@ class Lowering:
         lab = self.c.near(t) if self.c.near else None
         if lab:
             self.branch_cc(self.i.cc, lab)
+            # R14b: the fall-through keeps the CCR: what it held, or after a load
+            # the state block's image (it holds every live flag)
+            if self.i.cc not in ("p", "np"):
+                loaded = not CC_READS[self.i.cc] <= self.c.ccr_in
+                self.ccr = ALLC & self.c.live if loaded else set(self.c.ccr_in)
+                if not loaded:
+                    self.stats["jump reads the CCR"] += 1
+                return
         else:
             if self.c.program:
                 raise LowerError(f"jcc target {t:04X} unresolved")

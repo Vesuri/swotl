@@ -88,13 +88,14 @@ def lower_case(insns, cs: int, tag: str, end_ip: int) -> tuple[list[str], Counte
     def ctx_for(k):
         return Ctx(cs=hx(cs), label=f"{tag}_{k}")
 
-    lines = [f"{tag}:"]
+    lines, cold = [f"{tag}:"], []
     for k, lw in enumerate(F.plan(insns, lives, set(), ctx_for)):
         lines.append(f"{tag}_{k}:")
         lines.extend(lw.out)
+        cold += lw.cold
         stats.update(lw.stats)
     lines += [f"{tag}_end:", f"\tmove.l #{hx(end_ip)},d7", "\tjmp T_END"]
-    return lines, stats
+    return lines + cold, stats
 
 
 def lower_region_case(insns, cs: int, tag: str, end_ip: int):
@@ -105,13 +106,14 @@ def lower_region_case(insns, cs: int, tag: str, end_ip: int):
         return None
     lives = F.seq_lives(insns)
     stats = Counter()
-    lines = [f"{tag}:"] + region.guard(rng, f"{tag}_x")
+    lines, cold = [f"{tag}:"] + region.guard(rng, f"{tag}_x"), []
     for k, lw in enumerate(F.plan(insns, lives, set(),
                                   lambda k: Ctx(cs=hx(cs), label=f"{tag}_{k}", bp_direct=True))):
         lines.append(f"{tag}_{k}:")
         lines.extend(lw.out)
+        cold += lw.cold
         stats.update(lw.stats)
-    lines += [f"{tag}_end:", f"\tmove.l #{hx(end_ip)},d7", "\tjmp T_END"]
+    lines += [f"{tag}_end:", f"\tmove.l #{hx(end_ip)},d7", "\tjmp T_END"] + cold
     exact, _ = lower_case(insns, cs, f"{tag}_x", end_ip)
     stats["region case"] += 1
     return lines + exact, stats

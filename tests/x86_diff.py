@@ -481,6 +481,9 @@ def boundary(h: Harness) -> None:
     flags_word_cases(h)
     string_pair_cases(h)
     index_reuse_cases(h)
+    high_byte_idiom_cases(h)
+    memory_compare_cases(h)
+    index_self_test_cases(h)
 
 
 def address_guard_cases(h):
@@ -1271,6 +1274,70 @@ def index_reuse_cases(h):
                 h.case(code, "b:index-reuse", n=len(seq), block=True,
                        overrides={"regs": {"di": r, "si": r ^ 0x5555, "bx": r, "bp": r,
                                            "ax": h.rng.randrange(0x10000)}, "ip": 0x3000})
+
+
+def high_byte_idiom_cases(h):
+    """R14a: SUB/XOR/OR/AND/TEST of AH-BH with itself and AND/OR/XOR AH-BH,imm,
+    their flags live (PUSHF, LAHF), fused (JE JS JB JO JL JP) or dead (CMP SI,SI
+    after), the byte 0, 1, 7Fh, 80h, FFh under a low byte 00h, 80h or FFh."""
+    tails = ("9c", "9f", "39f6", "7402", "7802", "7202", "7002", "7c02", "7a02")
+    for dest in range(4, 8):
+        name = ("ax", "cx", "dx", "bx")[dest - 4]
+        for hi in (0, 1, 0x7f, 0x80, 0xff):
+            for lo in (0, 0x80, 0xff):
+                regs = dict(cs=0x2000, ss=0x7000, sp=0xfffe, si=0x1234)
+                regs[name] = hi << 8 | lo
+                for op in (0x28, 0x30, 0x08, 0x20, 0x84):
+                    for tail in tails:
+                        h.case(bytes((op, 0xc0 | dest << 3 | dest)) + bytes.fromhex(tail),
+                               f"b:high-byte-idiom{op:02x}", n=2, block=True,
+                               overrides={"regs": regs, "ip": 0x100})
+                for ext in (4, 1, 6):
+                    for imm in (0, 0x0f, 0x80, 0xff):
+                        for tail in ("39f6", "9c"):
+                            h.case(bytes((0x80, 0xc0 | ext << 3 | dest, imm)) + bytes.fromhex(tail),
+                                   f"b:high-byte-imm{ext}", n=2, block=True,
+                                   overrides={"regs": regs, "ip": 0x100})
+
+
+def memory_compare_cases(h):
+    """R14c: CMP/TEST with a memory first operand (byte and word; an immediate
+    of all ones, 80h/8000h or 1; AL, AH, AX, BP), at [bx], [bp+2], [disp] and
+    CS:[di] with offsets 0, 1, 7FFFh, 8000h, FFFEh, FFFFh; flags at the end,
+    fused (JL, JB) or with AF and PF live (PUSHF)."""
+    ops = ((0xf6, 0, b"\xff"), (0xf6, 0, b"\x80"), (0xf6, 0, b"\x01"),
+           (0xf7, 0, b"\xff\xff"), (0xf7, 0, b"\x00\x80"), (0xf7, 0, b"\x01\x00"),
+           (0x84, 0, b""), (0x84, 4, b""), (0x85, 0, b""), (0x85, 5, b""),
+           (0x38, 0, b""), (0x38, 4, b""), (0x39, 0, b""), (0x39, 5, b""))
+    values = (b"\x00\x00", b"\x80\x7f", b"\xff\xff", b"\x01\x80", b"\x7f\x00", b"\x00\xff")
+    for k, edge in enumerate((0, 1, 0x7fff, 0x8000, 0xfffe, 0xffff)):
+        for rm, seg, extra, regs in ((0x07, 0x5000, b"", dict(bx=edge)),
+                                     (0x46, 0x7000, b"\x02", dict(bp=(edge - 2) & 0xffff)),
+                                     (0x06, 0x5000, edge.to_bytes(2, "little"), {}),
+                                     (0x05, 0x2000, b"", dict(di=edge))):
+            pre = b"\x2e" if seg == 0x2000 else b""
+            for j, (op, reg, imm) in enumerate(ops):
+                code = pre + bytes((op, rm | reg << 3)) + extra + imm
+                mem = values[(j + k) % len(values)]
+                for tail in ("", "7c02", "7202", "9c"):
+                    h.case(code + bytes.fromhex(tail), f"b:memory-compare{op:02x}",
+                           n=1 + bool(tail), block=True, overrides={
+                               "regs": {**dict(cs=0x2000, ds=0x5000, ss=0x7000, sp=0xfff0,
+                                               ax=0x80ff ^ k, bp=0x8001), **regs}, "ip": 0x100,
+                               "mem": [(seg * 16 + edge, mem)]})
+
+
+def index_self_test_cases(h):
+    """R14g: OR/AND/TEST of SI and DI with themselves at 0, 1, 7FFFh, 8000h,
+    FFFFh: flags at the end, by PUSHF, fused (JE JS JP) or dead (CMP SI,SI)."""
+    for op in (0x09, 0x21, 0x85):
+        for r in (6, 7):
+            for v in (0, 1, 0x7fff, 0x8000, 0xffff):
+                for tail in ("", "9c", "7402", "7802", "7a02", "39f6"):
+                    h.case(bytes((op, 0xc0 | r << 3 | r)) + bytes.fromhex(tail),
+                           f"b:index-self-test{op:02x}", n=1 + bool(tail), block=True,
+                           overrides={"regs": dict(cs=0x2000, ss=0x7000, sp=0xfffe, si=v,
+                                                   di=v ^ 0x8000), "ip": 0x100})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

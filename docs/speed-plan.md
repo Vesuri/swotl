@@ -24,17 +24,19 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   `b9b6374`, 37.56 at `63a99fe` (R1a), 34.41 (4.89M cycles) at R1b, 33.69
   at R1d, 33.37 at R3a, 33.27 (4.73M cycles) at R3b, 31.74 at R5, 29.67
   at R6, 74,336 → 74,373 lines at R7 (no walk in its window), 74,318 →
-  74,096 lines at R8, 72,773 → 72,506 at R10 (R9 control; means of 3);
+  74,096 lines at R8, 72,773 → 72,506 at R10 (R9 control; means of 3),
+  72,728–72,738 → 69,489–69,549 at R14;
   window 2.20M guest
   instructions, SPAZ 0.22%.
-- **Meter after R13** (m4, 49 frames; weights recalibrated at R11, §4):
-  225,516,608 model cycles (generated 173.8M, cell walk 49.2M, runtime
-  2.4M); 17,976,252 guest instructions, 12.41 model cycles each (generated
-  + walk); R11 238,748,828, 240,644,109 under the R1 weights; R1 292,676,869 under them
+- **Meter after R14** (m4, 49 frames; weights recalibrated at R11, §4):
+  219,652,369 model cycles (generated 168.0M, cell walk 49.2M, runtime
+  2.4M); 17,976,252 guest instructions, 12.08 model cycles each (generated
+  + walk); R13 225,516,608; R11 238,748,828, 240,644,109 under the R1 weights; R1 292,676,869 under them
   (275,119,407 under the first weights). Round 2 kept (first weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b
   −1.916%, R1d −1.231%; (R1 weights) R2 −1.029%, R3a −0.991%, R3b −0.188%,
   R4 −2.646%, R5 −2.036%, R6 −1.213%, R7 −9.037%; R8 0 (layout only:
-  bench −0.30%); R9 −1.615%; R10 −0.299%; (R11 weights) R12 −5.207%, R13 −0.354%.
+  bench −0.30%); R9 −1.615%; R10 −0.299%; (R11 weights) R12 −5.207%, R13 −0.354%,
+  R14 (a–d, g, i) −2.600%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -829,6 +831,49 @@ from the top while the meter finds a gain.
     (no taken `bra`; 45K executions). ≈ −0.08%.
   - Not taken: segment copies by push/pop (964 pairs per window); `move.l
     #0,Dn` (vasm emits `moveq`).
+- Built together (user 2026-10-13: combine before validating): R14a, b, c,
+  d, g, i. R14e, f, h not built (§10).
+  - As built: R14a `sub/xor rh,rh` → `and.w #$ff` (+ `moveq #0,d6` when
+    flags are live); `or/and/test rh,rh` → `move.w`, `and.w #$ff00,d6`
+    (not with PF live); dead-flag immediates as word ops. R14b in
+    `op_jcc`: the fall-through's CCR is what it held, or after a load the
+    state block's image of the live flags. R14c: the operand straight into
+    d6, then the source (no `lea`); TEST of all ones skips the AND. R14d
+    in `flags.plan` (`jump_chain`): a fused setter stores what the chain's
+    targets (`emit.taken_live`) and its end need; on failure the one-reader
+    fusion. R14g: `move.w An,d6`. R14i: the fault path as `cold` code
+    (`{label}_dz`), placed with the poll stubs.
+  - Kept: −2.600% (225,514,743 → 219,650,503 model cycles, all generated
+    code: executed bytes −5.01M, loop bytes −159K, reads −104K, writes
+    −227K, taken −56K, instructions −2.22M), static code −31,056 bytes.
+    By form: R14a −0.913% (`sub r8,r8` −1.22M, `xor r8,r8` −426K,
+    `or r8,r8` −287K, `and r8,imm` −135K), R14d −0.648% (207,306 stores),
+    R14c −0.536% (`test m16[disp],imm` −564K, `test m8[bx],imm` −320K),
+    R14b −0.306% (Jcc forms), R14g −0.110%, R14i −0.102%, loop windows
+    +0.016%.
+  - Coverage: boundary cases for the high-byte idioms (AH–BH 0, 1, 7Fh,
+    80h, FFh under three low bytes; PUSHF, LAHF, six Jcc, flags dead),
+    CMP/TEST of memory ([bx], [bp+2], [disp], CS:[di] at 0, 1, 7FFFh,
+    8000h, FFFEh, FFFFh; four immediates, AL, AH, AX, BP) and SI/DI
+    self-tests: 5,940 cases (1,470 not compared: the IR reads AF undefined
+    after logic ops). `tests/cross_flags_cases.py`: 204 graphs with their
+    real liveness and taken-target liveness (setters fused into a jump
+    over MOV to a flag-killing join; Jcc chains after fused setters, after
+    a load, before ADC; chains whose targets need less than the chain
+    reads, or more than its end): 7,344 cases. The block differential
+    takes the flags a stop holds only in the CCR (`emit.ccr_only`) from a
+    probe `move.w ccr` (Unicorn's SR read can miss lazy condition codes).
+  - Plants: high-byte clear keeps bit 8, zero flags from 1, self-test
+    flags of the word, AND immediate clears the low byte; a jump passes
+    every flag in the CCR; a jump chain ignores its targets' flags; TEST of
+    memory trusts all ones; SI/DI self-test sets no flags; divide error
+    branch dropped. "Divide fault leaves DX:AX swapped" now plants into the
+    cold code too.
+  - FS-UAE check (against `43d386f`, 2 bench runs each, interleaved):
+    frames 4–11 72,728–72,738 → 69,489–69,549 lines (−4.4%, ranges
+    apart), guest RAM at frame 12 equal in all four; `ab_labels.py` all
+    labels −4.16%, −4.16%, the 7,839 changed labels −6.61%, −6.63%. Same
+    sign as the meter.
 - No further translator form (§2): the cell walk (7 instructions per mov
   cell with its match; R7b declined), poll points, `mulu`/`divu` themselves,
   string loops (R12), stack accesses.
@@ -869,7 +914,7 @@ SWOTL.EXE+06A4D 16.9% (the cell walk), +0BFD1 8.3%, +04DAE 6.5%, +0B54B
 +0B017 3.0%, +109D6 2.7%, +0D5A6 2.6%, SPAZ.OVL+00CEE 2.4%.
 
 At R14 (2026-10-13): 19 fields (380 ms): −37% needed. R14a–i together
-≈ −2 to −3.5% of the meter. Top routines (R14 capture): SWOTL.EXE+06A4D
+≈ −2 to −3.5% of the meter; built: −2.600%. Top routines (R14 capture): SWOTL.EXE+06A4D
 16.8% (the cell walk), +0BFD1 7.7%, +0B54B 6.2%, +04DAE 6.2%, +0B017
 3.1%, RTSVGA.OVL+03B9A 3.0%, SWOTL.EXE+109D6 2.7%, +0D5A6 2.7%.
 
@@ -888,6 +933,20 @@ history at `781975e` and §5.)
   R7 under the meter.
 - R1c "SI/DI mirrored like SP/BP": census −1.0% (SI/DI serve as data
   registers far more than as lone indexes); not built.
+- R14e "return sites of a dispatched call narrowed to the seeds of its CS
+  (near; far: any) and on through the seeds those leave to": meter ±0. 407
+  of 421 such sites are far calls through pointers with no traced target
+  (any row); only CF is live there, at 11 sites. Sound narrower set: a
+  near/far row split (the runtime stops a far dispatch into a row seeded
+  only by near transfers), what-if −0.126% (−40K writes): a runtime
+  dispatch change, needs the user.
+- R14f "displacement folded into d8 under a no-wrap guard": census at R14:
+  422K foldable formations, 229K of them the only fold after their
+  formation (a guard costs what it saves); net of one guard per sign
+  ≤ −0.26%, before the exact slow-path copies a failed guard needs. Not
+  built.
+- R14h "mul with DX dead": DX is live after every hot `mul` (≤ 10K
+  executions with DX possibly dead, ≈ 0.01%). Not built.
 - R7b "cell cache (D3)": re-priced on the R7 meter at about −1.7% at best;
   not built (user, 2026-10-12). After R7, matching is 6 of the 17 loop
   bytes per mov cell (at most −11.1M). Every walk plants a RET in the
