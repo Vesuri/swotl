@@ -21,6 +21,7 @@ def main(sabotage=False):
 
     D.F.plan, D.lower_case = entry_plan, poison_x
     try:
+        D.Harness.keep_failing = not sabotage   # planted mismatches: no batch is kept
         h = D.Harness(1)
         for code in ("01d811ca", "29d819ca", "d1e0d1d2", "d1e8d1da"):
             for ax in (0, 1, 0x8000, 0xffff):

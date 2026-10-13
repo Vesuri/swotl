@@ -25,6 +25,8 @@ REPLAY: the plants reuse make test's boundary run).
 
 from __future__ import annotations
 
+import atexit
+import contextlib
 import hashlib
 import os
 import pickle
@@ -302,6 +304,8 @@ def unruns(rs: list) -> dict:
 
 class Harness(X.Harness):
     recording = False   # --record
+    keep_failing = True     # keep the source and image of a batch with mismatches
+    dirs: list = []         # batch directories made by this process
 
     def __init__(self, seed: int):
         super().__init__(seed)
@@ -310,6 +314,7 @@ class Harness(X.Harness):
         self.stats = Counter()
         self.lowered = Counter()
         self.tmp = Path(tempfile.mkdtemp(prefix="m68k-diff-"))
+        Harness.dirs.append(self.tmp)
         self.nbatch = 0
         self.seed = seed
         self.record: list | None = [] if self.recording else None   # [(case key, x86 side)]
@@ -430,12 +435,25 @@ class Harness(X.Harness):
             src += p[5]
         src.append(HELPERS)
         self.nbatch += 1
-        image = assemble("\n".join(src) + "\n", self.tmp / f"batch{self.nbatch}.bin")
+        out = self.tmp / f"batch{self.nbatch}.bin"
+        image = assemble("\n".join(src) + "\n", out)
         self.m.load(image)
+        bad = len(self.bad)
         for k, (label, code, case, undef, oracle, text, regs, flags, last) in enumerate(self.pending):
             entry = int.from_bytes(image[4 * k:4 * k + 4], "big")
             self.compare(label, code, case, undef, oracle, entry, regs, flags, last)
         self.pending = []
+        if len(self.bad) == bad or not self.keep_failing:
+            out.unlink()
+            out.with_suffix(".s").unlink()
+
+    @staticmethod
+    def tidy() -> None:
+        """Remove the batch directories that keep no failing batch."""
+        for d in Harness.dirs:
+            with contextlib.suppress(OSError):
+                d.rmdir()
+        Harness.dirs.clear()
 
     def compare(self, label, code, case, undef, oracle, entry, regs, flags, last) -> None:
         err, out, fl, umem, ints, outs = oracle
@@ -504,6 +522,9 @@ class Harness(X.Harness):
                             f"{'; '.join(diffs[:6])}")
         touched = set(mwrites) | {a for p, d in case[4] for a in range(p, p + len(d))}
         self.m.restore(touched)
+
+
+atexit.register(Harness.tidy)
 
 
 def main(argv=None) -> int:

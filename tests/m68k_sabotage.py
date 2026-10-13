@@ -474,6 +474,7 @@ SABOTAGE = [
 def plant(k: int) -> tuple[int, int, int, int]:
     """Plant SABOTAGE[k] and run its corpus: (mismatches, cases, x86 sides replayed, of)."""
     name, fn, corpus = SABOTAGE[k]
+    D.Harness.keep_failing = False      # planted mismatches: no batch is kept
     if isinstance(fn, tuple):   # flag helpers (translator/support.py)
         D.HELPERS = real_helpers.replace(fn[1], fn[2])
         assert D.HELPERS != real_helpers
@@ -517,6 +518,7 @@ def plant(k: int) -> tuple[int, int, int, int]:
         h.flush()
         return len(h.bad), sum(h.count.values()), h.replayed, h.ncases
     finally:
+        D.Harness.tidy()
         D.REPLAY = None
         L.Lowering.run = real_run
         D.HELPERS = real_helpers
