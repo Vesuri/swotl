@@ -70,6 +70,14 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     run masks dead stack (below SS:SP at a service or hardware interrupt, not rewritten by the
     guest); decide whether lockstep needs more (dead flag bits in pushed
     images under the remaining `annotations/flags.csv` pair).
+25. Interactive play stopped (2026-10-13, `5eb35ed`, A1200 68040, 8 MB
+    Fast, about 2 minutes in): `SWOTL_STOP dispatch: no translated entry at
+    CS:IP 0cbd 2bde` = SWOTL.EXE+758E, a cell walk entry
+    (`annotations/self-modifying.csv`). Four `call dx` sites in 049B route
+    DX 209Dh–404Dh into the walk; +05CB, +06F5 and +A267 (`call dx`)
+    dispatch without that check. Which site made the call, and whether the
+    68040 matters, is not established; no reference covers it (needs a
+    scripted reproduction).
 
 ## Amiga platform
 
