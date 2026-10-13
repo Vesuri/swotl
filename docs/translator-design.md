@@ -179,7 +179,12 @@ guarded copy; a profile choice, `tools/bp_regions.py`).
   can enter a self-modified region also run with the target in each region.
   Every executed block of a guarded copy runs with BP at both ends of the
   range its guard admits and inside it; every guard runs just inside and
-  outside that range.
+  outside that range. Every `annotations/tables.csv` row also runs from
+  its call site to the target read from the original table, then every
+  reachable block runs against x86, including untraced targets.
+- File dates (`tests/test_file_dates.py`): live DOSBox-X find-first/next
+  over synthetic files verifies Amiga DateStamp conversion and runtime
+  DTA time/date, including leap centuries, pre-1980 wrapping and odd seconds.
 - Host run (`make test-host`, gate 5): `build/host/swotl.elf` on Unicorn
   68020 from the MZ entry to milestones m1–m3 (`make test-host-all`: m1–m7
   and c6-flight-keys, whose film recorder writes files, kept in memory;
@@ -192,6 +197,18 @@ guarded copy; a profile choice, `tools/bp_regions.py`).
   test-amiga`: the same at m1b-logo on the A1200 model (FS-UAE,
   `amiga/milestone.gdb.in`), plus the shown screen (bitplanes, colour
   table) decoded against the reference framebuffer and DAC.
+- Amiga replay (`make test-amiga-replay`, also in `make gates`): separate
+  diagnostic images for m2-choose-side, m5-player-flight and c9-mouse-menu.
+  Translator hooks preserve native registers/CCR and split diagnostic
+  entries at block boundaries; the normal generated bodies are unchanged.
+  `tests/amiga_replay.*` replays DOSBox input and interrupt groups at their
+  recorded poll visits/service counts through the production IRQ glue.
+  Every service prefix checks registers, segments, vector, IF and DF;
+  final counts, guest state, DAC and shown bitplanes must match the original.
+  The final guest state is held while its queued frame reaches the VBI.
+  Only diagnostic builds disable physical input and the CIA timer; normal
+  hardware, smoke and restoration gates remain mandatory. No reference,
+  poll point, normal interrupt order or PIT rate changes.
 - Display (D9 slice): only the graphics driver (`emit.GRAPHICS_DRIVER`,
   RTSVGA) writes video memory. Before each of its memory stores the
   lowering checks the segment for A000h and calls `rt_vram_mark` (offset,
@@ -235,7 +252,13 @@ guarded copy; a profile choice, `tools/bp_regions.py`).
   a guest handler's `jmp far` to F000:FEA5 is the BIOS tick plus IRET
   (`rt_bios_int08`). INT 33h is DOSBox-X's driver with the mouse captured
   (8/16 mickeys per 8 pixels, 640x200, mode 13h X even) over `plat_mouse`
-  counts, the Amiga's JOY0DAT deltas taken at each vertical blank. The platform posts vectors to `rt_irq_ring` (08h tick,
+  counts, the Amiga's JOY0DAT deltas taken at each vertical blank. Recorded
+  IRQ12 (74h) at the exact DOSBox-X external vector F000:D020 drains no
+  guest callback: the supported INT 33h surface installs none and never
+  shows the DOS driver cursor. Guest-installed vectors still dispatch;
+  other external targets stop. `c9-mouse-menu` checks motion, buttons and
+  these recorded interrupts; `test_mouse_irq.py` checks the IVT/IF edges.
+  The platform posts vectors to `rt_irq_ring` (08h tick,
   09h/89h key make/break): Amiga a CIA-B timer per PIT period
   (`plat_timer_rate`) and the CIA-A keyboard interrupt (`Input.cpp`: raw
   key -> scan code, PC typematic repeat from the vertical blank; diagnostic

@@ -79,7 +79,7 @@ Facts about the originals: [source-inventory.md](source-inventory.md).
 | Arming | first instruction at `PSP+10h+1617h:0382h`; off unless `SWOTL_TRACE` |
 | Addresses | `(module, offset)`: root = image offset; overlay = `.OVL` file offset of the bytes the last DOS read put at that paragraph; `-` = unowned linear address |
 | Determinism | BIOS tick count set to `SWOTL_BIOS_TICKS` (0) at arming; DOS time and INT 1Ah derive from it, so the RNG seed (DOS time) is fixed. Every milestone repeats byte-identical |
-| Input | `SWOTL_KEYS=MODULE+HEX[#N]=key,...`: press when the guest reaches that instruction (Nth time since the previous key's release), release after `SWOTL_KEY_HOLD` instructions |
+| Input | `SWOTL_KEYS=MODULE+HEX[#N]=key,...`: press when the guest reaches that instruction (Nth time since the previous key's release), release after `SWOTL_KEY_HOLD` instructions. `mx±N`/`my±N` inject signed logical mouse counts; `mb0`–`mb7` set the button mask through the DOS mouse driver, without a key-hold delay |
 | Snapshot | `SWOTL_SNAPSHOTS=name@MODULE+HEX[#N],...`: counted after the key script, each after the previous; `snap-<name>/` with `ram.bin` (1 MiB; the EMS frame E0000h–EFFFFh read through its page handlers, i.e. the mapped pages), `vram.bin`, `dac.bin`, `regs.txt`, `residency.csv`, `writes.csv` (last CPU writer per byte of module-owned paragraphs since load) |
 | Summary | `make trace-summary RUN=name` |
 | Image proof | `tools/load_image.py <snap>` (gate 1, also run by `make reference`): rebuilds root + overlays from `ref/` with the loader model ([source-inventory.md](source-inventory.md)); every byte of every resident row equals the rebuilt byte, the last traced DOS read, or has a CPU writer. Lists self-modified executed bytes by writer |
@@ -134,6 +134,7 @@ checks; no determinism history needed). They feed the phase 2 map
 | c6-flight-keys | m5 path, then 47 keys at 30-frame intervals in flight | in-flight controls, gun camera film room (REPLAY, `RP*.TMP` written) |
 | c7-demo-dispatch | no keys | attract-demo call through the eight-word table at +EC62, return at +EC60 |
 | c8-steep-bank | m5 path, then 61 left presses | bank angle above the alternate renderer threshold; +EC17 calls the modified walk at +758E |
+| c9-mouse-menu | signed motion on both axes, each button and all buttons, releases | INT 33h motion consumption and buttons in the menu; DOS mouse IRQ12 at recorded poll points |
 
 Amiga regression: `AMIGA_CPU=68030 bash amiga/play_walk.sh` (then `68040`).
 The bounded `KEYS=` script enters flight and banks with mouse motion;
@@ -168,3 +169,12 @@ Facts from these runs:
   sites in the unrolled block `+6A4D..+899A` (+5132/+513D, +52CE/+52DA
   likewise); `+8FD5/+9030/+908E` patch words in `+7C3F..+8998`. Writes
   around `+E4E0` and `+49B0` look like code-segment variables.
+
+## A1200 replay validation
+
+`make test-amiga-replay` uses the existing m2, m5 and c9 traces without
+re-recording. `tests/amiga_replay.py` builds isolated diagnostic images under
+`tmp/amiga-replay/`, checks service-event state and replays recorded input/IRQs.
+The final guest snapshot and displayed bitplanes use the existing host/original
+comparison and display-handoff checks. The ordinary wall-clock A1200 gate stays
+mandatory; replay is additional validation, not a performance fixture.

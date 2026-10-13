@@ -1,0 +1,95 @@
+--- a/src/misc/swotl_trace.cpp
++++ b/src/misc/swotl_trace.cpp
+@@ -45,6 +45,7 @@
+ bool swotl_irq_gate = false, swotl_irq_open = false;
+ 
+ extern HostPt MemBase;
++extern void SWOTL_MouseInput(int dx, int dy, int buttons);
+ 
+ namespace {
+ 
+@@ -383,6 +384,14 @@
+ 	return out;
+ }
+ 
++bool MouseAction(const std::string &n) {
++    if (n.size() == 3 && n.substr(0, 2) == "mb" && n[2] >= '0' && n[2] <= '7') return true;
++    if (n.size() < 4 || n[0] != 'm' || (n[1] != 'x' && n[1] != 'y') ||
++        (n[2] != '+' && n[2] != '-')) return false;
++    for (size_t i = 3; i < n.size(); ++i) if (!isdigit((unsigned char)n[i])) return false;
++    return true;
++}
++
+ KBD_KEYS KeyByName(const std::string &n) {
+ 	static const std::map<std::string, KBD_KEYS> named = {
+ 	        {"enter", KBD_enter}, {"esc", KBD_esc}, {"space", KBD_space}, {"tab", KBD_tab},
+@@ -427,7 +436,7 @@
+ 			E_Exit("SWOTL: bad key spec '%s'", spec.c_str());
+ 		t.name = spec.substr(eq + 1);
+ 		t.key = KeyByName(t.name);
+-		if (t.key == KBD_NONE) E_Exit("SWOTL: unknown key '%s'", t.name.c_str());
++		if (t.key == KBD_NONE && !MouseAction(t.name)) E_Exit("SWOTL: unknown key '%s'", t.name.c_str());
+ 		keys.push_back(t);
+ 	}
+ 	if (const char *polls = getenv("SWOTL_POLLS")) {
+@@ -625,6 +634,14 @@
+ 	if (key_held == KBD_NONE && key_index < keys.size() && Hit(keys[key_index], here)) {
+ 		auto &t = keys[key_index++];
+ 		t.done = true;
++        if (MouseAction(t.name)) {
++            const int amount = atoi(t.name.c_str() + 2);
++            SWOTL_MouseInput(t.name[1] == 'x' ? amount : 0,
++                             t.name[1] == 'y' ? amount : 0,
++                             t.name[1] == 'b' ? amount : -1);
++            Event("mouse", "%s", t.name.c_str());
++            return;
++        }
+ 		KEYBOARD_AddKey(t.key, true);
+ 		key_held = t.key;
+ 		key_release_at = icount + key_hold;
+--- a/src/ints/mouse.cpp
++++ b/src/ints/mouse.cpp
+@@ -1607,8 +1607,10 @@
+     }
+ }
+ 
++static bool swotl_mouse_captured = false;
++
+ void Mouse_Read_Motion_Data() {
+-    const auto locked = MOUSE_IsLocked();
++    const auto locked = MOUSE_IsLocked() || swotl_mouse_captured;
+     reg_cx = (uint16_t)static_cast<int16_t>(locked ? mouse.mickey_x : 0);
+     reg_dx = (uint16_t)static_cast<int16_t>(locked ? mouse.mickey_y : 0);
+     mouse.mickey_x = 0;
+@@ -2905,3 +2907,31 @@
+ 	}
+ } dummy;
+ }
++
++// Test input uses the platform contract: one count = one logical coordinate
++// unit (two vertical mickeys after the standard INT33 reset). Feed the real
++// DOS driver event path, normalizing its frontend sensitivity/rate first.
++// Called only by the explicitly armed SWOTL reference script.
++void SWOTL_MouseInput(int dx, int dy, int buttons) {
++    swotl_mouse_captured = true;
++    const bool was_locked = user_cursor_locked;
++    extern MOUSE_EMULATION user_cursor_emulation;
++    const auto was_emulation = user_cursor_emulation;
++    user_cursor_locked = true;
++    user_cursor_emulation = MOUSE_EMULATION_ALWAYS;
++    if (dx || dy) {
++        float x = dx / mouse.pixelPerMickey_x;
++        float y = dy / mouse.pixelPerMickey_y;
++        if (fabs(x) > 1.0 || mouse.senv_x < 1.0) x /= mouse.senv_x;
++        if (fabs(y) > 1.0 || mouse.senv_y < 1.0) y /= mouse.senv_y;
++        Mouse_CursorMoved(x, y, 0, 0, true);
++    }
++    if (buttons >= 0) {
++        for (unsigned b = 0; b < 3; ++b) {
++            if (buttons & (1 << b)) Mouse_ButtonPressed(b);
++            else Mouse_ButtonReleased(b);
++        }
++    }
++    user_cursor_emulation = was_emulation;
++    user_cursor_locked = was_locked;
++}

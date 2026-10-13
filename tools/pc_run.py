@@ -57,7 +57,7 @@ def main() -> int:
     parser.add_argument("--cycles", type=int, default=None)
     parser.add_argument("--snapshots", default="", help="name@MODULE+HEX[#N],...")
     parser.add_argument("--exit-after", default="", help="snapshot name that ends the run")
-    parser.add_argument("--keys", default="", help="MODULE+HEX[#N]=key,...")
+    parser.add_argument("--keys", default="", help="MODULE+HEX[#N]=key/mx+N/my-N/mb0..7,... (mouse actions are immediate)")
     parser.add_argument("--key-hold", type=int, default=None)
     parser.add_argument("--launch", default=LAUNCH)
     parser.add_argument("--services", action="store_true",

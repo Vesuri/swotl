@@ -12,7 +12,8 @@ cd "$(dirname "$0")"
 GDB="${GDB:-m68k-amiga-elf-gdb}"
 ROM="${1:-$KICKSTART}"
 [ -f "$ROM" ] || { echo "Kickstart ROM not found: $ROM"; exit 1; }
-[ -f out/Swotl.elf ] || { echo "build first: make"; exit 1; }
+ELF="${SWOTL_ELF:-out/Swotl.elf}"
+[ -f "$ELF" ] || { echo "build first: make"; exit 1; }
 
 # KS 3.1 sets the AGA bits in GfxBase only after SetPatch (docs/amiga-lessons.md L8).
 [ -f "$SETPATCH" ] || { echo "SetPatch not found: $SETPATCH"; exit 1; }
@@ -27,7 +28,7 @@ cp -f "${3:-out/Swotl.exe}" "$DH1/Swotl" || exit 1
 rsync -a --exclude '*.pdf' ../ref/ "$DH1/"
 rm -f "$RUN"/state/*.uss
 
-fsuae_claim_port
+fsuae_claim_port || exit 1
 # Quiet debug run (no sound, window behind the others): fsuae_options in $FSUAE_COMMON.
 KICKSTART="$ROM" AMIGA_MODEL=A1200 CPU="${CPU:-${AMIGA_CPU:-}}" DEBUG=1
 CHIP_KB=2048 FAST_KB="${FAST_KB:-${FAST_MEMORY:-8192}}"
@@ -50,10 +51,10 @@ printf 'set pagination off\nset confirm off\nset remotetimeout 90\ntarget remote
 if [ -n "${2:-}" ]; then
   [ -f "$2" ] || { echo "fixture not found: $2"; fsuae_stop; exit 1; }
   env HOME="$GDBHOME" XDG_CACHE_HOME="$GDBHOME" \
-    "$GDB" -q -l 10 -x "$PREAMBLE" -x "$2" out/Swotl.elf
+    "$GDB" -q -l 10 -x "$PREAMBLE" -x "$2" "$ELF"
   STATUS=$?
   fsuae_stop
   exit $STATUS
 fi
 exec env HOME="$GDBHOME" XDG_CACHE_HOME="$GDBHOME" \
-  "$GDB" -q -l 10 -x "$PREAMBLE" out/Swotl.elf
+  "$GDB" -q -l 10 -x "$PREAMBLE" "$ELF"

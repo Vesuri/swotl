@@ -28,6 +28,7 @@ import argparse
 import csv
 import struct
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -130,6 +131,8 @@ def fnv(data: bytes) -> int:
 
 
 SABOTAGE = {
+    "mouse-motion": "scripted vertical mouse motion lost",
+    "mouse-buttons": "scripted middle mouse button lost",
     "read": "first byte of each guest file read flipped",
     "ax": "AX of the tenth service result off by one",
     "psp": "one command-tail byte of the PSP changed at the guest entry",
@@ -140,7 +143,14 @@ SABOTAGE = {
 }
 # Plants a milestone other than --milestone exercises (the guest's first
 # hardware interrupt handler runs after m1b-logo).
-SABOTAGE_AT = {"sp": "m2-choose-side"}
+SABOTAGE_AT = {"sp": "m2-choose-side", "mouse-motion": "c9-mouse-menu",
+               "mouse-buttons": "c9-mouse-menu"}
+
+
+def dos_file_stamp(stamp):
+    t = time.localtime(stamp)
+    return ((t.tm_hour & 31) << 11 | (t.tm_min & 63) << 5 | (t.tm_sec // 2 & 31),
+            ((t.tm_year - 1980) & 127) << 9 | (t.tm_mon & 63) << 5 | (t.tm_mday & 31))
 
 
 class MemFile:
@@ -148,6 +158,7 @@ class MemFile:
 
     def __init__(self, data: bytearray):
         self.data, self.pos = data, 0
+        self.modified = False
 
     def read(self, n: int) -> bytes:
         out = bytes(self.data[self.pos:self.pos + n])
@@ -155,6 +166,7 @@ class MemFile:
         return out
 
     def write(self, b: bytes) -> int:
+        self.modified = True
         if not b:  # DOS write of 0 bytes: truncate here
             del self.data[self.pos:]
             return 0
@@ -185,6 +197,7 @@ class Host:
         self.files: dict[int, object] = {}
         self.next_file = 1
         self.written: dict[str, bytearray] = {}  # files the guest wrote (game path -> bytes)
+        self.file_stamps: dict[str, tuple[int, int]] = {}
         self.deleted: set[str] = set()
         self.log: list[str] = []
         self.exit: int | None = None
@@ -194,6 +207,7 @@ class Host:
                                                 "plat_delete", "plat_seek",
                                                 "plat_close", "plat_dir_entry", "plat_timer_rate", "plat_mouse", "plat_present", "plat_palette",
                                                 "plat_service", "plat_log", "plat_exit")}
+        self.mouse_dx = self.mouse_dy = self.mouse_buttons = 0
         self.presents = 0
         # D9 display: every byte the guest stores to the frame is inside the
         # rectangles of the next present (the runtime's marks vs the stores)
@@ -372,19 +386,20 @@ class Host:
             on_disk = path.is_file() and name not in self.deleted
         if n == "plat_dir_entry":
             prefix = name + "/" if name else ""
-            disk = {p.name: p.stat().st_size for p in path.iterdir()
+            disk = {p.name: (p.stat().st_size, *dos_file_stamp(p.stat().st_mtime)) for p in path.iterdir()
                     if p.is_file() and len(p.name) <= 12 and prefix + p.name.upper() not in self.deleted} \
                 if path.is_dir() else {}
-            disk.update({w[len(prefix):]: len(d) for w, d in self.written.items()
+            disk.update({w[len(prefix):]: (len(d), *self.file_stamps[w]) for w, d in self.written.items()
                          if w.startswith(prefix) and "/" not in w[len(prefix):]})
             entries = sorted(disk.items())
             if args[1] < len(entries):
                 self.e.write(args[2], entries[args[1]][0].encode() + b"\0")
-                self.e.write(args[3], struct.pack(">I", entries[args[1]][1]))
+                self.e.write(args[3], struct.pack(">IHH", *entries[args[1]][1]))
                 res = 1
         elif n == "plat_open":
             if args[1] and on_disk and name not in self.written:
                 self.written[name] = bytearray(path.read_bytes())  # a copy: ref/ stays untouched
+                self.file_stamps[name] = dos_file_stamp(path.stat().st_mtime)
             f = MemFile(self.written[name]) if name in self.written else \
                 path.open("rb") if on_disk else None
             if f:
@@ -394,6 +409,7 @@ class Host:
                 res = -1
         elif n == "plat_create":
             self.written[name] = bytearray()
+            self.file_stamps[name] = dos_file_stamp(time.time())
             self.deleted.discard(name)
             self.files[self.next_file] = MemFile(self.written[name])
             res, self.next_file = self.next_file, self.next_file + 1
@@ -419,10 +435,17 @@ class Host:
             off = args[1] - (1 << 32) if args[1] & 0x80000000 else args[1]
             res = f.seek(off, args[2])
         elif n == "plat_close":
-            self.files.pop(args[0]).close()
-        elif n == "plat_mouse":  # the reference's mouse never moves (DOSBox-X, not captured)
-            self.e.write(args[0], bytes(4))
-            self.e.write(args[1], bytes(4))
+            f = self.files.pop(args[0])
+            if isinstance(f, MemFile) and f.modified:
+                for name, data in self.written.items():
+                    if data is f.data:
+                        self.file_stamps[name] = dos_file_stamp(time.time())
+            f.close()
+        elif n == "plat_mouse":
+            self.e.write(args[0], struct.pack(">i", self.mouse_dx))
+            self.e.write(args[1], struct.pack(">i", 0 if self.sabotage == "mouse-motion" else self.mouse_dy))
+            self.mouse_dx = self.mouse_dy = 0
+            res = self.mouse_buttons & (3 if self.sabotage == "mouse-buttons" else 7)
         elif n == "plat_present":
             self.presents += 1
             shown = bytearray(64000)
@@ -502,7 +525,15 @@ class Host:
             if self.hits < n:
                 return
             self.step, self.hits = self.step + 1, 0
-            if key is not None:
+            if isinstance(key, str):
+                amount = int(key[2:])
+                if key[1] == "x":
+                    self.mouse_dx += amount
+                elif key[1] == "y":
+                    self.mouse_dy += amount
+                else:
+                    self.mouse_buttons = amount
+            elif key is not None:
                 self.press(key)
                 self.release = releases.pop(0)
             elif self.step == len(steps):
@@ -599,11 +630,13 @@ def milestone_script(name: str) -> dict:
     keys are pressed in order, each counted from the previous key's release
     (the tracer's rules); the frame is compared at vga_mode 13."""
     rows = {r["name"]: r for r in csv.DictReader(TABLE.open())}
+    if name not in rows:
+        rows.update({r["name"]: r for r in csv.DictReader((REPO / "reference/coverage.csv").open())})
     r = rows[name]
     keys = []
     for k in filter(None, r["keys"].split(";")):
         spec, _, key = k.partition("=")
-        keys.append((trigger(spec), KEYS[key]))
+        keys.append((trigger(spec), key if key.startswith(("mx", "my", "mb")) else KEYS[key]))
     return {"keys": keys, "snapshots": [trigger(s) for s in r["snapshots"].split()],
             "frame": r["vga_mode"] == "13"}
 

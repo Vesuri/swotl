@@ -616,6 +616,53 @@ def main(argv=None) -> int:
                 want = (emit.walk_label(mod, 0x6A4D) if 0x209D <= target <= 0x404D
                         else "rt_dispatch_near")
                 block_cases(mod, [site], 2, {"dx": target}, expected=want)
+    # Item 14: every curated table row, then every reachable generated block.
+    # Read the actual table words, not the translator's target list, for the
+    # required entry. Unknown/return/SMC exits remain checked by block_cases.
+    if not args.only:
+        roots = set()
+        table_rows = 0
+        for row in image.rows("tables.csv"):
+            mod, site = row["module"], int(row["site"], 16)
+            u = p.units[mod]
+            operand = u.insns[site].operands[0]
+            assert operand.seg == "cs" and operand.width == 16
+            assert operand.base and not operand.index
+            entries = int(row["entries"])
+            offset = u.off_of(u.cs[site], operand.disp)
+            words = bytes(reloc[mod][offset:offset + 2 * entries])
+            assert len(words) == 2 * entries
+            targets = set()
+            for k in range(entries):
+                target = (mod, u.off_of(u.cs[site], int.from_bytes(words[2*k:2*k+2], "little")))
+                targets.add(target)
+                before = count[mod]
+                block_cases(mod, [site], 2, {operand.base: 2*k},
+                            memory=[((LOADSEG + u.cs[site])*16 + operand.disp, words)],
+                            expected=emit.label(*target))
+                assert count[mod] - before == 2, ("table row not compared", row, k)
+                table_rows += 1
+            assert targets == set(p.succ[(mod, site)]), ("table target set", row)
+            roots.update(targets)
+        reached, todo = set(), list(roots)
+        while todo:
+            node = todo.pop()
+            if node in reached:
+                continue
+            reached.add(node)
+            successors = list(p.succ[node])
+            if p.node_insn(node).op in ("call", "callf"):
+                successors.append(p.fall[node])
+            todo.extend(n for n in successors if n in p.succ and n not in reached)
+        discovered = {mod: {off for m, off in reached if m == mod} for mod in p.units}
+        table_blocks = list(blocks(p, discovered))
+        for mod, run in table_blocks:
+            before = count[mod]
+            block_cases(mod, run, 2)
+            assert count[mod] > before, ("table block not compared", mod, run[0])
+        print(f"annotated tables: {table_rows} rows, {len(roots)} targets, "
+              f"{sum(off not in executed.get(mod, ()) for mod, off in roots)} untraced targets, "
+              f"{len(table_blocks)} reachable blocks checked")
     total = sum(v for k, v in count.items() if k != "return checks")
     print(f"blocks {len(picks)} of {len(allb)} executed; cases {total}", dict(count))
     print(f"poll cases {sum(polls.values()) - polls['return checks']} (interrupt posted)")

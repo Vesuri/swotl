@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae host test-host test-host-all test-amiga test-amiga-restore amiga amiga-release smoke smoke-release size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae host test-host test-host-all test-amiga test-amiga-replay test-amiga-restore amiga amiga-release smoke smoke-release size clean
 
 PYTHON ?= python3
 # AmigaXDev's shared Python package (amigaxdev.dos.mz_info).
@@ -33,7 +33,7 @@ help:
 	@echo "  make test-sabotage      planted IR/decoder/runtime faults must fail the differentials and host run"
 	@echo "  make host               link generated program + runtime for Unicorn 68020 -> build/host/swotl.elf"
 	@echo "  make test-host          run it from the MZ entry to milestones m1-m3 against the reference"
-	@echo "  make test-host-all      the same to every milestone, m1-m7, and coverage c6-c8 (~3-5 min)"
+	@echo "  make test-host-all      the same to every milestone, m1-m7, and coverage c6-c9 (~3-5 min)"
 	@echo "  make test-amiga         m1b-logo on the A1200 model (FS-UAE + GDB capture, amiga/milestone.gdb.in; AMIGA_CPU=68030)"
 	@echo "  make gates              the step gates: test, sabotage, host milestones, Amiga, smoke and restoration"
 	@echo "  make amiga   build amiga/out/Swotl.exe"
@@ -106,7 +106,7 @@ test-x86:
 	$(PYTHON) tests/x86_diff.py
 
 test-sabotage: host
-	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue
+	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-file-dates t-sab-replay-hooks t-sab-replay-events
 
 test-m68k:
 	$(PYTHON) tests/m68k_diff.py
@@ -123,7 +123,7 @@ JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc)
 RUN = @mkdir -p tmp/test; if $(2) > tmp/test/$(1).log 2>&1; then echo "ok    $(1)"; \
 	else echo "FAIL  $(1) (tmp/test/$(1).log)"; tail -n 15 tmp/test/$(1).log; exit 1; fi
 SHARDS = forms.0/4 forms.1/4 forms.2/4 forms.3/4 space.0/1 boundary.0/1 blocks.0/1
-TESTS = t-display-queue t-amiga-input t-smc-flow t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
+TESTS = t-replay-hooks t-replay-events t-file-dates t-mouse-irq t-display-queue t-amiga-input t-smc-flow t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
 	t-blocks t-guards $(HOST_MILESTONES:%=t-host-%)
 
 test: host
@@ -167,6 +167,20 @@ t-hunk-size:
 	$(call RUN,hunk-size,$(PYTHON) tests/test_hunk_size.py)
 t-profile-tools:
 	$(call RUN,profile-tools,$(PYTHON) tests/test_profile_tools.py)
+t-replay-hooks:
+	$(call RUN,replay-hooks,$(PYTHON) tests/test_replay_hooks.py)
+t-sab-replay-hooks:
+	$(call RUN,sabotage-replay-hooks,$(PYTHON) tests/test_replay_hooks.py --sabotage)
+t-replay-events:
+	$(call RUN,replay-events,$(PYTHON) tests/test_replay_events.py)
+t-sab-replay-events:
+	$(call RUN,sabotage-replay-events,$(PYTHON) tests/test_replay_events.py --sabotage)
+t-file-dates:
+	$(call RUN,file-dates,$(PYTHON) tests/test_file_dates.py)
+t-sab-file-dates:
+	$(call RUN,sabotage-file-dates,$(PYTHON) tests/test_file_dates.py --sabotage)
+t-mouse-irq:
+	$(call RUN,mouse-irq,$(PYTHON) tests/test_mouse_irq.py)
 t-reglive:
 	$(call RUN,reglive,$(PYTHON) tests/test_reglive.py)
 t-smc-flow:
@@ -243,7 +257,8 @@ host: gen-check build/host/swotl.elf
 
 HOST_MILESTONES = m1-mode13h m1b-logo m2-choose-side m3-demo-flight
 HOST_MILESTONES_ALL = $(HOST_MILESTONES) m4-demo-frames m5-player-flight m6-film-room m7-campaign
-HOST_COVERAGE = c6-flight-keys c7-demo-dispatch c8-steep-bank
+HOST_COVERAGE = c6-flight-keys c7-demo-dispatch c8-steep-bank c9-mouse-menu
+AMIGA_REPLAY_MILESTONES = m2-choose-side m5-player-flight c9-mouse-menu
 AMIGA_MILESTONE ?= m1b-logo
 AMIGA_CPU ?= 68030
 AMIGA_CAPTURE = tmp/amiga-$(AMIGA_MILESTONE)
@@ -262,6 +277,12 @@ test-amiga: amiga host
 		tee ../$(AMIGA_CAPTURE)/gdb.log | sed -n 's/^SWOTL_REGS //p' > ../$(AMIGA_CAPTURE)/regs.txt
 	grep -q '^SWOTL_MILESTONE_OK$$' $(AMIGA_CAPTURE)/gdb.log
 	$(PYTHON) tests/host_run.py --milestone $(AMIGA_MILESTONE) --amiga $(AMIGA_CAPTURE)
+
+# Each replay owns its image, capture directory and strictly claimed GDB port.
+test-amiga-replay: host
+	@$(MAKE) -s -k -j3 $(AMIGA_REPLAY_MILESTONES:%=t-amiga-replay-%)
+t-amiga-replay-%:
+	$(call RUN,amiga-replay-$*,. amiga/env.sh && $(PYTHON) tests/amiga_replay.py --milestone $*)
 
 test-amiga-restore: amiga
 	bash amiga/restore_check.sh
@@ -300,6 +321,7 @@ g-fsuae:
 	$(call GATE,test-amiga)
 	$(call GATE,smoke)
 	$(call GATE,test-amiga-restore)
+	$(call GATE,test-amiga-replay)
 
 clean:
 	$(MAKE) -C amiga clean

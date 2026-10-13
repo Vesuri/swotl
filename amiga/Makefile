@@ -45,6 +45,18 @@ OBJECTS = obj/main.o obj/Swotl.o obj/Input.o obj/GCCRuntime.o \
 	obj/amiga_platform.o obj/amiga_run.o obj/c2p1x1_8_c5_bm.o obj/rt_entry.o \
 	$(patsubst $(RUNTIME)/%.c,obj/rt_%.o,$(wildcard $(RUNTIME)/*.c)) obj/program.o
 
+# Diagnostic image is built in a separate working directory by the replay test.
+ifneq ($(REPLAY),)
+CCFLAGS += -DSWOTL_REPLAY -I"$(REPLAY)"
+VASMFLAGS += -DSWOTL_REPLAY=1
+OBJECTS += obj/replay_c.o obj/replay_s.o
+obj/replay_c.o: $(REPO)/tests/amiga_replay.c $(REPLAY)/replay_data.h | obj
+	$(CC) $(CCFLAGS) -ffreestanding -I"$(RUNTIME)" -c -o $@ $<
+obj/replay_s.o: $(REPO)/tests/amiga_replay.s | obj
+	$(VASM) $(VASMFLAGS) -o $@ $<
+endif
+
+.DEFAULT_GOAL := all
 .PHONY: all clean verify-runtime
 # Never leave a truncated executable that looks up to date after elf2hunk fails.
 .DELETE_ON_ERROR:

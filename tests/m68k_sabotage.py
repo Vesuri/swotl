@@ -282,6 +282,15 @@ def table_target_omitted(self, out):
             f"jmp {lab}", "jmp rt_stop_unknown") for line in out]
 
 
+def untraced_table_row_omitted(self, out):
+    """The last row of the untraced selector table must reach native output."""
+    if self.c.label != E.label("SWOTL.EXE", 0x0534a):
+        return out
+    assert self.c.complete and self.c.near_targets
+    lab = self.c.near(self.c.near_targets[-1])
+    return [line.replace(f"jsr {lab}", "jsr rt_stop_unknown") for line in out]
+
+
 def walk_entry_flag(self, out):
     """A live flag wrong on entry to a cell walk (D16): CF flipped in the state
     block just before the walk is called."""
@@ -512,6 +521,7 @@ SABOTAGE = [
     ("FLAGS-to-CCR table one entry off", ("helpers", "__sahf_ccr(pc,", "__sahf_ccr+1(pc,"),
      "boundary"),
     ("proved near table omits a target", table_target_omitted, "program"),
+    ("untraced annotated table row omitted", untraced_table_row_omitted, "program"),
     ("walk lower bound omitted", walk_guard_omitted(0), "program"),
     ("walk upper bound omitted", walk_guard_omitted(1), "program"),
 ]

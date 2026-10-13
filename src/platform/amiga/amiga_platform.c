@@ -14,6 +14,7 @@
 #include "runtime.h"
 #include "platform.h"
 #include "amiga_platform.h"
+#include "FileDate.h"
 
 struct DosLibrary *DOSBase = 0;
 
@@ -105,7 +106,7 @@ void plat_close(int32_t handle)
     files[handle] = 0;
 }
 
-int32_t plat_dir_entry(const char *dir, uint32_t index, char *name, uint32_t *size)
+int32_t plat_dir_entry(const char *dir, uint32_t index, char *name, struct plat_file_info *info)
 {
     int32_t found = 0;
     amiga_io_begin();
@@ -122,7 +123,9 @@ int32_t plat_dir_entry(const char *dir, uint32_t index, char *name, uint32_t *si
                     name[k] = fib->fib_FileName[k];
                 }
                 name[k] = 0;
-                *size = (uint32_t)fib->fib_Size;
+                info->size = (uint32_t)fib->fib_Size;
+                amiga_file_date(fib->fib_Date.ds_Days, fib->fib_Date.ds_Minute,
+                                fib->fib_Date.ds_Tick, &info->dos_time, &info->dos_date);
                 found = 1;
                 break;
             }
@@ -370,11 +373,16 @@ int amiga_guest_open(void)
     }
     plat_log("SWOTL guest start");
     rt_start(guest_block);
+#ifdef SWOTL_REPLAY
+    (void)timer_open;
+    plat_log("SWOTL diagnostic reference replay");
+#else
     if (rt_bench) {
         plat_log("SWOTL frame bench");
     } else if (!timer_open()) {
         plat_log("SWOTL no CIA-B timer");
     }
+#endif
     return 1;
 }
 

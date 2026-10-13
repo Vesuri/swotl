@@ -21,8 +21,9 @@ int32_t plat_seek(int32_t handle, int32_t offset, int32_t whence);
 void plat_close(int32_t handle);
 /* Entry `index` (0 first) of the files in directory `dir` (game-relative as
  * above, "" the game directory): name (up to 12 chars + NUL, case as stored)
- * and size; 0 past the last. */
-int32_t plat_dir_entry(const char *dir, uint32_t index, char *name, uint32_t *size);
+ * and metadata (local calendar, DOS packed time/date); 0 past the last. */
+struct plat_file_info { uint32_t size; uint16_t dos_time, dos_date; };
+int32_t plat_dir_entry(const char *dir, uint32_t index, char *name, struct plat_file_info *info);
 /* PIT channel 0 now fires every `divisor` input clocks (1..65536, 1193182 Hz):
  * per period the platform posts vector 08h (runtime.h rt_irq_ring). */
 void plat_timer_rate(uint32_t divisor);

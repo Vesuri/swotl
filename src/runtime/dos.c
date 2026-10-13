@@ -437,8 +437,8 @@ static int find_next_entry(void)
         spext[k] = (char)rd8(dta + DTA_SPEXT + k);
     }
     fcb_form(spname, field_len(dta + DTA_SPNAME, 8), spext, field_len(dta + DTA_SPEXT, 3), pat);
-    uint32_t size;
-    for (uint16_t index = rd16(dta + DTA_NEXT); plat_dir_entry(find_dir, index, name, &size);
+    struct plat_file_info info;
+    for (uint16_t index = rd16(dta + DTA_NEXT); plat_dir_entry(find_dir, index, name, &info);
          ++index) {
         int n = 0;
         for (; name[n]; ++n) {
@@ -461,9 +461,9 @@ static int find_next_entry(void)
         }
         wr16(dta + DTA_NEXT, index + 1);
         wr8(dta + DTA_ATTR, 0x20);  /* archive, as AH=43h */
-        wr16(dta + DTA_TIME, 0);    /* platform files carry no DOS time */
-        wr16(dta + DTA_DATE, 0);
-        wr32(dta + DTA_SIZE, size);
+        wr16(dta + DTA_TIME, info.dos_time);
+        wr16(dta + DTA_DATE, info.dos_date);
+        wr32(dta + DTA_SIZE, info.size);
         for (int k = 0; k <= n; ++k) {
             wr8(dta + DTA_NAME + k, (uint8_t)name[k]);
         }

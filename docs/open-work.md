@@ -19,13 +19,6 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Translator and validation
 
-14. Coverage gaps: no reference has mouse input, so INT 33h motion and
-    buttons (transcribed from DOSBox-X) are untested (needs scripted motion
-    in the DOSBox-X mouse patch); the A1200 model is checked only at
-    m1b-logo (it runs on wall-clock time, not replayed); table targets
-    from `annotations/tables.csv` that no reference executed are checked
-    by the instruction differential only; find-first gives platform files
-    no DOS time/date.
 14b. Speed: [speed-plan.md](speed-plan.md) has no planned step (§1, §7).
     Frames fixture 19–19.5 fields against the ≤ 12 bar (§9). Next is the
     user's choice: a re-profile for new translator forms, or native

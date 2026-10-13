@@ -187,7 +187,9 @@ def cs_expr(cs: int) -> str:
 
 
 class Program:
-    def __init__(self, units: dict[str, cfg.Unit] | None = None, components: bool = True):
+    def __init__(self, units: dict[str, cfg.Unit] | None = None, components: bool = True,
+                 diagnostic_hooks: dict[tuple[str, int], int] | None = None):
+        self.diagnostic_hooks = diagnostic_hooks or {}
         self.units = units or cfg.build()
         self.align = {r["label"]: int(r["residue"]) for r in image.rows("align.csv")}
         self.indirect: dict[tuple[str, int], tuple[list, list]] = {}
@@ -237,6 +239,12 @@ class Program:
         self.returns()
         self.liveness()
         self.leaders = self.find_leaders()
+        for mod, off in self.diagnostic_hooks:
+            if mod not in self.units or off not in self.units[mod].insns:
+                raise ValueError(f"diagnostic hook is not an instruction: {(mod, off)}")
+        # A diagnostic stop/input inside a block needs the exact guest state,
+        # so lowering may not fuse across it. Production leaders are unchanged.
+        self.leaders.update(self.diagnostic_hooks)
         self.components(components)
 
     # -- graph ----------------------------------------------------------------
@@ -496,6 +504,8 @@ class Program:
         """Assembly root of the Amiga/host link: equates, runtime imports, the module
         files and the dispatch table."""
         lines = ["\txref\t" + r for r in RUNTIME]
+        if self.diagnostic_hooks:
+            lines.append("\txref\trt_replay_point")
         lines += ["\txdef\tdispatch_table", "\txdef\tdispatch_count", "\txdef\tload_segment",
                   "\txdef\toverlay_table", "\tsection\t.text,code"]
         lines += [f'\tinclude\t"{f}"' for f in files]
@@ -620,6 +630,18 @@ class Program:
         for o, lw in zip(run, lws):
             n = u.insns[o]
             lines.append(f"{lab(mod, o)}:\t; {u.cs[o]:04X}:{n.ip:04X} {n}")
+            if (mod, o) in self.diagnostic_hooks:
+                point = self.diagnostic_hooks[(mod, o)]
+                assert 0 <= point < 32768
+                # Diagnostic build only. The hook preserves registers/CCR;
+                # the original poll and every production guard remain below.
+                lines += [f"\tpea {point}.w", "\tjsr rt_replay_point"]
+                if comp is not None and (mod, o) in self.loop_heads:
+                    # As in poll_stub: an IRQ handler may change BP, so a
+                    # delivered diagnostic IRQ must leave the guarded copy.
+                    lines += ["\ttst.l (sp)+", f"\tbne {label(mod, o)}_np"]
+                else:
+                    lines.append("\tlea 4(sp),sp")
             if (mod, o) in self.loop_heads:
                 assert (mod, o) in self.leaders, (mod, o)
                 lines.extend(poll(lab(mod, o)))

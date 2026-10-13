@@ -26,12 +26,15 @@ static const char environment[] =
 #define PARENT_PSP 0x0701       /* reference: COMMAND.COM */
 
 /* Reference interrupt vectors the game reads (INT 21h AH=35h) or chains to. */
+#define MOUSE_INT74_SEG 0xf000
+#define MOUSE_INT74_OFF 0xd020
+
 static const struct { uint8_t vector; uint16_t seg, off; } vectors[] = {
     {0x00, 0xf000, 0xca60}, {0x05, 0xf000, 0xff54}, {0x08, 0xf000, 0xfea5},
     {0x09, 0xf000, 0xe987}, {0x10, 0xc000, 0x00ee}, {0x16, 0xf000, 0xcfc0},
     {0x1c, 0xf000, 0xcc00}, {0x21, 0xf000, 0xd100}, {0x22, 0xf000, 0xdac8},
     {0x23, 0x0701, 0x0128}, {0x24, 0x0701, 0x0110}, {0x33, 0xc402, 0x0010},
-    {0x67, 0xc401, 0x0004},
+    {0x67, 0xc401, 0x0004}, {0x74, MOUSE_INT74_SEG, MOUSE_INT74_OFF},
 };
 
 static void put_bytes(uint32_t a, const void *src, uint32_t n)
@@ -389,6 +392,15 @@ uint32_t rt_irq_c(uint32_t d6, uint32_t ip)
         }
         if (vector == 9) {
             rt_keyboard_irq();      /* BIOS INT 09h: the next keyboard event */
+            continue;
+        }
+        /* DOSBox-X's external IRQ12 handler drains its mouse event queue.
+         * The supported INT33 surface never shows the DOS driver cursor or
+         * installs a callback; input state is already supplied by plat_mouse.
+         * Guest-installed vectors were dispatched above. Keep the exact IVT
+         * guard: an unknown external handler is still unsupported. */
+        if (vector == 0x74 && rd16(0x74 * 4) == MOUSE_INT74_OFF &&
+                rd16(0x74 * 4 + 2) == MOUSE_INT74_SEG) {
             continue;
         }
         if (vector != 8 || rd16(8 * 4) != BIOS_INT08_OFF || rd16(8 * 4 + 2) != BIOS_INT08_SEG) {

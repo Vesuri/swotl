@@ -6,6 +6,9 @@
 extern "C" {
 #include "runtime.h"
 #include "platform.h"
+#ifdef SWOTL_REPLAY
+uint32_t replay_mouse(int32_t*, int32_t*);
+#endif
 }
 #include "Input.h"
 #include "AmigaHardware.h"
@@ -102,6 +105,9 @@ static uint32_t keyboardHandler()
 
 bool Input::begin()
 {
+#ifdef SWOTL_REPLAY
+    return true; // Diagnostic events come from the original reference only.
+#endif
     repeatKey = 0xff;
     mouseDX = mouseDY = 0;
     mouseButtons = scriptButtons = 0;
@@ -145,6 +151,9 @@ void Input::end()
 // (L80). Buttons: left CIA-A PRA bit 6, right and middle POTINP bits 10 and 8.
 void Input::verticalBlank()
 {
+#ifdef SWOTL_REPLAY
+    return;
+#endif
     uint16_t counters = *joy0datPointer;
     uint8_t x = (uint8_t)counters, y = (uint8_t)(counters >> 8);
     uint8_t buttons = (uint8_t)((AmigaHardware::isLeftMouseButtonPressed() ? 1 : 0) |
@@ -183,6 +192,9 @@ void Input::setScriptButtons(uint8_t buttons)
 
 extern "C" uint32_t plat_mouse(int32_t* dx, int32_t* dy)
 {
+#ifdef SWOTL_REPLAY
+    return replay_mouse(dx, dy);
+#endif
     Disable();
     *dx = mouseDX;
     *dy = mouseDY;

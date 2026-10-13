@@ -131,10 +131,10 @@ def write(out: Path, file: str, module: str, body: bytes) -> None:
     (out / file).write_bytes(header(module, body) + body)
 
 
-def generate(out: Path) -> tuple[dict[str, cfg.Unit], Counter, dict[str, Counter]]:
-    units = cfg.build()
+def generate(out: Path, program: emit.Program | None = None) -> tuple[dict[str, cfg.Unit], Counter, dict[str, Counter]]:
+    units = program.units if program is not None else cfg.build()
     out.mkdir(parents=True, exist_ok=True)
-    prog = emit.Program(units)
+    prog = program if program is not None else emit.Program(units)
     total, per = Counter(), {}
     files: list[str] = []
     texts: dict[str, list[str]] = {}

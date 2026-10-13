@@ -55,6 +55,10 @@ G_DS	equ	1
 	xref	rt_opl
 	xref	rt_opl_index
 
+	ifd SWOTL_REPLAY
+	xref rt_replay_enter,rt_replay_return
+	endif
+
 	section	.text,code
 
 ; guest registers -> rt_r (SP and BP as offsets)
@@ -94,6 +98,9 @@ load_regs:
 ; Software interrupt: d6 = CS << 16 | vector, d7 = next IP. A machine service
 ; runs in C; a vector the guest owns runs its handler on the frame C pushed.
 rt_int:
+	ifd SWOTL_REPLAY
+	jsr rt_replay_enter
+	endif
 	bsr	save_regs
 	move.l	d7,-(a7)
 	move.l	d6,-(a7)
@@ -105,6 +112,9 @@ deliver_or_return:
 	move.l	(a7)+,d7
 	bne.s	deliver_guest
 rt_exit:	; back to generated code (tests/host_run.py: service returns)
+	ifd SWOTL_REPLAY
+	jsr rt_replay_return
+	endif
 	rts
 deliver_guest:	; d7 = CS << 16 | IP of the pushed frame; the handler's IRET pops it
 	move.l	d7,-(a7)
@@ -120,6 +130,9 @@ deliver_guest:	; d7 = CS << 16 | IP of the pushed frame; the handler's IRET pops
 	bne	rt_ret_mismatch
 	addq.l	#4,a7
 rt_exit_guest:
+	ifd SWOTL_REPLAY
+	jsr rt_replay_return
+	endif
 	rts
 
 ; Poll point with G_IRQ set (D8): d6 = CS << 16, d7 = IP of the loop head.
