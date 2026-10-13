@@ -39,9 +39,6 @@ speed work: [speed-plan.md](speed-plan.md).
     `Harness`: each byte drew from a fresh generator with the same seed).
     A random background is stronger but changes every corpus case; needs
     user approval.
-15. Microbenchmark the remaining [arch] 68020 costs on the A1200 model
-    (`mulu.l`/`divu.l`, unaligned word/long); shifts, swaps, loads, stores and
-    branches are measured (`m68k-optimisation.md`).
 16. Lookup-table policy with no Fast RAM (tables are Chip reads).
 24. Lockstep RAM compare (phase 6): undefined flags and FLAGS words pushed
     below SP (PUSHF, interrupt frames) differ from DOSBox by design. The host
