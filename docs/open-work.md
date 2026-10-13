@@ -39,15 +39,18 @@ Step plans: [plan-reference-map.md](plan-reference-map.md) (phases 1–2),
     check yet (L5, SL `restore_status`); keyboard and mouse input from the
     takeover are untested by any reference (scripted input enters past the
     CIA and JOY0DAT reads).
-14b. Speed: [speed-plan.md](speed-plan.md) round 2, R11 left (re-profile:
-    capture, recalibration, FS-UAE check; R7b not built, §10; frames fixture after R11; rerun
+14b. Speed: [speed-plan.md](speed-plan.md) round 2 done (R11 re-profile);
+    next by its re-price (§7 R11): R12 string loops by longs (≈ −5% meter),
+    then index formation in d7 (census first); R7b not built, §10; rerun
     `tools/align_targets.py` when the code changes;
+    `tools/profile_report.py` roles still match the old poll point and
+    state block forms;
     R1c skipped by its census; flag candidates
     after R3b in §7). Target ≤12 fields on 68020 + 8 MB
     Fast; run medians 24.5–28.5 fields at `781975e` (trajectory noise);
     frames fixture medians 24 fields at R1d (25 before R1), 22.5–23 at R6,
-    21.5–24 at R8;
-    meter 240,644,109 model cycles (weights recalibrated after R1; it
+    21.5–24 at R8, 20 at R10 (R9 20.5);
+    meter 238,748,828 model cycles (weights recalibrated at R11; it
     underrates removed instructions, §4), static generated code 1,169,856
     bytes. User
     decisions D0–D4 approved (meter acceptance, memory model v2 with harness

@@ -16,25 +16,32 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   the spread is trajectory noise (§5.1). Frames fixture (§4, 2026-10-10,
   3 runs each): medians 25, 25, 25 at `420d81b` (before R1), 24, 24, 24
   at `c6a7de1` (R1d); 2026-10-11: 23, 23, 23.5 at R5 (`714d61e`), 23,
-  22.5, 23 at R6; 2026-10-12: 24, 21.5, 22 at R8.
+  22.5, 23 at R6; 2026-10-12: 24, 21.5, 22 at R8; 2026-10-13: 20, 20,
+  20 at R10 (`570ec2d`; sums 177–178) against 20.5, 20.5, 20.5 at R9
+  (sums 179).
 - **Bench** (§4): frames 4–11 mean 37.74 fields (5.36M cycles) at
   `b9b6374`, 37.56 at `63a99fe` (R1a), 34.41 (4.89M cycles) at R1b, 33.69
   at R1d, 33.37 at R3a, 33.27 (4.73M cycles) at R3b, 31.74 at R5, 29.67
   at R6, 74,336 → 74,373 lines at R7 (no walk in its window), 74,318 →
-  74,096 lines at R8 (means of 3); window 2.20M guest
+  74,096 lines at R8, 72,773 → 72,506 at R10 (R9 control; means of 3);
+  window 2.20M guest
   instructions, SPAZ 0.22%.
-- **Meter after R10** (m4, 49 frames; weights recalibrated after R1, §4):
-  240,644,109 model cycles (generated 188.9M, cell walk 49.2M, runtime
-  2.5M); 17,976,252 guest instructions, 13.25 model cycles each (generated
-  + walk); R1 292,676,869 (275,119,407 under the previous weights). Round 2
-  kept (previous weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b
-  −1.916%, R1d −1.231%; (current) R2 −1.029%, R3a −0.991%, R3b −0.188%,
+- **Meter after R11** (m4, 49 frames; weights recalibrated at R11, §4):
+  238,748,828 model cycles (generated 187.1M, cell walk 49.2M, runtime
+  2.4M); 17,976,252 guest instructions, 13.15 model cycles each (generated
+  + walk); 240,644,109 under the R1 weights; R1 292,676,869 under them
+  (275,119,407 under the first weights). Round 2 kept (first weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b
+  −1.916%, R1d −1.231%; (R1 weights) R2 −1.029%, R3a −0.991%, R3b −0.188%,
   R4 −2.646%, R5 −2.036%, R6 −1.213%, R7 −9.037%; R8 0 (layout only:
   bench −0.30%); R9 −1.615%; R10 −0.299%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
   bytes per guest instruction. Code payload 1,325,164 bytes.
+- **R11 capture** (frames fixture at R10, 100 fields): generated code
+  90.58%, runtime/platform 6.04%, no PC 1.45%; 1,604,428 guest
+  instructions, 16.05 cycles each (the window's mix: the cell walk of
+  SWOTL.EXE+06A4D is 16.9%).
 - **Round 1:** kept T3 (block-local byte order), T4-local (carry in X),
   T6 (masks), T10, T11; rejected T2 (size), T4 cross-block, T7, T8,
   T12–T15; T5 not built. Cycles/guest 15.65 → 14.6–15.0, code payload
@@ -160,15 +167,16 @@ lines.
   every 9 PIT ticks ≈ 36 ms, ≈ 408K x86 instructions per frame.
 - **Meter** (`tools/cost_meter.py`, ≈ 40 s, deterministic): `--out
   tmp/meter/ARM.json` per arm, `--compare A B` for the §3 deltas. Weights
-  `tools/cost_model.json`, fit after R1 on the bench's 100-field capture of
-  `c6a7de1`: per code byte 0.97 cycles (0.95 inside a loop of ≤ 256
-  bytes), read 2.40, write 3.42, taken transfer 5.36 outside such a loop
-  and 1.57 inside, mul/div 23.1 (R² 0.919, model −2.8% of measured; the
-  previous weights, fit on `781975e`, give 0.899 and −3.5% there). It
+  `tools/cost_model.json`, fit at R11 on the bench's 100-field capture of
+  `570ec2d`: per code byte 0.90 cycles (0.93 inside a loop of ≤ 256
+  bytes), read 2.40, write 3.27, taken transfer 4.13 outside such a loop
+  and 3.51 inside, mul/div 23.3 (R² 0.915, model −5.0% of measured; the
+  other two captures of the arm give the same weights to ±0.06; the R1
+  weights, fit on `c6a7de1`, give 0.904 and −1.4% there). It
   underrates removed instructions (bench vs meter: R1b −8.4% vs −1.9%,
   R1d −2.1% vs −1.2%; the per-instruction weight fits to 0). Recalibrate
-  (`--calibrate CAPTURE ELF --write`, then `--plant-check`) after R11 or
-  when the FS-UAE check disagrees. Retro-check on round 1: T6 −0.39%, T4-local −6.05% (FS-UAE
+  (`--calibrate CAPTURE ELF --write`, then `--plant-check`) at the next
+  re-profile or when the FS-UAE check disagrees. Retro-check on round 1: T6 −0.39%, T4-local −6.05% (FS-UAE
   mix-adjusted −2.2%, −6.2%). `tools/ab_labels.py` serves the FS-UAE check.
 - **Bench** (`SWOTL_ARGS=BENCH ./debug.sh "" bench_frames.gdb`, same model;
   runtime.h `rt_bench`): no CIA timer; 9 PIT ticks per 4 runtime services
@@ -231,20 +239,37 @@ accept in executed bytes, data accesses and taken branches, never in
 instruction counts. FS-UAE is the user's instrument; a real 68020 may
 weigh these differently.
 
-| Cost (share of all CPU) | Share | Per 100 fields | Static |
+Replan column: share of all CPU in the replan capture (`781975e`). R11
+column: share of the meter's model cycles (m4, R11 weights, `570ec2d`),
+by the 68k instruction's role (`tmp/` census over the meter's per-PC
+counts; profile_report's role column still matches the old poll and state
+block forms).
+
+| Cost | Replan | R11 meter | R11 executions (m4) |
 |---|---:|---:|---:|
-| Cell walk (D16), run-time matching | 13.20% | 1.30M 68k insns | — |
-| Byte swaps `ror/rol.w #8` + store copies | 5.69% + 0.68% | 890K + 107K | 61,517 sites, 123 KB |
-| 16-bit wrap arithmetic (copy + add before an indexed access) | 1.55% + 3.54% | 211K + 288K | — |
-| Poll points (`tst.b G_IRQ`, `beq`) | 1.77% + 1.46% | 90K | 2,095 |
-| Flag image (spill, reload, `ori #4,ccr` for adc/sbb ZF) | 1.60% + 0.55% + 0.93% | 64K spills | 2,446 spills |
-| SI/DI address-register shuffles | 2.06% | 296K | 28 KB |
-| Upper-word masks `and.l #$ffff` | 1.64% | 78K | 2,464 |
-| Accesses at disp ≥ 8000h (8-byte `bd.l` form) | 1.68% | 44K | 10,924 |
-| Return checks (`cmp`, 6-byte `bne.l`) | 1.28% | 72K | 11,324 |
-| `jsr`/`bsr`/`rts` | 2.40% | — | — |
-| Runtime: `rt_lookup` (646 cycles per delivery lookup), VRAM marks, interrupt path | 1.16%, 1.85%, ≈2.5% | 510 lookups | — |
-| Guest data accesses themselves, indexed / d16 (inherent) | 12.62% / ≈8% | — | — |
+| Cell walk (D16), run-time matching | 13.20% | 20.63% | — |
+| Byte swaps `ror/rol.w #8` (+ store copies) | 5.69% + 0.68% | 0.47% | 609K |
+| Index formation in d7 (`move.w #7FFFh−d,d7` + `sub.w Rn,d7`; mirrored + disp) | 1.55% + 3.54% | 4.04% | 1.96M `move.w #N,d7` |
+| Poll points (`tst.b G_IRQ(a6)`, `bne`) | 1.77% + 1.46% | 3.52% | 980K |
+| Flag image (CCR to and from G_FL, state block flags) | 1.60% + 0.55% + 0.93% | 2.28% | 583K spills |
+| Stack accesses `(d,a2,d4.w)` + SP steps `addq/subq.w #2,d4` | — | 2.95% + 0.88% | 2.0M steps |
+| SP/BP mirror conversions `eori.w #$7fff` | — | 0.53% | — |
+| SI/DI address-register shuffles | 2.06% | (in index formation) | — |
+| Upper-word masks `and.l #$ffff` | 1.64% | 0.00% | — |
+| Accesses at disp ≥ 8000h (`bd.l`) | 1.68% | none (R1b: always d16) | — |
+| Return checks (`cmp.w #ip,d7`, `bne` to the trampoline) | 1.28% | 0.72% | — |
+| `jsr`/`bsr`/`rts`/`jmp` | 2.40% | 1.32% | — |
+| Segment fields (DS/SS/ES in the state block) | — | 0.85% | — |
+| mul/div | — | 4.71% | 399K `mulu.w`, 45K `divu.w` |
+| `repe cmpsw` (the view vs the previous frame) / `rep stosw`; their loop bodies | — | 6.57% / 4.53%; 6.21% / 4.38% | 7,840 / 6,225 runs, 953K / 850K words |
+| Runtime | 1.16%, 1.85%, ≈2.5% | 1.02% (capture: 6.04%) | — |
+| Other memory ops / register ops / branches outside cached loops | 12.62% / ≈8% | 11.68% / 7.03% / 3.47% | — |
+| Other code inside cached loops (loop bodies) | — | 23.19% | — |
+
+The meter's runtime is the host run's (the reference's interrupts
+replayed); the frames capture adds the CIA timer at its own rate (1,032
+`rt_irq` per 100 fields: `rt_irq_c` 1.09%, `rt_lookup` 0.54%, `present`
+0.37%).
 
 Guest register use (executions per 100 fields): SP 243K (92% implicit
 push/pop/call/ret), BP 236K (65% base+disp), BX 242K (33% ALU destination,
@@ -684,11 +709,39 @@ Price ≈ 0.5%.
   boundary cases.
 - Plants: each helper table read one entry off (parity, CCR → FLAGS,
   FLAGS → CCR).
+- FS-UAE check (at R11, against `e73421f`, 3 bench runs each, interleaved):
+  frames 4–11 72,722–72,816 → 72,448–72,596 lines (−0.37%, ranges
+  apart), guest RAM at frame 12 equal in all six; runtime/platform 1.50% →
+  1.15% of the capture; `ab_labels.py` all labels −1.03%, −1.11%, −1.21%,
+  changed generated labels +0.19%, −0.01%, −0.25%. Same sign as the meter.
 
 ### R11. Re-profile
 
 Fresh capture and recalibration, then re-price every row of §6. Repeat
 from the top while the meter finds a gain.
+
+- Done 2026-10-13 at `570ec2d` (R10): FS-UAE check of R10 (§7 R10), meter
+  recalibrated (§4; plant check ok: 609,493 `ror.w #8` tripled, +1,218,986
+  instructions and +2,437,972 bytes as wanted), §6 re-priced, R11 capture
+  (§1).
+- Frames fixture (3 runs each, interleaved with R9 `e73421f`): medians 20,
+  20, 20 fields (intervals 28, 20, 27, 20, 20, 20, 23, 20), sums 177–178;
+  R9 20.5, 20.5, 20.5, sums 179. 400 ms per drawn frame; R8 gave 21.5–24.
+- Next by the re-price (round 3, one step each, priced here before coding):
+  - R12. String loops by longs: REPE CMPSW, REP STOSW and REP MOVSW move
+    two words per iteration (`move.l -(a4),d6` / `cmp.l -(a5),d6`; the
+    stored word doubled in a long). Exact first mismatch: in a mismatching
+    long the guest-first word is the low (higher host) word, compared first;
+    an odd count ends with one word; the same DF, CX and wrap guards; flags
+    from the final word pair as now. Loop bodies 6.21% + 4.38% + 0.12%:
+    ≈ −5% on the meter (it counts a long access as one; a long at
+    an address ≡ 2 mod 4 costs two bus cycles on the 68020, so FS-UAE may
+    show less).
+  - Index formation in d7 (4.04%: `move.w #7FFFh−d,d7`, `sub.w Rn,d7`
+    before `(d,aS,d7.w)`): reuse of a formed index within a block while
+    Rn and the segment are unchanged; price by census first.
+  - Poll points (3.52%) and stack accesses (3.8%) have no exact cheaper
+    form under §2 (`(a6)` is guest byte 0; no thinning).
 
 ## 8. User decisions (approved 2026-10-08)
 
@@ -715,6 +768,12 @@ code would still cost ≈ 10 cycles per guest instruction (≈ 6–7 code bytes
 and ≈ 1.3 data accesses each), against the 80286's ≈ 6 clocks. At R11,
 report the gap and the top routines. Native replacement stays the user's
 decision, routine by routine.
+
+At R11 (2026-10-13): 20 fields (400 ms) against the 12-field bar: frame time
+must fall by 40%. Top guest routines in the R11 capture (self time):
+SWOTL.EXE+06A4D 16.9% (the cell walk), +0BFD1 8.3%, +04DAE 6.5%, +0B54B
+6.2%, RTSVGA.OVL+03B9A 4.1% (its `repe cmpsw` at 03BE9: 2.8%), SWOTL.EXE
++0B017 3.0%, +109D6 2.7%, +0D5A6 2.6%, SPAZ.OVL+00CEE 2.4%.
 
 ## 10. Rejected and not built
 
