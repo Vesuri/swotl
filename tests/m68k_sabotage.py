@@ -305,6 +305,20 @@ def trust_register_upper_word(self, out):
     return result
 
 
+def pair_odd_dropped(self, out):
+    """R12: the pair loops skip an odd element (STOSW's first, CMPSW's last)."""
+    return [x.replace("\tbcc.s ", "\tbra.s ") if out[k - 2:k] in (["\tmove.w d0,d6", "\tlsr.w #1,d1"],
+                                                               ["\tclr.w d1", "\tlsr.w #1,d7"])
+            else x for k, x in enumerate(out)]
+
+
+def pair_half_store(self, out):
+    """R12: REP STOSW stores AX in one word of each long only."""
+    return [x for k, x in enumerate(out)
+            if not (x == "\tswap d6" and out[k - 1:k] == ["\tmove.w d0,d6"]
+                    and out[k + 1:k + 2] == ["\tmove.w d0,d6"])]
+
+
 def string_pointer_32(self, out):
     """R4: the REP fast path converts SI/DI to pointers with all 32 bits."""
     result, k = [], 0
@@ -397,6 +411,11 @@ SABOTAGE = [
     ("mov run skips the opcode compare", walk_plant("\tcmp.w d1,d7", "\tcmp.w d7,d7"), "walk"),
     ("divide fault leaves DX:AX swapped", fault_keeps_dx_swapped, "boundary"),
     ("divide reads DX from the dividend", "divide source", "boundary"),
+    ("pair mismatch blames the second element", sub(r"^\tcmp\.w 2\(a5\),d6$", "\tcmp.w d6,d6"),
+     "boundary"),
+    ("pair loop skips the odd element", pair_odd_dropped, "boundary"),
+    ("pair store writes AX in one word", pair_half_store, "boundary"),
+    ("pair count keeps the even part", sub(r"^\tandi\.w #1,d7$", "\tnop"), "boundary"),
     ("parity table one entry off", ("helpers", "__parity(pc,", "__parity+1(pc,"), "boundary"),
     ("CCR-to-FLAGS table one entry off", ("helpers", "__ccr_flags(pc,", "__ccr_flags+2(pc,"),
      "boundary"),

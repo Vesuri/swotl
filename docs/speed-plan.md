@@ -26,14 +26,14 @@ background: [perf-method.md](perf-method.md). Open-work item: 14b.
   74,096 lines at R8, 72,773 → 72,506 at R10 (R9 control; means of 3);
   window 2.20M guest
   instructions, SPAZ 0.22%.
-- **Meter after R11** (m4, 49 frames; weights recalibrated at R11, §4):
-  238,748,828 model cycles (generated 187.1M, cell walk 49.2M, runtime
-  2.4M); 17,976,252 guest instructions, 13.15 model cycles each (generated
-  + walk); 240,644,109 under the R1 weights; R1 292,676,869 under them
+- **Meter after R12** (m4, 49 frames; weights recalibrated at R11, §4):
+  226,316,665 model cycles (generated 174.6M, cell walk 49.2M, runtime
+  2.4M); 17,976,252 guest instructions, 12.45 model cycles each (generated
+  + walk); R11 238,748,828, 240,644,109 under the R1 weights; R1 292,676,869 under them
   (275,119,407 under the first weights). Round 2 kept (first weights): T8 −0.242%, T7 −0.005%, R1a −0.0001%, R1b
   −1.916%, R1d −1.231%; (R1 weights) R2 −1.029%, R3a −0.991%, R3b −0.188%,
   R4 −2.646%, R5 −2.036%, R6 −1.213%, R7 −9.037%; R8 0 (layout only:
-  bench −0.30%); R9 −1.615%; R10 −0.299%.
+  bench −0.30%); R9 −1.615%; R10 −0.299%; (R11 weights) R12 −5.207%.
 - **Replan capture** (100 fields, 28,420,396 cycles): generated code
   85.97%, runtime/platform 9.29%; 1,668,895 guest instructions; 14.64
   cycles, 4.0 68k instructions and 9.87 execution-weighted static code
@@ -728,20 +728,45 @@ from the top while the meter finds a gain.
   20, 20 fields (intervals 28, 20, 27, 20, 20, 20, 23, 20), sums 177–178;
   R9 20.5, 20.5, 20.5, sums 179. 400 ms per drawn frame; R8 gave 21.5–24.
 - Next by the re-price (round 3, one step each, priced here before coding):
-  - R12. String loops by longs: REPE CMPSW, REP STOSW and REP MOVSW move
-    two words per iteration (`move.l -(a4),d6` / `cmp.l -(a5),d6`; the
-    stored word doubled in a long). Exact first mismatch: in a mismatching
-    long the guest-first word is the low (higher host) word, compared first;
-    an odd count ends with one word; the same DF, CX and wrap guards; flags
-    from the final word pair as now. Loop bodies 6.21% + 4.38% + 0.12%:
-    ≈ −5% on the meter (it counts a long access as one; a long at
-    an address ≡ 2 mod 4 costs two bus cycles on the 68020, so FS-UAE may
-    show less).
+  - R12 (below).
   - Index formation in d7 (4.04%: `move.w #7FFFh−d,d7`, `sub.w Rn,d7`
     before `(d,aS,d7.w)`): reuse of a formed index within a block while
     Rn and the segment are unchanged; price by census first.
   - Poll points (3.52%) and stack accesses (3.8%) have no exact cheaper
     form under §2 (`(a6)` is guest byte 0; no thinning).
+
+### R12. String loops by longs
+
+- Price (meter of `eefb416`, m4): REPE CMPSW, REP STOSW and REP MOVSW two
+  words per iteration (`move.l -(a4),d6` / `cmp.l -(a5),d6`; the stored
+  word doubled in a long). Exact first mismatch: in a mismatching long the
+  guest-first word is the low (higher host) word, compared first; an odd
+  count ends with one word; the same DF, CX and wrap guards; flags from the
+  final word pair as now. Loop bodies 6.21% + 4.38% + 0.12%: ≈ −5% (the
+  meter counts a long access as one; a long at an address ≡ 2 mod 4 costs
+  two bus cycles on the 68020, so FS-UAE may show less).
+  - Not taken: REP MOVSW (0.12%; a distance of 1–3 bytes between ES:DI and
+    DS:SI breaks pair order: needs an overlap guard), REPNE CMPSW (a long
+    compare cannot find the first equal word).
+- Kept: −5.207% (−12,432,163 model cycles, all generated code: `repe
+  cmpsw` −7.27M, `rep stosw` −5.16M; −2.18M instructions, −942K reads,
+  −423K writes, loop bytes −6.34M, other bytes +183K, taken +16K), static
+  code +346 bytes (19 sites: 5 CMPSW, 14 STOSW).
+- Coverage: REPE CMPSW and REP STOSW with CX 1–9, CMPSW stopping at every
+  element or none, the stop word differing in its low or high byte, above
+  or below; SI/DI at every offset mod 4; ranges ending at FFFFh and one
+  past it: 324 boundary cases (1,068 boundary cases lower to a pair loop).
+- Plants (of 65,287): the low-word decision dropped (blames the second
+  element, 82), the odd element skipped (290), AX stored in one word of
+  each long (197), CX without the odd mask (162).
+- FS-UAE check (against `eefb416`, interleaved): the bench window runs
+  neither site (frames 4–11 72,487–72,561 → 72,549–72,613 lines, +0.08%,
+  layout; equal RAM). Frames fixture captures (2 per arm): `repe cmpsw`
+  (RTSVGA+03BE9) 880 → 525 cycles per run, `rep stosw` (+0C1CA) 1,671 →
+  891; `ab_labels.py` changed labels −7.94%, −7.93%, all labels without
+  the walk −2.49%, −2.48% (with it +17.9%: the walk label's cycles per
+  execution follow the cells each call runs, 1,461 → 2,852 in these
+  windows). Frames 4–11 sums 176, 176 → 178, 178 (trajectory, §5.1).
 
 ## 8. User decisions (approved 2026-10-08)
 

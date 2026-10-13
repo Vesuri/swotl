@@ -479,6 +479,7 @@ def boundary(h: Harness) -> None:
     upper_word_cases(h)
     muldiv_source_cases(h)
     flags_word_cases(h)
+    string_pair_cases(h)
 
 
 def address_guard_cases(h):
@@ -1200,6 +1201,46 @@ def flags_word_cases(h):
             word = low | high | h.rng.choice((0, 2, 0x28, 0x2a))
             h.case(b"\x9d", "b:flags-popf",
                    overrides={"mem": [(lambda r: r["ss"] * 16 + r["sp"], word.to_bytes(2, "little"))]})
+
+
+def string_pair_cases(h):
+    """R12: REPE CMPSW and REP STOSW two words per iteration. CX 1-9 (odd and
+    even counts); CMPSW stopping at every element or at none, the stop word
+    differing in its low or high byte, above or below; SI/DI at every
+    offset mod 4; ranges ending at FFFFh (fast path) and one past it."""
+    for cx in range(1, 10):
+        for at in list(range(cx)) + [None]:
+            for k, (lo, hi) in enumerate(((1, 0), (0, 1), (-1, 0), (0, -1))):
+                si, di = 0x100 + (k + at if at is not None else k) % 4, 0x200 + k
+                src = bytes(0x41 + (j & 1) for j in range(2 * cx))
+                dst = bytearray(src)
+                if at is not None:
+                    dst[2 * at] = dst[2 * at] + lo & 0xFF
+                    dst[2 * at + 1] = dst[2 * at + 1] + hi & 0xFF
+                h.case(b"\xf3\xa7", "b:pair-cmpsw",
+                       overrides={"regs": {"cx": cx, "si": si, "di": di,
+                                           "ds": 0x5000, "es": 0x5000},
+                                  "flags": {"DF": 0},
+                                  "mem": [(0x50000 + si, src), (0x50000 + di, bytes(dst))]})
+        for d in range(4):
+            h.case(b"\xf3\xab", "b:pair-stosw",
+                   overrides={"regs": {"cx": cx, "di": 0x200 + d, "es": 0x5000,
+                                       "ax": h.rng.randrange(0x10000)}, "flags": {"DF": 0}})
+        for slack in (0, 1):
+            off = 0x10000 - 2 * cx + slack & 0xFFFF
+            h.case(b"\xf3\xab", "b:pair-stosw-edge",
+                   overrides={"regs": {"cx": cx, "di": off, "ax": h.rng.randrange(0x10000)},
+                              "flags": {"DF": 0}})
+            for at in (0, cx - 1, None):
+                mem = bytearray(b"\x41" * 2 * cx)
+                if at is not None:
+                    mem[2 * at + 1] ^= 0x80
+                h.case(b"\xf3\xa7", "b:pair-cmpsw-edge",
+                       overrides={"regs": {"cx": cx, "si": off, "di": 0x300,
+                                           "ds": 0x6000, "es": 0x5000},
+                                  "flags": {"DF": 0},
+                                  "mem": [(0x60000 + off, b"\x41" * 2 * cx),
+                                          (0x50300, bytes(mem))]})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

@@ -1338,6 +1338,77 @@ class Lowering:
             self.e("eori.w #$8000,d6")
             self.e(f"movea.l {base},{p}")
             self.e(f"suba.w d6,{p}")
+        if n == 2 and (op == "stos" or (op == "cmps" and i.rep == "repe")):
+            self.string_pairs()
+        else:
+            self.string_words()
+        for p, base in ptrs:        # offset = (base - pointer) ^ 8000h, low word
+            self.e(f"move.w {base},d6")
+            self.e(f"sub.w {p},d6")
+            self.e("eori.w #$8000,d6")
+            self.e(f"movea.l d6,{p}")
+        self.e(f"bra {end}")
+        self.stats["string fast path"] += 1
+
+    def string_pairs(self) -> None:
+        """REP STOSW / REPE CMPSW, two elements per long (R12). The long at
+        -(p) holds the guest-first element in its low word (higher host
+        address). STOSW: an odd element first, then AX doubled. CMPSW: CX/2
+        pairs by `cmp.l`; in a mismatching pair the low words decide which
+        element stopped; CX = odd + 2 * (pairs left) (+1 at the first
+        element); an odd last element alone; the flags of the last pair
+        compared as the element body does. d7 = CX at entry."""
+        loop, tail, fin = self.local(), self.local(), self.local()
+        if self.i.op == "stos":
+            self.e("move.w d0,d6")
+            self.e("swap d6")
+            self.e("move.w d0,d6")
+            self.e("lsr.w #1,d1")
+            self.e(f"bcc.s {tail}")
+            self.e("move.w d0,-(a5)")
+            self.at(tail)
+            self.e("subq.w #1,d1")
+            self.e(f"bcs.s {fin}")
+            self.at(loop)
+            self.e("move.l d6,-(a5)")
+            self.e(f"dbf d1,{loop}")
+            self.at(fin)
+            self.e("clr.w d1")
+            self.stats["string pairs"] += 1
+            return
+        self.e("move.w d1,d7")
+        self.e("lsr.w #1,d1")
+        self.e("subq.w #1,d1")
+        self.e(f"bcs.s {tail}")
+        self.at(loop)
+        self.e("move.l -(a4),d6")
+        self.e("cmp.l -(a5),d6")
+        self.e(f"dbne d1,{loop}")
+        self.e(f"beq.s {tail}")
+        self.e("add.w d1,d1")
+        self.e("andi.w #1,d7")
+        self.e("add.w d7,d1")
+        self.e("move.w 2(a4),d6")
+        self.e("cmp.w 2(a5),d6")
+        self.e(f"beq.s {fin}")
+        self.e("addq.w #1,d1")
+        self.e("addq.l #2,a4")
+        self.e("addq.l #2,a5")
+        self.e(f"bra.s {fin}")
+        self.at(tail)
+        self.e("clr.w d1")
+        self.e("lsr.w #1,d7")
+        self.e(f"bcc.s {fin}")
+        self.e("move.w -(a4),d6")
+        self.e("cmp.w -(a5),d6")
+        self.at(fin)
+        self.compare_pair("(a4)", "(a5)")
+        self.stats["string pairs"] += 1
+
+    def string_words(self) -> None:
+        """The fast path's element loop: `db<cc>` on CX - 1."""
+        i = self.i
+        op, sz = i.op, SZ[i.width]
         loop = self.local()
         self.e("subq.w #1,d1")
         self.at(loop)
@@ -1360,13 +1431,6 @@ class Lowering:
             self.e("addq.w #1,d1")
             self.at(done)
             self.compare_pair("(a4)", "(a5)")
-        for p, base in ptrs:        # offset = (base - pointer) ^ 8000h, low word
-            self.e(f"move.w {base},d6")
-            self.e(f"sub.w {p},d6")
-            self.e("eori.w #$8000,d6")
-            self.e(f"movea.l d6,{p}")
-        self.e(f"bra {end}")
-        self.stats["string fast path"] += 1
 
     def compare_pair(self, src_mem, dst_mem) -> None:
         """CMPS/SCAS flags: d7 ([SI] or AL/AX) - d6 ([ES:DI])."""
