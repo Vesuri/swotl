@@ -79,8 +79,9 @@ own tick units (L18, L19). Shared state is guarded by `Disable`/`Enable` (L20).
   dirty rows until its own conversion, including updates superseded before a VBI.
   Main withdraws the pending list before writing its bitmap; VERTB publishes only
   completed lists. No wait is added before guest interrupt polling.
-- **Palette.** DAC changes rebuild the inactive list's palette and carry forward
-  its dirty pixels, including palette-only updates. The list and bitmap are handed
+- **Palette.** DAC changes invalidate both physical lists. A publication
+  rebuilds its inactive list only if stale, and carries forward its dirty
+  pixels, including palette-only updates. Validity is main-thread state. The list and bitmap are handed
   off together; live copper words are never patched.
 - **Publication timing.** Queued handoffs are beam-stamped and deferred if VERTB
   arrives too late. `amiga/display_audit.sh` requires zero late switches, also on

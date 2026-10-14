@@ -65,6 +65,8 @@ struct DisplayState {
     const uint8_t* frame;
     uint32_t serial;
     volatile uint32_t queuedSerial;
+    // Main-thread validity belongs to each physical copper list/colour table.
+    bool paletteValid[2];
 };
 
 extern "C" {
@@ -380,7 +382,9 @@ uint32_t Swotl::buildPalette(uint16_t back)
                          ((table[2 + k * 3] >> 24) << 8) | (table[3 + k * 3] >> 24);
     }
     Palette24Bit palette(display->rgb, display->currentRGB, 256);
-    return display->list[back]->setPalette24Bit(display->paletteIndex, palette, 0, 0, 255, true);
+    uint32_t end = display->list[back]->setPalette24Bit(display->paletteIndex, palette, 0, 0, 255, true);
+    display->paletteValid[back] = true;
+    return end;
 }
 
 uint16_t Swotl::beginDisplayUpdate()
@@ -395,6 +399,8 @@ void Swotl::setPalette(const uint8_t* dac)
 {
     uint16_t back = beginDisplayUpdate();
     for (unsigned k = 0; k < 768; ++k) display->dac[k] = dac[k];
+    display->paletteValid[0] = false;
+    display->paletteValid[1] = false;
     finishDisplayUpdate(back);
 }
 
@@ -430,7 +436,7 @@ void Swotl::finishDisplayUpdate(uint16_t back)
             end - y, r.lo, y, &display->bm[back]);
         for (; y < end; ++y) display->queue.clear(back, y);
     }
-    buildPalette(back);
+    if (!display->paletteValid[back]) buildPalette(back);
     Disable();
     display->queuedSerial = ++display->serial;
     display->queue.queue(back);

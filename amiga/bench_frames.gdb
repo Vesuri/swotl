@@ -5,7 +5,7 @@
 # (reversed, as it lies below rt_guest; its hash proves equal work), then a 100-field profile into
 # ../tmp/bench/frames.bin.
 #   AMIGA_CPU unset (68020): SWOTL_ARGS=BENCH ./debug.sh "" bench_frames.gdb
-# A PAL line is 454 68020 cycles; VPOSR/VHPOSR at $dff004 give the line.
+# A PAL line is 908 profiler cycles on this 68020 model; VPOSR/VHPOSR at $dff004 give the line.
 set pagination off
 set confirm off
 break RPL_031E6
