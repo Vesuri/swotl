@@ -70,5 +70,5 @@ to SWOTL.
   reference`, `make coverage`; map `make map`, `make ghidra`;
   translator `make gen`, `make test` (G2 lint, decoder, x86 and 68020
   differentials, block differential, G1, host run), `make test-sabotage`;
-  runtime on host / A1200 model `make test-host` (`test-host-all`: m1–m7, c6), `make test-amiga`; all step gates `make gates`; `SetPatch` from
+  runtime on host / A1200 model `make test-host` (`test-host-all`: m1–m7, c6–c10, c12, c13), `make test-amiga`; all step gates `make gates`; `SetPatch` from
   `$SETPATCH`. Facts: `docs/source-inventory.md`.

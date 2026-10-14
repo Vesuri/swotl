@@ -121,7 +121,9 @@ runs once per frame in flight, every ~645 instructions in menus.
 All nine in-scope overlays are captured and pass the image proof.
 
 Coverage scripts: `reference/coverage.csv`, run by `make coverage` (same
-checks; no determinism history needed). They feed the phase 2 map
+checks; no determinism history needed). Menu keys are the red letters;
+filenames are typed letters then Enter; the film list needs mouse picking
+(not scripted). They feed the phase 2 map
 (`make map`: sweep, PLINK check, code-write audit, surface).
 
 | Script | Input after K2 | Reaches |
@@ -135,6 +137,11 @@ checks; no determinism history needed). They feed the phase 2 map
 | c7-demo-dispatch | no keys | attract-demo call through the eight-word table at +EC62, return at +EC60 |
 | c8-steep-bank | m5 path, then 61 left presses | bank angle above the alternate renderer threshold; +EC17 calls the modified walk at +758E |
 | c9-mouse-menu | signed motion on both axes, each button and all buttons, releases | INT 33h motion consumption and buttons in the menu; DOS mouse IRQ12 at recorded poll points |
+| c10-campaign-weeks | U, B, S, 1, 2, name A, Enter; skip three weeks (S, Y); M, W, R | new campaign file, campaign simulation |
+| c11-tour-mission | U, T, S, 2, create pilot A, S, 1, M, S; c6's flight keys | tour of duty pilot file, escort mission flight, film room |
+| c12-b17-bombing | U, F, 4, 3, S; c6's flight keys | B-17 bombing mission; the setup writes walk cells up to `+8A6B` |
+| c13-me262-gunnery | G, F, 3, 1, S; c6's flight keys | Me 262 flight |
+| c14-film-save | c6, then D, S, name A, Enter | film saved as `A.RPY` |
 
 Amiga regression: `AMIGA_CPU=68030 bash amiga/play_walk.sh` (then `68040`).
 The bounded `KEYS=` script enters flight and banks with mouse motion;
@@ -166,7 +173,7 @@ Facts from these runs:
   writes VGA memory. DOSBox-X stores chained byte `a` at
   `vram[((a & ~3) << 2) | (a & 3)]`.
 - Self-modifying code: `SWOTL.EXE+4FF0/+4FFC` rewrite single bytes at 678
-  sites in the unrolled block `+6A4D..+899A` (+5132/+513D, +52CE/+52DA
+  sites in the unrolled block `+6A4D..+8E2C` (+5132/+513D, +52CE/+52DA
   likewise); `+8FD5/+9030/+908E` patch words in `+7C3F..+8998`. Writes
   around `+E4E0` and `+49B0` look like code-segment variables.
 

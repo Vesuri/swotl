@@ -8,10 +8,14 @@ speed work: [speed-plan.md](speed-plan.md).
 
 9a. Cross-reference TFH Amiga `BOB` (Aztec C, same source family) in Ghidra
    for routine naming and `.PAC`/`.GOB` formats; evidence only.
-9b. 232 indirect sites are static-only (no traced target,
-   `annotations/indirect.csv`), mostly `lcall [mem]` through DGROUP
-   pointers (221). Add coverage scripts (campaign play, other aircraft,
-   film load/save) where a generated path needs them.
+9b. 206 indirect sites are static-only (no traced target,
+   `annotations/indirect.csv`). 186 are proved switch tables or `lcall`
+   through a DGROUP slot whose other sites trace one PLINK thunk; 20 have
+   neither: C runtime exit/error paths (SWOTL+13754..+15B8A, 11), `call dx`
+   +4F7B/+50A5, FLIGHT+17DB4 `[6A60]`, FRONTEND+1958/+1B54 `[28EC]`,
+   NOTCAMP+3DBC `[5FCE]`/+487C `[6104]`, PANEL+3159/+3215 `[68EE]`. Not
+   scripted yet: campaign flight operations, film load (mouse pick in the
+   list), custom mission creation, other German/US aircraft.
 9c. PLINK flag bit 13 (set on DATA only): meaning unknown; no effect seen.
 9e. `tools/sweep.py` does not seed `annotations/runtime.csv` entries, so
    `callf [56EAh]` at SWOTL+140DB (`__harderr_handler`) has no
@@ -45,6 +49,15 @@ speed work: [speed-plan.md](speed-plan.md).
     loudly at POPF/IRET; TF = 1 corpus cases expect the stop. Single-step
     delivery is built only if a trace shows TF = 1. Exploratory TF cases:
     `tmp/item14b-agent/r19-deferred-coverage.patch`.
+
+27. Guest-created file metadata (c11, c14 fail the host run; not in
+    `HOST_COVERAGE`): FindFirst on a file the game wrote fills the DTA time
+    from the platform's file time (DOSBox: its DOS clock at close) and keeps
+    the runtime's cursor at `+0Dh` (DOSBox: its search slot, 0 in both
+    references, unexplained by its source). The reference DOS date is the
+    host's, so those references reproduce only on the recording day. The
+    game is not seen to read these bytes. Fix (pin the date in the tracer,
+    stamp on close, DOSBox slot) or mask (user approval).
 
 ## Amiga platform
 

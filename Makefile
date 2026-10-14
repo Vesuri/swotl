@@ -33,7 +33,7 @@ help:
 	@echo "  make test-sabotage      planted IR/decoder/runtime faults must fail the differentials and host run"
 	@echo "  make host               link generated program + runtime for Unicorn 68020 -> build/host/swotl.elf"
 	@echo "  make test-host          run it from the MZ entry to milestones m1-m3 against the reference"
-	@echo "  make test-host-all      the same to every milestone, m1-m7, and coverage c6-c9 (~3-5 min)"
+	@echo "  make test-host-all      the same to every milestone, m1-m7, and coverage c6-c10, c12, c13"
 	@echo "  make test-amiga         m1b-logo on the A1200 model (FS-UAE + GDB capture, amiga/milestone.gdb.in; AMIGA_CPU=68030)"
 	@echo "  make gates              the step gates: test, sabotage, host milestones, Amiga, smoke and restoration"
 	@echo "  make amiga   build amiga/out/Swotl.exe"
@@ -262,7 +262,8 @@ host: gen-check build/host/swotl.elf
 
 HOST_MILESTONES = m1-mode13h m1b-logo m2-choose-side m3-demo-flight
 HOST_MILESTONES_ALL = $(HOST_MILESTONES) m4-demo-frames m5-player-flight m6-film-room m7-campaign
-HOST_COVERAGE = c6-flight-keys c7-demo-dispatch c8-steep-bank c9-mouse-menu
+HOST_COVERAGE = c6-flight-keys c7-demo-dispatch c8-steep-bank c9-mouse-menu c10-campaign-weeks \
+	c12-b17-bombing c13-me262-gunnery
 AMIGA_REPLAY_MILESTONES = m2-choose-side m5-player-flight c9-mouse-menu
 AMIGA_MILESTONE ?= m1b-logo
 AMIGA_CPU ?= 68030

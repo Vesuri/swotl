@@ -117,11 +117,14 @@ def main() -> int:
             seen[n.op] += 1
             if why:
                 bad.append(f"{name}+{off:05X}: {why}")
-    # Executed starts: decoded statically, or (self-modified region) from a snapshot.
+    # Executed starts: decoded statically, or (self-modified region) from a
+    # snapshot: the first holding the region, else one of a run that executed
+    # the start (snapshots are taken at run end; the cell layout differs per run).
     traces = image.M.runs()
     executed = image.M.executed(traces)
     smc = image.smc_regions()
     runtime = image.runtime_bytes(traces)
+    own = {t: (image.runtime_bytes([t]), image.M.executed([t])) for t in traces}
     for name, starts in executed.items():
         if name not in code:
             continue
@@ -130,16 +133,23 @@ def main() -> int:
                 if name not in runtime:
                     bad.append(f"{name}: no snapshot holds the self-modified region")
                     break
-                rt = runtime[name]
-                try:
-                    n = decode(rt, code[name].ip_of(off), off)
-                except DecodeError as e:
-                    bad.append(f"{name}+{off:05X} (run time): {e}")
+                held = [runtime[name]] + [rt[name] for rt, ex in own.values()
+                                          if name in rt and off in ex.get(name, ())]
+                problems = []
+                for rt in held:
+                    try:
+                        n = decode(rt, code[name].ip_of(off), off)
+                    except DecodeError as e:
+                        problems.append(str(e))
+                        continue
+                    why = compare(rt[off:off + 16], n.ip, n)
+                    if not why:
+                        break
+                    problems.append(why)
+                else:
+                    bad.append(f"{name}+{off:05X} (run time): {problems[0]}")
                     continue
-                why = compare(rt[off:off + 16], n.ip, n)
                 counts["self-modified executed"] += 1
-                if why:
-                    bad.append(f"{name}+{off:05X} (run time): {why}")
             elif off in code[name].insns:
                 counts["executed"] += 1
             else:

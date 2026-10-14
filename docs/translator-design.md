@@ -272,7 +272,8 @@ guarded copy; a profile choice, `tools/bp_regions.py`).
   reference takes interrupts only at poll points, `build/gen/poll-points.csv`;
   references are re-recorded when poll points change).
 - Self-modified code (D16, `translator/smc.py`): the root block
-  `+6A4D..+89FD` is one generated cell walk. The setup (+E50E) writes opcodes
+  `+6A4D..+8E2C` is one generated cell walk (the whole template block: the
+  [2581]=0 variant fills it at 190 cells per run). The setup (+E50E) writes opcodes
   as well as operands, and the shape (cell counts [2587]/[2591], reload position) varies,
   so cells are matched at run time against the forms the writers produce
   (`annotations/self-modifying.csv` kind `form`: `mov [bx+w],al`, the

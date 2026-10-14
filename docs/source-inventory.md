@@ -62,7 +62,7 @@ of traced instructions (m0–m7 alone in brackets). Residue = never decoded:
 zero fill, text, code-like (MS C prologue or fixup-anchored far call: code
 reached only through untraced pointers), other (tables, data in code
 segments; FRONTEND's includes its far data `+F348..`, 19,800 B of
-strings). Self-modified: root block `+6A4D..+89FD` (24,339 B), classified
+strings). Self-modified: root block `+6A4D..+8E2C` (9,184 B; the template ends at the RET at `+8E2C`), classified
 by `annotations/self-modifying.csv`. Executed bytes outside sweep code: 0.
 
 | Module | Code part | Static | Executed (m0–m7) | Switch tables | Residue: zero / text / code-like / other |

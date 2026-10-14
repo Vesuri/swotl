@@ -633,12 +633,15 @@ def main(argv=None) -> int:
         for mod, run in blocks(p, discovered):
             block_cases(mod, run, 2)
     # Untraced call-DX sites in the same CS must also reach the cell walk.
-    # Include both range edges, the reported entry, and both fallback edges.
+    # Include both range edges (annotations/self-modifying.csv), the reported
+    # entry, and both fallback edges.
     if not args.only:
         mod = M.ROOT
+        (first, last), = image.smc_regions()[mod]
+        lo, hi = p.units[mod].ip_of(first), p.units[mod].ip_of(last)
         for site in (0x4F7B, 0x50A5, 0xEC17):
-            for target in (0x209C, 0x209D, 0x2BDE, 0x404D, 0x404E):
-                want = (emit.walk_label(mod, 0x6A4D) if 0x209D <= target <= 0x404D
+            for target in (lo - 1, lo, 0x2BDE, hi, hi + 1):
+                want = (emit.walk_label(mod, first) if lo <= target <= hi
                         else "rt_dispatch_near")
                 block_cases(mod, [site], 2, {"dx": target}, expected=want)
     # Item 14: every curated table row, then every reachable generated block.
