@@ -485,6 +485,7 @@ def boundary(h: Harness) -> None:
     memory_compare_cases(h)
     index_self_test_cases(h)
     index_fold_cases(h)
+    flag_extract_cases(h)
 
 
 def address_guard_cases(h):
@@ -1367,6 +1368,23 @@ def index_fold_cases(h):
                        overrides={"regs": {"si": si, "bx": (r - si) & 0xFFFF, "di": r,
                                            "bp": (r - si) & 0xFFFF, "ss": 0x5000, "ds": 0x3000,
                                            "cx": h.rng.randrange(0x10000)}, "ip": 0x3000})
+
+
+def flag_extract_cases(h):
+    """R18: independent TF/IF/DF bits and CF consumed after POPF."""
+    for bits in range(16):
+        word = ((bits & 1) | ((bits >> 1 & 1) << 8) |
+                ((bits >> 2 & 1) << 9) | ((bits >> 3 & 1) << 10))
+        for high in (0, 0x7000, 0xf000):
+            for sp in (0x100, 0xfffe):
+                patch = [(0x70000 + sp, (word | high | 0x8d6).to_bytes(2, "little"))]
+                h.case(b"\x9d", "b:flag-extract", overrides={
+                    "regs": dict(cs=0x2000, ss=0x7000, sp=sp), "ip": 0x100,
+                    "mem": patch})
+                if not word & 0x100:
+                    h.case(b"\x9d\x15\x01\x00", "b:flag-extract-carry", n=2, block=True,
+                           overrides={"regs": dict(cs=0x2000, ss=0x7000, sp=sp, ax=0xffff),
+                                      "ip": 0x100, "mem": patch})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

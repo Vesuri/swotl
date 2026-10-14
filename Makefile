@@ -106,7 +106,7 @@ test-x86:
 	$(PYTHON) tests/x86_diff.py
 
 test-sabotage: host
-	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-replay-hooks t-sab-replay-events t-sab-profile-tools t-sab-align-convergence
+	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-replay-hooks t-sab-replay-events t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence
 
 test-m68k:
 	$(PYTHON) tests/m68k_diff.py
@@ -338,3 +338,6 @@ t-align-convergence:
 	$(call RUN,align-convergence,$(PYTHON) tests/test_align_convergence.py)
 t-sab-align-convergence:
 	$(call RUN,sabotage-align-convergence,$(PYTHON) tests/test_align_convergence.py --sabotage)
+
+t-sab-cost-tools:
+	$(call RUN,sabotage-cost-tools,$(PYTHON) tests/cost_tools_sabotage.py)

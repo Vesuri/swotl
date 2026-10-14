@@ -106,19 +106,13 @@ __set_flags:
 	seq	d6
 	neg.b	d6
 	move.b	d6,G_PF(a6)
-	btst	#8,d7
-	sne	d6
-	neg.b	d6
+	bfextu	d7{23:1},d6
 	move.b	d6,G_TF(a6)
-	btst	#9,d7
-	sne	d6
-	neg.b	d6
+	bfextu	d7{22:1},d6
 	move.b	d6,G_IF(a6)
 	beq	.2
 	move.b	rt_irq_pending,G_IRQ(a6)	; re-arm (runtime.h)
-.2:	btst	#10,d7
-	sne	d6
-	neg.b	d6
+.2:	bfextu	d7{21:1},d6
 	move.b	d6,G_DF(a6)
 	move.w	d7,d6
 	and.w	#$7000,d6

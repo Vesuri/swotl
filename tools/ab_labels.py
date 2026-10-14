@@ -33,7 +33,7 @@ def canon(name: str) -> str:
     return name.removesuffix("_bp")
 
 
-def label_cycles(capture: Path, syms: list) -> tuple[Counter, Counter]:
+def label_cycles(capture: Path, syms: list, extra=frozenset()) -> tuple[Counter, Counter]:
     """Per label: cycles of its span and executions of its first PC. A region
     guard (R6) belongs to the instruction it follows."""
     syms = [(a, n) for a, n in syms if not n.endswith(("_bpg", "_bpr"))]
@@ -47,7 +47,8 @@ def label_cycles(capture: Path, syms: list) -> tuple[Counter, Counter]:
         c, n = np.bincount(inv, weights=cost), np.bincount(inv)
         for pc, cc, nn in zip(u.tolist(), c.tolist(), n.tolist()):
             i = int(np.searchsorted(addrs, pc, side="right")) - 1
-            if i < 0 or not P.GUEST.match(names[i]) and "walk" not in names[i]:
+            if i < 0 or (not P.GUEST.match(names[i]) and "walk" not in names[i]
+                         and names[i] not in extra):
                 continue
             cyc[canon(names[i])] += cc
             if pc in first and pc == addrs[i]:
@@ -93,6 +94,11 @@ def mix_delta(a: tuple, b: tuple, weights: dict, only=None) -> tuple[float, floa
     return (num / den if den else 0.0), den, (covered / total if total else 0.0)
 
 
+def changed_labels(weights, before, after):
+    return {k for k in weights if before.get(k) != after.get(k)
+            or before.get(k + "_bp") != after.get(k + "_bp")}
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("capture_a", type=Path)
@@ -101,16 +107,34 @@ def main(argv=None) -> int:
     ap.add_argument("elf_b", type=Path)
     ap.add_argument("meter", type=Path, help="cost_meter.py --out JSON (the weights)")
     ap.add_argument("--objdump", default=M.OBJDUMP)
+    ap.add_argument("--runtime-weight", action="append", default=[], metavar="LABEL=COUNT",
+                    help="include a runtime helper with its independently measured host census count")
     args = ap.parse_args(argv)
     meter = json.loads(args.meter.read_text())
     weights = Counter()
     for k, v in meter["labels"].items():
         if v.get("execs"):
             weights[canon(k)] += v["execs"]
-    a = label_cycles(args.capture_a, P.symbols(args.objdump, str(args.elf_a)))
-    b = label_cycles(args.capture_b, P.symbols(args.objdump, str(args.elf_b)))
+    extra = {}
+    for spec in args.runtime_weight:
+        name, sep, count = spec.partition("=")
+        if not sep or not name or not count.isdigit() or int(count) <= 0 or name in weights or name in extra:
+            ap.error("runtime weight must be a unique LABEL=positive census count")
+        extra[name] = int(count)
+    weights.update(extra)
+    a = label_cycles(args.capture_a, P.symbols(args.objdump, str(args.elf_a)), extra)
+    b = label_cycles(args.capture_b, P.symbols(args.objdump, str(args.elf_b)), extra)
+    for name in extra:
+        if not a[1].get(name) or not b[1].get(name):
+            ap.error(f"runtime helper {name} was not exercised in both captures")
+        pa, pb = a[0][name] / a[1][name], b[0][name] / b[1][name]
+        if not pa or not pb:
+            ap.error(f"runtime helper {name} has no measured cycles")
+        print(f"runtime {name}: {a[1][name]} / {b[1][name]} calls; "
+              f"{pa:.3f} -> {pb:.3f} cycles/call ({100 * (pb / pa - 1):+.3f}%), "
+              f"{extra[name] * (pb - pa):+,.0f} census-weighted cycles")
     ba, bb = bodies(args.elf_a, args.objdump), bodies(args.elf_b, args.objdump)
-    changed = {k for k in weights if ba.get(k) != bb.get(k) or k + "_bp" in bb}
+    changed = changed_labels(weights, ba, bb)
     d, den, cov = mix_delta(a, b, weights)
     print(f"all labels: mix-adjusted delta {100 * d:+.3f}% (weight covered {100 * cov:.1f}%)")
     d, den, cov = mix_delta(a, b, weights, changed)

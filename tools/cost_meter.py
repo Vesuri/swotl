@@ -125,7 +125,10 @@ def accesses(op: str, args: str) -> tuple[int, int, int]:
         return 2, 0, 0
     if base in ("addx", "subx", "abcd", "sbcd") and ops and is_mem(ops[0]):
         return 2, 1, 0
-    if base.startswith("bf"):     # offset and width follow the operands
+    if base in ("bfextu", "bfexts", "bfffo"):
+        # objdump: source,offset,width,destination (unlike BFINS).
+        ops = [ops[0], ops[-1]]
+    elif base.startswith("bf"):   # offset and width follow the operands
         ops = ops[:-2]
     if base == "pea":
         return 0, 1, 0

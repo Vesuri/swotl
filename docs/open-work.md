@@ -19,12 +19,12 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Translator and validation
 
-14b. Speed target remains unmet: current 68020 run medians 370–430 ms/frame
-    against ≤ 240 ms ([speed-plan.md](speed-plan.md) §7, §9). Roughly 40%
+14b. Speed target remains unmet: last normal-fixture 68020 run medians (R17)
+    370–430 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md) §7, §9). Roughly 40%
     further reduction is needed from the median 400 ms. Remaining cost is
-    mostly generated guest code; generic flag helpers are further exact
-    optimization candidates. Native replacement requires per-routine
-    authorization (§2.2). Bench acceptance for platform/layout work (D5) and
+    mostly generated guest code; flag-word packing is a further exact
+    optimization candidate, not yet priced. Native replacement requires
+    per-routine authorization (§2.2). Bench acceptance for platform/layout work (D5) and
     a separate later palette window (D6) are approved; all fidelity gates and
     no slowdown remain mandatory.
 14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`

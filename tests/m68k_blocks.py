@@ -300,6 +300,28 @@ def cross_entry_cases():
     return n, bad
 
 
+def flag_helper_entries():
+    """R18: POPF and IRET callers, then both predecessors of the DF block.
+
+    IF clear takes the helper's branch; IF set falls through IRQ re-arming.
+    TF, DF and CF vary independently; the original x86 is the oracle.
+    """
+    h = D.Harness(18)
+    for opcode in (0x9d, 0xcf):
+        for bits in range(16):
+            word = 0xf8d6 | (bits & 1) | ((bits >> 1) << 8)
+            stack = word.to_bytes(2, "little")
+            if opcode == 0xcf:
+                stack = bytes.fromhex("00020020") + stack
+            h.case(bytes([opcode]), "b:flag-helper-entry", overrides={
+                "regs": dict(cs=0x2000, ss=0x7000, sp=0x100), "ip": 0x100,
+                "mem": [(0x70100, stack)]})
+    h.flush()
+    result = sum(h.count.values()), list(h.bad)
+    D.Harness.tidy()
+    return result
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=1)
@@ -567,6 +589,9 @@ def main(argv=None) -> int:
         bad += wbad
     n, failures = cross_entry_cases()
     count["cross predecessors"] += n
+    bad += failures
+    n, failures = flag_helper_entries()
+    count["flag helper predecessors"] += n
     bad += failures
     # every executed indirect call or jump through a register that can enter a
     # self-modified region, with the register in each region (walk entry)

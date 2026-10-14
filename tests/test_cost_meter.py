@@ -103,5 +103,44 @@ class Mix(unittest.TestCase):
         self.assertEqual(A.normalize("bne.s 1006 <R_00102>"), "bne.s <R_00102>")
 
 
+class ChangedLabels(unittest.TestCase):
+    def test_unchanged_copy_is_not_a_changed_label(self):
+        weights = {"R_00100": 10, "__set_flags": 20}
+        old = {"R_00100": ("move.w",), "R_00100_bp": ("move.w",),
+               "__set_flags": ("btst", "sne", "neg.b")}
+        self.assertEqual(A.changed_labels(weights, old, old), set())
+        new = dict(old, __set_flags=("bfextu",))
+        self.assertEqual(A.changed_labels(weights, old, new), {"__set_flags"})
+        new["R_00100_bp"] = ("move.l",)
+        self.assertEqual(A.changed_labels(weights, old, new), set(weights))
+        del new["R_00100_bp"]
+        self.assertEqual(A.changed_labels(weights, old, new), set(weights))
+
+
+class BitfieldOperands(unittest.TestCase):
+    def test_extract_offsets_are_not_memory(self):
+        for op in ("bfextu", "bfexts", "bfffo"):
+            self.assertEqual(M.accesses(op, "d7,22,1,d6"), (0, 0, 0))
+            self.assertEqual(M.accesses(op, "d7,d2,d3,d6"), (0, 0, 0))
+            self.assertEqual(M.accesses(op, "(a0),22,1,d6"), (1, 0, 0))
+            self.assertEqual(M.accesses(op, "bfe001 <port>,1,1,d0"), (1, 0, 0))
+        self.assertEqual(M.accesses("bfins", "d1,d0,16,8"), (0, 0, 0))
+        self.assertEqual(M.accesses("bfins", "d1,(a0),16,8"), (1, 1, 0))
+        self.assertEqual(M.accesses("bftst", "(a0),16,8"), (1, 0, 0))
+
+
+class RuntimeLabels(unittest.TestCase):
+    def test_explicit_helper_counts_and_excludes_other_runtime(self):
+        from unittest.mock import patch
+        pcs = np.array([0x2000, 0x2002, 0x2000, 0x2002, 0x3000])
+        cost = np.array([3, 4, 3, 4, 9])
+        symbols = [(0x2000, "__set_flags"), (0x3000, "other_runtime")]
+        with patch.object(A.P, "decode", return_value={"fields": [(23, 0, pcs, cost)]}):
+            cycles, calls = A.label_cycles(Path("unused"), symbols, {"__set_flags"})
+            self.assertEqual(cycles, Counter(__set_flags=14))
+            self.assertEqual(calls, Counter(__set_flags=2))
+            self.assertEqual(A.label_cycles(Path("unused"), symbols), (Counter(), Counter()))
+
+
 if __name__ == "__main__":
     unittest.main()

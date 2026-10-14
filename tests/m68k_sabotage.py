@@ -524,6 +524,8 @@ SABOTAGE = [
     ("untraced annotated table row omitted", untraced_table_row_omitted, "program"),
     ("walk lower bound omitted", walk_guard_omitted(0), "program"),
     ("walk upper bound omitted", walk_guard_omitted(1), "program"),
+    ("flag extraction reads DF as IF", ("helpers", "\tbfextu\td7{22:1},d6",
+                                        "\tbfextu\td7{21:1},d6"), "boundary"),
 ]
 
 
