@@ -1,8 +1,8 @@
 /* Platform services for the runtime on AmigaOS: the game's files through
  * dos.library (each call in an I/O window of the takeover, Swotl.cpp), the
  * PIT on a CIA-B timer (none in the frame bench, argument BENCH), the
- * diagnostic key script, and the run of the translated program on its own
- * native stack. Game files are read from the current directory (the game's
+ * diagnostic key script, the music skip (off with argument MUSIC), and the
+ * run of the translated program on its own native stack. Game files are read from the current directory (the game's
  * own data files, supplied by the user). */
 #include <proto/exec.h>
 #include <proto/dos.h>
@@ -361,6 +361,10 @@ int amiga_guest_open(void)
         if (a[0] == 'B' && a[1] == 'E' && a[2] == 'N' && a[3] == 'C' && a[4] == 'H' &&
             a[5] <= ' ') {
             rt_bench = 1;           /* frame bench: ticks from guest progress, no CIA timer */
+        }
+        if (a[0] == 'M' && a[1] == 'U' && a[2] == 'S' && a[3] == 'I' && a[4] == 'C' &&
+            a[5] <= ' ') {
+            rt_music_skip = 0;      /* diagnostic: music records start their songs */
         }
     }
     /* Guest RAM, the state block below it and the EMS store after it; Fast RAM

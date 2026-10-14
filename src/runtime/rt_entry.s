@@ -18,6 +18,7 @@ G_DS	equ	1
 	xdef	rt_fault
 	xdef	rt_halt
 	xdef	rt_trap
+	xdef	rt_hle_music_skip
 	xdef	rt_in8
 	xdef	rt_in16
 	xdef	rt_out8
@@ -56,6 +57,7 @@ G_DS	equ	1
 	xref	rt_video_publish
 	xref	rt_opl
 	xref	rt_opl_index
+	xref	rt_music_skip
 
 	ifd SWOTL_REPLAY
 	xref rt_replay_enter,rt_replay_return
@@ -194,6 +196,12 @@ rt_halt:
 	bsr	save_regs
 	move.l	d7,-(a7)
 	jsr	rt_halt_c
+
+; HLE music_skip (annotations/hle.csv): NE skips the song start of a music
+; record. Registers preserved.
+rt_hle_music_skip:
+	tst.b	rt_music_skip
+	rts
 
 ; TF set by POPF/IRET: d7 = IP of the instruction.
 rt_trap:

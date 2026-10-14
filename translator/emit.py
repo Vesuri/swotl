@@ -38,6 +38,10 @@ TERMINAL = {"jmp", "jmpf", "ret", "retf", "iret", "hlt"}
 RUNTIME = ("rt_int", "rt_irq", "rt_fault", "rt_halt", "rt_trap", "rt_in8", "rt_in16", "rt_out8", "rt_out16",
            "rt_ret_mismatch", "rt_dispatch_near", "rt_dispatch_far", "rt_stop_unknown",
            "rt_vram_mark", "rt_vdrv_depth", "rt_vdrv_return", "rt_irq_pending")
+# G3 native replacements (annotations/hle.csv): runtime service rt_hle_<service>
+# at a range's first instruction; NE skips the range to the instruction after
+# `last`, EQ runs the guest code.
+HLE_SERVICES = tuple(sorted({"rt_hle_" + r["service"] for r in image.rows("hle.csv")}))
 # D9: the graphics driver in scope. Only it writes video memory
 # (docs/external-surface.md); a return from a call into it through its PLINK
 # thunks publishes a frame.
@@ -187,6 +191,8 @@ def cs_expr(cs: int) -> str:
 
 
 class Program:
+    hle: dict = {}   # (mod, first) -> ((mod, resume), service); set from hle.csv
+
     def __init__(self, units: dict[str, cfg.Unit] | None = None, components: bool = True,
                  diagnostic_hooks: dict[tuple[str, int], int] | None = None):
         self.diagnostic_hooks = diagnostic_hooks or {}
@@ -216,6 +222,14 @@ class Program:
         # the save reads what is live after the restore.
         self.saves = {(r["module"], int(r["save"], 16)): (r["module"], int(r["restore"], 16))
                       for r in image.rows("flags.csv")}
+        self.hle: dict[tuple[str, int], tuple[tuple[str, int], str]] = {}
+        for r in image.rows("hle.csv"):
+            mod, first, last = r["module"], int(r["first"], 16), int(r["last"], 16)
+            u = self.units[mod]
+            resume = last + u.insns[last].size if last in u.insns else None
+            if first not in u.insns or resume not in u.insns:
+                raise LowerError(f"hle.csv: {mod}+{first:05X}..{last:05X} is no instruction range")
+            self.hle[(mod, first)] = ((mod, resume), "rt_hle_" + r["service"])
         int0 = [r for r in image.rows("runtime.csv") if r["name"] == "__cintDIV"]
         self.int0 = (int0[0]["module"], int(int0[0]["offset"], 16)) if int0 else None
         # D16: self-modified regions, each lowered as one cell walk
@@ -245,6 +259,10 @@ class Program:
         # A diagnostic stop/input inside a block needs the exact guest state,
         # so lowering may not fuse across it. Production leaders are unchanged.
         self.leaders.update(self.diagnostic_hooks)
+        # An HLE hook clobbers the CCR and branches: both ends are leaders.
+        for n, (resume, _) in self.hle.items():
+            self.leaders |= {n, resume}
+        self.hle_resumes = {resume for resume, _ in self.hle.values()}
         self.components(components)
 
     # -- graph ----------------------------------------------------------------
@@ -437,6 +455,8 @@ class Program:
                 new = transfer(i, out, program=True)
                 if n in self.saves:
                     new = (new - ALL) | out | self.live_out.get(self.saves[n], set())
+                if n in self.hle:   # the hook may skip to the resume instruction
+                    new |= self.live_in[self.hle[n][0]]
                 self.live_out[n] = out
                 if new != self.live_in[n]:
                     self.live_in[n] = new
@@ -506,6 +526,7 @@ class Program:
         lines = ["\txref\t" + r for r in RUNTIME]
         if self.diagnostic_hooks:
             lines.append("\txref\trt_replay_point")
+        lines += ["\txref\t" + s for s in sorted({s for _, s in self.hle.values()})]
         lines += ["\txdef\tdispatch_table", "\txdef\tdispatch_count", "\txdef\tload_segment",
                   "\txdef\toverlay_table", "\tsection\t.text,code"]
         lines += [f'\tinclude\t"{f}"' for f in files]
@@ -642,6 +663,12 @@ class Program:
                     lines += ["\ttst.l (sp)+", f"\tbne {label(mod, o)}_np"]
                 else:
                     lines.append("\tlea 4(sp),sp")
+            if (mod, o) in self.hle:
+                resume, service = self.hle[(mod, o)]
+                lines += [f"\tjsr {service}", f"\tbne {label(*resume)}"]
+                stats["HLE hook"] += 1
+            if ((mod, o) in self.hle or (mod, o) in self.hle_resumes) and lw.ccr_only:
+                raise LowerError(f"{mod}+{o:05X}: HLE hook where the CCR holds live flags")
             if (mod, o) in self.loop_heads:
                 assert (mod, o) in self.leaders, (mod, o)
                 lines.extend(poll(lab(mod, o)))

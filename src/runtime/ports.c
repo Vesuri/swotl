@@ -18,6 +18,10 @@ uint32_t rt_pit_divisor = 0x10000;
  * (rt_entry.s) answers its byte writes. */
 uint8_t rt_opl_index;
 uint8_t rt_opl[256];
+/* Music skip (annotations/hle.csv music_skip, rt_hle_music_skip): a play of
+ * a music record starts no song; 0 (diagnostic argument MUSIC, test runs)
+ * runs the guest code. */
+uint8_t rt_music_skip = 1;
 
 static void pit_control(uint8_t v)
 {

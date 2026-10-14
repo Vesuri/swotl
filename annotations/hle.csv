@@ -1,1 +1,2 @@
 module,first,last,service,reason,oracle
+SPAZ.OVL,0x44E,0x472,music_skip,"play of a music record (byte 6 = 80h): the song start is skipped, music out of scope for now (user 2026-10-14; diagnostic argument MUSIC runs it)","tests/host_run.py --music-skip m2-choose-side: both anthem plays skipped, the song start never runs, services, interrupts and RAM outside SPAZ's state equal to the reference"

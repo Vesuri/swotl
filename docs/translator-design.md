@@ -158,7 +158,7 @@ diffs directly); relocated words in instructions are emitted as
 `entries.csv`, `indirect.csv` (site -> targets; written by `make map`),
 `tables.csv` (cs: word tables sized by evidence other than an MS C bounds
 check, read by the sweep), `data.csv` (ranges),
-`hle.csv` (guest range, service, reason, oracle; starts empty), `names.csv`
+`hle.csv` (guest range, service, reason, oracle; below), `names.csv`
 (name, evidence class), `bp-regions.csv` (BP writes whose component gets a
 guarded copy; a profile choice, `tools/bp_regions.py`).
 
@@ -271,6 +271,18 @@ guarded copy; a profile choice, `tools/bp_regions.py`).
   same-visit group per return of the guest handler to that poll point (the
   reference takes interrupts only at poll points, `build/gen/poll-points.csv`;
   references are re-recorded when poll points change).
+- HLE (`annotations/hle.csv`, G3): at a range's first instruction
+  `jsr rt_hle_<service>`; NE skips to the instruction after `last`, EQ runs
+  the guest code. Both ends are leaders, the first's live-in includes the
+  resume's, and a hook where the CCR holds live flags fails `make gen`. The
+  block differential runs the guest path. Entries: `music_skip` (SPAZ song
+  start, [sound-plan.md](sound-plan.md)): `rt_music_skip`, 1 unless the
+  diagnostic argument `MUSIC`; `amiga/debug.sh` passes `MUSIC` and host runs
+  clear it, since the references hold the music. Oracle `make
+  t-hle-music-skip` (in `test-host-all`): m2 with the skip on; the interrupt
+  the reference took in the song code is posted at the next poll point;
+  services and interrupts equal the reference, RAM too outside SPAZ's state
+  (its data segment, its effect counts at DS:6564, dead stack below SP).
 - Self-modified code (D16, `translator/smc.py`): the root block
   `+6A4D..+8E2C` is one generated cell walk (the whole template block: the
   [2581]=0 variant fills it at 190 cells per run). The setup (+E50E) writes opcodes

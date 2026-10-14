@@ -40,7 +40,7 @@ from translator.lower import CCR_BIT, LOADSEG  # noqa: E402
 from translator.support import HELPERS, equates  # noqa: E402
 
 M = image.M
-STUBS = emit.RUNTIME + ("T_RET",)
+STUBS = emit.RUNTIME + emit.HLE_SERVICES + ("T_RET",)
 STUB_AT = {n: D.STUB + 4 * k for k, n in enumerate(STUBS)}
 STUB_AT["rt_irq_pending"] = D.PENDING  # data, clear (no interrupt posted)
 TRANSFER = {"jmp", "jmpf", "jcc", "call", "callf", "ret", "retf", "iret", "int", "int3", "into",

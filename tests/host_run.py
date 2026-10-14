@@ -67,6 +67,16 @@ REGS = ("ax", "cx", "dx", "bx", "sp", "bp", "si", "di")
 DEAD_STACK = 0x60
 TABLE = REPO / "reference/milestones.csv"  # --table: another table in that format
 POLLS = REPO / "build/gen/poll-points.csv"
+# SPAZ's data segment (DS 188Ah, `mov dx` at SPAZ+3DF; CS 1770h is SPAZ+240h):
+# from this module offset to the end of SPAZ's block. With --music-skip it holds
+# the song and effect state the skip changes, so it is not compared.
+SPAZ_DATA = 0x13E0
+# Also SPAZ's state in the game's data: per-effect counts at DS:6564+id (inc
+# on start SPAZ+64E, dec on end +65E; id 35 the music slot), and the dead stack
+# below SS:SP at the label: the effects the reference ignored during the music
+# now play and run deeper calls.
+SPAZ_COUNTS = (0x6564, 40)
+SKIP_DEAD_STACK = 0x800
 
 
 def elf_load(path: Path):
@@ -185,7 +195,7 @@ class MemFile:
 
 
 class Host:
-    def __init__(self, ref_root: Path, sabotage: str | None = None):
+    def __init__(self, ref_root: Path, sabotage: str | None = None, music_skip: bool = False):
         self.root = ref_root
         self.sabotage = sabotage
         entry, segs, self.syms = elf_load(ELF)
@@ -214,6 +224,13 @@ class Host:
         self.vram_written: set[int] = set()
         self.display_miss: str | None = None
         e.write(self.syms["rt_present_due"], b"\1")  # a vertical blank is always due
+        # HLE music_skip: off (the guest path, which the references hold) unless
+        # --music-skip checks the replacement
+        e.write(self.syms["rt_music_skip"], bytes([music_skip]))
+        self.music_skip = music_skip
+        self.skips = self.moved = 0
+        self.skipped_ran: set[str] = set()
+        self.music_masked: set[int] = set()
         if sabotage == "vram":
             e.write(self.syms["rt_vram_mark"], b"\x4e\x75")  # rts
         if sabotage == "sp":    # eori.w #$7fff,d4 after rt_irq_c -> nop; nop
@@ -604,6 +621,45 @@ class Host:
         for a in {a for _, lab, _, _ in self.irqs for a in at[lab]}:
             self.e.hook_range(U.HOOK_CODE, poll, a, a)
         self.e.hook_range(U.HOOK_CODE, back, self.syms["rt_irq_back"], self.syms["rt_irq_back"])
+        if self.music_skip:
+            # The reference took an interrupt in the song code the skip bypasses
+            # (the next one pending, in SPAZ, at this service event): post it
+            # at the next poll point instead.
+            displaced = False
+
+            @U.CODE_CB
+            def skip_hit(h, addr, size, user):
+                nonlocal displaced
+                self.skips += 1
+                nxt = self.irqs[self.irq_i] if self.irq_i < len(self.irqs) else None
+                if nxt and nxt[0] == len(self.services) and nxt[1].startswith(emit.TAG["SPAZ.OVL"] + "_"):
+                    displaced = True
+
+            @U.CODE_CB
+            def late(h, addr, size, user):
+                nonlocal displaced
+                if displaced:
+                    displaced = False
+                    self.moved += 1
+                    post_group(self.r("a7"))
+
+            @U.CODE_CB
+            def skipped(h, addr, size, user):
+                self.skipped_ran.add(f"{addr:x}")
+
+            a = self.syms["rt_hle_music_skip"]
+            self.e.hook_range(U.HOOK_CODE, skip_hit, a, a)
+            for r in csv.DictReader(POLLS.open()):
+                for a in {self.syms[x] for lab in [emit.label(r["module"], int(r["offset"], 16))]
+                          for x in (lab, lab + "_bp") if x in self.syms}:
+                    self.e.hook_range(U.HOOK_CODE, late, a, a)
+            for r in image.rows("hle.csv"):
+                if r["service"] == "music_skip":
+                    for off in range(int(r["first"], 16) + 1, int(r["last"], 16) + 1):
+                        lab = emit.label(r["module"], off)
+                        if lab in self.syms:
+                            a = self.syms[lab]
+                            self.e.hook_range(U.HOOK_CODE, skipped, a, a)
         self.e.reg_write(U.M68K["sr"], 0x2700)
         self.e.reg_write(U.M68K["a7"], STACK_TOP)
         self.halted = False
@@ -756,7 +812,8 @@ def check_capture(tag, regs, state, ram, dac, ref_regs, ref, snap, h) -> list[st
             problems.append(f"{tag}: register {n} {regs[n]:04x} reference {ref_regs[n]}")
     dead = sum(ram[a] != ref[a] for a in h.masked if a < len(ref))
     print(f"{tag}: dead stack {len(h.masked)} bytes masked, {dead} of them differ")
-    problems += [f"{tag}: {p}" for p in compare_ram(ram, ref, snap / "residency.csv", h.masked)]
+    problems += [f"{tag}: {p}" for p in compare_ram(ram, ref, snap / "residency.csv",
+                                                     h.masked | h.music_masked)]
     if dac is not None:
         problems += [f"{tag}: {p}" for p in compare_frame(ram, dac, snap)]
     reads = sorted(a for a in h.machine_reads if a < len(ref) and ram[a] != ref[a])
@@ -776,6 +833,8 @@ def main(argv=None) -> int:
     ap.add_argument("--table", type=Path, help="milestone table (default reference/milestones.csv)")
     ap.add_argument("--sabotage", action="store_true",
                     help="each planted runtime fault (SABOTAGE) must fail the check")
+    ap.add_argument("--music-skip", action="store_true",
+                    help="HLE music_skip on: song starts skipped, SPAZ's data not compared")
     args = ap.parse_args(argv)
     if args.table:
         global TABLE
@@ -792,7 +851,7 @@ def main(argv=None) -> int:
                 missed.append(name)
         print("not caught: " + ", ".join(missed) if missed else "all sabotages caught")
         return 1 if missed else 0
-    problems = check(args.milestone, args.timeout, args.amiga, None)
+    problems = check(args.milestone, args.timeout, args.amiga, None, args.music_skip)
     for p in problems:
         print(p)
     print(f"host run to {args.milestone}: {'ok' if not problems else 'FAIL'}")
@@ -821,7 +880,8 @@ def rearm_problems() -> list[str]:
     return problems
 
 
-def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None) -> list[str]:
+def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None,
+          music_skip: bool = False) -> list[str]:
     class args:  # noqa: N801
         pass
     args.milestone, args.timeout, args.amiga = milestone, timeout, amiga
@@ -829,7 +889,7 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
     frame = script["frame"]
     trace = REPO / f"tmp/pc-runs/ref-{args.milestone}/trace"
     snap = trace / f"snap-{args.milestone}-{len(script['snapshots']) - 1}"  # where the run stops
-    h = Host(image.M.REF, sabotage)
+    h = Host(image.M.REF, sabotage, music_skip)
     label = script["snapshots"][-1][0]
     script["irqs"], script["releases"] = reference_inputs(trace)
     summary = dict(kv.split("=", 1) for kv in (trace / "summary.txt").read_text().split())
@@ -839,6 +899,16 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
     h.run(script, args.timeout)
     if h.irq_lost:
         problems.append(h.irq_lost)
+    if music_skip:
+        print(f"music skip: {h.skips} song starts skipped, {h.moved} interrupts moved to the "
+              f"next poll point")
+        if not h.skips:
+            problems.append("music skip: no song start skipped")
+        if h.skipped_ran:
+            problems.append(f"music skip: skipped code ran at {sorted(h.skipped_ran)}")
+        for lo, hi, mod, off in image.M.residency(snap / "residency.csv"):
+            if mod == "SPAZ.OVL":
+                h.music_masked |= set(range(max(lo, lo + SPAZ_DATA - off), hi))
     if h.display_miss:
         problems.append(h.display_miss)
     marked = bytearray(64000)  # stored since the last present: still marked (rt_vram_rows)
@@ -864,6 +934,11 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
         ref_regs = dict(kv.split("=") for kv in (snap / "regs.txt").read_text().split())
         ref = (snap / "ram.bin").read_bytes()
         g = h.guest_regs(0)
+        if music_skip:
+            ds, ss, sp = (int(ref_regs[n], 16) for n in ("ds", "ss", "sp"))
+            h.music_masked |= set(range(ds * 16 + SPAZ_COUNTS[0], ds * 16 + sum(SPAZ_COUNTS)))
+            h.music_masked |= set(range(ss * 16 + sp - SKIP_DEAD_STACK, ss * 16 + sp))
+            print(f"music skip: {len(h.music_masked)} bytes not compared")
         problems += check_capture("host", g, h.mem(STATE, 16), h.gmem(0, 0x100000),
                                   h.mem(h.syms["rt_dac"], 768) if frame else None,
                                   ref_regs, ref, snap, h)

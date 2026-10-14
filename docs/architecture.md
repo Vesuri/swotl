@@ -36,7 +36,8 @@ root EXE + .OVL images (proved against DOSBox captures)
 2. Hand-written code is the runtime only, named by surface item
    (`int21_3Dh`, `port_3C9`), never by guest address. A lint enforces it.
 3. Native replacement of a guest routine (HLE) needs an `annotations/` entry:
-   guest range, reason (device-bound or measured hot), oracle. Starts empty.
+   guest range, reason (device-bound or measured hot), oracle. User-authorized
+   per routine (translator-design.md, HLE).
    Callers of a replaced routine stay generated.
 4. Wrong output is fixed in IR semantics, lowering or annotations, then
    regenerated.

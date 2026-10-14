@@ -223,6 +223,8 @@ t-guards:
 	$(call RUN,guards,$(PYTHON) tests/test_guards.py)
 t-host-%:
 	$(call RUN,host-$*,$(PYTHON) tests/host_run.py --milestone $*)
+t-hle-music-skip:
+	$(call RUN,hle-music-skip,$(PYTHON) tests/host_run.py --milestone m2-choose-side --music-skip --timeout 2400)
 t-cov-%:
 	$(call RUN,host-$*,$(PYTHON) tests/host_run.py --table reference/coverage.csv --milestone $* --timeout 2400)
 t-sab-x86:
@@ -282,7 +284,7 @@ test-host: host
 	@$(MAKE) -s -k -j$(JOBS) $(HOST_MILESTONES:%=t-host-%)
 
 test-host-all: host
-	@$(MAKE) -s -k -j$(JOBS) $(HOST_MILESTONES_ALL:%=t-host-%) $(HOST_COVERAGE:%=t-cov-%)
+	@$(MAKE) -s -k -j$(JOBS) $(HOST_MILESTONES_ALL:%=t-host-%) $(HOST_COVERAGE:%=t-cov-%) t-hle-music-skip
 
 test-amiga: amiga host
 	@mkdir -p $(AMIGA_CAPTURE)

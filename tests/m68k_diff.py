@@ -194,6 +194,9 @@ class M68k:
                 w = 8 if n == "rt_out8" else 16
                 self.outs.append((self.r("d7") & 0xFFFF, w, self.r("d6") & ((1 << w) - 1)))
                 self.e.reg_write(U.M68K["pc"], addr + 2)
+            elif n.startswith("rt_hle_"):  # EQ: the guest code runs (as x86)
+                self.e.reg_write(U.M68K["sr"], self.r("sr") | 4)
+                self.e.reg_write(U.M68K["pc"], addr + 2)
             else:
                 self.stop = n
                 U.uc.uc_emu_stop(h)
