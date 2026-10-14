@@ -29,7 +29,7 @@ class InterpError(Exception):
 
 @dataclass
 class Exit:
-    kind: str               # fallthrough, jump, jumpf, call, callf, ret, retf, iret, int, fault, halt
+    kind: str               # fallthrough, jump, jumpf, call, callf, ret, retf, iret, int, fault, halt, trap
     vector: int | None = None
 
 
@@ -337,6 +337,9 @@ def execute(ops: list[Op], s: State, ip: int, next_ip: int) -> Exit:
         elif op == "halt":
             s.ip = next_ip
             return Exit("halt")
+        elif op == "trap":
+            s.ip = ip
+            return Exit("trap")
         else:
             raise InterpError(f"op {op}")
     s.ip = next_ip

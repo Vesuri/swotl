@@ -105,6 +105,15 @@ class _B:
             word = self.v("or", 16, word, self.v("shl", 16, b, bit) if bit else b)
         return word
 
+    def trap_tf(self, word) -> None:
+        """TF set in a popped FLAGS image stops (the game never sets TF)."""
+        go, end = self.label(), self.label()
+        self.e("br", self.v("trunc", 1, self.v("shr", 16, word, 8)), go)
+        self.e("goto", end)
+        self.at(go)
+        self.e("trap")
+        self.at(end)
+
     def set_flags_word(self, word, names) -> None:
         for f, bit in (("CF", 0), ("PF", 2), ("AF", 4), ("ZF", 6), ("SF", 7), ("TF", 8),
                        ("IF", 9), ("DF", 10), ("OF", 11)):
@@ -243,7 +252,9 @@ def lift(i: Insn) -> list[Op]:
     elif op == "pushf":
         b.push(b.flags_word())
     elif op == "popf":
-        b.set_flags_word(b.pop(), ALL_FLAGS)
+        word = b.pop()
+        b.trap_tf(word)
+        b.set_flags_word(word, ALL_FLAGS)
     elif op in ("clc", "stc", "cli", "sti", "cld", "std"):
         b.e("setflag", {"c": "CF", "i": "IF", "d": "DF"}[op[2]], 1 if op[0] == "s" else 0)
     elif op == "cmc":
@@ -279,7 +290,9 @@ def lift(i: Insn) -> list[Op]:
     elif op == "iret":
         ip = b.pop()
         cs = b.pop()
-        b.set_flags_word(b.pop(), ALL_FLAGS)
+        word = b.pop()
+        b.trap_tf(word)
+        b.set_flags_word(word, ALL_FLAGS)
         b.e("iret", cs, ip)
     elif op in ("ret", "retf"):
         ip = b.pop()

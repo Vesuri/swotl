@@ -476,8 +476,8 @@ Evidence: `tmp/item14b-agent/flags-*` (frozen arms, count/cost reports).
   with equal final guest RAM, exercised palette calls and all fidelity gates.
   Keep the existing bench and normal frame-rate fixture unchanged.
 - **D7 (2026-10-14).** R19 flag-word packing rejected (§10). Trap flag:
-  TF = 1 fails loudly, no single-step delivery unless a trace shows TF = 1
-  (open-work 26).
+  TF = 1 stops loudly at POPF/IRET, no single-step delivery
+  (translator-design.md).
 - Native replacement is not part of this plan (§2.2).
 
 ## 9. Gap

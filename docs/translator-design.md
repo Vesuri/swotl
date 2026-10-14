@@ -289,6 +289,11 @@ guarded copy; a profile choice, `tools/bp_regions.py`).
   of scope. Checked by `make test-blocks` (walks over every snapshot image
   vs x86; per entry, mov cells to the bound and past it, a RET at the
   bound, unknown cells).
+- Trap flag: the game never sets TF (its four POPF/IRET sites pop PUSHF or
+  interrupt-frame images; no INT 1 and no TF in any reference). A popped
+  image with TF set stops (IR exit `trap`, `rt_trap`; `rt_set_flags_word`
+  likewise); no single-step delivery. Checked by the TF cases of
+  `flag_extract_cases` (x86, 68k) and `flag_helper_entries` (POPF, IRET).
 - Audits (`make gen`): spills, full-flag materializations, PF/AF stores,
   dispatcher exits, `stop_unknown` sites against `tests/audit.csv` (above
   expected fails), plus flag stores/merges/loads and return checks; HLE count.

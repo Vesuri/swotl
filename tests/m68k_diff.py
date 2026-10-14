@@ -58,7 +58,7 @@ STUB = 0x300000
 STACK = 0x380000
 PENDING = STATE + 0x800     # rt_irq_pending
 STUBS = ("T_JUMP", "T_CALL", "T_JUMPF", "T_CALLF", "T_INT", "T_FAULT", "T_HALT", "T_END",
-         "rt_in8", "rt_in16", "rt_out8", "rt_out16", "T_RET")
+         "rt_in8", "rt_in16", "rt_out8", "rt_out16", "T_RET", "T_TRAP")
 STUB_AT = {n: STUB + 4 * k for k, n in enumerate(STUBS)}
 REGS = ("ax", "bx", "cx", "dx", "sp", "bp", "si", "di")
 MIRROR = {"sp": 0x7FFF, "bp": 0x7FFF}   # held as offset ^ 7FFFh
@@ -398,7 +398,7 @@ class Harness(X.Harness):
             for _ in range(n):
                 ex, insn = step(s)
                 insns.append(insn)
-                if ex.kind in ("int", "fault"):
+                if ex.kind in ("int", "fault", "trap"):
                     break
         except (UndefinedFlag, DecodeError) as e:
             self.reset(patches, s.writes, set())
@@ -465,6 +465,15 @@ class Harness(X.Harness):
             diffs.append(f"unicorn 68k error {info['err']} stop={info['stop']}")
         diffs += info["irq"]
         stop = info["stop"]
+        if "trap" in out or stop == "T_TRAP":
+            # TF set by POPF/IRET: a stop at that instruction, nothing else compared
+            if stop != "T_TRAP" or info["d7"] != out.get("trap"):
+                diffs.append(f"exit {stop} ip={info['d7']:04x} want T_TRAP at {out.get('trap')}")
+            self.count[label] += 1
+            if diffs:
+                self.bad.append(f"{label} {code.hex()}: {'; '.join(diffs)}")
+            self.m.restore(set(mwrites) | {a for p, d in case[4] for a in range(p, p + len(d))})
+            return
         exc = ints[0] if ints else None
         if exc is not None and exc in X.EXCEPTIONS:
             want = "T_FAULT"

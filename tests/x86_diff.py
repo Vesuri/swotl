@@ -152,10 +152,11 @@ class Oracle:
         self.ints, self.outs, self.writes = [], [], set()
         # One instruction per emu_start: QEMU mis-computes OF/AF when a REP string
         # op follows a flag setter inside one translation block.
-        err = 0
+        err, trap = 0, None
         for _ in range(n):
             self.limit, self.done, self.prev = 1, 0, None
-            begin = self.e.reg_read(U.X86["cs"]) * 16 + self.e.reg_read(U.X86["ip"])
+            at = self.e.reg_read(U.X86["ip"]) & 0xFFFF
+            begin = self.e.reg_read(U.X86["cs"]) * 16 + at
             raw = self.e.read(begin, 16)
             k = 0
             while k < len(raw) and raw[k] in (0x26, 0x2e, 0x36, 0x3e):
@@ -175,8 +176,14 @@ class Oracle:
                 err = self.e.start(begin, 0xFFFFFFFFFFFF)
             if err or self.ints:
                 break
+            # TF set: the CPU would single-step; translated code stops here (open-work 26)
+            if self.e.reg_read(U.X86["flags"]) & 0x100:
+                trap = at
+                break
         out = {r: self.e.reg_read(U.X86[r]) & 0xFFFF for r in REGS + SEGS}
         out["ip"] = self.e.reg_read(U.X86["ip"]) & 0xFFFF
+        if trap is not None:
+            out["trap"] = trap  # IP of the instruction that set TF
         fl = self.e.reg_read(U.X86["flags"])
         mem = {a: self.e.read(a, 1)[0] for a in self.writes}
         if self.ints and self.ints[0] in EXCEPTIONS:
@@ -238,12 +245,15 @@ class Harness:
         s.port_in = lambda port, w: port_value(port, w // 8)
         for a, data in patches:
             self.mem[a:a + len(data)] = data
-        exit_vec = None
+        exit_vec = trap = None
         try:
             for _ in range(n):
                 ex, insn = step(s)
                 if ex.kind in ("int", "fault"):
                     exit_vec = ex.vector
+                    break
+                if ex.kind == "trap":
+                    trap = s.ip
                     break
         except UndefinedFlag as e:
             self.undefined[label if not block else "block"] += 1
@@ -272,6 +282,15 @@ class Harness:
         diffs = []
         if err:
             diffs.append(f"unicorn error {err}")
+        if trap is not None or "trap" in out:
+            # a stop: only where it happens is compared
+            if trap != out.get("trap"):
+                diffs.append(f"trap ir={trap} uc={out.get('trap')}")
+            self.count[label] += 1
+            if diffs:
+                self.bad.append(f"{label} {code.hex()} ip={ip:04x}: {'; '.join(diffs)}")
+            self.reset(patches, s.writes, uwrites)
+            return
         for r in REGS + SEGS:
             if s.regs[r] != out[r]:
                 diffs.append(f"{r} ir={s.regs[r]:04x} uc={out[r]:04x}")

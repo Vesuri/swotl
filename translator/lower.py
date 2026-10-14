@@ -1256,7 +1256,19 @@ class Lowering:
 
     def op_popf(self):
         self.pop("d7")
+        self.trap_tf()
         self.e("jsr __set_flags")
+
+    def trap_tf(self):
+        """TF set in the FLAGS image in d7 stops loudly, out of line (open-work
+        26: the game never sets TF; no single-step delivery)."""
+        stop = f"{self.c.label}_tf"
+        self.e("btst #8,d7")
+        self.e(f"bne {stop}")
+        hot, self.out = self.out, [f"{stop}:"]
+        self.e(f"move.l #{hx(self.i.ip)},d7")
+        self.e("jmp rt_trap" if self.c.program else "jmp T_TRAP")
+        self.cold, self.out = self.cold + self.out, hot
 
     def bcd(self):
         self.e(f"jsr __{self.i.op}")
@@ -1761,6 +1773,7 @@ class Lowering:
         self.e("move.l d4,d7")
         self.e("subq.w #4,d7")
         self.e("move.w -1(a2,d7.w),d7")
+        self.trap_tf()
         self.e("jsr __set_flags")
         self.pop("d7")
         self.pop("d6")

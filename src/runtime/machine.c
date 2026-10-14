@@ -183,6 +183,9 @@ uint16_t rt_flags_word(void)
 
 void rt_set_flags_word(uint16_t f)
 {
+    if (f & 0x100) {
+        rt_stop("trap flag set in FLAGS image", f, 0);
+    }
     G_CCR = (f & 0x01 ? CCR_C : 0) | (f & 0x800 ? 2 : 0) | (f & 0x40 ? CCR_Z : 0) |
             (f & 0x80 ? 8 : 0);
     G_PF = f & 0x04 ? 0 : 1;
@@ -438,6 +441,12 @@ uint32_t rt_fault_c(uint32_t d6, uint32_t ip)
 void rt_halt_c(uint32_t ip)
 {
     rt_stop("HLT", ip, 0);
+}
+
+/* The game never sets TF (open-work 26): no single-step delivery. */
+void rt_trap_c(uint32_t ip)
+{
+    rt_stop("trap flag set by POPF/IRET at IP", ip, 0);
 }
 
 /* PLINK overlay record flags bit 15: resident (docs/plink.md). */

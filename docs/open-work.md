@@ -43,13 +43,6 @@ speed work: [speed-plan.md](speed-plan.md).
     flag bits in pushed images under the remaining `annotations/flags.csv`
     pair).
 
-26. Trap flag (user, 2026-10-14): translated code does not raise interrupt 1
-    with TF set (Unicorn does). Establish that the game never sets TF
-    (static: POPF/IRET sources; DOSBox-X references), then make TF = 1 stop
-    loudly at POPF/IRET; TF = 1 corpus cases expect the stop. Single-step
-    delivery is built only if a trace shows TF = 1. Exploratory TF cases:
-    `tmp/item14b-agent/r19-deferred-coverage.patch`.
-
 27. Guest-created file metadata (c11, c14 fail the host run; not in
     `HOST_COVERAGE`): FindFirst on a file the game wrote fills the DTA time
     from the platform's file time (DOSBox: its DOS clock at close) and keeps

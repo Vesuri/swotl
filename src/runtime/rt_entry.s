@@ -17,6 +17,7 @@ G_DS	equ	1
 	xdef	rt_bios_int08
 	xdef	rt_fault
 	xdef	rt_halt
+	xdef	rt_trap
 	xdef	rt_in8
 	xdef	rt_in16
 	xdef	rt_out8
@@ -41,6 +42,7 @@ G_DS	equ	1
 	xref	rt_bios_int08_c
 	xref	rt_fault_c
 	xref	rt_halt_c
+	xref	rt_trap_c
 	xref	rt_port_in
 	xref	rt_port_out
 	xref	rt_lookup
@@ -192,6 +194,12 @@ rt_halt:
 	bsr	save_regs
 	move.l	d7,-(a7)
 	jsr	rt_halt_c
+
+; TF set by POPF/IRET: d7 = IP of the instruction.
+rt_trap:
+	bsr	save_regs
+	move.l	d7,-(a7)
+	jsr	rt_trap_c
 
 ; Ports: d7 port, d6 value (out) / result (in).
 rt_in8:

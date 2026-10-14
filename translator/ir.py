@@ -22,7 +22,8 @@ Effects:
 Local control: label L | goto L | br c L (taken when c != 0)
 Exits (end the instruction; without one it falls through to the next IP):
   jump ip | jumpf seg ip | call ip | callf seg ip | ret ip | retf seg ip |
-  iret seg ip | int vector ip | fault vector | halt
+  iret seg ip | int vector ip | fault vector | halt |
+  trap (TF set by POPF/IRET: a loud stop, no single-step delivery)
 Call/return exits carry targets only; the stack traffic is explicit ops.
 """
 
@@ -50,7 +51,7 @@ FLAG_KINDS = {
     "rcl": ({"CF", "OF"}, set()), "rcr": ({"CF", "OF"}, set()),
 }
 
-EXITS = {"jump", "jumpf", "call", "callf", "ret", "retf", "iret", "int", "fault", "halt"}
+EXITS = {"jump", "jumpf", "call", "callf", "ret", "retf", "iret", "int", "fault", "halt", "trap"}
 
 
 @dataclass(frozen=True)
