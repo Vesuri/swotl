@@ -61,7 +61,7 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Amiga platform
 
-17. AdLib/OPL music: no sibling port moved FM to Paula; choose a method.
+17. Sound: effects first, music skipped; steps in [sound-plan.md](sound-plan.md).
 18. Framework copy declares `getVBR`, `isLongFrame`, `isBlitterBusy`,
     `blitterWait` without bodies; supply C++ bodies before the first blit.
 19. Memory budget (Chip-only vs WHDLoad expansion memory) after first

@@ -58,6 +58,7 @@ to SWOTL.
   `docs/translation-lessons.md`, `docs/x86-notes.md`
 - Process: `docs/perf-method.md`, `docs/speed-plan.md` (speed work: its rules
   bind every agent)
+- Sound: `docs/sound-plan.md`
 - Amiga: `docs/amiga-arch.md`, `docs/amiga-lessons.md`,
   `docs/m68k-optimisation.md`, `src/platform/amiga/framework/README.md`
 - Tools: `docs/toolchain.md`, `docs/headless-fsuae.md`,
