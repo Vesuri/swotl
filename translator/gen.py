@@ -7,8 +7,8 @@ state equates, runtime xrefs, module includes, dispatch table); never edited by 
 (G1). Header: generator version, SHA-256 of the inputs (translator sources,
 tools/swotl_model.py, annotations/, the module file) and of the body.
 Alignment pads (R8, emit.align) are sized here: the program is assembled
-with vasm and each pad set to 0 or 2 bytes until the label after it sits at
-its residue mod 4 (a few rounds; a label still off is counted, not fixed).
+with vasm and pads grown in two-byte steps until every requested residue
+is verified in the assembled object. Nonconvergence fails generation.
 Prints the audit (spills, flag materializations, dispatcher exits, stop
 sites, return checks) against tests/audit.csv, where a count above its
 expected value fails, and the coverage report (G6): executed instruction
@@ -74,7 +74,7 @@ def listing(u: cfg.Unit) -> bytes:
 
 
 VASM = os.environ.get("VASM") or str(Path.home() / ".local/vasmm68k_mot")
-PAD_ROUNDS = 4
+PAD_ROUNDS = 64
 
 
 def symbols(elf: bytes) -> dict[str, int]:
@@ -96,7 +96,9 @@ def symbols(elf: bytes) -> dict[str, int]:
 def pad(texts: dict[str, list[str]], stats: Counter) -> None:
     """Size the alignment pads (emit.ALIGN) of the module texts in place: assemble,
     set each pad so the label after it lands on its residue, assuming the code
-    after it moves with it, and repeat."""
+    after it moves with it, and repeat. Grow monotonically: toggling 0/2 can
+    oscillate when adding the pad also widens a branch across it. In that
+    case four bytes are needed. Never publish unverified final padding."""
     marks, label = [], {}
     for f, lines in texts.items():
         for k, x in enumerate(lines):
@@ -107,7 +109,7 @@ def pad(texts: dict[str, list[str]], stats: Counter) -> None:
         return
     size = {(f, k): 0 for f, k, _ in marks}
     with tempfile.TemporaryDirectory() as tmp:
-        for _ in range(PAD_ROUNDS + 1):
+        for _ in range(PAD_ROUNDS):
             for f, lines in texts.items():
                 (Path(tmp) / f).write_text("\n".join(lines) + "\n")
             subprocess.run([VASM, "-quiet", "-m68020", "-Felf", "-x", "-nowarn=62", "-o", "p.o",
@@ -116,14 +118,16 @@ def pad(texts: dict[str, list[str]], stats: Counter) -> None:
             shift, off = 0, 0
             for f, k, r in sorted(marks, key=lambda m: at[label[m[:2]]]):
                 if (at[label[(f, k)]] + shift) % 4 != r:
-                    new = size[(f, k)] ^ 2
+                    new = size[(f, k)] + 2
                     shift += new - size[(f, k)]
                     size[(f, k)] = new
                     texts[f][k] = f"\tds.b\t{new}\t; align {r} {label[(f, k)]}"
                     off += 1
             if not off:
                 break
-    stats["aligned label"] = len(marks) - off
+        else:
+            raise RuntimeError(f"alignment did not converge after {PAD_ROUNDS} assemblies")
+    stats["aligned label"] = len(marks)
     stats["alignment missed"] = off
 
 

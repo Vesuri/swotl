@@ -19,15 +19,12 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Translator and validation
 
-14b. Speed: [speed-plan.md](speed-plan.md) has no planned step (§1, §7).
-    Frames fixture 19–19.5 fields against the ≤ 12 bar (§9). Next is the
-    user's choice: a re-profile for new translator forms, or native
-    replacement, which needs per-routine authorization (§2.2). When the
-    code changes: rerun `tools/align_targets.py`. Current alignment check:
-    234/510 labels at their requested residue (229/497 applied pads);
-    investigate `gen.pad` convergence and refresh stale alignment candidates.
-    `tools/profile_report.py` roles still match the old poll point and state
-    block forms.
+14b. Speed target remains unmet: fresh 68020 baseline 470 ms/frame against
+    ≤ 240 ms ([speed-plan.md](speed-plan.md) §7, §9). Frame medians still
+    overlap after alignment repair. Next candidate: avoid rebuilding unchanged
+    palettes per back buffer; bench acceptance approved for platform/layout
+    work outside the host meter (D5), with all fidelity gates and no slowdown.
+    Native replacement still requires per-routine authorization (§2.2).
 14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`
     `Harness`: each byte drew from a fresh generator with the same seed).
     A random background is stronger but changes every corpus case; needs

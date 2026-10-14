@@ -1,9 +1,13 @@
 """Tooling regressions: independent of guest semantics and timing."""
 import os
+import inspect
+import io
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import profile_report as P
@@ -49,5 +53,53 @@ class ProfileTools(unittest.TestCase):
         self.assertEqual(mn[8][0], "bra.l")
 
 
+class CurrentRoles(unittest.TestCase):
+    def test_current_poll_state_and_return_forms(self):
+        dis = """00000000 <R_00100>:
+       0: tst.b 9(a6)
+       4: bne.w 40 <R_00100_irq>
+       8: move.w 15(a6),ccr
+       c: move.b d0,16(a6)
+      10: move.w 1(a6),d7
+      14: move.b (0,a6),d0
+      18: move.b -8(a6),d0
+      1c: cmp.w #123,d7
+      20: bne.s 50 <R_rm0>
+      22: jsr 80 <R_00200>
+      28: cmp.w d0,d1
+      2a: ror.w #8,d0
+00000040 <R_00100_irq>:
+      40: move.l #123,d7
+      46: move.l #999,d6
+      4c: jsr 100 <rt_irq>
+      52: bra.w 8 <R_00100_np>
+00000056 <R_00102>:
+      56: move.l d0,d1
+"""
+        with patch.object(P.subprocess, 'run', return_value=SimpleNamespace(stdout=dis)):
+            roles = P.roles('objdump', 'unused')
+        for addr in (0, 4, 0x40, 0x46, 0x4c, 0x52):
+            self.assertEqual(roles[addr], 'poll point', hex(addr))
+        for addr in (8, 12, 16):
+            self.assertEqual(roles[addr], 'state block (flags, segments)', hex(addr))
+        for addr in (0x14, 0x18, 0x22, 0x28, 0x56):
+            self.assertEqual(roles[addr], 'other', hex(addr))
+        for addr in (0x1c, 0x20):
+            self.assertEqual(roles[addr], 'return check', hex(addr))
+        self.assertEqual(roles[0x2a], 'byte swap')
+
+
 if __name__ == "__main__":
-    unittest.main()
+    if "--sabotage" in sys.argv:
+        source = inspect.getsource(P.roles)
+        broken = source.replace('arg in ("9(a6)", "(9,a6)")', 'arg in ("-8(a6)", "(-8,a6)")')
+        assert broken != source
+        scope = dict(P.__dict__)
+        exec(broken, scope)
+        with patch.object(P, "roles", scope["roles"]):
+            result = unittest.TextTestRunner(stream=io.StringIO()).run(
+                unittest.defaultTestLoader.loadTestsFromTestCase(CurrentRoles))
+        assert len(result.failures) == 1 and not result.errors, "stale poll-offset plant escaped"
+        print("profile roles: stale poll-offset plant caught")
+    else:
+        unittest.main()

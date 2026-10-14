@@ -110,28 +110,36 @@ def roles(objdump, elf):
     """68k instruction role per .text address, from the disassembly."""
     text = subprocess.run([objdump, "-d", "--no-show-raw-insn", elf],
                           capture_output=True, text=True, check=True).stdout
-    role = {}
-    prev = None
+    role, insns = {}, []
+    stub = False
     for line in text.splitlines():
+        label = re.match(r"^[0-9a-f]+ <([^>]+)>:$", line)
+        if label:
+            stub = bool(GUEST.fullmatch(label.group(1)) and label.group(1).endswith("_irq"))
         m = re.match(r"^\s+([0-9a-f]+):\s+(\S+)\s*(.*)$", line)
-        if not m:
-            continue
-        addr, op, arg = int(m.group(1), 16), m.group(2), m.group(3)
-        if "rt_ret_mismatch" in arg or re.search(r"<\w+_rm\d+>", arg) \
-                or (op.startswith("cmp") and prev == "call"):
+        if m:
+            addr, op, arg = int(m.group(1), 16), m.group(2), m.group(3)
+            insns.append((addr, op, arg, stub))
+    mismatch = lambda arg: "rt_ret_mismatch" in arg or bool(re.search(r"<\w+_rm\d+>", arg))
+    for i, (addr, op, arg, stub) in enumerate(insns):
+        if mismatch(arg) or (op.startswith("cmp") and i + 1 < len(insns)
+                             and insns[i + 1][1].startswith("bne")
+                             and mismatch(insns[i + 1][2])):
             r = "return check"
-        elif "rt_irq" in arg or (op == "tst.b" and arg == "(-8,a6)"):
+        elif stub or "rt_irq" in arg or (op == "tst.b" and arg in ("9(a6)", "(9,a6)")) \
+                or (op.startswith("bne") and re.search(r"<\w+_irq>", arg)):
             r = "poll point"
-        elif re.search(r"\(-1?[0-9],a6\)$|\(-1?[0-9],a6\),", arg):
+        # lower.STATE_EQU: bytes 1..16 above a6, including G_FL's low byte.
+        # (a6) itself is guest RAM; negative displacements are guest RAM too.
+        elif re.search(r"(?<![0-9-])(?:[1-9]|1[0-6])\(a6\)|\((?:[1-9]|1[0-6]),a6\)", arg):
             r = "state block (flags, segments)"
-        elif op == "ror.w" and arg.startswith("#8"):
+        elif op in ("ror.w", "rol.w") and arg.startswith("#8"):
             r = "byte swap"
         elif (op == "lsl.l" and arg.startswith("#4")) or arg.startswith("(0,a6,d7.l)"):
             r = "segment base"
         else:
             r = "other"
         role[addr] = r
-        prev = "call" if op in ("jsr", "bsr") or (prev == "call" and op.startswith(("cmp", "bne"))) else None
     return role
 
 

@@ -102,7 +102,7 @@ def size_branches(lines: list[str]) -> None:
 
 UNCONDITIONAL = re.compile(r"^\t(bra\S*|jmp|rts|rte)(\s|$)")
 LABEL_ONLY = re.compile(r"^[^\s;][^:\s]*:\s*(;.*)?$")
-ALIGN = "\tds.b\t0\t; align "   # a pad of 0 or 2 bytes, set by gen.pad (R8)
+ALIGN = "\tds.b\t0\t; align "   # an unexecuted even-sized pad, set by gen.pad (R8)
 
 
 BRANCH = re.compile(r"^\t(bra(\.[swl])?|jmp)\s+([\w.]+)\s*(;.*)?$")

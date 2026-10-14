@@ -14,8 +14,9 @@ from outside a cached loop) choose the residue mod 4 of the chunk's first
 label that aligns the most of them. Written to annotations/align.csv when
 the aligned and misaligned counts differ by at least --min. emit.py puts a
 pad before each listed label (translator/emit.py `align`) and gen.py sizes
-it to 0 or 2 bytes. The choice never affects correctness. --check reports how many of the listed
-labels have their residue in the ELF.
+it in two-byte steps until the assembled residues are verified. The choice
+never affects correctness. --check reports how many listed labels have their
+residue in the ELF.
 """
 from __future__ import annotations
 
