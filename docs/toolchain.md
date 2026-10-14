@@ -32,7 +32,7 @@ provenance is in brackets.
 | NDK headers | `~/.local/opt/m68k-amiga-elf/sys-include` | Slicks: `SDKDIR` |
 | FS-UAE | `~/.local/fs-uae/fs-uae` | `0.0.0-remote_debug.0`, SDL2 bundled |
 | Shrinkler, exe2adf | `~/.local` | Shrinkler dev build (Bartman stats) |
-| WHDLoad dev files | `~/.local/share/amiga/WHDLoad-20.0` (`$WHDLOAD`; 19.2 in `WHDLoad`) | see [whdload.md](whdload.md), [release.md](release.md) |
+| WHDLoad dev files | `~/.local/share/amiga/WHDLoad` (`$WHDLOAD`, 20.1) | see [whdload.md](whdload.md), [release.md](release.md) |
 | Kickstart | `~/.local/share/amiga/Kickstarts/kick40063.A600` (`$KICKSTART`) | see [headless-fsuae.md](headless-fsuae.md) |
 
 - Generic toolchain rules (space-free install path, matched gcc/gdb/elf2hunk/FS-UAE, flags,
