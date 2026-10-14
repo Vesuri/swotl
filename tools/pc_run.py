@@ -62,6 +62,10 @@ def main() -> int:
     parser.add_argument("--launch", default=LAUNCH)
     parser.add_argument("--services", action="store_true",
                         help="log every software INT from module code with entry/return registers")
+    parser.add_argument("--opl", action="store_true",
+                        help="log every AdLib register write with emulated ms (trace/opl.csv)")
+    parser.add_argument("--probes", default="",
+                        help="MODULE+HEX:N=name,...: log entry ms and N far-call stack words (trace/probe.csv)")
     parser.add_argument("--polls", type=Path,
                         help="translator poll points: hardware interrupts only there, logged")
     args = parser.parse_args()
@@ -74,6 +78,10 @@ def main() -> int:
                SWOTL_KEYS=args.keys)
     if args.services:
         env["SWOTL_SERVICES"] = "1"
+    if args.opl:
+        env["SWOTL_OPL"] = "1"
+    if args.probes:
+        env["SWOTL_PROBES"] = args.probes
     if args.polls:
         env["SWOTL_POLLS"] = str(args.polls.resolve())
     if args.key_hold is not None:

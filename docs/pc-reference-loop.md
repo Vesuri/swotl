@@ -93,6 +93,14 @@ Trace outputs (`tmp/pc-runs/<name>/trace/`, written at exit):
 | `edges.csv` | unique consecutive-instruction pairs |
 | `interrupts.csv`, `ports.csv`, `vga.csv` | aggregates by source site (AX for software INTs; port value; 256-byte VGA page) |
 | `code-writes.csv` | CPU writes into paragraphs that have executed since their last load |
+| `opl.csv` | `--opl` (`SWOTL_OPL`): every AdLib register write (index 388h, data 389h) with DOSBox's emulated ms; written as it runs |
+| `probe.csv` | `--probes MODULE+HEX:N=name,...` (`SWOTL_PROBES`): emulated ms and the N stack words above a far return address at each entry; written as it runs |
+
+Sound references: `make sound-reference` (`tools/sound_reference.py`): title
+(150 s) and c6/c12/c13 (400 s) with the OPL log and SPAZ entry probes,
+rendered by `build/tools/opl_render` (Nuked OPL from the DOSBox-X tree, 49716 Hz)
+to `tmp/sound/NAME-fm.wav`. These runs end at the time limit (the emulator then
+exits with signal 11, after the outputs are written).
 | `residency.csv` | paragraph ranges → module at exit |
 | `plink.csv` | calls of the PLINK load routine: caller, overlay id, via thunk, resident before, loaded, caller intact, count ([plink.md](plink.md)) |
 

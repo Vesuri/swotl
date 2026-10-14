@@ -1,0 +1,90 @@
+--- a/src/misc/swotl_trace.cpp
++++ b/src/misc/swotl_trace.cpp
+@@ -110,6 +110,20 @@
+ std::map<std::tuple<Location, uint32_t, uint8_t>, uint64_t> code_writes;
+ std::map<uint16_t, OpenFile> files;
+ FILE *events = nullptr;
++/* OPL log (SWOTL_OPL=1): every AdLib register write (index at 388h, data at
++ * 389h) with the emulated time in ms. */
++FILE *opl = nullptr;
++uint8_t opl_index = 0;
++/* Call probes (SWOTL_PROBES=MODULE+HEX:N=name,...): at each entry, the emulated
++ * ms and the N stack words above a far return address (probe.csv). */
++struct Probe {
++	std::string module, name;
++	uint32_t offset = 0;
++	unsigned nargs = 0;
++};
++std::vector<Probe> probes;
++std::unordered_set<uint32_t> probe_offsets;
++FILE *probe_log = nullptr;
+ 
+ std::vector<Trigger> snapshots;
+ std::vector<Trigger> keys;
+@@ -356,6 +370,10 @@
+ 	}
+ 	if (events) fclose(events);
+ 	events = nullptr;
++	if (opl) fclose(opl);
++	opl = nullptr;
++	if (probe_log) fclose(probe_log);
++	probe_log = nullptr;
+ 	LOG_MSG("SWOTL: wrote trace to %s (%llu instructions)", out_dir.c_str(),
+ 	        (unsigned long long)icount);
+ }
+@@ -458,6 +476,26 @@
+ 	}
+ 	events = fopen(Path("events.csv").c_str(), "w");
+ 	if (events) fputs("icount,kind,module,offset,detail\n", events);
++	if (const char *v = getenv("SWOTL_OPL"); v && *v && strcmp(v, "0") != 0) {
++		opl = fopen(Path("opl.csv").c_str(), "w");
++		if (opl) fputs("ms,reg,value\n", opl);
++	}
++	for (const auto &spec : Split(getenv("SWOTL_PROBES"), ',')) {
++		const auto plus = spec.find('+'), colon = spec.find(':'), eq = spec.find('=');
++		if (plus == std::string::npos || colon == std::string::npos || eq == std::string::npos)
++			continue;
++		Probe pr;
++		pr.module = spec.substr(0, plus);
++		pr.offset = (uint32_t)strtoul(spec.substr(plus + 1, colon - plus - 1).c_str(), nullptr, 16);
++		pr.nargs = (unsigned)atoi(spec.substr(colon + 1, eq - colon - 1).c_str());
++		pr.name = spec.substr(eq + 1);
++		probe_offsets.insert(pr.offset);
++		probes.push_back(pr);
++	}
++	if (!probes.empty()) {
++		probe_log = fopen(Path("probe.csv").c_str(), "w");
++		if (probe_log) fputs("ms,name,args\n", probe_log);
++	}
+ 	std::atexit(WriteOutputs);
+ }
+ 
+@@ -615,6 +653,15 @@
+ 	prev_packed = packed;
+ 	prev_valid = true;
+ 	PlinkProbe(linear, here);
++	if (probe_log && here.module && probe_offsets.count(here.offset))
++		for (const auto &pr : probes) {
++			if (pr.offset != here.offset || modules[here.module].name != pr.module) continue;
++			fprintf(probe_log, "%.6f,%s,", (double)PIC_FullIndex(), pr.name.c_str());
++			const uint32_t sp = SegPhys(ss) + (uint16_t)reg_esp;
++			for (unsigned i = 0; i < pr.nargs; i++)
++				fprintf(probe_log, "%s%04x", i ? " " : "", (unsigned)mem_readw(sp + 4 + 2 * i));
++			fputc('\n', probe_log);
++		}
+ 	ServiceReturn(linear);
+ 	if (poll_gate && IsPoll(here)) ++poll_hits[here];
+ 
+@@ -711,6 +758,12 @@
+ void SWOTL_Port(const bool write, const uint8_t width, const unsigned port, const uint32_t value) {
+ 	if (!swotl_active) return;
+ 	++ports[std::make_tuple(write, width, (uint16_t)port, value, CurrentLocation())];
++	if (opl && write && width == 1) {
++		if (port == 0x388) opl_index = (uint8_t)value;
++		else if (port == 0x389)
++			fprintf(opl, "%.6f,0x%02x,0x%02x\n", (double)PIC_FullIndex(), opl_index,
++			        (unsigned)(value & 0xff));
++	}
+ }
+ 
+ void SWOTL_DosOpen(const char *name, const bool ok, const uint16_t handle, const uint8_t mode) {

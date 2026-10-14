@@ -25,6 +25,9 @@ green; remove a step from this file when it is done.
 - Their Finest Hour (Amiga): 13 sampled sounds in `data/sfx.rsc` (≈ 107 KB),
   20 game ids, 4-channel priority driver on the vertical blank.
 
+References: `make sound-reference` ([pc-reference-loop.md](pc-reference-loop.md)):
+`opl.csv`, `probe.csv`, Nuked OPL WAVs in `tmp/sound/`.
+
 ## Decisions
 
 - Music: skipped in SPAZ play (HLE entry, user 2026-10-14). Letting it
@@ -39,28 +42,24 @@ green; remove a step from this file when it is done.
 
 ## Steps
 
-1. **Reference sound logs.** Tracer: `pc_run.py --opl` (OPL writes, emulated
-   ms, `opl.csv`) and `--probes` (SPAZ entry calls with arguments,
-   `probe.csv`). `tools/opl_render`: `opl.csv` → WAV through Nuked OPL (from
-   the DOSBox-X tree). Runs: title, c6, c12, c13. Output: reference WAVs.
-2. **Music skip.** `annotations/hle.csv` entry for SPAZ play with a music
+1. **Music skip.** `annotations/hle.csv` entry for SPAZ play with a music
    record; oracle: no OPL key-on from music in the logs, effects unchanged.
    Diagnostic toggle `MUSIC` disables the skip.
-3. **FM re-hoster core** (platform C, host-testable): OPL shadow → 4 Paula
+2. **FM re-hoster core** (platform C, host-testable): OPL shadow → 4 Paula
    voices (slot 0 engine, slots 1–2 loudest channel, voice 3 next loudest);
    loop rendered from patch registers on key-on or timbre change (cached;
    ≈ 1 KB loops for feedback ≥ 6); period from F-number/block; volume from
    TL + envelope per 50 Hz field; key-on counter for sub-field notes. Host
    test: `opl.csv` → commanded Paula output → WAV; pitch exact, envelope
-   timing within one field; WAV pairs with step 1 for listening.
-4. **Paula backend (Amiga).** Vertical-blank stage in `Swotl.cpp`; Chip pool
+   timing within one field; WAV pairs with the references for listening.
+3. **Paula backend (Amiga).** Vertical-blank stage in `Swotl.cpp`; Chip pool
    allocated before takeover; DMA on, silence = volume 0, waveform restarts
    staged in blanking; mute in the I/O windows and on pause; Alt-S/Alt-E.
    Checks: soak (68030, 68040), meter delta, listening.
-5. **TFH mode.** Install-time extractor (TFH `sfx.rsc` → sample bank);
+4. **TFH mode.** Install-time extractor (TFH `sfx.rsc` → sample bank);
    id table; HLE play/stop/stop all/engine query/stop/pitch with the
    delay queue (ids ≥ 100); engine period from the pitch arguments; distance
    variants → volume. Oracle: effect-call stream vs `probe.csv`; host render
    for listening; Chip budget (open-work 19).
-6. **Close.** D10 settled in `translator-design.md`; open-work 17 replaced by
+5. **Close.** D10 settled in `translator-design.md`; open-work 17 replaced by
    what remains (music method).

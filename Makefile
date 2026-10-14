@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae host test-host test-host-all test-amiga test-amiga-replay test-amiga-restore amiga amiga-release smoke smoke-release size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae host test-host test-host-all test-amiga test-amiga-replay test-amiga-restore amiga amiga-release smoke smoke-release size clean
 
 PYTHON ?= python3
 # AmigaXDev's shared Python package (amigaxdev.dos.mz_info).
@@ -23,6 +23,7 @@ help:
 	@echo "  make reference-run RUN=name [RUN_ARGS=...]  headless traced run -> tmp/pc-runs/name"
 	@echo "  make reference          run all milestones (reference/milestones.csv): signals, determinism, image proof"
 	@echo "  make coverage           run the coverage scripts (reference/coverage.csv)"
+	@echo "  make sound-reference    OPL log + SPAZ probes + Nuked OPL WAVs (tmp/sound/)"
 	@echo "  make map                sweep + PLINK check + code-write audit + surface over tmp/pc-runs/ref-*"
 	@echo "  make trace-summary RUN=name                 summarise that run's trace"
 	@echo "  make ghidra             sweep + headless Ghidra project per module -> tmp/ghidra/*.txt"
@@ -77,6 +78,14 @@ reference: check-ref gen
 
 coverage: check-ref
 	$(PYTHON) tools/reference.py --table reference/coverage.csv
+
+build/tools/opl_render: tools/opl_render.cpp
+	mkdir -p build/tools
+	c++ -O2 -std=c++17 -Itools/vendor/dosbox-x/src/hardware -o $@ $< \
+		tools/vendor/dosbox-x/src/hardware/nukedopl.cpp
+
+sound-reference: check-ref build/tools/opl_render
+	$(PYTHON) tools/sound_reference.py
 
 map:
 	$(PYTHON) tools/sweep.py --annotations
