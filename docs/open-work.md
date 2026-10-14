@@ -22,8 +22,8 @@ speed work: [speed-plan.md](speed-plan.md).
 14b. Speed target remains unmet: last normal-fixture 68020 run medians (R17)
     370–430 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md) §7, §9). Roughly 40%
     further reduction is needed from the median 400 ms. Remaining cost is
-    mostly generated guest code; flag-word packing is a further exact
-    optimization candidate, not yet priced. Native replacement requires
+    mostly generated guest code; no further exact translator step is known
+    (flag-word packing rejected, speed-plan §10). Native replacement requires
     per-routine authorization (§2.2). Bench acceptance for platform/layout work (D5) and
     a separate later palette window (D6) are approved; all fidelity gates and
     no slowdown remain mandatory.
@@ -38,6 +38,13 @@ speed work: [speed-plan.md](speed-plan.md).
     not rewritten by the guest); decide whether lockstep needs more (dead
     flag bits in pushed images under the remaining `annotations/flags.csv`
     pair).
+
+26. Trap flag (user, 2026-10-14): translated code does not raise interrupt 1
+    with TF set (Unicorn does). Establish that the game never sets TF
+    (static: POPF/IRET sources; DOSBox-X references), then make TF = 1 stop
+    loudly at POPF/IRET; TF = 1 corpus cases expect the stop. Single-step
+    delivery is built only if a trace shows TF = 1. Exploratory TF cases:
+    `tmp/item14b-agent/r19-deferred-coverage.patch`.
 
 ## Amiga platform
 

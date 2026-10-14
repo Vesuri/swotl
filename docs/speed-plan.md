@@ -475,6 +475,9 @@ Evidence: `tmp/item14b-agent/flags-*` (frozen arms, count/cost reports).
 - **D6 (2026-10-14).** Add a separate frames-60–67 fixed-work palette bench,
   with equal final guest RAM, exercised palette calls and all fidelity gates.
   Keep the existing bench and normal frame-rate fixture unchanged.
+- **D7 (2026-10-14).** R19 flag-word packing rejected (§10). Trap flag:
+  TF = 1 fails loudly, no single-step delivery unless a trace shows TF = 1
+  (open-work 26).
 - Native replacement is not part of this plan (§2.2).
 
 ## 9. Gap
@@ -486,7 +489,7 @@ Top guest routines (R17 first frames capture, self time): SWOTL.EXE+06A4D
 15.12% (cell walk), +0B54B 8.15%, +0BFD1 7.21%, +109D6 4.49%,
 +0D5A6 3.94%, +0B017 3.86%, RTSVGA.OVL+03B9A 3.21%.
 Generated guest code accounts for 89.53% of this capture. Flag-word packing
-remains a candidate for further exact translator work; native
+is rejected (§10); native
 replacement remains a per-routine user decision (§2.2).
 
 ## 10. Rejected and not built
@@ -515,3 +518,6 @@ history at `781975e` and §5.)
   region and restores it (65.6K CS stores per window), so the restored
   cells decode again. The other costs are a check on 110K segment loads,
   invalidation at the CS stores and the run setup.
+
+- R19 flag-word packing: priced at 18,726–29,266 model cycles
+  (0.0086–0.0135%) and ten code bytes on `25dd32c`; too small (D7).
