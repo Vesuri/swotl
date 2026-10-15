@@ -14,10 +14,12 @@ static uint8_t pit_access[3] = {3, 3, 3}, pit_high[3];
 static uint16_t pit_reload[3];
 uint32_t rt_pit_divisor = 0x10000;
 
-/* AdLib: index register and the written OPL2 register file (D10); rt_out8
- * (rt_entry.s) answers its byte writes. */
+/* AdLib: index register, the written OPL2 register file (D10) and the key-on
+ * edges per channel (fm_paula.c); rt_out8 (rt_entry.s) answers its byte
+ * writes. */
 uint8_t rt_opl_index;
 uint8_t rt_opl[256];
+uint8_t rt_opl_keyon[9];
 /* Music skip (annotations/hle.csv music_skip, rt_hle_music_skip): 1, a play
  * of a music record starts no song; 0 runs the guest code. Off while the
  * sound plan is developed (user 2026-10-15; docs/sound-plan.md Close). */

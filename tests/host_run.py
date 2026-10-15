@@ -150,10 +150,11 @@ SABOTAGE = {
     "vram": "graphics driver stores to video memory not marked (rt_vram_mark returns at once)",
     "far": "every dispatch row near-only (rt_dispatch_far must stop, R14e)",
     "sp": "rt_irq delivers with the guest SP from before the frame (its SP reload dropped)",
+    "keyon": "rt_out8 counts no AdLib key-on edge (its addq dropped)",
 }
 # Plants a milestone other than --milestone exercises (the guest's first
 # hardware interrupt handler runs after m1b-logo).
-SABOTAGE_AT = {"sp": "m2-choose-side", "mouse-motion": "c9-mouse-menu",
+SABOTAGE_AT = {"sp": "m2-choose-side", "keyon": "m2-choose-side", "mouse-motion": "c9-mouse-menu",
                "mouse-buttons": "c9-mouse-menu"}
 
 
@@ -238,6 +239,10 @@ class Host:
             code = e.read(a, self.syms["rt_irq_back"] - a)
             k = code.index(bytes.fromhex("0a447fff"))
             e.write(a + k - 6, bytes.fromhex("4e71") * 5)     # move.w rt_r+8,d4 too
+        if sabotage == "keyon":  # addq.b #1,(a0,d7.w) -> nop; nop
+            a = self.syms["rt_out8"]
+            code = e.read(a, 0x60)
+            e.write(a + code.index(bytes.fromhex("52307000")), bytes.fromhex("4e714e71"))
         if sabotage == "far":
             rows = int.from_bytes(e.read(self.syms["dispatch_count"], 4), "big")
             for k in range(rows):
@@ -290,6 +295,21 @@ class Host:
 
         a = self.syms["rt_int"]
         e.hook_range(U.HOOK_CODE, int_entry, a, a)
+
+        # AdLib writes as the guest makes them (check_opl)
+        self.opl: list[tuple[int, int]] = []
+        self.opl_ports: list[tuple[int, int]] = []
+
+        @U.CODE_CB
+        def out8(h, addr, size, user):
+            port, v = self.r("d7") & 0xFFFF, self.r("d6") & 0xFF
+            if port in (0x388, 0x389):
+                self.opl_ports.append((port, v))
+            if port == 0x389:
+                self.opl.append((self.mem(self.syms["rt_opl_index"], 1)[0], v))
+
+        a = self.syms["rt_out8"]
+        e.hook_range(U.HOOK_CODE, out8, a, a)
 
         # Hardware interrupts: the reference's BIOS handlers (and the INT frame)
         # use the interrupted stack, ours run in C; the window below SS:SP is dead.
@@ -880,6 +900,40 @@ def rearm_problems() -> list[str]:
     return problems
 
 
+def check_opl(h, trace: Path, counts: bool = True) -> list[str]:
+    """The host's AdLib writes, per port and value, are the reference's
+    (ports.csv of the same run; not with the music skipped, which drops
+    SPAZ's song writes); rt_opl and rt_opl_keyon hold the registers and
+    key-on edges (B0-B8 bit 5 rising) of the host's write sequence."""
+    want: dict[tuple[int, int], int] = {}
+    for r in csv.DictReader((trace / "ports.csv").open()):
+        if r["direction"] == "out" and r["port"] in ("0x0388", "0x0389"):
+            k = (int(r["port"], 16), int(r["value"], 16))
+            want[k] = want.get(k, 0) + int(r["count"])
+    got: dict[tuple[int, int], int] = {}
+    for port, v in h.opl_ports:
+        got[(port, v)] = got.get((port, v), 0) + 1
+    data = sum(n for (p, _), n in want.items() if p == 0x389)
+    print(f"OPL: {len(h.opl)} writes, {data} in the reference")
+    if counts and got != want:
+        diff = sorted(k for k in set(got) | set(want) if got.get(k) != want.get(k))
+        return [f"OPL: {len(diff)} port/value counts differ, first {diff[0][0]:x}={diff[0][1]:02x}: "
+                f"{got.get(diff[0], 0)} vs {want.get(diff[0], 0)}"]
+    regs, edges = bytearray(256), bytearray(9)
+    for reg, v in h.opl:
+        if 0xB0 <= reg <= 0xB8 and v & 0x20 and not regs[reg] & 0x20:
+            edges[reg - 0xB0] = (edges[reg - 0xB0] + 1) & 0xFF
+        regs[reg] = v
+    problems = []
+    if h.mem(h.syms["rt_opl"], 256) != bytes(regs):
+        problems.append("OPL: rt_opl differs from the writes")
+    if h.mem(h.syms["rt_opl_keyon"], 9) != bytes(edges):
+        problems.append(f"OPL: rt_opl_keyon {list(h.mem(h.syms['rt_opl_keyon'], 9))}, "
+                        f"key-on edges {list(edges)}")
+    print(f"OPL: key-on edges per channel {list(edges)}")
+    return problems
+
+
 def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None,
           music_skip: bool = False) -> list[str]:
     class args:  # noqa: N801
@@ -911,6 +965,8 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
                 h.music_masked |= set(range(max(lo, lo + SPAZ_DATA - off), hi))
     if h.display_miss:
         problems.append(h.display_miss)
+    if h.stopped_at == label:
+        problems += check_opl(h, trace, not music_skip)
     marked = bytearray(64000)  # stored since the last present: still marked (rt_vram_rows)
     rows = h.mem(h.syms["rt_vram_rows"], 800)
     for y in range(200):

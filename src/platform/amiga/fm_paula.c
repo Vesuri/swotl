@@ -4,9 +4,9 @@
  * level sets the Paula volume. The waveform is a loop rendered with the
  * chip's own operator math (log-sine and exponent tables, feedback, phase
  * modulation) from the patch registers and the modulator level, cached in
- * the pool: one fundamental period, or for feedback 6-7 (noise) 1 KB at the
- * chip's rate on a quarter-octave pitch grid. The period plays it at the
- * channel's pitch. Voices 0-2 take the
+ * the pool: one fundamental period. Feedback 6-7 with a strong modulator is
+ * chaotic: two noise tables built at fm_init, played at the modulator's
+ * pitch. The period plays a loop at the channel's pitch. Voices 0-2 take the
  * loudest channel of channel groups 0-2, 3-5, 6-8 (SPAZ's slots), voice 3
  * the loudest of the rest. */
 #include "fm_paula.h"
@@ -89,13 +89,21 @@ static const uint8_t op_off[9] = {0, 1, 2, 8, 9, 10, 16, 17, 18};
 #define PERIOD_MIN 124
 #define ATT_SILENT 224              /* voltab ends */
 #define STICKY 16                   /* 3 dB before a voice changes channel */
-#define MOD_STEP 4                  /* modulator level steps in the render key, 0.75 dB */
-#define MOD_SILENT 96               /* steps: 72 dB down, no modulation */
+#define MOD_STEP 16                 /* modulator level steps in the render key, 3 dB */
+#define MOD_SILENT 24               /* steps: 72 dB down, no modulation */
+#define MOD_HOLD 12                 /* a voice keeps its step within this of it */
 #define NOISE_FB 6
-#define NOISE_BYTES 1024
+#define NOISE_BYTES 1024            /* per table; tables for feedback 6 and 7 */
 #define NOISE_SETTLE 512
+#define NOISE_X (0x200u << 4)       /* table pitch, fnum << block (388 Hz) */
 #define NOISE_PERIOD 36528u         /* Paula clock * 2 / OPL rate, 8.8 */
+#define NOISE_MOD6 24               /* modulator attenuation below which feedback 6 is chaotic */
+#define NOISE_MOD7 56               /* and feedback 7 (10.5 dB) */
 #define CACHE 64
+#define LOOP_LOG 6                  /* longest period loop, 64 bytes */
+#define RENDER_BUDGET 1             /* loop renders a field, restarts aside */
+#define NOISE_KEY 0x80000000u
+#define FB_SETTLE 32                /* samples before a feedback loop's period */
 
 enum { ATTACK, DECAY, SUSTAIN, RELEASE };
 
@@ -120,50 +128,53 @@ static int8_t *pool;
 static uint16_t pool_pages;
 static uint8_t page_used[64];
 static struct entry cache[CACHE];
-static uint16_t cached;
 static uint32_t stamp;
+static const int8_t *noise[2];
+/* per voice: the last command and what it was made from */
+struct memo {
+    uint32_t key;                   /* the loop's (NOISE_KEY | fb: a noise table), 0 none */
+    uint32_t base, x;               /* render key without loop length; fnum << block */
+    uint16_t mq;                    /* its modulator step */
+    uint8_t g;                      /* repeats() of a period loop */
+    uint32_t stamp;
+    const int8_t *loop;
+    uint16_t bytes, period;
+    int16_t slot;
+};
+static struct memo memo[FM_VOICES];
+static uint8_t budget;
+uint32_t fm_renders;
 
-void fm_init(int8_t *p, uint32_t bytes)
-{
-    uint16_t i;
-    pool = p;
-    pool_pages = (uint16_t)(bytes / FM_POOL_PAGE);
-    if (pool_pages > 64) {
-        pool_pages = 64;
-    }
-    for (i = 0; i < 64; ++i) {
-        page_used[i] = 0;
-    }
-    for (i = 0; i < 18; ++i) {
-        ops[i].rout = 0x1ffu << 8;
-        ops[i].acc = 0;
-        ops[i].gen = RELEASE;
-    }
-    for (i = 0; i < FM_VOICES; ++i) {
-        voice_ch[i] = -1;
-    }
-    cached = 0;
-    stamp = 2;
-}
+/* Envelope steps per field (8.8) of register rate r with key scaling ks
+ * (steps[], fm_init); *hi the rate's high part (12+: attack within 2 ms). */
+static uint32_t steps[64];
 
-/* Envelope steps per field (8.8) of register rate r with key scaling ks;
- * *hi the rate's high part (12+: attack within 2 ms). */
 static uint32_t rate_step(uint8_t r, uint8_t ks, uint8_t *hi)
 {
-    uint8_t rate, h, lo;
+    uint8_t rate;
     if (!r) {
         *hi = 0;
         return 0;
     }
     rate = (uint8_t)((r << 2) + ks);
-    h = rate >> 2;
-    lo = rate & 3;
-    if (h >= 15) {
-        h = 15;
-        lo = 0;
+    if (rate > 63) {
+        rate = 63;
     }
-    *hi = h;
-    return h >= 12 ? ((4u + lo) * RATE_FIELD) << (h - 12) : ((4u + lo) * RATE_FIELD) >> (12 - h);
+    *hi = rate >> 2;
+    return steps[rate];
+}
+
+static void build_steps(void)
+{
+    uint8_t rate, h, lo;
+    for (rate = 0; rate < 64; ++rate) {
+        h = rate >> 2;
+        lo = rate & 3;
+        if (h >= 15) {
+            lo = 0;
+        }
+        steps[rate] = h >= 12 ? ((4u + lo) * RATE_FIELD) << (h - 12) : ((4u + lo) * RATE_FIELD) >> (12 - h);
+    }
 }
 
 /* Advance one operator by dt/256 field. */
@@ -215,6 +226,29 @@ static void eg_advance(struct op *o, const uint8_t *opl, uint8_t off, uint8_t ks
     }
 }
 
+/* The envelope half a field on, the state unchanged: a decay, sustain or
+ * release step at its rate; an attack as it stands. */
+static uint32_t eg_mid(const struct op *o, const uint8_t *opl, uint8_t off, uint8_t ks)
+{
+    uint8_t sr = opl[0x80 + off], hi;
+    uint32_t r = o->rout, sl = (uint32_t)(sr >> 4 == 15 ? 31 : sr >> 4) << 12;
+    switch (o->gen) {
+    case ATTACK:
+        return r;
+    case DECAY:
+        r += rate_step(opl[0x60 + off] & 15, ks, &hi) >> 1;
+        return r < sl ? r : sl;
+    case SUSTAIN:
+        if (opl[0x20 + off] & 0x20) {
+            return r;
+        }
+        /* falls through - a percussive sustain releases */
+    default:
+        r += rate_step(sr & 15, ks, &hi) >> 1;
+        return r < 0x1f8u << 8 ? r : 0x1ffu << 8;
+    }
+}
+
 /* Attenuation (0.1875 dB) of an operator: envelope, total level, key scale. */
 static uint16_t op_att(const struct op *o, const uint8_t *opl, uint8_t off, uint16_t fnum, uint8_t block)
 {
@@ -226,35 +260,32 @@ static uint16_t op_att(const struct op *o, const uint8_t *opl, uint8_t off, uint
     return (uint16_t)((o->rout >> 8) + ((lv & 0x3f) << 2) + (ksl >> kslshift[lv >> 6]));
 }
 
-/* One operator sample: Nuked's OPL3_SlotGenerate for waveforms 0-3. */
+/* Log-sine of waveforms 0-3 over the 10-bit phase, bit 15 the sign
+ * (Nuked's logsin_wf; fm_init). */
+static uint16_t wave[4][1024];
+
+static void build_wave(void)
+{
+    uint16_t p, c2;
+    for (p = 0; p < 1024; ++p) {
+        c2 = (p & 0x100) ? logsin[(p & 0xff) ^ 0xff] : logsin[p & 0xff];
+        wave[0][p] = (uint16_t)((p & 0x200 ? 0x8000 : 0) | c2);
+        wave[1][p] = (p & 0x200) ? 0x1000 : c2;
+        wave[2][p] = c2;
+        wave[3][p] = (p & 0x100) ? 0x1000 : logsin[p & 0xff];
+    }
+}
+
+/* One operator sample: Nuked's OPL3_SlotGenerate. */
 static int16_t op_out(uint8_t wf, uint16_t p, uint16_t att)
 {
-    uint16_t q = p & 0xff, l;
-    uint32_t level;
-    int neg = 0;
-    p &= 0x3ff;
-    l = (p & 0x100) ? logsin[q ^ 0xff] : logsin[q];
-    switch (wf) {
-    case 0:
-        neg = (p & 0x200) != 0;
-        break;
-    case 1:
-        if (p & 0x200) {
-            l = 0x1000;
-        }
-        break;
-    case 2:
-        break;
-    default:
-        l = (p & 0x100) ? 0x1000 : logsin[q];
-        break;
-    }
-    level = l + ((uint32_t)att << 3);
+    uint16_t w = wave[wf][p & 0x3ff], l;
+    uint32_t level = (w & 0x7fffu) + ((uint32_t)att << 3);
     if (level > 0x1fff) {
         level = 0x1fff;
     }
     l = (uint16_t)(exptab[level & 0xff] >> (level >> 8));
-    return (int16_t)(neg ? ~l : l);
+    return (int16_t)((w & 0x8000) ? ~l : l);
 }
 
 /* Repeats of the output per fundamental period in half cycles of the
@@ -274,85 +305,121 @@ static uint8_t repeats(uint8_t wfc, uint8_t wfm, uint8_t mc, uint8_t mm, uint8_t
     return a;
 }
 
-/* Noise pitch grid, quarter octaves of fnum << block: the code of x and,
- * from a code, the grid point at the top of its quarter (x itself below 4). */
-static uint8_t noise_code(uint32_t x)
-{
-    uint8_t e = 0;
-    if (x < 4) {
-        return (uint8_t)x;
-    }
-    while (x >> (e + 1)) {
-        ++e;
-    }
-    return (uint8_t)(e << 2 | ((x >> (e - 2)) & 3));
-}
-
-static uint32_t noise_ref(uint8_t code)
-{
-    return code < 8 ? code : (uint32_t)(5 + (code & 3)) << ((code >> 2) - 2);
-}
-
 /* Render key fields: wf_c 0-1, wf_m 2-3, mult_c 4-7, mult_m 8-11, fb 12-14,
- * cnt 15, modulator level 16-22 (MOD_STEP), then log2 samples per period
- * 23-26, or for noise (fb 6-7) the pitch code 23-29. A period
- * loop steps the phase by its fraction of a period; a noise loop runs the
- * chip at its own rate and step (feedback chaos depends on the step) at the
- * grid pitch, two chip samples a byte. */
+ * cnt 15, modulator level 16-20 (MOD_STEP), log2 samples per period 23-26.
+ * The phase steps by the loop's fraction of a period. */
 static void render(int8_t *dst, uint32_t key, uint16_t bytes)
 {
     uint8_t wfc = key & 3, wfm = (key >> 2) & 3, fb = (key >> 12) & 7, cnt = (key >> 15) & 1;
-    uint8_t mc = (key >> 4) & 15, mm = (key >> 8) & 15, mq = (key >> 16) & 127;
-    uint8_t noise = fb >= NOISE_FB, g = repeats(wfc, wfm, mc, mm, mq >= MOD_SILENT);
+    uint8_t mc = (key >> 4) & 15, mm = (key >> 8) & 15, mq = (key >> 16) & 31;
+    uint8_t g = repeats(wfc, wfm, mc, mm, mq >= MOD_SILENT);
     uint16_t matt = (uint16_t)(mq * MOD_STEP), spp = (uint16_t)(1u << ((key >> 23) & 15));
-    /* phase: 16.16 cycles (>> 6 the chip's 10 bits), or the chip's own 19 bits (>> 9) */
-    uint32_t ic, im, pc = 0, pm = 0, x = noise_ref((uint8_t)(key >> 23));
-    uint8_t shift = noise ? 9 : 6;
-    int16_t prev1 = 0, prev2 = 0, fbmod = 0, m, c, sum = 0;
-    uint16_t i, settle = noise ? NOISE_SETTLE : fb ? bytes : 0, steps = noise ? 2 * bytes : bytes;
-    if (noise) {
-        ic = (x >> 1) * mt[mc] >> 1;
-        im = (x >> 1) * mt[mm] >> 1;
-    } else {
-        ic = ((uint32_t)mt[mc] << 16) / g / spp;
-        im = ((uint32_t)mt[mm] << 16) / g / spp;
-    }
-    for (i = 0; i < settle + steps; ++i) {
+    /* phase in cycles, 16.16; >> 6 the chip's 10 bits */
+    uint32_t ic = ((uint32_t)mt[mc] << 16) / g / spp, im = ((uint32_t)mt[mm] << 16) / g / spp;
+    uint32_t pc = 0, pm = 0;
+    int16_t prev1 = 0, prev2 = 0, fbmod = 0, m, c;
+    uint16_t i, settle = fb ? FB_SETTLE : 0;
+    ++fm_renders;
+    for (i = 0; i < settle + bytes; ++i) {
         if (fb) {
             fbmod = (int16_t)((prev1 + prev2) >> (9 - fb));
         }
-        m = op_out(wfm, (uint16_t)((pm >> shift) + fbmod), matt);
+        m = op_out(wfm, (uint16_t)((pm >> 6) + fbmod), matt);
         prev2 = prev1;
         prev1 = m;
-        c = op_out(wfc, (uint16_t)((pc >> shift) + (cnt ? 0 : m)), 0);
+        c = op_out(wfc, (uint16_t)((pc >> 6) + (cnt ? 0 : m)), 0);
         if (cnt) {
             c = (int16_t)((c + m) >> 1);
         }
         pc += ic;
         pm += im;
-        if (i < settle) {
+        if (i >= settle) {
+            dst[i - settle] = (int8_t)(c >> 5);
+        }
+    }
+}
+
+/* Feedback noise table (fm_init): the chip at its own rate and step, sine
+ * operators 1:1, modulator at full level, pitch NOISE_X, two chip samples a
+ * byte. */
+static void render_noise(int8_t *dst, uint8_t fb)
+{
+    uint32_t inc = (NOISE_X >> 1) * mt[1] >> 1, pc = 0, pm = 0;
+    int16_t prev1 = 0, prev2 = 0, m, c, sum = 0;
+    uint16_t i;
+    for (i = 0; i < NOISE_SETTLE + 2 * NOISE_BYTES; ++i) {
+        m = op_out(0, (uint16_t)((pm >> 9) + ((prev1 + prev2) >> (9 - fb))), 0);
+        prev2 = prev1;
+        prev1 = m;
+        c = op_out(0, (uint16_t)((pc >> 9) + m), 0);
+        pc += inc;
+        pm += inc;
+        if (i < NOISE_SETTLE) {
             continue;
         }
-        if (!noise) {
-            dst[i - settle] = (int8_t)(c >> 5);
-        } else if ((i - settle) & 1) {
-            dst[(i - settle) >> 1] = (int8_t)((sum + c) >> 6);
+        if ((i - NOISE_SETTLE) & 1) {
+            dst[(i - NOISE_SETTLE) >> 1] = (int8_t)((sum + c) >> 6);
         } else {
             sum = c;
         }
     }
 }
 
-/* Loop of `key` (`bytes` long) from the cache, rendered on a miss; 0 when
- * every page is held by the loops of this or the last field. */
-static const int8_t *loop_for(uint32_t key, uint16_t bytes)
+void fm_init(int8_t *p, uint32_t bytes)
+{
+    uint16_t i;
+    build_steps();
+    build_wave();
+    pool = p;
+    pool_pages = (uint16_t)(bytes / FM_POOL_PAGE);
+    if (pool_pages > 64) {
+        pool_pages = 64;
+    }
+    for (i = 0; i < 64; ++i) {
+        page_used[i] = 0;
+    }
+    /* the noise tables take the first pages for good */
+    for (i = 0; i < 2; ++i) {
+        render_noise(pool + i * NOISE_BYTES, (uint8_t)(NOISE_FB + i));
+        noise[i] = pool + i * NOISE_BYTES;
+    }
+    for (i = 0; i < 2 * NOISE_BYTES / FM_POOL_PAGE; ++i) {
+        page_used[i] = 1;
+    }
+    fm_renders = 0;
+    for (i = 0; i < 18; ++i) {
+        ops[i].rout = 0x1ffu << 8;
+        ops[i].acc = 0;
+        ops[i].gen = RELEASE;
+    }
+    for (i = 0; i < FM_VOICES; ++i) {
+        voice_ch[i] = -1;
+        memo[i].key = 0;
+    }
+    for (i = 0; i < CACHE; ++i) {
+        cache[i].key = 0;
+    }
+    stamp = 2;
+}
+
+/* Cache slot of `key` (`bytes` long), rendered on a miss when `render_ok`;
+ * -1 when not, or when every page is held by the loops of this or the last
+ * field. Slots stay put (a voice keeps its slot's index). */
+static int16_t loop_for(uint32_t key, uint16_t bytes, int render_ok)
 {
     uint16_t pages = (uint16_t)((bytes + FM_POOL_PAGE - 1) / FM_POOL_PAGE), i, p, k;
-    for (i = 0; i < cached; ++i) {
+    int16_t slot = -1;
+    for (i = 0; i < CACHE; ++i) {
         if (cache[i].key == key) {
             cache[i].used = stamp;
-            return pool + cache[i].page * FM_POOL_PAGE;
+            return (int16_t)i;
         }
+        if (!cache[i].key && slot < 0) {
+            slot = (int16_t)i;
+        }
+    }
+    if (!render_ok) {
+        return -1;
     }
     for (;;) {
         for (p = 0; p + pages <= pool_pages; p = (uint16_t)(p + pages)) {
@@ -362,48 +429,62 @@ static const int8_t *loop_for(uint32_t key, uint16_t bytes)
                 break;
             }
         }
-        if (p + pages <= pool_pages && cached < CACHE) {
+        if (p + pages <= pool_pages && slot >= 0) {
             break;
         }
         /* evict the least recently used loop no voice may still play */
         k = CACHE;
-        for (i = 0; i < cached; ++i) {
-            if (cache[i].used + 1 < stamp && (k == CACHE || cache[i].used < cache[k].used)) {
+        for (i = 0; i < CACHE; ++i) {
+            if (cache[i].key && cache[i].used + 1 < stamp && (k == CACHE || cache[i].used < cache[k].used)) {
                 k = i;
             }
         }
         if (k == CACHE) {
-            return 0;
+            return -1;
         }
         for (i = 0; i < cache[k].pages; ++i) {
             page_used[cache[k].page + i] = 0;
         }
-        cache[k] = cache[--cached];
+        cache[k].key = 0;
+        if (slot < 0) {
+            slot = (int16_t)k;
+        }
     }
     for (k = 0; k < pages; ++k) {
         page_used[p + k] = 1;
     }
-    cache[cached].key = key;
-    cache[cached].used = stamp;
-    cache[cached].page = p;
-    cache[cached].pages = pages;
-    ++cached;
+    cache[slot].key = key;
+    cache[slot].used = stamp;
+    cache[slot].page = p;
+    cache[slot].pages = pages;
     render(pool + p * FM_POOL_PAGE, key, bytes);
-    return pool + p * FM_POOL_PAGE;
+    return slot;
 }
 
-static void voice_cmd(struct fm_voice *v, const uint8_t *opl, int8_t ch, uint16_t att)
+/* Voice i's command for channel ch at attenuation att. Unchanged patch,
+ * modulator level and pitch: the last field's loop and period. Past the
+ * field's render budget only a restart renders; a continuing note whose loop
+ * differs in modulator level alone keeps its loop a field longer. */
+static void voice_cmd(struct fm_voice *v, uint8_t i, const uint8_t *opl, int8_t ch, uint16_t att)
 {
     uint8_t c = (uint8_t)ch, mo = op_off[c], co = (uint8_t)(mo + 3), b0 = opl[0xb0 + c], c0 = opl[0xc0 + c];
-    uint16_t fnum = (uint16_t)(opl[0xa0 + c] | (b0 & 3) << 8), bytes, matt; /* matt: MOD_STEP units */
+    uint16_t fnum = (uint16_t)(opl[0xa0 + c] | (b0 & 3) << 8), bytes, raw, matt; /* matt: MOD_STEP units */
     uint8_t block = (b0 >> 2) & 7, ws = (opl[1] & 0x20) != 0, fb = (c0 >> 1) & 7, lg, g;
     uint8_t wfc = ws ? opl[0xe0 + co] & 3 : 0, wfm = ws ? opl[0xe0 + mo] & 3 : 0;
-    uint32_t key, d, period = 0;
-    matt = (uint16_t)((op_att(&ops[2 * c], opl, mo, fnum, block) + MOD_STEP / 2) / MOD_STEP);
+    uint32_t key, d, x = (uint32_t)fnum << block, period = 0, renders = fm_renders;
+    struct memo *m = &memo[i];
+    int16_t slot;
+    raw = op_att(&ops[2 * c], opl, mo, fnum, block);
+    matt = (uint16_t)((raw + MOD_STEP / 2) / MOD_STEP);
+    /* hysteresis: a level drifting about a step boundary keeps its loop */
+    if (m->key && (uint16_t)(raw - m->mq * MOD_STEP + MOD_HOLD) <= 2 * MOD_HOLD) {
+        matt = m->mq;
+    }
     if (matt > MOD_SILENT) {
         matt = MOD_SILENT;
     }
     if (!fnum) {
+        m->key = 0;
         v->loop = 0;
         v->volume = 0;
         return;
@@ -411,35 +492,95 @@ static void voice_cmd(struct fm_voice *v, const uint8_t *opl, int8_t ch, uint16_
     key = (uint32_t)wfc | (uint32_t)wfm << 2 |
           (uint32_t)(opl[0x20 + co] & 15) << 4 | (uint32_t)(opl[0x20 + mo] & 15) << 8 |
           (uint32_t)fb << 12 | (uint32_t)(c0 & 1) << 15 | (uint32_t)matt << 16;
-    if (fb >= NOISE_FB) {
-        uint32_t x = (uint32_t)fnum << block;
-        uint8_t code = noise_code(x);
-        /* grid point / x in [1, 1.25], 2.14 */
-        period = ((noise_ref(code) << 14) / x * NOISE_PERIOD + (1u << 21)) >> 22;
-        key |= (uint32_t)code << 23;
-        bytes = NOISE_BYTES;
-    } else {
-        g = repeats(wfc, wfm, opl[0x20 + co] & 15, opl[0x20 + mo] & 15, matt >= MOD_SILENT);
-        for (lg = 8; lg >= 3; --lg) {
-            d = ((uint32_t)fnum << block) * g << lg;
-            period = (PERIOD_NUM + d / 2) / d;
-            if (period >= PERIOD_MIN) {
-                break;
+    if (m->key && m->stamp + 1 == stamp && m->base == key) {
+        /* the same loop; a new pitch only a new period, while the loop's
+         * length stays the longest that keeps it at PERIOD_MIN or above */
+        if (m->x != x) {
+            if (m->key & NOISE_KEY) {
+                uint32_t xm = x * mt[opl[0x20 + mo] & 15] >> 1;
+                period = xm ? (NOISE_X * NOISE_PERIOD / 256 + xm / 2) / xm : 0xffff;
+            } else {
+                d = x * m->g << ((m->key >> 23) & 15);
+                period = (PERIOD_NUM + d / 2) / d;
+                if (period < PERIOD_MIN || (period >= 2 * PERIOD_MIN && ((m->key >> 23) & 15) < LOOP_LOG)) {
+                    period = 0;
+                }
+            }
+            if (period) {
+                m->x = x;
+                m->period = (uint16_t)(period < PERIOD_MIN ? PERIOD_MIN : period > 0xffff ? 0xffff : period);
             }
         }
-        if (lg < 3) {
-            lg = 3;
+        if (m->x == x) {
+            if (m->slot >= 0) {
+                cache[m->slot].used = stamp;
+            }
+            m->stamp = stamp;
+            v->loop = m->loop;
+            v->bytes = m->bytes;
+            v->period = m->period;
+            v->volume = voltab[att];
+            return;
+        }
+    }
+    m->base = key;
+    m->x = x;
+    m->stamp = stamp;
+    m->mq = matt;
+    if (fb >= NOISE_FB && raw < (fb == 7 ? NOISE_MOD7 : NOISE_MOD6)) {
+        /* chaotic: the noise table at the modulator's pitch */
+        uint32_t xm = x * mt[opl[0x20 + mo] & 15] >> 1;
+        period = xm ? (NOISE_X * NOISE_PERIOD / 256 + xm / 2) / xm : 0xffff;
+        if (period < PERIOD_MIN) {
             period = PERIOD_MIN;
         }
         if (period > 0xffff) {
             period = 0xffff;
         }
-        key |= (uint32_t)lg << 23;
-        bytes = (uint16_t)(1u << lg);
+        m->key = NOISE_KEY | fb;
+        m->slot = -1;
+        m->loop = v->loop = noise[fb - NOISE_FB];
+        m->bytes = v->bytes = NOISE_BYTES;
+        m->period = v->period = (uint16_t)period;
+        v->volume = voltab[att];
+        return;
     }
-    v->loop = loop_for(key, bytes);
-    v->bytes = bytes;
-    v->period = (uint16_t)period;
+    g = repeats(wfc, wfm, opl[0x20 + co] & 15, opl[0x20 + mo] & 15, matt >= MOD_SILENT);
+    m->g = g;
+    for (lg = LOOP_LOG; lg >= 3; --lg) {
+        d = x * g << lg;
+        period = (PERIOD_NUM + d / 2) / d;
+        if (period >= PERIOD_MIN) {
+            break;
+        }
+    }
+    if (lg < 3) {
+        lg = 3;
+        period = PERIOD_MIN;
+    }
+    if (period > 0xffff) {
+        period = 0xffff;
+    }
+    key |= (uint32_t)lg << 23;
+    bytes = (uint16_t)(1u << lg);
+    slot = loop_for(key, bytes, v->restart || budget);
+    if (slot < 0 && m->key && !(m->key & NOISE_KEY) && ((key ^ m->key) & ~(127u << 16)) == 0) {
+        slot = loop_for(m->key, bytes, 0);
+        if (slot >= 0) {
+            key = m->key;
+        }
+    }
+    if (slot < 0) {
+        slot = loop_for(key, bytes, 1);
+    }
+    if (fm_renders != renders && budget) {
+        --budget;
+    }
+    m->key = slot >= 0 ? key : 0;
+    m->slot = slot;
+    m->loop = v->loop = slot >= 0 ? pool + cache[slot].page * FM_POOL_PAGE : 0;
+    m->bytes = v->bytes = bytes;
+    m->period = v->period = (uint16_t)period;
     v->volume = v->loop ? voltab[att] : 0;
 }
 
@@ -449,12 +590,18 @@ void fm_field(const uint8_t *opl, const uint8_t *keyon, struct fm_voice *voice)
     uint8_t c, i, newkey[9];
     uint16_t taken = 0;
     ++stamp;
+    budget = RENDER_BUDGET;
     for (c = 0; c < 9; ++c) {
         uint8_t b0 = opl[0xb0 + c], block = (b0 >> 2) & 7, mo = op_off[c], k;
         uint16_t fnum = (uint16_t)(opl[0xa0 + c] | (b0 & 3) << 8);
         uint8_t ksv = (uint8_t)(block << 1 | ((fnum >> 9) & 1));
         newkey[c] = keyon[c] != last_keyon[c];
         last_keyon[c] = keyon[c];
+        att[c] = 0xffff;
+        if (!newkey[c] && ops[2 * c].gen == RELEASE && ops[2 * c + 1].gen == RELEASE &&
+            (ops[2 * c].rout & ops[2 * c + 1].rout) == 0x1ffu << 8) {
+            continue;   /* silent until its next key-on */
+        }
         for (k = 0; k < 2; ++k) {
             struct op *o = &ops[2 * c + k];
             uint8_t off = (uint8_t)(mo + 3 * k);
@@ -483,12 +630,11 @@ void fm_field(const uint8_t *opl, const uint8_t *keyon, struct fm_voice *voice)
         }
         /* the level the coming field holds: its middle's, the game's own
          * total level ramps (SPAZ ticks at 236.7 Hz) carried on */
-        att[c] = 0xffff;
         for (k = (opl[0xc0 + c] & 1) ? 0 : 1; k < 2; ++k) {
             struct op o = ops[2 * c + k];
             uint8_t off = (uint8_t)(mo + 3 * k);
             uint16_t a;
-            eg_advance(&o, opl, off, (opl[0x20 + off] & 0x10) ? ksv : ksv >> 2, 128);
+            o.rout = eg_mid(&o, opl, off, (opl[0x20 + off] & 0x10) ? ksv : ksv >> 2);
             a = op_att(&o, opl, off, fnum, block);
             a = (uint16_t)(o.slope < 0 && a < (uint16_t)(-2 * o.slope) ? 0 : a + 2 * o.slope);
             if (a < att[c]) {
@@ -517,6 +663,6 @@ void fm_field(const uint8_t *opl, const uint8_t *keyon, struct fm_voice *voice)
             continue;
         }
         taken = (uint16_t)(taken | 1 << best);
-        voice_cmd(&voice[i], opl, best, att[best]);
+        voice_cmd(&voice[i], i, opl, best, att[best]);
     }
 }

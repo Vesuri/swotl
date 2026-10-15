@@ -27,6 +27,9 @@ void amiga_key(int raw, int up);
 void amiga_mouse_move(int16_t dx, int16_t dy);
 void amiga_mouse_script_buttons(uint32_t buttons);
 
+/* The FM re-hoster's next commands (Audio.cpp), from plat_service. */
+void amiga_audio_service(void);
+
 extern volatile uint32_t amiga_frames;
 extern volatile uint32_t amiga_io_frames;
 extern volatile uint32_t amiga_mouse_reads;

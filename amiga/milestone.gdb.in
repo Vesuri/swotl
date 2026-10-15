@@ -21,6 +21,7 @@ continue
 disable $bpnum
 set $bm = &amiga_bitmap
 printf "SWOTL_REGS ax=%04x cx=%04x dx=%04x bx=%04x sp=%04x bp=%04x si=%04x di=%04x bpr=%d\n", $d0 & 0xffff, $d1 & 0xffff, $d2 & 0xffff, $d3 & 0xffff, ($d4 ^ 0x7fff) & 0xffff, ($d5 ^ 0x7fff) & 0xffff, (unsigned)$a4 & 0xffff, (unsigned)$a5 & 0xffff, $bm ? $bm->BytesPerRow : 0
+printf "SWOTL_AUDIO restarts=%u renders=%u\n", amiga_audio_restarts, fm_renders
 set $g = *(unsigned char **)&rt_guest
 dump binary memory @OUT@/state.bin $g+1 $g+17
 dump binary memory @OUT@/ram.bin $g-0xfffff $g+1

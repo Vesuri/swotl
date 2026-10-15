@@ -28,13 +28,30 @@ green; remove a step from this file when it is done.
   most noise patches; SPAZ ramps carrier TL itself on its 236.7 Hz tick
   (fast decays) and slides F-numbers (engines, sweeps).
 - FM re-hoster: `src/platform/amiga/fm_paula.c` (per field: OPL registers +
-  key-on counts → 4 voice commands; loop pool in 256-byte pages). Check
-  `make t-fm` (`tools/fm_check.cpp`, vs Nuked per channel): level within
-  3 dB (±1 field, above −30 dB, Paula's 6-bit volume) on ≥ 95% of fields,
-  pitch within 10 cents on ≥ 99% of measurable fields; effect runs 98.4-98.9%
-  and 100% (worst 8.3 cents); title music 93.4% (reprogramming within a
-  field), not gated. Noise timbre is sensitive to modulator level: 0.75 dB
-  key steps.
+  key-on counts → 4 voice commands). Period loops ≤ 64 bytes rendered on
+  demand (3 dB modulator steps with hysteresis, one render a field beyond
+  restarts, per-voice memo: a pitch change is a new period only) in a
+  16 KB Chip pool of 256-byte pages. Feedback 6-7 is chaotic only with a
+  strong modulator (fb 7 < 10.5 dB, fb 6 < 4.5 dB down): two 1 KB noise
+  tables built at `fm_init`, played at the modulator's pitch.
+- Check `make t-fm` (`tools/fm_check.cpp`, vs Nuked per channel): level
+  within 3 dB (±1 field, above −30 dB, Paula's 6-bit volume) on ≥ 95% of
+  fields, pitch within 10 cents on ≥ 99% of measurable fields; effect runs
+  98.1-98.6% and 100% (worst 5.5 cents), 69-88 renders in 40 s; title music
+  93.3%, not gated (reprogramming within a field).
+- Paula backend: `src/platform/amiga/Audio.cpp`. `fm_field` in
+  `plat_service` (main program, once a vertical blank); the vertical blank
+  stages the commands: DMA on, silence volume 0, loop changes latched at
+  the loop's end, a key-on restarts its channel (DMA off, the outgoing
+  period's countdown waited out, ≤ 16 lines; Revs, Rescue on Fractalus);
+  volume 0 in I/O windows. Voices 0, 3 left, 1, 2 right. Alt-S, Alt-E and
+  pause are SPAZ's own key-offs. Cost (68020 A1200 model, demo flight, 100
+  fields): 4.8% (≈ 13,600 cycles a field). Soak 68030, 68040 to field 1500:
+  sound live, no stop.
+- Key-on edges: `rt_opl_keyon` (`rt_out8`). Oracle in every host run
+  (`check_opl`): AdLib writes per port and value = the reference's
+  `ports.csv`; `rt_opl`, `rt_opl_keyon` = a recount of the host's writes;
+  sabotage `keyon`.
 
 References: `make sound-reference` ([pc-reference-loop.md](pc-reference-loop.md)):
 `opl.csv`, `probe.csv`, Nuked OPL WAVs in `tmp/sound/`; `make sound-fm`: the
@@ -55,16 +72,12 @@ re-hoster's Paula WAVs beside them (`NAME-paula.wav`).
 
 ## Steps
 
-1. **Paula backend (Amiga).** Key-on edge counter per channel in `rt_out8`
-   (B0-B8 bit 5 rising); `fm_field` at the vertical blank in `Swotl.cpp`;
-   Chip pool allocated before takeover; DMA on, silence = volume 0,
-   waveform restarts staged in blanking; mute in the I/O windows and on pause; Alt-S/Alt-E.
-   Checks: soak (68030, 68040), meter delta, listening.
-2. **TFH mode.** Install-time extractor (TFH `sfx.rsc` → sample bank);
+1. **TFH mode.** Install-time extractor (TFH `sfx.rsc` → sample bank);
    id table; HLE play/stop/stop all/engine query/stop/pitch with the
    delay queue (ids ≥ 100); engine period from the pitch arguments; distance
    variants → volume. Oracle: effect-call stream vs `probe.csv`; host render
    for listening; Chip budget (open-work 19).
-3. **Close.** Music skip default back on (`rt_music_skip`, ports.c) unless
-   the user decides otherwise; D10 settled in `translator-design.md`;
-   open-work 17 replaced by what remains (music method).
+2. **Close.** Listening on the user's machine (FM mode, music); music skip
+   default back on (`rt_music_skip`, ports.c) unless the user decides
+   otherwise; D10 settled in `translator-design.md`; open-work 17 replaced
+   by what remains (music method).

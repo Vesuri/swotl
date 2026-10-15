@@ -26,5 +26,7 @@ void fm_init(int8_t *pool, uint32_t bytes);
 /* One field: `opl` the 256 register bytes, `keyon` per channel a count of
  * key-on edges (B0-B8 bit 5 rising), wrapping. Fills `voice[FM_VOICES]`. */
 void fm_field(const uint8_t *opl, const uint8_t *keyon, struct fm_voice *voice);
+/* Loops rendered since fm_init (cost statistics). */
+extern uint32_t fm_renders;
 
 #endif

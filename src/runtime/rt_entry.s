@@ -57,6 +57,7 @@ G_DS	equ	1
 	xref	rt_video_publish
 	xref	rt_opl
 	xref	rt_opl_index
+	xref	rt_opl_keyon
 	xref	rt_music_skip
 
 	ifd SWOTL_REPLAY
@@ -225,8 +226,8 @@ port_in:
 	movem.l	(a7)+,d0-d1/a1
 	rts
 
-; AdLib byte writes and the PIC's non-specific EOI here (ports.c); d7
-; clobbered.
+; AdLib byte writes (and per channel the key-on edges, B0-B8 bit 5 rising)
+; and the PIC's non-specific EOI here (ports.c); d7 and a0 clobbered.
 rt_out8:
 	cmp.w	#$389,d7
 	beq.s	.opl_data
@@ -244,6 +245,19 @@ rt_out8:
 	lea	rt_opl,a0
 	moveq	#0,d7
 	move.b	rt_opl_index,d7
+	cmp.b	#$b0,d7
+	blo.s	.opl_store
+	cmp.b	#$b8,d7
+	bhi.s	.opl_store
+	btst	#5,d6
+	beq.s	.opl_store
+	btst	#5,(a0,d7.w)
+	bne.s	.opl_store
+	move.b	d6,(a0,d7.w)
+	lea	rt_opl_keyon-$b0,a0
+	addq.b	#1,(a0,d7.w)
+	rts
+.opl_store:
 	move.b	d6,(a0,d7.w)
 	rts
 .port:	movem.l	d0-d1/a1,-(a7)

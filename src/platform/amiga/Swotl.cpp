@@ -15,6 +15,7 @@ extern "C" {
 #include "Swotl.h"
 #include "DisplayQueue.h"
 #include "Input.h"
+#include "Audio.h"
 #include "AmigaHardware.h"
 #include "Bitmap.h"
 #include "CopperList.h"
@@ -148,6 +149,9 @@ Swotl::Swotl() :
         if (at >= COPPER_LONGS) return;
         display->copper[b][at] = 0xfffffffe;
     }
+    if (!Audio::begin()) {
+        plat_log("SWOTL no Chip RAM for sound");
+    }
     amiga_bitmap = display->bm[0];
     for (unsigned k = 0; k < 1 + 256 * 3 + 1; ++k) {
         amiga_colours[k] = display->colours[0][k];
@@ -176,6 +180,7 @@ Swotl::~Swotl()
         }
         delete display;
     }
+    Audio::end();
     AmigaHardware::releaseBlitterQueue();
     if (GfxBase) {
         CloseLibrary((struct Library*)GfxBase);
@@ -231,6 +236,7 @@ void Swotl::takeOver()
 
     AmigaHardware::setCopperList(*display->list[display->queue.shown], true);
     AmigaHardware::setDMAChannels(DMAF_MASTER | DMAF_COPPER | DMAF_RASTER, true);
+    Audio::takeOver();
     AmigaHardware::setInterrupts(TAKEOVER_INTERRUPTS, true);
     if (!Input::begin()) {
         plat_log("SWOTL no ciaa.resource");
@@ -242,6 +248,7 @@ void Swotl::takeOver()
 void Swotl::handBack()
 {
     Input::end();
+    Audio::handBack();
     AmigaHardware::setInterrupts(INTF_ALL, false);
     AmigaHardware::clearInterruptRequests(INTF_ALL);
     AmigaHardware::setDMAChannels(DMAF_COPPER | DMAF_RASTER | DMAF_SPRITE, false);
@@ -323,6 +330,7 @@ void Swotl::verticalBlank()
     }
     ++amiga_frames;
     Input::verticalBlank();
+    Audio::verticalBlank();
     rt_present_due = 1;
     RT_RAISE_IRQ();
 }
@@ -337,6 +345,7 @@ void Swotl::beginIO()
     if (!vectorTaken || ioDepth++) {
         return;
     }
+    Audio::mute(true);
     Disable();
     AmigaHardware::setInterrupts(INTF_ALL, false);
     SysBase->IntVects[INTB_VERTB] = oldVerticalBlankVector;
@@ -365,6 +374,7 @@ void Swotl::endIO()
     AmigaHardware::setDMAChannels(DMAF_DISK | DMAF_BLITTER, false);
     AmigaHardware::setInterrupts(TAKEOVER_INTERRUPTS, true);
     Enable();
+    Audio::mute(false);
 }
 
 // A complete palette is built only in the withdrawn back list. Palette-only

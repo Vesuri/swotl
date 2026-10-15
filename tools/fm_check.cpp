@@ -112,6 +112,7 @@ int main(int argc, char **argv)
     size_t at = 0;
     unsigned samples = 0, field_samples = 0, pitch_checked = 0, pitch_ok = 0;
     double worst_cents = 0;
+    uint32_t most_renders = 0;
     size_t end = (size_t)((rows.back().ms - first) * RATE / 1000.0) + RATE;
     for (size_t n = 0; n < end; n++) {
         while (at < rows.size() && (rows[at].ms - first) * RATE / 1000.0 <= n) {
@@ -163,7 +164,9 @@ int main(int argc, char **argv)
             for (auto &s : sq) s = 0;
             for (auto &s : vsq) s = 0;
             struct fm_voice v[FM_VOICES];
+            uint32_t before = fm_renders;
             fm_field(shadow, keyon, v);
+            if (fm_renders - before > most_renders) most_renders = fm_renders - before;
             std::array<uint8_t, FM_VOICES> vol;
             for (int i = 0; i < FM_VOICES; i++) vol[i] = v[i].volume;
             vols.push_back(vol);
@@ -238,8 +241,10 @@ int main(int argc, char **argv)
     double lf = level_checked ? (double)level_ok / level_checked : 0;
     double pf = pitch_checked ? (double)pitch_ok / pitch_checked : 0;
     bool ok = lf >= LEVEL_MIN && pf >= PITCH_MIN;
-    printf("%s: %.1f s, %zu fields, %u voiced; level %u/%u (%.1f%%); pitch %u/%u (%.1f%%, worst %+.1f cents) %s\n",
+    printf("%s: %.1f s, %zu fields, %u voiced; level %u/%u (%.1f%%); pitch %u/%u (%.1f%%, worst %+.1f cents); "
+           "renders %u (most %u in a field) %s\n",
            argv[2], samples / (double)RATE, fields.size(), voiced, level_ok, level_checked, 100 * lf,
-           pitch_ok, pitch_checked, 100 * pf, worst_cents, ok ? "ok" : "FAIL");
+           pitch_ok, pitch_checked, 100 * pf, worst_cents, (unsigned)fm_renders, (unsigned)most_renders,
+           ok ? "ok" : "FAIL");
     return ok ? 0 : 1;
 }

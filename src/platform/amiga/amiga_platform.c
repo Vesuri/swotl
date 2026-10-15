@@ -331,6 +331,7 @@ static void key_script_step(void)
 void plat_service(void)
 {
     key_script_step();
+    amiga_audio_service();
 }
 
 void plat_log(const char *line)

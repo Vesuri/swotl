@@ -182,6 +182,7 @@ void rt_int33(void);
 extern uint32_t rt_pit_divisor;    /* channel 0 reload, 1..65536 */
 extern uint8_t rt_opl[256];         /* AdLib registers as written (rt_entry.s rt_out8) */
 extern uint8_t rt_opl_index;
+extern uint8_t rt_opl_keyon[9];     /* per channel: key-on edges, wrapping (FM re-hoster) */
 extern uint8_t rt_music_skip;        /* 1: HLE music_skip skips song starts */
 
 /* stop: report and halt, never resumes */
