@@ -38,7 +38,7 @@ green; remove a step from this file when it is done.
   within 3 dB (±1 field, above −30 dB, Paula's 6-bit volume) on ≥ 95% of
   fields, pitch within 10 cents on ≥ 99% of measurable fields; effect runs
   98.1-98.6% and 100% (worst 5.5 cents), 69-88 renders in 40 s; title music
-  93.3%, not gated (reprogramming within a field).
+  93.2%, not gated (reprogramming within a field).
 - Paula backend: `src/platform/amiga/Audio.cpp`. `fm_field` in
   `plat_service` (main program, once a vertical blank); the vertical blank
   stages the commands: DMA on, silence volume 0, loop changes latched at

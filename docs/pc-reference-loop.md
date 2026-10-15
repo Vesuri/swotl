@@ -99,8 +99,9 @@ Trace outputs (`tmp/pc-runs/<name>/trace/`, written at exit):
 Sound references: `make sound-reference` (`tools/sound_reference.py`): title
 (150 s) and c6/c12/c13 (400 s) with the OPL log and SPAZ entry probes,
 rendered by `build/tools/opl_render` (Nuked OPL from the DOSBox-X tree, 49716 Hz)
-to `tmp/sound/NAME-fm.wav`. These runs end at the time limit (the emulator then
-exits with signal 11, after the outputs are written).
+to `tmp/sound/NAME-fm.wav`. These runs end at the time limit: the outputs are
+written there, while guest memory is mapped (`dosbox-x-swotl-time-limit.patch`;
+at exit it is gone and `plink.csv` faulted, leaving the logs unflushed).
 | `residency.csv` | paragraph ranges → module at exit |
 | `plink.csv` | calls of the PLINK load routine: caller, overlay id, via thunk, resident before, loaded, caller intact, count ([plink.md](plink.md)) |
 

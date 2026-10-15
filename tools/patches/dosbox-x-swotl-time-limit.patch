@@ -1,0 +1,44 @@
+--- a/include/swotl_trace.h
++++ b/include/swotl_trace.h
+@@ -12,6 +12,7 @@
+ bool SWOTL_IrqPoint(uint32_t linear);
+ 
+ void SWOTL_Instruction(uint32_t linear);
++void SWOTL_TimeLimit();
+ void SWOTL_MemoryAccess(bool write, uint32_t address, uint8_t width);
+ void SWOTL_Interrupt(unsigned num, unsigned type, uint32_t oldeip);
+ void SWOTL_Port(bool write, uint8_t width, unsigned port, uint32_t value);
+--- a/src/hardware/pic.cpp
++++ b/src/hardware/pic.cpp
+@@ -867,8 +867,10 @@
+     CPU_Cycles = 0;
+ 
+     /* timeout */
+-    if (time_limit_ms != 0 && PIC_Ticks >= time_limit_ms)
++    if (time_limit_ms != 0 && PIC_Ticks >= time_limit_ms) {
++        SWOTL_TimeLimit();
+         throw int(1);
++    }
+ 
+     /* Go through the list of scheduled events and lower their index with 1000 */
+     PICEntry * entry=pic_queue.next_entry;
+--- a/src/misc/swotl_trace.cpp
++++ b/src/misc/swotl_trace.cpp
+@@ -284,6 +284,7 @@
+ 
+ void WriteOutputs() {
+ 	if (!enabled) return;
++	enabled = false; /* once: at the time limit or at exit */
+ 	if (events) fflush(events);
+ 	if (auto *f = fopen(Path("modules.csv").c_str(), "w")) {
+ 		fputs("module,loads,executed_bytes,size\n", f);
+@@ -808,3 +809,9 @@
+ 	if (!swotl_active) return;
+ 	Event("exec_overlay", "%s seg=0x%04x reloc=0x%04x", BaseName(name).c_str(), seg, reloc);
+ }
++
++/* -time-limit (pic.cpp): the outputs while guest memory is still mapped; at
++ * exit it is gone (OverlayName reads the PLINK table). */
++void SWOTL_TimeLimit() {
++	WriteOutputs();
++}
