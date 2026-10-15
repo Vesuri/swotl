@@ -19,6 +19,7 @@ G_DS	equ	1
 	xdef	rt_halt
 	xdef	rt_trap
 	xdef	rt_hle_music_skip
+	xdef	rt_hle_sfx_start
 	xdef	rt_in8
 	xdef	rt_in16
 	xdef	rt_out8
@@ -59,6 +60,8 @@ G_DS	equ	1
 	xref	rt_opl_index
 	xref	rt_opl_keyon
 	xref	rt_music_skip
+	xref	rt_sfx_id
+	xref	rt_sfx_starts
 
 	ifd SWOTL_REPLAY
 	xref rt_replay_enter,rt_replay_return
@@ -202,6 +205,19 @@ rt_halt:
 ; record. Registers preserved.
 rt_hle_music_skip:
 	tst.b	rt_music_skip
+	rts
+
+; HLE sfx_start (annotations/hle.csv): an effect takes a slot, d7 = slot*6,
+; d6 = id*4. Observe only: EQ. Clobbers d6, d7 and a0.
+rt_hle_sfx_start:
+	and.l	#$ffff,d7
+	divu.w	#6,d7
+	lsr.w	#2,d6
+	lea	rt_sfx_id,a0
+	move.b	d6,(a0,d7.w)
+	lea	rt_sfx_starts,a0
+	addq.b	#1,(a0,d7.w)
+	cmp.w	d7,d7
 	rts
 
 ; TF set by POPF/IRET: d7 = IP of the instruction.

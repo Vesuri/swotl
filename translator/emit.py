@@ -27,7 +27,7 @@ from collections import Counter
 from . import cfg, image, region, smc
 from .decode import Far, Rel
 from .flags import ALL, plan, transfer
-from .lower import Ctx, LowerError, hx
+from .lower import GREG, MIRROR, Ctx, LowerError, hx
 
 M = image.M
 TAG = {"SWOTL.EXE": "R", "SPAZ.OVL": "SPZ", "RTSVGA.OVL": "VGA", "FRONTEND.OVL": "FE",
@@ -40,7 +40,8 @@ RUNTIME = ("rt_int", "rt_irq", "rt_fault", "rt_halt", "rt_trap", "rt_in8", "rt_i
            "rt_vram_mark", "rt_vdrv_depth", "rt_vdrv_return", "rt_irq_pending")
 # G3 native replacements (annotations/hle.csv): runtime service rt_hle_<service>
 # at a range's first instruction; NE skips the range to the instruction after
-# `last`, EQ runs the guest code.
+# `last`, EQ runs the guest code. `args`: up to two guest word registers, in
+# d7 and d6 for the service.
 HLE_SERVICES = tuple(sorted({"rt_hle_" + r["service"] for r in image.rows("hle.csv")}))
 # D9: the graphics driver in scope. Only it writes video memory
 # (docs/external-surface.md); a return from a call into it through its PLINK
@@ -223,6 +224,7 @@ class Program:
         self.saves = {(r["module"], int(r["save"], 16)): (r["module"], int(r["restore"], 16))
                       for r in image.rows("flags.csv")}
         self.hle: dict[tuple[str, int], tuple[tuple[str, int], str]] = {}
+        self.hle_args: dict[tuple[str, int], list[str]] = {}
         for r in image.rows("hle.csv"):
             mod, first, last = r["module"], int(r["first"], 16), int(r["last"], 16)
             u = self.units[mod]
@@ -230,6 +232,10 @@ class Program:
             if first not in u.insns or resume not in u.insns:
                 raise LowerError(f"hle.csv: {mod}+{first:05X}..{last:05X} is no instruction range")
             self.hle[(mod, first)] = ((mod, resume), "rt_hle_" + r["service"])
+            args = (r.get("args") or "").split()
+            if len(args) > 2 or any(a not in GREG or a in MIRROR for a in args):
+                raise LowerError(f"hle.csv: {mod}+{first:05X} args {args}: two plain word registers at most")
+            self.hle_args[(mod, first)] = args
         int0 = [r for r in image.rows("runtime.csv") if r["name"] == "__cintDIV"]
         self.int0 = (int0[0]["module"], int(int0[0]["offset"], 16)) if int0 else None
         # D16: self-modified regions, each lowered as one cell walk
@@ -665,6 +671,7 @@ class Program:
                     lines.append("\tlea 4(sp),sp")
             if (mod, o) in self.hle:
                 resume, service = self.hle[(mod, o)]
+                lines += [f"\tmove.w {GREG[a]},{d}" for a, d in zip(self.hle_args[(mod, o)], ("d7", "d6"))]
                 lines += [f"\tjsr {service}", f"\tbne {label(*resume)}"]
                 stats["HLE hook"] += 1
             if ((mod, o) in self.hle or (mod, o) in self.hle_resumes) and lw.ccr_only:

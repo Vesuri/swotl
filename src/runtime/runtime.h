@@ -184,6 +184,8 @@ extern uint8_t rt_opl[256];         /* AdLib registers as written (rt_entry.s rt
 extern uint8_t rt_opl_index;
 extern uint8_t rt_opl_keyon[9];     /* per channel: key-on edges, wrapping (FM re-hoster) */
 extern uint8_t rt_music_skip;        /* 1: HLE music_skip skips song starts */
+extern uint8_t rt_sfx_id[3];         /* per SPAZ slot: the effect id last started (HLE sfx_start) */
+extern uint8_t rt_sfx_starts[3];     /* per SPAZ slot: starts, wrapping */
 
 /* stop: report and halt, never resumes */
 void rt_stop(const char *what, uint32_t a, uint32_t b) __attribute__((noreturn));

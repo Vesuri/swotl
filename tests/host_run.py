@@ -42,6 +42,7 @@ MEM = 0x01000000          # flat map: code, data, stack, guest RAM
 STACK_TOP = 0x00FF0000
 BLOCK = 0x00400000        # src/platform/host/host.c HOST_BLOCK
 GUEST_BYTES = 0x110000
+SFX_SLOT_IDS = 0x1DE   # SPAZ DS: per OPL channel the effect id·4 (stored at hle.csv sfx_start)
 TOP = BLOCK + GUEST_BYTES - 1   # rt_guest: guest linear L at TOP - L (reversed)
 STATE = TOP + 1           # state block (translator/lower.py STATE_EQU)
 G_IRQ = TOP + 9
@@ -151,10 +152,12 @@ SABOTAGE = {
     "far": "every dispatch row near-only (rt_dispatch_far must stop, R14e)",
     "sp": "rt_irq delivers with the guest SP from before the frame (its SP reload dropped)",
     "keyon": "rt_out8 counts no AdLib key-on edge (its addq dropped)",
+    "sfx_start": "rt_hle_sfx_start records no effect id (its move.b dropped)",
 }
 # Plants a milestone other than --milestone exercises (the guest's first
 # hardware interrupt handler runs after m1b-logo).
-SABOTAGE_AT = {"sp": "m2-choose-side", "keyon": "m2-choose-side", "mouse-motion": "c9-mouse-menu",
+SABOTAGE_AT = {"sp": "m2-choose-side", "keyon": "m2-choose-side", "sfx_start": "c6-flight-keys",
+               "mouse-motion": "c9-mouse-menu",
                "mouse-buttons": "c9-mouse-menu"}
 
 
@@ -243,6 +246,10 @@ class Host:
             a = self.syms["rt_out8"]
             code = e.read(a, 0x60)
             e.write(a + code.index(bytes.fromhex("52307000")), bytes.fromhex("4e714e71"))
+        if sabotage == "sfx_start":  # move.b d6,(a0,d7.w) -> nop; nop
+            a = self.syms["rt_hle_sfx_start"]
+            code = e.read(a, 0x20)
+            e.write(a + code.index(bytes.fromhex("11867000")), bytes.fromhex("4e714e71"))
         if sabotage == "far":
             rows = int.from_bytes(e.read(self.syms["dispatch_count"], 4), "big")
             for k in range(rows):
@@ -310,6 +317,36 @@ class Host:
 
         a = self.syms["rt_out8"]
         e.hook_range(U.HOOK_CODE, out8, a, a)
+
+        # HLE sfx_start (check_sfx): after the guest's store of DI at the
+        # hooked instruction, the runtime's report holds the same slot and id.
+        self.sfx_starts = [0, 0, 0]
+        self.sfx_bad: list[str] = []
+
+        @U.CODE_CB
+        def sfx_stored(h, addr, size, user):
+            g = self.guest_regs(0)
+            slot, rest = divmod(g["bx"], 6)
+            stored = int.from_bytes(self.gmem(g["ds"] * 16 + ((SFX_SLOT_IDS + g["bx"]) & 0xFFFF), 2),
+                                    "little")
+            if rest or slot > 2 or stored != g["di"]:
+                self.sfx_bad.append(f"BX {g['bx']:04x}, DI {g['di']:04x}, stored {stored:04x}")
+                return
+            self.sfx_starts[slot] = (self.sfx_starts[slot] + 1) & 0xFF
+            got = (self.mem(self.syms["rt_sfx_id"], 3)[slot], self.mem(self.syms["rt_sfx_starts"], 3)[slot])
+            if got != (g["di"] >> 2, self.sfx_starts[slot]):
+                self.sfx_bad.append(f"slot {slot}: id {got[0]} start {got[1]}, guest id "
+                                    f"{g['di'] >> 2} start {self.sfx_starts[slot]}")
+
+        for r in image.rows("hle.csv"):
+            if r["service"] == "sfx_start":
+                prefix = emit.label(r["module"], 0)[:-5]
+                last = int(r["last"], 16)
+                resume = min(int(n[len(prefix):], 16) for n in self.syms
+                             if n.startswith(prefix) and len(n) == len(prefix) + 5
+                             and int(n[len(prefix):], 16) > last)
+                a = self.syms[emit.label(r["module"], resume)]
+                e.hook_range(U.HOOK_CODE, sfx_stored, a, a)
 
         # Hardware interrupts: the reference's BIOS handlers (and the INT frame)
         # use the interrupted stack, ours run in C; the window below SS:SP is dead.
@@ -934,6 +971,13 @@ def check_opl(h, trace: Path, counts: bool = True) -> list[str]:
     return problems
 
 
+def check_sfx(h) -> list[str]:
+    """Each HLE sfx_start report (rt_sfx_id, rt_sfx_starts) equals the slot and
+    id SPAZ stored at the hooked instruction."""
+    print(f"sfx_start: starts per slot {h.sfx_starts}, ids {list(h.mem(h.syms['rt_sfx_id'], 3))}")
+    return [f"sfx_start: {len(h.sfx_bad)} reports differ, first {h.sfx_bad[0]}"] if h.sfx_bad else []
+
+
 def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None,
           music_skip: bool = False) -> list[str]:
     class args:  # noqa: N801
@@ -967,6 +1011,7 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
         problems.append(h.display_miss)
     if h.stopped_at == label:
         problems += check_opl(h, trace, not music_skip)
+        problems += check_sfx(h)
     marked = bytearray(64000)  # stored since the last present: still marked (rt_vram_rows)
     rows = h.mem(h.syms["rt_vram_rows"], 800)
     for y in range(200):

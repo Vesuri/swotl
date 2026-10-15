@@ -24,6 +24,10 @@ uint8_t rt_opl_keyon[9];
  * of a music record starts no song; 0 runs the guest code. Off while the
  * sound plan is developed (user 2026-10-15; docs/sound-plan.md Close). */
 uint8_t rt_music_skip = 0;
+/* Effect starts (annotations/hle.csv sfx_start, rt_hle_sfx_start): per SPAZ
+ * slot the id last started and a wrapping start count. */
+uint8_t rt_sfx_id[3];
+uint8_t rt_sfx_starts[3];
 
 static void pit_control(uint8_t v)
 {

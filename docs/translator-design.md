@@ -273,9 +273,14 @@ guarded copy; a profile choice, `tools/bp_regions.py`).
   references are re-recorded when poll points change).
 - HLE (`annotations/hle.csv`, G3): at a range's first instruction
   `jsr rt_hle_<service>`; NE skips to the instruction after `last`, EQ runs
-  the guest code. Both ends are leaders, the first's live-in includes the
+  the guest code. `args`: up to two guest word registers (not SP, BP), in d7
+  and d6. Both ends are leaders, the first's live-in includes the
   resume's, and a hook where the CCR holds live flags fails `make gen`. The
-  block differential runs the guest path. Entries: `music_skip` (SPAZ song
+  block differential runs the guest path. Entries: `sfx_start` (observe
+  only: SPAZ's effect start, BX = slot·6, DI = id·4 → `rt_sfx_id`,
+  `rt_sfx_starts`; oracle `check_sfx` in every host run: each report equals
+  the guest's store of DI after the hook; sabotage `sfx_start` on c6);
+  `music_skip` (SPAZ song
   start, [sound-plan.md](sound-plan.md)): `rt_music_skip`, 0 while the sound
   plan is developed (user 2026-10-15; 1 skips) and 0 with the argument
   `MUSIC`; `amiga/debug.sh` passes `MUSIC` and host runs

@@ -64,19 +64,24 @@ re-hoster's Paula WAVs beside them (`NAME-paula.wav`).
   2026-10-15): music plays through the re-hoster; `MUSIC` keeps it off.
 - Effects, two modes behind one toggle, one Paula backend:
   - **FM**: OPL register re-hoster (default; user's SWOTL files only).
-  - **TFH**: SPAZ effect entries replaced (HLE, user 2026-10-14) by a sample
-    player; SWOTL id → TFH sound table; samples extracted at install time
-    from the user's TFH `sfx.rsc`, never committed.
+  - **TFH** (hybrid, user 2026-10-15): TFH samples where SWOTL's effect has
+    a counterpart, FM for the rest (jet 3, rocket 4, rockets fired 19,
+    unplayed 5, 6, 22, 27, 33, 36). One observe-only HLE hook at SPAZ's
+    effect start (+0516: slot, id; the guest code always runs) routes each
+    slot's Paula voice to the sample or the re-hoster; engine period from
+    the slot's F-number. Near/far volumes from the variants' FM levels.
+    The user's TFH `sfx.rsc`, copied by the installer, parsed at startup;
+    never committed. Replaces the 2026-10-14 plan to replace SPAZ's entries.
 - Rejected: real-time software OPL (15–35% CPU); whole-effect pre-renders
   (Chip; kept as a per-effect fallback for FM).
 
 ## Steps
 
-1. **TFH mode.** Install-time extractor (TFH `sfx.rsc` → sample bank);
-   id table; HLE play/stop/stop all/engine query/stop/pitch with the
-   delay queue (ids ≥ 100); engine period from the pitch arguments; distance
-   variants → volume. Oracle: effect-call stream vs `probe.csv`; host render
-   for listening; Chip budget (open-work 19).
+1. **TFH mode.** HLE observe row (translator passes slot and id); `sfx.rsc`
+   loader and sample player (TFH envelope, priority within the slot's
+   voice); id table; FM levels of the near/far variants; routing in the
+   Paula backend; toggle. Oracle: each hook report equals SPAZ's slot
+   state; host render for listening; Chip budget (open-work 19).
 2. **Close.** Listening on the user's machine (FM mode, music); music skip
    default back on (`rt_music_skip`, ports.c) unless the user decides
    otherwise; D10 settled in `translator-design.md`; open-work 17 replaced
