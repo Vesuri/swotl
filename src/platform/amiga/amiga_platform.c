@@ -1,7 +1,7 @@
 /* Platform services for the runtime on AmigaOS: the game's files through
  * dos.library (each call in an I/O window of the takeover, Swotl.cpp), the
  * PIT on a CIA-B timer (none in the frame bench, argument BENCH), the
- * diagnostic key script, the music skip (off with argument MUSIC), and the
+ * diagnostic key script, the music skip (off; argument MUSIC keeps it off), and the
  * run of the translated program on its own native stack. Game files are read from the current directory (the game's
  * own data files, supplied by the user). */
 #include <proto/exec.h>

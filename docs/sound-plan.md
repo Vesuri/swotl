@@ -24,14 +24,27 @@ green; remove a step from this file when it is done.
   running with sound off. Alt-S all sound, Alt-E engine, Alt-P pause.
 - Their Finest Hour (Amiga): 13 sampled sounds in `data/sfx.rsc` (≈ 107 KB),
   20 game ids, 4-channel priority driver on the vertical blank.
+- Effects use 2-op FM only (never additive), waveforms 0-3, feedback 7 in
+  most noise patches; SPAZ ramps carrier TL itself on its 236.7 Hz tick
+  (fast decays) and slides F-numbers (engines, sweeps).
+- FM re-hoster: `src/platform/amiga/fm_paula.c` (per field: OPL registers +
+  key-on counts → 4 voice commands; loop pool in 256-byte pages). Check
+  `make t-fm` (`tools/fm_check.cpp`, vs Nuked per channel): level within
+  3 dB (±1 field, above −30 dB, Paula's 6-bit volume) on ≥ 95% of fields,
+  pitch within 10 cents on ≥ 99% of measurable fields; effect runs 98.4-98.9%
+  and 100% (worst 8.3 cents); title music 93.4% (reprogramming within a
+  field), not gated. Noise timbre is sensitive to modulator level: 0.75 dB
+  key steps.
 
 References: `make sound-reference` ([pc-reference-loop.md](pc-reference-loop.md)):
-`opl.csv`, `probe.csv`, Nuked OPL WAVs in `tmp/sound/`.
+`opl.csv`, `probe.csv`, Nuked OPL WAVs in `tmp/sound/`; `make sound-fm`: the
+re-hoster's Paula WAVs beside them (`NAME-paula.wav`).
 
 ## Decisions
 
 - Music: skipped in SPAZ play (HLE `music_skip`, user 2026-10-14;
-  translator-design.md). The diagnostic argument `MUSIC` lets it through.
+  translator-design.md). Default off while the plan is developed (user
+  2026-10-15): music plays through the re-hoster; `MUSIC` keeps it off.
 - Effects, two modes behind one toggle, one Paula backend:
   - **FM**: OPL register re-hoster (default; user's SWOTL files only).
   - **TFH**: SPAZ effect entries replaced (HLE, user 2026-10-14) by a sample
@@ -42,21 +55,16 @@ References: `make sound-reference` ([pc-reference-loop.md](pc-reference-loop.md)
 
 ## Steps
 
-1. **FM re-hoster core** (platform C, host-testable): OPL shadow → 4 Paula
-   voices (slot 0 engine, slots 1–2 loudest channel, voice 3 next loudest);
-   loop rendered from patch registers on key-on or timbre change (cached;
-   ≈ 1 KB loops for feedback ≥ 6); period from F-number/block; volume from
-   TL + envelope per 50 Hz field; key-on counter for sub-field notes. Host
-   test: `opl.csv` → commanded Paula output → WAV; pitch exact, envelope
-   timing within one field; WAV pairs with the references for listening.
-2. **Paula backend (Amiga).** Vertical-blank stage in `Swotl.cpp`; Chip pool
-   allocated before takeover; DMA on, silence = volume 0, waveform restarts
-   staged in blanking; mute in the I/O windows and on pause; Alt-S/Alt-E.
+1. **Paula backend (Amiga).** Key-on edge counter per channel in `rt_out8`
+   (B0-B8 bit 5 rising); `fm_field` at the vertical blank in `Swotl.cpp`;
+   Chip pool allocated before takeover; DMA on, silence = volume 0,
+   waveform restarts staged in blanking; mute in the I/O windows and on pause; Alt-S/Alt-E.
    Checks: soak (68030, 68040), meter delta, listening.
-3. **TFH mode.** Install-time extractor (TFH `sfx.rsc` → sample bank);
+2. **TFH mode.** Install-time extractor (TFH `sfx.rsc` → sample bank);
    id table; HLE play/stop/stop all/engine query/stop/pitch with the
    delay queue (ids ≥ 100); engine period from the pitch arguments; distance
    variants → volume. Oracle: effect-call stream vs `probe.csv`; host render
    for listening; Chip budget (open-work 19).
-4. **Close.** D10 settled in `translator-design.md`; open-work 17 replaced by
-   what remains (music method).
+3. **Close.** Music skip default back on (`rt_music_skip`, ports.c) unless
+   the user decides otherwise; D10 settled in `translator-design.md`;
+   open-work 17 replaced by what remains (music method).

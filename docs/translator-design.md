@@ -276,8 +276,9 @@ guarded copy; a profile choice, `tools/bp_regions.py`).
   the guest code. Both ends are leaders, the first's live-in includes the
   resume's, and a hook where the CCR holds live flags fails `make gen`. The
   block differential runs the guest path. Entries: `music_skip` (SPAZ song
-  start, [sound-plan.md](sound-plan.md)): `rt_music_skip`, 1 unless the
-  diagnostic argument `MUSIC`; `amiga/debug.sh` passes `MUSIC` and host runs
+  start, [sound-plan.md](sound-plan.md)): `rt_music_skip`, 0 while the sound
+  plan is developed (user 2026-10-15; 1 skips) and 0 with the argument
+  `MUSIC`; `amiga/debug.sh` passes `MUSIC` and host runs
   clear it, since the references hold the music. Oracle `make
   t-hle-music-skip` (in `test-host-all`): m2 with the skip on; the interrupt
   the reference took in the song code is posted at the next poll point;

@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae host test-host test-host-all test-amiga test-amiga-replay test-amiga-restore amiga amiga-release smoke smoke-release size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference sound-fm map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae host test-host test-host-all test-amiga test-amiga-replay test-amiga-restore amiga amiga-release smoke smoke-release size clean
 
 PYTHON ?= python3
 # AmigaXDev's shared Python package (amigaxdev.dos.mz_info).
@@ -24,6 +24,7 @@ help:
 	@echo "  make reference          run all milestones (reference/milestones.csv): signals, determinism, image proof"
 	@echo "  make coverage           run the coverage scripts (reference/coverage.csv)"
 	@echo "  make sound-reference    OPL log + SPAZ probes + Nuked OPL WAVs (tmp/sound/)"
+	@echo "  make sound-fm           FM re-hoster Paula WAVs of the references (tmp/sound/*-paula.wav)"
 	@echo "  make map                sweep + PLINK check + code-write audit + surface over tmp/pc-runs/ref-*"
 	@echo "  make trace-summary RUN=name                 summarise that run's trace"
 	@echo "  make ghidra             sweep + headless Ghidra project per module -> tmp/ghidra/*.txt"
@@ -84,8 +85,29 @@ build/tools/opl_render: tools/opl_render.cpp
 	c++ -O2 -std=c++17 -Itools/vendor/dosbox-x/src/hardware -o $@ $< \
 		tools/vendor/dosbox-x/src/hardware/nukedopl.cpp
 
+build/tools/fm_check: tools/fm_check.cpp src/platform/amiga/fm_paula.c src/platform/amiga/fm_paula.h
+	mkdir -p build/tools
+	cc -O2 -std=c99 -Wall -Wextra -Werror -c -o build/tools/fm_paula.o src/platform/amiga/fm_paula.c
+	c++ -O2 -std=c++17 -Isrc/platform/amiga -Itools/vendor/dosbox-x/src/hardware -o $@ $< \
+		build/tools/fm_paula.o tools/vendor/dosbox-x/src/hardware/nukedopl.cpp
+
 sound-reference: check-ref build/tools/opl_render
 	$(PYTHON) tools/sound_reference.py
+
+# FM re-hoster (docs/sound-plan.md) on the sound references: Paula WAVs
+# beside the Nuked ones; t-fm gates the effect runs, the title (music) is
+# rendered for listening.
+FM_RUNS = c6-flight-keys c12-b17-bombing c13-me262-gunnery
+FM_OPL = tmp/pc-runs/sound-$(1)/trace/opl.csv
+sound-fm: build/tools/fm_check
+	mkdir -p tmp/sound
+	-for r in title $(FM_RUNS); do build/tools/fm_check $(call FM_OPL,$$r) tmp/sound/$$r-paula.wav; done
+t-fm: build/tools/fm_check
+	$(call RUN,fm-paula,mkdir -p tmp/sound && for r in $(FM_RUNS); do \
+		build/tools/fm_check $(call FM_OPL,$$r) tmp/sound/$$r-paula.wav || exit 1; done)
+t-sab-fm: build/tools/fm_check
+	$(call RUN,sabotage-fm-paula,for s in pitch level; do \
+		! build/tools/fm_check $(call FM_OPL,c6-flight-keys) tmp/test/fm-sabotage.wav --sabotage $$s || exit 1; done)
 
 map:
 	$(PYTHON) tools/sweep.py --annotations
@@ -115,7 +137,7 @@ test-x86:
 	$(PYTHON) tests/x86_diff.py
 
 test-sabotage: host
-	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-replay-hooks t-sab-replay-events t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence
+	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-replay-hooks t-sab-replay-events t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence t-sab-fm
 
 test-m68k:
 	$(PYTHON) tests/m68k_diff.py
@@ -133,7 +155,7 @@ RUN = @mkdir -p tmp/test; if $(2) > tmp/test/$(1).log 2>&1; then echo "ok    $(1
 	else echo "FAIL  $(1) (tmp/test/$(1).log)"; tail -n 15 tmp/test/$(1).log; exit 1; fi
 SHARDS = forms.0/4 forms.1/4 forms.2/4 forms.3/4 space.0/1 boundary.0/1 blocks.0/1
 TESTS = t-align-convergence t-replay-hooks t-replay-events t-file-dates t-mouse-irq t-display-queue t-display-palette t-amiga-input t-smc-flow t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
-	t-blocks t-guards $(HOST_MILESTONES:%=t-host-%)
+	t-blocks t-guards t-fm $(HOST_MILESTONES:%=t-host-%)
 
 test: host
 	@$(MAKE) -s -k -j$(JOBS) $(TESTS)
