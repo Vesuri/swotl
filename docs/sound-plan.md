@@ -3,27 +3,45 @@
 Sound effects first; music is skipped. Each step is one commit with gates
 green; remove a step from this file when it is done.
 
-## Facts (2026-10-14)
+## Facts (2026-10-15)
 
 - Audio is AdLib OPL2 FM only (SPAZ + `ADLIB.SFX`); no sampled sound. SPAZ
   runs translated; its OPL writes reach `rt_opl` (`src/runtime/ports.c`),
-  read by nothing yet.
+  read by the FM re-hoster.
 - SPAZ API (far C calls, SPAZ file offsets): init `+0246`, shutdown `+02EE`,
   play(id·4) `+03D5` (id ≥ 100: delayed by game `[CFA8]`/4 effect ticks;
   record byte 6 = 80h: music), stop(id) `+05AF`, stop all `+0666`, engine
   query `+06F9`, engine stop `+06D8`, engine pitch(val, base, div) `+0713`,
   detect `+12D4`. Game side: FLIGHT wrapper `+38EC..+3F9F` (same source as
   TFH `bob:2ec0..324c`); engine query + pitch once per flight frame.
-- Effects: 39 ids. 0–6 engines/wind (loop, slot 0 = OPL ch 0–2), 7–18 guns
-  (4 kinds × near/mid/far), 19–38 one-shots; slots 1–2 (ch 3–5, 6–8) by
-  priority. 1–3 OPL channels per effect, plain 2-op FM, feedback 7 in 35 of
-  101 patches, no rhythm mode in effects.
+- Effects: 39 ids, all starting through SPAZ `+048C` (play and the gun
+  delay tick), slot 0 (OPL ch 0–2) for engines, slots 1–2 (ch 3–5, 6–8) by
+  priority. 0 single piston, 1 multi-engine, 2 wind (gliding), 3 jet, 4
+  rocket (engines by aircraft class, pitch(val, base, div): F = (49000 −
+  val)/div + base, val = 51840 − 64·mph); 7–18 guns, 4 kinds × own /
+  other near / other far (FLIGHT `sfx_var`: near below 8000h, far below
+  20000h, octagonal distance), only guns delayed (id + 100); 19 rockets
+  fired, 20 bomb whistle, 21/26 flak near/far, 23 plane blows up, 24
+  explosion, 25 ground impact, 28/29 player hit, 30/31 splash near/far,
+  32 gear, 34 touchdown, 37 click, 38 weapon arming; 5, 6, 22, 27, 33, 36
+  never played; 35's slot holds the anthem. 1–3 OPL channels per effect,
+  plain 2-op FM, feedback 7 in 35 of 101 patches, no rhythm mode.
+- FM levels of every id: `tools/sfx_levels.py` (the original SPAZ under
+  Unicorn x86 from the c6 snapshot, Nuked render) → `tmp/sound/sfx-levels.csv`;
+  e.g. light MG own/near/far −24.7/−33.6/−39.9 dB.
 - Music: anthems on the title and the side choice only; it stops all
   effects and effects are ignored while it plays.
 - The SPAZ timer (`+07CC`, 236.7 Hz) also advances game clocks: SPAZ keeps
   running with sound off. Alt-S all sound, Alt-E engine, Alt-P pause.
 - Their Finest Hour (Amiga): 13 sampled sounds in `data/sfx.rsc` (≈ 107 KB),
-  20 game ids, 4-channel priority driver on the vertical blank.
+  20 game ids, 4-channel priority driver on the vertical blank. `sfx.rsc`:
+  long 0 = directory offset D; at D+4 a word count, then (word id, long
+  offset); each resource a word length, 2 unused bytes, the payload.
+  Descriptors 1001–1013 (33 bytes): +12 loop offset (0 one-shot, the loop
+  runs to the sample end), +18 period, +20 priority, +22/+25 attack/decay
+  rate, step, level, +28 sustain (60 Hz fields, FFFFh forever; PAL ×5/6),
+  +30 release. Samples 2001–2013: signed 8-bit PCM. Envelope once a field:
+  acc += rate, over 255 one step. Engine period 800 → 320 with airspeed.
 - Effects use 2-op FM only (never additive), waveforms 0-3, feedback 7 in
   most noise patches; SPAZ ramps carrier TL itself on its 236.7 Hz tick
   (fast decays) and slides F-numbers (engines, sweeps).
@@ -77,11 +95,16 @@ re-hoster's Paula WAVs beside them (`NAME-paula.wav`).
 
 ## Steps
 
-1. **TFH mode.** HLE observe row (translator passes slot and id); `sfx.rsc`
-   loader and sample player (TFH envelope, priority within the slot's
-   voice); id table; FM levels of the near/far variants; routing in the
-   Paula backend; toggle. Oracle: each hook report equals SPAZ's slot
-   state; host render for listening; Chip budget (open-work 19).
+1. **TFH mode.** Done: the hook (`rt_sfx_id`, `rt_sfx_starts`, oracle
+   `check_sfx`), the player `src/platform/amiga/tfh_paula.c` (`sfx.rsc`
+   parser, id table, volumes, envelope, engine period; not built yet), the
+   renderer `tools/tfh_render.cpp` (not built yet). Left: `fm_field` mute
+   mask (fm_check passes 0); `rt_hle_music_skip` marks every slot "no
+   effect" (0xFF; `rt_sfx_id` starts so); `Audio` merges tfh_field and
+   fm_field; argument `TFH` loads `sfx.rsc` (amiga_platform.c) into Chip,
+   FM without it; `host_run.py --sound-log` (ticks = posted IRQ0, `o`
+   writes, `s` starts, `m` song starts) and `make sound-tfh`; Chip free
+   in the milestone output (open-work 19); listening.
 2. **Close.** Listening on the user's machine (FM mode, music); music skip
    default back on (`rt_music_skip`, ports.c) unless the user decides
    otherwise; D10 settled in `translator-design.md`; open-work 17 replaced

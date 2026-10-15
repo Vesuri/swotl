@@ -58,12 +58,17 @@ speed work: [speed-plan.md](speed-plan.md).
 18. Framework copy declares `getVBR`, `isLongFrame`, `isBlitterBusy`,
     `blitterWait` without bodies; supply C++ bodies before the first blit.
 19. Memory budget (Chip-only vs WHDLoad expansion memory) after first
-    measurements.
+    measurements; sound takes 16 KB Chip (FM loops) plus ≈ 107 KB in TFH
+    mode.
 20. Check whether the game uses F10; choose the WHDLoad quit key.
+28. `make test-amiga AMIGA_MILESTONE=m2-choose-side` (plain fixture) ends
+    `SWOTL_MILESTONE_WRONG_HANDOFF`, already at 1020874; m2 passes in
+    `test-amiga-replay`.
 
 ## Release
 
 21. Local SHA-256 table of the v2.2 originals; decide whether embedded
     tables need Revs' block scan in the release audit.
 22. Establish which original data sources users can supply (disks,
-    GOG/Steam re-releases if they exist) and whether conversion is needed.
+    GOG/Steam re-releases if they exist) and whether conversion is needed;
+    TFH mode: the installer copies the user's TFH `sfx.rsc`.
