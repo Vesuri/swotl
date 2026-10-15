@@ -24,8 +24,9 @@ struct fm_voice {
 /* Loop storage (Chip RAM on the Amiga): `bytes` a multiple of 4 pages. */
 void fm_init(int8_t *pool, uint32_t bytes);
 /* One field: `opl` the 256 register bytes, `keyon` per channel a count of
- * key-on edges (B0-B8 bit 5 rising), wrapping. Fills `voice[FM_VOICES]`. */
-void fm_field(const uint8_t *opl, const uint8_t *keyon, struct fm_voice *voice);
+ * key-on edges (B0-B8 bit 5 rising), wrapping. mute_mask excludes OPL
+ * channels owned by samples from every voice; envelopes still advance. Fills `voice[FM_VOICES]`. */
+void fm_field(const uint8_t *opl, const uint8_t *keyon, uint16_t mute_mask, struct fm_voice *voice);
 /* Loops rendered since fm_init (cost statistics). */
 extern uint32_t fm_renders;
 

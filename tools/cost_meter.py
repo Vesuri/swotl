@@ -58,7 +58,7 @@ LOOP = 256      # 68020 instruction cache
 
 # --- static features ---------------------------------------------------------
 
-REG = re.compile(r"^(%?[ad][0-7]|sp|fp|pc|ccr|sr|usp|vbr|[ad][0-7]-[ad][0-7].*|[ad][0-7]/.*)$")
+REG = re.compile(r"^(%?[ad][0-7]|sp|fp|pc|ccr|sr|usp|vbr|(?:[ad][0-7]|fp|sp)[/-].*)$")
 ABS = re.compile(r"^[0-9a-f]+( <[^>]*>)?$")
 BRANCH = re.compile(r"^(b(ra|hi|ls|cc|cs|ne|eq|vc|vs|pl|mi|ge|lt|gt|le|hs|lo)|db\w+)(\.[swl])?$")
 CC = ("t", "f", "hi", "ls", "cc", "cs", "ne", "eq", "vc", "vs", "pl", "mi", "ge", "lt", "gt", "le")
@@ -91,6 +91,7 @@ def is_mem(operand: str) -> bool:
 
 
 def reglist_size(operand: str) -> int:
+    operand = operand.replace("fp", "a6").replace("sp", "a7")
     n = 0
     for part in operand.split("/"):
         if "-" in part:

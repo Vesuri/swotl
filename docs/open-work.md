@@ -54,12 +54,14 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Amiga platform
 
-17. Sound: effects first, music skipped; steps in [sound-plan.md](sound-plan.md).
+17. Sound: listen to FM/music and TFH WAVs and the Amiga TFH build, then
+    settle music-skip default and D10 ([sound-plan.md](sound-plan.md), Close).
 18. Framework copy declares `getVBR`, `isLongFrame`, `isBlitterBusy`,
     `blitterWait` without bodies; supply C++ bodies before the first blit.
 19. Memory budget (Chip-only vs WHDLoad expansion memory) after first
-    measurements; sound takes 16 KB Chip (FM loops) plus ≈ 107 KB in TFH
-    mode.
+    measurements; sound takes 16 KB Chip (FM loops) plus 107,298 bytes in TFH
+    mode. A1200/68020, 8 MiB Fast: TFH free Chip 1,771,224 bytes, largest
+    block 1,771,120 (1,500-field soak, 2026-10-15).
 20. Check whether the game uses F10; choose the WHDLoad quit key.
 28. `make test-amiga AMIGA_MILESTONE=m2-choose-side` (plain fixture) ends
     `SWOTL_MILESTONE_WRONG_HANDOFF`, already at 1020874; m2 passes in

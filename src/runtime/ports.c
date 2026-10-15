@@ -26,7 +26,7 @@ uint8_t rt_opl_keyon[9];
 uint8_t rt_music_skip = 0;
 /* Effect starts (annotations/hle.csv sfx_start, rt_hle_sfx_start): per SPAZ
  * slot the id last started and a wrapping start count. */
-uint8_t rt_sfx_id[3];
+uint8_t rt_sfx_id[3] = {0xff, 0xff, 0xff};
 uint8_t rt_sfx_starts[3];
 
 static void pit_control(uint8_t v)

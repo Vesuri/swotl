@@ -72,7 +72,7 @@ static uint32_t be32(const uint8_t *p)
 static const uint8_t *resource(const uint8_t *rsc, uint32_t size, uint16_t id, uint16_t *bytes)
 {
     uint32_t dir, k, n;
-    if (size < 4 || (dir = be32(rsc)) + 6 > size) {
+    if (size < 4 || size < 6 || (dir = be32(rsc)) > size - 6) {
         return 0;
     }
     n = be16(rsc + dir + 4);
@@ -82,7 +82,7 @@ static const uint8_t *resource(const uint8_t *rsc, uint32_t size, uint16_t id, u
         if (be16(e) != id) {
             continue;
         }
-        if (off + 4 > size || off + 4 + be16(rsc + off) > size) {
+        if (off > size - 4 || be16(rsc + off) > size - off - 4) {
             return 0;
         }
         *bytes = be16(rsc + off);
@@ -141,6 +141,7 @@ int tfh_init(const uint8_t *rsc, uint32_t size, int8_t *chip)
     }
     silence = chip;
     for (k = 0; k < TFH_SLOTS; ++k) {
+        slots[k].starts = 0;
         slots[k].s = 0;
         slots[k].phase = DONE;
     }

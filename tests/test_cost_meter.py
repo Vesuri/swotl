@@ -48,6 +48,13 @@ class Accesses(unittest.TestCase):
             self.assertEqual(M.accesses(op, arg), want, (op, arg))
 
 
+class RegisterAliases(unittest.TestCase):
+    def test_movem_alias_ranges(self):
+        self.assertEqual(M.accesses("movem.w", "d1/a0-a1/a3-a4/a6-sp,-(a6)"), (0, 7, 0))
+        self.assertEqual(M.accesses("movem.l", "(sp)+,d0-sp"), (16, 0, 0))
+        self.assertEqual(M.accesses("movem.l", "a0-fp,-(sp)"), (0, 7, 0))
+
+
 class Program(unittest.TestCase):
     def prog(self):
         p = M.Program.__new__(M.Program)

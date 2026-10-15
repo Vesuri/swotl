@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference sound-fm map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae host test-host test-host-all test-amiga test-amiga-replay test-amiga-restore amiga amiga-release smoke smoke-release size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae host test-host test-host-all test-amiga test-amiga-replay test-amiga-restore amiga amiga-release smoke smoke-release size clean
 
 PYTHON ?= python3
 # AmigaXDev's shared Python package (amigaxdev.dos.mz_info).
@@ -24,6 +24,7 @@ help:
 	@echo "  make reference          run all milestones (reference/milestones.csv): signals, determinism, image proof"
 	@echo "  make coverage           run the coverage scripts (reference/coverage.csv)"
 	@echo "  make sound-reference    OPL log + SPAZ probes + Nuked OPL WAVs (tmp/sound/)"
+	@echo "  make sound-tfh          hybrid sample/FM WAVs (user TFH_RSC, tmp/sound/*-tfh.wav)"
 	@echo "  make sound-fm           FM re-hoster Paula WAVs of the references (tmp/sound/*-paula.wav)"
 	@echo "  make map                sweep + PLINK check + code-write audit + surface over tmp/pc-runs/ref-*"
 	@echo "  make trace-summary RUN=name                 summarise that run's trace"
@@ -109,6 +110,20 @@ t-sab-fm: build/tools/fm_check
 	$(call RUN,sabotage-fm-paula,for s in pitch level; do \
 		! build/tools/fm_check $(call FM_OPL,c6-flight-keys) tmp/test/fm-sabotage.wav --sabotage $$s || exit 1; done)
 
+TFH_RSC ?= tmp/tfh/TheirFinestHour&Missions/data/sfx.rsc
+build/tools/tfh_render: tools/tfh_render.cpp src/platform/amiga/tfh_paula.c src/platform/amiga/tfh_paula.h src/platform/amiga/fm_paula.c src/platform/amiga/fm_paula.h
+	mkdir -p build/tools
+	cc -O2 -std=c99 -Wall -Wextra -Werror -c -o build/tools/tfh_render_fm.o src/platform/amiga/fm_paula.c
+	cc -O2 -std=c99 -Wall -Wextra -Werror -c -o build/tools/tfh_paula.o src/platform/amiga/tfh_paula.c
+	c++ -O2 -std=c++17 -Wall -Wextra -Werror -Isrc/platform/amiga -o $@ $< build/tools/tfh_render_fm.o build/tools/tfh_paula.o
+sound-tfh: host build/tools/tfh_render
+	mkdir -p tmp/sound
+	for r in $(FM_RUNS); do $(PYTHON) tests/host_run.py --table reference/coverage.csv --milestone $$r --timeout 2400 --sound-log tmp/sound/$$r-tfh.csv && build/tools/tfh_render tmp/sound/$$r-tfh.csv "$(TFH_RSC)" tmp/sound/$$r-tfh.wav || exit 1; done
+t-tfh:
+	$(call RUN,tfh,$(PYTHON) tests/test_tfh.py)
+t-sab-tfh:
+	$(call RUN,sabotage-tfh,$(PYTHON) tests/test_tfh.py --sabotage)
+
 map:
 	$(PYTHON) tools/sweep.py --annotations
 	$(PYTHON) tools/plink_check.py
@@ -137,7 +152,7 @@ test-x86:
 	$(PYTHON) tests/x86_diff.py
 
 test-sabotage: host
-	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-replay-hooks t-sab-replay-events t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence t-sab-fm
+	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-replay-hooks t-sab-replay-events t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence t-sab-fm t-sab-tfh t-sab-sound-hooks t-sab-audio
 
 test-m68k:
 	$(PYTHON) tests/m68k_diff.py
@@ -155,7 +170,7 @@ RUN = @mkdir -p tmp/test; if $(2) > tmp/test/$(1).log 2>&1; then echo "ok    $(1
 	else echo "FAIL  $(1) (tmp/test/$(1).log)"; tail -n 15 tmp/test/$(1).log; exit 1; fi
 SHARDS = forms.0/4 forms.1/4 forms.2/4 forms.3/4 space.0/1 boundary.0/1 blocks.0/1
 TESTS = t-align-convergence t-replay-hooks t-replay-events t-file-dates t-mouse-irq t-display-queue t-display-palette t-amiga-input t-smc-flow t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
-	t-blocks t-guards t-fm $(HOST_MILESTONES:%=t-host-%)
+	t-blocks t-guards t-fm t-tfh t-sound-hooks t-audio $(HOST_MILESTONES:%=t-host-%)
 
 test: host
 	@$(MAKE) -s -k -j$(JOBS) $(TESTS)
@@ -375,3 +390,13 @@ t-sab-align-convergence:
 
 t-sab-cost-tools:
 	$(call RUN,sabotage-cost-tools,$(PYTHON) tests/cost_tools_sabotage.py)
+
+t-sound-hooks:
+	$(call RUN,sound-hooks,$(PYTHON) tests/test_sound_hooks.py)
+t-sab-sound-hooks:
+	$(call RUN,sabotage-sound-hooks,$(PYTHON) tests/test_sound_hooks.py --sabotage)
+
+t-audio:
+	$(call RUN,audio,$(PYTHON) tests/test_audio.py)
+t-sab-audio:
+	$(call RUN,sabotage-audio,$(PYTHON) tests/test_audio.py --sabotage)

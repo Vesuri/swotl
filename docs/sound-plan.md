@@ -71,9 +71,28 @@ green; remove a step from this file when it is done.
   `ports.csv`; `rt_opl`, `rt_opl_keyon` = a recount of the host's writes;
   sabotage `keyon`.
 
+- TFH mode: argument `TFH` loads `sfx.rsc` from the game directory; missing,
+  invalid or unallocatable samples log a fallback to FM. Sample ownership
+  masks all three OPL channels of a slot, including the fourth FM voice;
+  song starts clear ownership. `make t-tfh` checks routing, segments,
+  envelopes, restarts, engine pitch and all 512 FM masks; sabotage covers
+  masking, routing, restarts and volume. Music-hook flags/registers and
+  sound-log ticks have separate tests and a reset sabotage. `t-audio` checks
+  the production backend's sample merge, zero-volume attack/repeat commands
+  and Chip release; its sabotage restores the dropped silent restart.
+- TFH A1200/68020, 8 MiB Fast soak (2026-10-15): 1,500 fields, 195 audio
+  restarts, 55 FM renders; 107,298 sample Chip bytes, 1,771,224 free Chip
+  (largest block 1,771,120). `amiga/milestone.gdb.in` reports free Chip.
+  m4 meter against `tmp/fm/meter-sfx.json`: unchanged model cycles,
+  instructions, executed bytes and memory accesses; runtime code +24 bytes.
+
 References: `make sound-reference` ([pc-reference-loop.md](pc-reference-loop.md)):
 `opl.csv`, `probe.csv`, Nuked OPL WAVs in `tmp/sound/`; `make sound-fm`: the
-re-hoster's Paula WAVs beside them (`NAME-paula.wav`).
+re-hoster's Paula WAVs beside them (`NAME-paula.wav`). `make sound-tfh` runs
+c6/c12/c13 with `--sound-log` and renders `tmp/sound/NAME-tfh.wav` using
+`TFH_RSC` (default `tmp/tfh/TheirFinestHour&Missions/data/sfx.rsc`). The log
+records posted IRQ0 counts: `tick,o,reg,value`, `tick,s,slot,id`,
+`tick,m,0,0`.
 
 ## Decisions
 
@@ -95,17 +114,8 @@ re-hoster's Paula WAVs beside them (`NAME-paula.wav`).
 
 ## Steps
 
-1. **TFH mode.** Done: the hook (`rt_sfx_id`, `rt_sfx_starts`, oracle
-   `check_sfx`), the player `src/platform/amiga/tfh_paula.c` (`sfx.rsc`
-   parser, id table, volumes, envelope, engine period; not built yet), the
-   renderer `tools/tfh_render.cpp` (not built yet). Left: `fm_field` mute
-   mask (fm_check passes 0); `rt_hle_music_skip` marks every slot "no
-   effect" (0xFF; `rt_sfx_id` starts so); `Audio` merges tfh_field and
-   fm_field; argument `TFH` loads `sfx.rsc` (amiga_platform.c) into Chip,
-   FM without it; `host_run.py --sound-log` (ticks = posted IRQ0, `o`
-   writes, `s` starts, `m` song starts) and `make sound-tfh`; Chip free
-   in the milestone output (open-work 19); listening.
-2. **Close.** Listening on the user's machine (FM mode, music); music skip
+2. **Close.** Listening on the user's machine (FM/music, TFH WAVs and Amiga
+   TFH mode); music skip
    default back on (`rt_music_skip`, ports.c) unless the user decides
    otherwise; D10 settled in `translator-design.md`; open-work 17 replaced
    by what remains (music method).

@@ -386,6 +386,7 @@ void fm_init(int8_t *p, uint32_t bytes)
     for (i = 0; i < 2 * NOISE_BYTES / FM_POOL_PAGE; ++i) {
         page_used[i] = 1;
     }
+    for (i = 0; i < 9; ++i) last_keyon[i] = 0;
     fm_renders = 0;
     for (i = 0; i < 18; ++i) {
         ops[i].rout = 0x1ffu << 8;
@@ -584,11 +585,11 @@ static void voice_cmd(struct fm_voice *v, uint8_t i, const uint8_t *opl, int8_t 
     v->volume = v->loop ? voltab[att] : 0;
 }
 
-void fm_field(const uint8_t *opl, const uint8_t *keyon, struct fm_voice *voice)
+void fm_field(const uint8_t *opl, const uint8_t *keyon, uint16_t mute_mask, struct fm_voice *voice)
 {
     uint16_t att[9];
     uint8_t c, i, newkey[9];
-    uint16_t taken = 0;
+    uint16_t taken = mute_mask;
     ++stamp;
     budget = RENDER_BUDGET;
     for (c = 0; c < 9; ++c) {

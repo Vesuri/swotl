@@ -165,7 +165,7 @@ int main(int argc, char **argv)
             for (auto &s : vsq) s = 0;
             struct fm_voice v[FM_VOICES];
             uint32_t before = fm_renders;
-            fm_field(shadow, keyon, v);
+            fm_field(shadow, keyon, 0, v);
             if (fm_renders - before > most_renders) most_renders = fm_renders - before;
             std::array<uint8_t, FM_VOICES> vol;
             for (int i = 0; i < FM_VOICES; i++) vol[i] = v[i].volume;

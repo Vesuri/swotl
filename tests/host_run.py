@@ -231,6 +231,8 @@ class Host:
         # HLE music_skip: off (the guest path, which the references hold) unless
         # --music-skip checks the replacement
         e.write(self.syms["rt_music_skip"], bytes([music_skip]))
+        self.sound_log = None
+        self.sound_tick = 0
         self.music_skip = music_skip
         self.skips = self.moved = 0
         self.skipped_ran: set[str] = set()
@@ -313,7 +315,9 @@ class Host:
             if port in (0x388, 0x389):
                 self.opl_ports.append((port, v))
             if port == 0x389:
-                self.opl.append((self.mem(self.syms["rt_opl_index"], 1)[0], v))
+                reg = self.mem(self.syms["rt_opl_index"], 1)[0]
+                self.opl.append((reg, v))
+                self.sound_event("o", reg, v)
 
         a = self.syms["rt_out8"]
         e.hook_range(U.HOOK_CODE, out8, a, a)
@@ -332,6 +336,7 @@ class Host:
             if rest or slot > 2 or stored != g["di"]:
                 self.sfx_bad.append(f"BX {g['bx']:04x}, DI {g['di']:04x}, stored {stored:04x}")
                 return
+            self.sound_event("s", slot, g["di"] >> 2)
             self.sfx_starts[slot] = (self.sfx_starts[slot] + 1) & 0xFF
             got = (self.mem(self.syms["rt_sfx_id"], 3)[slot], self.mem(self.syms["rt_sfx_starts"], 3)[slot])
             if got != (g["di"] >> 2, self.sfx_starts[slot]):
@@ -347,6 +352,13 @@ class Host:
                              and int(n[len(prefix):], 16) > last)
                 a = self.syms[emit.label(r["module"], resume)]
                 e.hook_range(U.HOOK_CODE, sfx_stored, a, a)
+
+        @U.CODE_CB
+        def music_entry(h, addr, size, user):
+            self.sound_event("m", 0, 0)
+
+        a = self.syms["rt_hle_music_skip"]
+        e.hook_range(U.HOOK_CODE, music_entry, a, a)
 
         # Hardware interrupts: the reference's BIOS handlers (and the INT frame)
         # use the interrupted stack, ours run in C; the window below SS:SP is dead.
@@ -545,7 +557,13 @@ class Host:
             self.e.stop()
         self.e.reg_write(U.M68K["d0"], res & 0xFFFFFFFF)
 
+    def sound_event(self, kind: str, a: int, b: int) -> None:
+        if self.sound_log is not None:
+            self.sound_log.write(f"{self.sound_tick},{kind},{a},{b}\n")
+
     def post(self, vector: int) -> None:
+        if vector == 8:
+            self.sound_tick += 1
         tail = self.mem(self.syms["rt_irq_tail"], 1)[0]
         self.e.write(self.syms["rt_irq_ring"] + tail % 32, bytes([vector]))
         self.e.write(self.syms["rt_irq_tail"], bytes([(tail + 1) & 0xFF]))
@@ -883,6 +901,7 @@ def check_capture(tag, regs, state, ram, dac, ref_regs, ref, snap, h) -> list[st
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--sound-log", type=Path)
     ap.add_argument("--milestone", default="m1-mode13h")
     ap.add_argument("--timeout", type=int, default=600, help="seconds of emulation before failing")
     ap.add_argument("--amiga", type=Path, help="also check this A1200-model capture")
@@ -908,7 +927,7 @@ def main(argv=None) -> int:
                 missed.append(name)
         print("not caught: " + ", ".join(missed) if missed else "all sabotages caught")
         return 1 if missed else 0
-    problems = check(args.milestone, args.timeout, args.amiga, None, args.music_skip)
+    problems = check(args.milestone, args.timeout, args.amiga, None, args.music_skip, args.sound_log)
     for p in problems:
         print(p)
     print(f"host run to {args.milestone}: {'ok' if not problems else 'FAIL'}")
@@ -979,7 +998,7 @@ def check_sfx(h) -> list[str]:
 
 
 def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None,
-          music_skip: bool = False) -> list[str]:
+          music_skip: bool = False, sound_log: Path | None = None) -> list[str]:
     class args:  # noqa: N801
         pass
     args.milestone, args.timeout, args.amiga = milestone, timeout, amiga
@@ -994,7 +1013,13 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
     problems = rearm_problems()
     if int(summary.get("polls", "0"), 16) != fnv(POLLS.read_bytes()):
         problems.append("reference recorded with other poll points: rerun make reference")
-    h.run(script, args.timeout)
+    if sound_log is None:
+        h.run(script, args.timeout)
+    else:
+        with sound_log.open("w") as log:
+            h.sound_log = log
+            h.run(script, args.timeout)
+        h.sound_log = None
     if h.irq_lost:
         problems.append(h.irq_lost)
     if music_skip:

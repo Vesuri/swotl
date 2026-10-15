@@ -42,7 +42,7 @@ OBJECTS = obj/main.o obj/Swotl.o obj/Input.o obj/Audio.o obj/GCCRuntime.o \
 	obj/framework_amiga_hardware.o obj/framework_bitmap.o \
 	obj/framework_copper_list.o obj/framework_palette24.o \
 	obj/gcc8_c_support.o obj/gcc8_a_support.o obj/memory.o obj/version.o \
-	obj/amiga_platform.o obj/fm_paula.o obj/amiga_run.o obj/c2p1x1_8_c5_bm.o obj/rt_entry.o \
+	obj/amiga_platform.o obj/tfh_paula.o obj/fm_paula.o obj/amiga_run.o obj/c2p1x1_8_c5_bm.o obj/rt_entry.o \
 	$(patsubst $(RUNTIME)/%.c,obj/rt_%.o,$(wildcard $(RUNTIME)/*.c)) obj/program.o
 
 # Diagnostic image is built in a separate working directory by the replay test.
@@ -108,6 +108,9 @@ obj/memory.o: $(AMIGA_SRC)/memory.s | obj
 
 obj/amiga_platform.o: $(AMIGA_SRC)/amiga_platform.c | obj
 	$(CC) $(CCFLAGS) -ffreestanding -I"$(RUNTIME)" -I"$(AMIGA_SRC)" -c -o $@ $<
+
+obj/tfh_paula.o: $(AMIGA_SRC)/tfh_paula.c | obj
+	$(CC) $(CCFLAGS) -ffreestanding -c -o $@ $<
 
 obj/fm_paula.o: $(AMIGA_SRC)/fm_paula.c | obj
 	$(CC) $(CCFLAGS) -ffreestanding -c -o $@ $<

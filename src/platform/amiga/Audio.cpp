@@ -4,6 +4,7 @@
 extern "C" {
 #include "runtime.h"
 #include "fm_paula.h"
+#include "tfh_paula.h"
 #include "amiga_platform.h"
 }
 #include "Audio.h"
@@ -29,6 +30,8 @@ struct Channel {
 };
 #define PAULA ((volatile Channel*)aud0ptrPointer)
 
+static int8_t* tfhChip = 0;
+static uint32_t tfhBytes = 0;
 static int8_t* pool = 0;
 static const int8_t* silence = 0;
 static struct fm_voice pending[FM_VOICES];
@@ -51,8 +54,30 @@ bool Audio::begin()
     return true;
 }
 
+bool Audio::loadTFH(const uint8_t *rsc, uint32_t size)
+{
+    if (!pool || tfhChip) return false;
+    tfhBytes = tfh_chip_bytes(rsc, size);
+    if (!tfhBytes) return false;
+    tfhChip = (int8_t*)AllocMem(tfhBytes, MEMF_CHIP);
+    if (!tfhChip) return false;
+    if (tfh_init(rsc, size, tfhChip)) {
+        FreeMem(tfhChip, tfhBytes);
+        tfhChip = 0;
+        return false;
+    }
+    return true;
+}
+
+extern "C" int amiga_audio_tfh(const uint8_t *rsc, uint32_t size)
+{
+    return Audio::loadTFH(rsc, size);
+}
+
 void Audio::end()
 {
+    if (tfhChip) FreeMem(tfhChip, tfhBytes);
+    tfhChip = 0;
     if (pool) FreeMem(pool, POOL_BYTES + SILENCE_BYTES);
     pool = 0;
 }
@@ -86,7 +111,12 @@ void Audio::service()
 {
     if (!running) return;
     struct fm_voice v[FM_VOICES];
-    fm_field(rt_opl, rt_opl_keyon, v);
+    struct fm_voice t[TFH_SLOTS];
+    uint16_t mask = tfhChip ? tfh_field(rt_opl, rt_sfx_id, rt_sfx_starts, t) : 0;
+    fm_field(rt_opl, rt_opl_keyon, mask, v);
+    for (uint16_t k = 0; k < TFH_SLOTS; ++k) {
+        if (mask & (7u << (3 * k))) v[k] = t[k];
+    }
     Disable();
     for (uint16_t c = 0; c < FM_VOICES; ++c) {
         // a restart the vertical blank has not staged yet still happens
@@ -116,10 +146,11 @@ void Audio::verticalBlank()
     uint16_t restart = 0, outgoing = 0;
     for (uint16_t c = 0; c < FM_VOICES; ++c) {
         const struct fm_voice& v = pending[c];
-        if (muted || !v.loop || !v.volume) {
+        if (muted || !v.loop) {
             PAULA[c].vol = 0;   // silence: the loop plays on, unheard
             continue;
         }
+        // A silent attack still starts its PCM and latches its repeat segment.
         if (v.restart) {
             restart |= DMAF_AUD0 << c;
             if (shownPeriod[c] > outgoing) outgoing = shownPeriod[c];

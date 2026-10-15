@@ -204,6 +204,9 @@ rt_halt:
 ; HLE music_skip (annotations/hle.csv): NE skips the song start of a music
 ; record. Registers preserved.
 rt_hle_music_skip:
+	move.b	#$ff,rt_sfx_id
+	move.b	#$ff,rt_sfx_id+1
+	move.b	#$ff,rt_sfx_id+2
 	tst.b	rt_music_skip
 	rts
 

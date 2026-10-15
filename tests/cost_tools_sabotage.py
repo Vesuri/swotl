@@ -34,3 +34,13 @@ with patch.object(T.A, 'changed_labels', lambda weights, before, after:
                   {k for k in weights if before.get(k) != after.get(k) or k + '_bp' in after}):
     check(T.ChangedLabels, True)
 print('label A/B: unchanged guarded-copy plant caught')
+
+check(T.RegisterAliases, False)
+source = inspect.getsource(T.M.reglist_size)
+bad = source.replace('operand = operand.replace("fp", "a6").replace("sp", "a7")', 'operand = operand')
+assert bad != source
+scope = dict(T.M.__dict__)
+exec(bad, scope)
+with patch.object(T.M, 'reglist_size', scope['reglist_size']):
+    check(T.RegisterAliases, True)
+print('cost meter: omitted register-alias normalization plant caught')

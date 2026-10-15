@@ -349,13 +349,40 @@ void plat_log(const char *line)
     amiga_io_end();
 }
 
+/* Before takeover: the optional sample file is read into temporary public
+ * memory; Audio owns only the parsed Chip samples after this returns. */
+extern int amiga_audio_tfh(const uint8_t *rsc, uint32_t size);
+static void load_tfh(void)
+{
+    BPTR f = Open((CONST_STRPTR)"sfx.rsc", MODE_OLDFILE);
+    int ok = 0;
+    if (f) {
+        LONG size;
+        Seek(f, 0, OFFSET_END);
+        size = Seek(f, 0, OFFSET_BEGINNING);
+        if (size > 0) {
+            uint8_t *rsc = AllocMem((ULONG)size, MEMF_ANY);
+            if (rsc) {
+                if (Read(f, rsc, size) == size) ok = amiga_audio_tfh(rsc, (uint32_t)size);
+                FreeMem(rsc, (ULONG)size);
+            }
+        }
+        Close(f);
+    }
+    plat_log(ok ? "SWOTL sound TFH" : "SWOTL TFH unavailable; sound FM");
+}
+
 int amiga_guest_open(void)
 {
     DOSBase = (struct DosLibrary *)OpenLibrary((CONST_STRPTR)"dos.library", 39);
     if (!DOSBase) {
         return 0;
     }
-    for (const char *a = (const char *)GetArgStr(); a && *a; ++a) {
+    int tfh = 0;
+    const char *args = (const char *)GetArgStr();
+    for (const char *a = args; a && *a; ++a) {
+        if ((a == args || a[-1] <= ' ') && a[0] == 'T' && a[1] == 'F' &&
+            a[2] == 'H' && a[3] <= ' ') tfh = 1;
         if (a[0] == 'K' && a[1] == 'E' && a[2] == 'Y' && a[3] == 'S' && a[4] == '=') {
             key_script = a + 5;     /* ends at a space or the line end */
         }
@@ -368,6 +395,8 @@ int amiga_guest_open(void)
             rt_music_skip = 0;      /* diagnostic: music records start their songs */
         }
     }
+    if (tfh) load_tfh();
+    else plat_log("SWOTL sound FM");
     /* Guest RAM, the state block below it and the EMS store after it; Fast RAM
      * when present (D15). */
     guest_block = (uint8_t *)AllocMem(RT_STATE_BYTES + RT_GUEST_BYTES + RT_EMS_BYTES, MEMF_ANY | MEMF_CLEAR);
