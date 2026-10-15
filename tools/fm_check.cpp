@@ -93,7 +93,7 @@ int main(int argc, char **argv)
 
     static opl3_chip chip[9];
     for (auto &c : chip) OPL3_Reset(&c, RATE);
-    static int8_t pool[64 * FM_POOL_PAGE];
+    static int8_t pool[FM_POOL_BYTES];
     fm_init(pool, sizeof pool);
     uint8_t shadow[256] = {}, keyon[9] = {};
     bool moved[9] = {};

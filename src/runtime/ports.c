@@ -21,8 +21,8 @@ uint8_t rt_opl_index;
 uint8_t rt_opl[256];
 uint8_t rt_opl_keyon[9];
 /* Music skip (annotations/hle.csv music_skip, rt_hle_music_skip): 1, a play
- * of a music record starts no song; 0 runs the guest code. Off while the
- * sound plan is developed (user 2026-10-15; docs/sound-plan.md Close). */
+ * of a music record starts no song; 0 runs the guest code. Music stays
+ * enabled by default (user 2026-10-15; docs/sound-plan.md). */
 uint8_t rt_music_skip = 0;
 /* Effect starts (annotations/hle.csv sfx_start, rt_hle_sfx_start): per SPAZ
  * slot the id last started and a wrapping start count. */

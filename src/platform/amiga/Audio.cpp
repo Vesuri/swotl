@@ -12,7 +12,7 @@ extern "C" {
 
 // Voice v plays on Paula channel v: the engine (0) and the rest (3) left,
 // SPAZ's two effect slots (1, 2) right.
-#define POOL_BYTES (64 * FM_POOL_PAGE)
+#define POOL_BYTES (FM_POOL_BYTES)
 #define SILENCE_BYTES 4
 #define AUDIO_DMA (DMAF_AUD0 | DMAF_AUD1 | DMAF_AUD2 | DMAF_AUD3)
 #define PERIOD_FLOOR 124

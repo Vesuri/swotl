@@ -281,8 +281,8 @@ guarded copy; a profile choice, `tools/bp_regions.py`).
   `rt_sfx_starts`; oracle `check_sfx` in every host run: each report equals
   the guest's store of DI after the hook; sabotage `sfx_start` on c6);
   `music_skip` (SPAZ song
-  start, [sound-plan.md](sound-plan.md)): `rt_music_skip`, 0 while the sound
-  plan is developed (user 2026-10-15; 1 skips) and 0 with the argument
+  start, [sound-plan.md](sound-plan.md)): `rt_music_skip`, 0 by default
+  (music enabled, user 2026-10-15; 1 skips) and 0 with the argument
   `MUSIC`; `amiga/debug.sh` passes `MUSIC` and host runs
   clear it, since the references hold the music. Oracle `make
   t-hle-music-skip` (in `test-host-all`): m2 with the skip on; the interrupt
@@ -316,8 +316,9 @@ guarded copy; a profile choice, `tools/bp_regions.py`).
   dispatcher exits, `stop_unknown` sites against `tests/audit.csv` (above
   expected fails), plus flag stores/merges/loads and return checks; HLE count.
 
-## Open decision
+## Sound (D10)
 
-| # | Decision | Options | Status |
-|---|---|---|---|
-| D10 | Sound | SPAZ runs translated; its OPL2 writes reach `rt_out8` (register file in `src/runtime/ports.c`). The Amiga output of that FM music is open: software OPL, offline conversion, or Paula instruments | open-work 17 |
+SPAZ runs translated; its OPL2 writes reach `rt_out8` (register file in
+`src/runtime/ports.c`). The FM re-hoster produces Paula voices for music,
+which stays enabled in both FM and TFH modes; see
+[sound-plan.md](sound-plan.md).

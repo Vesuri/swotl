@@ -93,14 +93,14 @@ static const uint8_t op_off[9] = {0, 1, 2, 8, 9, 10, 16, 17, 18};
 #define MOD_SILENT 24               /* steps: 72 dB down, no modulation */
 #define MOD_HOLD 12                 /* a voice keeps its step within this of it */
 #define NOISE_FB 6
-#define NOISE_BYTES 1024            /* per table; tables for feedback 6 and 7 */
+#define NOISE_BYTES 4096            /* per table; feedback 6 and 7 */
 #define NOISE_SETTLE 512
-#define NOISE_X (0x200u << 4)       /* table pitch, fnum << block (388 Hz) */
-#define NOISE_PERIOD 36528u         /* Paula clock * 2 / OPL rate, 8.8 */
+#define NOISE_X (0x1fbu << 4)       /* odd F-number avoids short phase/feedback locking */
+#define NOISE_PERIOD 18264u         /* Paula clock / OPL rate, 8.8 */
 #define NOISE_MOD6 24               /* modulator attenuation below which feedback 6 is chaotic */
 #define NOISE_MOD7 56               /* and feedback 7 (10.5 dB) */
 #define CACHE 64
-#define LOOP_LOG 6                  /* longest period loop, 64 bytes */
+#define LOOP_LOG 12                  /* longest period loop, 4096 bytes */
 #define RENDER_BUDGET 1             /* loop renders a field, restarts aside */
 #define NOISE_KEY 0x80000000u
 #define FB_SETTLE 32                /* samples before a feedback loop's period */
@@ -126,7 +126,7 @@ static uint8_t last_keyon[9];
 static int8_t voice_ch[FM_VOICES] = {-1, -1, -1, -1};
 static int8_t *pool;
 static uint16_t pool_pages;
-static uint8_t page_used[64];
+static uint8_t page_used[256];
 static struct entry cache[CACHE];
 static uint32_t stamp;
 static const int8_t *noise[2];
@@ -306,12 +306,12 @@ static uint8_t repeats(uint8_t wfc, uint8_t wfm, uint8_t mc, uint8_t mm, uint8_t
 }
 
 /* Render key fields: wf_c 0-1, wf_m 2-3, mult_c 4-7, mult_m 8-11, fb 12-14,
- * cnt 15, modulator level 16-20 (MOD_STEP), log2 samples per period 23-26.
+ * cnt 15, modulator level 16-22 (MOD_STEP), log2 samples per period 23-26.
  * The phase steps by the loop's fraction of a period. */
 static void render(int8_t *dst, uint32_t key, uint16_t bytes)
 {
     uint8_t wfc = key & 3, wfm = (key >> 2) & 3, fb = (key >> 12) & 7, cnt = (key >> 15) & 1;
-    uint8_t mc = (key >> 4) & 15, mm = (key >> 8) & 15, mq = (key >> 16) & 31;
+    uint8_t mc = (key >> 4) & 15, mm = (key >> 8) & 15, mq = (key >> 16) & 127;
     uint8_t g = repeats(wfc, wfm, mc, mm, mq >= MOD_SILENT);
     uint16_t matt = (uint16_t)(mq * MOD_STEP), spp = (uint16_t)(1u << ((key >> 23) & 15));
     /* phase in cycles, 16.16; >> 6 the chip's 10 bits */
@@ -337,31 +337,43 @@ static void render(int8_t *dst, uint32_t key, uint16_t bytes)
             dst[i - settle] = (int8_t)(c >> 5);
         }
     }
+    /* Rotate to the quietest boundary: consecutive loops and timbre
+     * changes meet near zero without an amplitude discontinuity. */
+    {
+        uint16_t best = 0, cost = 0xffff, j;
+        for (j = 0; j < bytes; ++j) {
+            int a = dst[j], b = dst[(j + bytes - 1) & (bytes - 1)];
+            uint16_t q = (uint16_t)((a < 0 ? -a : a) + (b < 0 ? -b : b));
+            if (q < cost) { cost = q; best = j; }
+        }
+        /* Three reversals rotate in place, without scratch Chip storage. */
+        for (j = 0; j < 3; ++j) {
+            uint16_t lo = j == 1 ? best : 0;
+            uint16_t hi = (j == 0 ? best : bytes);
+            while (lo + 1 < hi) {
+                int8_t t = dst[lo]; dst[lo++] = dst[--hi]; dst[hi] = t;
+            }
+        }
+    }
+
 }
 
 /* Feedback noise table (fm_init): the chip at its own rate and step, sine
- * operators 1:1, modulator at full level, pitch NOISE_X, two chip samples a
- * byte. */
+ * operators 1:1, modulator at full level, pitch NOISE_X, a two-sample moving average at the chip rate. */
 static void render_noise(int8_t *dst, uint8_t fb)
 {
     uint32_t inc = (NOISE_X >> 1) * mt[1] >> 1, pc = 0, pm = 0;
     int16_t prev1 = 0, prev2 = 0, m, c, sum = 0;
     uint16_t i;
-    for (i = 0; i < NOISE_SETTLE + 2 * NOISE_BYTES; ++i) {
+    for (i = 0; i < NOISE_SETTLE + NOISE_BYTES; ++i) {
         m = op_out(0, (uint16_t)((pm >> 9) + ((prev1 + prev2) >> (9 - fb))), 0);
         prev2 = prev1;
         prev1 = m;
         c = op_out(0, (uint16_t)((pc >> 9) + m), 0);
         pc += inc;
         pm += inc;
-        if (i < NOISE_SETTLE) {
-            continue;
-        }
-        if ((i - NOISE_SETTLE) & 1) {
-            dst[(i - NOISE_SETTLE) >> 1] = (int8_t)((sum + c) >> 6);
-        } else {
-            sum = c;
-        }
+        if (i >= NOISE_SETTLE) dst[i - NOISE_SETTLE] = (int8_t)((sum + c) >> 6);
+        sum = c;
     }
 }
 
@@ -372,10 +384,10 @@ void fm_init(int8_t *p, uint32_t bytes)
     build_wave();
     pool = p;
     pool_pages = (uint16_t)(bytes / FM_POOL_PAGE);
-    if (pool_pages > 64) {
-        pool_pages = 64;
+    if (pool_pages > 256) {
+        pool_pages = 256;
     }
-    for (i = 0; i < 64; ++i) {
+    for (i = 0; i < 256; ++i) {
         page_used[i] = 0;
     }
     /* the noise tables take the first pages for good */
@@ -501,8 +513,15 @@ static void voice_cmd(struct fm_voice *v, uint8_t i, const uint8_t *opl, int8_t 
                 uint32_t xm = x * mt[opl[0x20 + mo] & 15] >> 1;
                 period = xm ? (NOISE_X * NOISE_PERIOD / 256 + xm / 2) / xm : 0xffff;
             } else {
-                d = x * m->g << ((m->key >> 23) & 15);
-                period = (PERIOD_NUM + d / 2) / d;
+                lg = (uint8_t)((m->key >> 23) & 15);
+                d = x * m->g;
+                /* Check before shifting: high pitches can overflow 32 bits. */
+                if (d > (PERIOD_NUM / PERIOD_MIN >> lg)) {
+                    period = 0;
+                } else {
+                    d <<= lg;
+                    period = (PERIOD_NUM + d / 2) / d;
+                }
                 if (period < PERIOD_MIN || (period >= 2 * PERIOD_MIN && ((m->key >> 23) & 15) < LOOP_LOG)) {
                     period = 0;
                 }
@@ -549,7 +568,9 @@ static void voice_cmd(struct fm_voice *v, uint8_t i, const uint8_t *opl, int8_t 
     g = repeats(wfc, wfm, opl[0x20 + co] & 15, opl[0x20 + mo] & 15, matt >= MOD_SILENT);
     m->g = g;
     for (lg = LOOP_LOG; lg >= 3; --lg) {
-        d = x * g << lg;
+        d = x * g;
+        if (d > (PERIOD_NUM / PERIOD_MIN >> lg)) continue;
+        d <<= lg;
         period = (PERIOD_NUM + d / 2) / d;
         if (period >= PERIOD_MIN) {
             break;

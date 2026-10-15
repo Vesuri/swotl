@@ -106,6 +106,10 @@ sound-fm: build/tools/fm_check
 t-fm: build/tools/fm_check
 	$(call RUN,fm-paula,mkdir -p tmp/sound && for r in $(FM_RUNS); do \
 		build/tools/fm_check $(call FM_OPL,$$r) tmp/sound/$$r-paula.wav || exit 1; done)
+t-fm-quality:
+	$(call RUN,fm-quality,$(PYTHON) tests/test_fm_quality.py)
+t-sab-fm-quality:
+	$(call RUN,sabotage-fm-quality,$(PYTHON) tests/test_fm_quality.py --sabotage)
 t-sab-fm: build/tools/fm_check
 	$(call RUN,sabotage-fm-paula,for s in pitch level; do \
 		! build/tools/fm_check $(call FM_OPL,c6-flight-keys) tmp/test/fm-sabotage.wav --sabotage $$s || exit 1; done)
@@ -152,7 +156,7 @@ test-x86:
 	$(PYTHON) tests/x86_diff.py
 
 test-sabotage: host
-	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-replay-hooks t-sab-replay-events t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence t-sab-fm t-sab-tfh t-sab-sound-hooks t-sab-audio
+	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-replay-hooks t-sab-replay-events t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence t-sab-fm t-sab-fm-quality t-sab-tfh t-sab-sound-hooks t-sab-audio
 
 test-m68k:
 	$(PYTHON) tests/m68k_diff.py
@@ -170,7 +174,7 @@ RUN = @mkdir -p tmp/test; if $(2) > tmp/test/$(1).log 2>&1; then echo "ok    $(1
 	else echo "FAIL  $(1) (tmp/test/$(1).log)"; tail -n 15 tmp/test/$(1).log; exit 1; fi
 SHARDS = forms.0/4 forms.1/4 forms.2/4 forms.3/4 space.0/1 boundary.0/1 blocks.0/1
 TESTS = t-align-convergence t-replay-hooks t-replay-events t-file-dates t-mouse-irq t-display-queue t-display-palette t-amiga-input t-smc-flow t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
-	t-blocks t-guards t-fm t-tfh t-sound-hooks t-audio $(HOST_MILESTONES:%=t-host-%)
+	t-blocks t-guards t-fm t-fm-quality t-tfh t-sound-hooks t-audio $(HOST_MILESTONES:%=t-host-%)
 
 test: host
 	@$(MAKE) -s -k -j$(JOBS) $(TESTS)

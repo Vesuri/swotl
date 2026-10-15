@@ -55,7 +55,7 @@ int main(int argc, char **argv)
     if (!chip_bytes) { fprintf(stderr, "%s: not TFH's sfx.rsc\n", argv[2]); return 1; }
     std::vector<int8_t> chip(chip_bytes);
     tfh_init(rsc.data(), (uint32_t)rsc.size(), chip.data());
-    static int8_t pool[64 * FM_POOL_PAGE];
+    static int8_t pool[FM_POOL_BYTES];
     fm_init(pool, sizeof pool);
     if (ev.empty()) { fprintf(stderr, "%s: no events\n", argv[1]); return 1; }
 

@@ -1,7 +1,6 @@
-# Sound plan (open-work 17, D10)
+# Sound (D10)
 
-Sound effects first; music is skipped. Each step is one commit with gates
-green; remove a step from this file when it is done.
+Music stays enabled through the FM re-hoster in both effect modes.
 
 ## Facts (2026-10-15)
 
@@ -46,17 +45,21 @@ green; remove a step from this file when it is done.
   most noise patches; SPAZ ramps carrier TL itself on its 236.7 Hz tick
   (fast decays) and slides F-numbers (engines, sweeps).
 - FM re-hoster: `src/platform/amiga/fm_paula.c` (per field: OPL registers +
-  key-on counts → 4 voice commands). Period loops ≤ 64 bytes rendered on
+  key-on counts → 4 voice commands). Period loops ≤ 4096 bytes rendered on
   demand (3 dB modulator steps with hysteresis, one render a field beyond
   restarts, per-voice memo: a pitch change is a new period only) in a
-  16 KB Chip pool of 256-byte pages. Feedback 6-7 is chaotic only with a
-  strong modulator (fb 7 < 10.5 dB, fb 6 < 4.5 dB down): two 1 KB noise
-  tables built at `fm_init`, played at the modulator's pitch.
+  64 KB Chip pool of 256-byte pages. Feedback 6-7 is chaotic only with a
+  strong modulator (fb 7 < 10.5 dB, fb 6 < 4.5 dB down): two 4 KB noise
+  tables built at `fm_init`, played at the modulator's pitch. An odd synthesis
+  F-number avoids short feedback cycles; the moving average retains one
+  byte per OPL sample. Tonal loops rotate to their quietest boundary.
 - Check `make t-fm` (`tools/fm_check.cpp`, vs Nuked per channel): level
   within 3 dB (±1 field, above −30 dB, Paula's 6-bit volume) on ≥ 95% of
   fields, pitch within 10 cents on ≥ 99% of measurable fields; effect runs
-  98.1-98.6% and 100% (worst 5.5 cents), 69-88 renders in 40 s; title music
-  93.2%, not gated (reprogramming within a field).
+  98.2-98.7% and 100% (worst 8.3 cents), 95-114 renders per reference; title
+  music 94.1%, not gated (reprogramming within a field). `t-fm-quality` and
+  its sabotage check low-note/noise playback rates, short noise repetition,
+  quiet loop joins and pitch-change overflow.
 - Paula backend: `src/platform/amiga/Audio.cpp`. `fm_field` in
   `plat_service` (main program, once a vertical blank); the vertical blank
   stages the commands: DMA on, silence volume 0, loop changes latched at
@@ -64,8 +67,9 @@ green; remove a step from this file when it is done.
   period's countdown waited out, ≤ 16 lines; Revs, Rescue on Fractalus);
   volume 0 in I/O windows. Voices 0, 3 left, 1, 2 right. Alt-S, Alt-E and
   pause are SPAZ's own key-offs. Cost (68020 A1200 model, demo flight, 100
-  fields): 4.8% (≈ 13,600 cycles a field). Soak 68030, 68040 to field 1500:
-  sound live, no stop.
+  fields, one capture per build): about 5.0% on the parent and 8.5% with
+  longer loops and quiet joins (including `loop_for`); +48 KB Chip. This
+  samples audio cost, not a fixed-work frame-rate comparison.
 - Key-on edges: `rt_opl_keyon` (`rt_out8`). Oracle in every host run
   (`check_opl`): AdLib writes per port and value = the reference's
   `ports.csv`; `rt_opl`, `rt_opl_keyon` = a recount of the host's writes;
@@ -80,9 +84,9 @@ green; remove a step from this file when it is done.
   sound-log ticks have separate tests and a reset sabotage. `t-audio` checks
   the production backend's sample merge, zero-volume attack/repeat commands
   and Chip release; its sabotage restores the dropped silent restart.
-- TFH A1200/68020, 8 MiB Fast soak (2026-10-15): 1,500 fields, 195 audio
-  restarts, 55 FM renders; 107,298 sample Chip bytes, 1,771,224 free Chip
-  (largest block 1,771,120). `amiga/milestone.gdb.in` reports free Chip.
+- TFH A1200/68020, 8 MiB Fast soak (2026-10-15): 1,500 fields, 199 audio
+  restarts, 86 FM renders; 107,298 sample Chip bytes, 1,722,072 free Chip
+  (largest block 1,721,968). `amiga/milestone.gdb.in` reports free Chip.
   m4 meter against `tmp/fm/meter-sfx.json`: unchanged model cycles,
   instructions, executed bytes and memory accesses; runtime code +24 bytes.
 
@@ -96,9 +100,10 @@ records posted IRQ0 counts: `tick,o,reg,value`, `tick,s,slot,id`,
 
 ## Decisions
 
-- Music: skipped in SPAZ play (HLE `music_skip`, user 2026-10-14;
-  translator-design.md). Default off while the plan is developed (user
-  2026-10-15): music plays through the re-hoster; `MUSIC` keeps it off.
+- Music: enabled by default through the FM re-hoster (user 2026-10-15).
+  `rt_music_skip` stays 0; `MUSIC` also selects music enabled.
+- Quality budget: the user accepts the longer-loop audio at about +3.5 CPU
+  percentage points in the sampled window and +48 KB Chip (2026-10-15).
 - Effects, two modes behind one toggle, one Paula backend:
   - **FM**: OPL register re-hoster (default; user's SWOTL files only).
   - **TFH** (hybrid, user 2026-10-15): TFH samples where SWOTL's effect has
@@ -111,11 +116,3 @@ records posted IRQ0 counts: `tick,o,reg,value`, `tick,s,slot,id`,
     never committed. Replaces the 2026-10-14 plan to replace SPAZ's entries.
 - Rejected: real-time software OPL (15–35% CPU); whole-effect pre-renders
   (Chip; kept as a per-effect fallback for FM).
-
-## Steps
-
-2. **Close.** Listening on the user's machine (FM/music, TFH WAVs and Amiga
-   TFH mode); music skip
-   default back on (`rt_music_skip`, ports.c) unless the user decides
-   otherwise; D10 settled in `translator-design.md`; open-work 17 replaced
-   by what remains (music method).

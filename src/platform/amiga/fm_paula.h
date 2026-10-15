@@ -10,6 +10,7 @@
 #define FM_VOICES 4
 #define FM_PAULA_CLOCK 3546895      /* PAL */
 #define FM_FIELD_HZ 49.92           /* PAL field: 313 lines of 227 colour clocks */
+#define FM_POOL_BYTES 65536         /* production cache, including noise tables */
 #define FM_POOL_PAGE 256            /* loop pool unit, bytes */
 
 struct fm_voice {
