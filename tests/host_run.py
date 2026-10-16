@@ -80,7 +80,7 @@ SPAZ_COUNTS = (0x6564, 40)
 SKIP_DEAD_STACK = 0x800
 
 
-def elf_load(path: Path):
+def elf_load(path: Path, function_extents: dict | None = None):
     d = path.read_bytes()
     entry, phoff, shoff = struct.unpack_from(">III", d, 0x18)
     phentsize, phnum, shentsize, shnum, shstrndx = struct.unpack_from(">HHHHH", d, 0x2A)
@@ -96,10 +96,13 @@ def elf_load(path: Path):
             continue
         strtab = secs[s[6]]
         for k in range(s[5] // 16):
-            name, value, _, info, _, shndx = struct.unpack_from(">IIIBBH", d, s[4] + k * 16)
+            name, value, size, info, _, shndx = struct.unpack_from(">IIIBBH", d, s[4] + k * 16)
             if name and shndx:
                 a = strtab[4] + name
-                syms[d[a:d.index(b"\0", a)].decode()] = value
+                symbol = d[a:d.index(b"\0", a)].decode()
+                syms[symbol] = value
+                if function_extents is not None and info & 15 == 2 and size:
+                    function_extents[symbol] = (value, value + size)
     return entry, segs, syms
 
 
@@ -202,7 +205,9 @@ class Host:
     def __init__(self, ref_root: Path, sabotage: str | None = None, music_skip: bool = False):
         self.root = ref_root
         self.sabotage = sabotage
-        entry, segs, self.syms = elf_load(ELF)
+        functions = {}
+        entry, segs, self.syms = elf_load(ELF, functions)
+        self.frame_writer = functions["push_frame"]
         e = self.e = U.Engine(U.ARCH_M68K, U.MODE_BIG_ENDIAN, U.CPU_M68K_M68020)
         e.map(0, MEM)
         for vaddr, data, memsz in segs:
@@ -382,7 +387,11 @@ class Host:
             if self.dead_flags is not None and self.dead_flags in span:
                 self.masked.update(span)
                 self.dead_flags = None
-            elif not self.in_service and self.masked:
+            elif (not self.in_service and self.masked
+                  and not self.masked.isdisjoint(span)
+                  and not self.frame_writer[0] <= self.r("pc") < self.frame_writer[1]):
+                # The interrupt frame belongs to the runtime. Preserve only
+                # the existing dead-stack mask; all other writes still clear it.
                 self.masked.difference_update(span)
             return True
 

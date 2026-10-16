@@ -5,7 +5,9 @@ caller supplies its current registers, instruction bytes and stack bytes;
 no translated/interpreted result enters this oracle. Debugger single-step
 runs the CPU directly, without advancing devices or delivering hardware IRQs.
 All registers/flags are read back and the 1 MiB physical memory window is
-compared before/after. Instruction and stack inputs must be conventional RAM. No saved reference or expected CS calculation is used.
+compared before/after. Inputs must fit that window and read back exactly;
+unwritable ROM/device memory still fails initialization. No saved reference
+or expected CS calculation is used.
 """
 from __future__ import annotations
 
@@ -26,6 +28,11 @@ ROOT = Path(__file__).resolve().parent.parent
 NAMES = ('eax', 'ebx', 'ecx', 'edx', 'esp', 'ebp', 'esi', 'edi',
          'es', 'cs', 'ss', 'ds', 'eip', 'eflags')
 INSTANCE = None
+
+
+def hex_literal(value):
+    # Debugger expressions resolve bare AC/AF/CF/DF as CPU flags.
+    return f'"{value:x}"'
 
 
 class Debugger:
@@ -122,11 +129,12 @@ class Debugger:
         desired['eflags'] = flags
         # Full 32-bit writes eliminate debugger startup state in upper words.
         for name in NAMES:
-            self.command(f'SR {name} {desired[name]:x}')
+            self.command(f'SR {name} {hex_literal(desired[name])}')
         for address, data in stack + [(registers['cs'] * 16 + registers['ip'], code)]:
-            if address + len(data) > 0xa0000:
-                raise RuntimeError('DOSBox RETF input must be in conventional RAM')
-            self.command(f'SM {address >> 4:x}:{address & 15:x} ' + data.hex(' '))
+            if address < 0 or address + len(data) > 0x100000:
+                raise RuntimeError('DOSBox RETF input must fit the verified 1 MiB window')
+            self.command(f'SM {hex_literal(address >> 4)}:{hex_literal(address & 15)} '
+                         + ' '.join(hex_literal(byte) for byte in data))
         before_regs = self.registers()
         if before_regs != desired:
             raise RuntimeError(f'DOSBox state initialization mismatch: {before_regs} != {desired}')

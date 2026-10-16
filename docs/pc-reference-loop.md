@@ -89,6 +89,7 @@ Trace outputs (`tmp/pc-runs/<name>/trace/`, written at exit):
 | File | Content |
 |---|---|
 | `events.csv` | ordered: arm, DOS open/read/seek/close (name, linear buffer, file pos), INT 10h/33h/67h and selected INT 21h with registers, faults, keys, snapshots; with `--services` (`SWOTL_SERVICES`, on in `make reference`) `svc`/`svc_ret`: every software INT raised by module code with all registers and FLAGS at entry and when execution is back at its return address with the entry SP (the runtime's service oracle); with `--polls` (`SWOTL_POLLS` = `build/gen/poll-points.csv`, on in `make reference`) hardware interrupts are taken only before a translator poll point (D8) and logged as `irq`: vector, service events so far, the poll point's executions since the last one (taken before the instruction, so interrupts arriving during a handler repeat the same count after its IRET); `summary.txt` `polls=` is the FNV-1a of that file |
+| `reads.bin` | Original DOS read bytes, appended in event order; `read` events carry decimal `data=` offsets and `got=` lengths. Image proof uses these bytes even when the game later rewrites the file. Older captures retain file-based reconstruction. |
 | `modules.csv`, `executed-<module>.bin` | per-module instruction-start bitmap |
 | `edges.csv` | unique consecutive-instruction pairs |
 | `interrupts.csv`, `ports.csv`, `vga.csv` | aggregates by source site (AX for software INTs; port value; 256-byte VGA page) |

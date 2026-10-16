@@ -1,0 +1,46 @@
+--- a/src/misc/swotl_trace.cpp
++++ b/src/misc/swotl_trace.cpp
+@@ -110,6 +110,7 @@
+ std::map<std::tuple<Location, uint32_t, uint8_t>, uint64_t> code_writes;
+ std::map<uint16_t, OpenFile> files;
+ FILE *events = nullptr;
++FILE *read_data = nullptr;
+ /* OPL log (SWOTL_OPL=1): every AdLib register write (index at 388h, data at
+  * 389h) with the emulated time in ms. */
+ FILE *opl = nullptr;
+@@ -369,6 +370,8 @@
+ 		if (poll_gate) fprintf(f, "polls=%016llx\n", (unsigned long long)poll_digest);
+ 		fclose(f);
+ 	}
++	if (read_data && fclose(read_data)) E_Exit("SWOTL: cannot flush reads.bin");
++	read_data = nullptr;
+ 	if (events) fclose(events);
+ 	events = nullptr;
+ 	if (opl) fclose(opl);
+@@ -475,6 +478,8 @@
+ 		fclose(f);
+ 		poll_gate = swotl_irq_gate = true;
+ 	}
++	read_data = fopen(Path("reads.bin").c_str(), "wb");
++	if (!read_data) E_Exit("SWOTL: cannot open reads.bin");
+ 	events = fopen(Path("events.csv").c_str(), "w");
+ 	if (events) fputs("icount,kind,module,offset,detail\n", events);
+ 	if (const char *v = getenv("SWOTL_OPL"); v && *v && strcmp(v, "0") != 0) {
+@@ -794,8 +799,15 @@
+ 	} else {
+ 		MapRange(buffer, actual, 0, 0);
+ 	}
+-	Event("read", "%s handle=%u linear=0x%05x pos=0x%05x req=%u got=%u", name.c_str(), handle,
+-	      buffer, file_pos, requested, actual);
++	/* Preserve bytes now: temporary files can be overwritten before the snapshot. */
++	const long payload = ftell(read_data);
++	if (payload < 0) E_Exit("SWOTL: cannot locate DOS read payload");
++	std::vector<uint8_t> data(actual);
++	for (uint32_t k = 0; k < actual; ++k) data[k] = mem_readb(buffer + k);
++	if (fwrite(data.data(), 1, actual, read_data) != actual)
++		E_Exit("SWOTL: cannot write DOS read payload");
++	Event("read", "%s handle=%u linear=0x%05x pos=0x%05x req=%u got=%u data=%ld", name.c_str(), handle,
++	      buffer, file_pos, requested, actual, payload);
+ }
+ 
+ void SWOTL_DosSeek(const uint16_t handle, const uint8_t mode, const uint32_t result) {

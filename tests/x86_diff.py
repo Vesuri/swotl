@@ -84,6 +84,16 @@ def is_rep_string(code: bytes) -> bool:
                                                 0xAE, 0xAF)
 
 
+def store_retry(addr, previous, attempted, before, now):
+    """A code-page write can re-enter the code hook before retiring.
+
+    Require an attempted store and unchanged architectural state. Real
+    self-jumps do not store; self-calls change SP. REP iterations are handled
+    separately. Never infer completion from the write hook alone.
+    """
+    return addr == previous and attempted and before == now
+
+
 class Oracle:
     """Unicorn x86-16. Its interrupt hook skips QEMU's exception delivery, so
     `old_exception` stays set and the next exception becomes #DF (8), then a
@@ -97,15 +107,20 @@ class Oracle:
         self.limit = 1
         self.done = 0
         self.prev = None
+        self.before = None
+        self.attempted = False
 
         @U.CODE_CB
         def code(h, addr, size, user):
-            if self.prev is not None and (addr != self.prev or not is_rep_string(
+            state = tuple(self.e.reg_read(U.X86[r]) for r in REGS + SEGS + ("flags",))
+            retry = store_retry(addr, self.prev, self.attempted, self.before, state)
+            if self.prev is not None and not retry and (addr != self.prev or not is_rep_string(
                     self.e.read(addr, 8))):
                 self.done += 1
                 if self.done >= self.limit:
                     U.uc.uc_emu_stop(h)
             self.prev = addr
+            self.before, self.attempted = state, False
 
         @U.INTR_CB
         def intr(h, no, user):
@@ -122,6 +137,7 @@ class Oracle:
 
         @U.MEM_CB
         def write(h, kind, addr, size, value, user):
+            self.attempted = True
             self.writes.update(range(addr, addr + size))
             return True
 
@@ -155,6 +171,7 @@ class Oracle:
         err, trap = 0, None
         for _ in range(n):
             self.limit, self.done, self.prev = 1, 0, None
+            self.before, self.attempted = None, False
             at = self.e.reg_read(U.X86["ip"]) & 0xFFFF
             begin = self.e.reg_read(U.X86["cs"]) * 16 + at
             raw = self.e.read(begin, 16)
@@ -186,10 +203,11 @@ class Oracle:
             out["trap"] = trap  # IP of the instruction that set TF
         fl = self.e.reg_read(U.X86["flags"])
         mem = {a: self.e.read(a, 1)[0] for a in self.writes}
+        writes = set(self.writes)  # completed run, independent of engine reset
         if self.ints and self.ints[0] in EXCEPTIONS:
             self.open()
             self.writes = set()  # fresh engine holds the background
-        return err, out, fl, mem, list(self.ints), list(self.outs), set(self.writes)
+        return err, out, fl, mem, list(self.ints), list(self.outs), writes
 
     def restore(self, addrs):
         for a in sorted(addrs):

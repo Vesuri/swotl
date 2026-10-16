@@ -156,7 +156,7 @@ test-x86:
 	$(PYTHON) tests/x86_diff.py
 
 test-sabotage: host
-	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-replay-hooks t-sab-replay-events t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence t-sab-fm t-sab-fm-quality t-sab-tfh t-sab-sound-hooks t-sab-audio
+	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-replay-hooks t-sab-replay-events t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence t-sab-fm t-sab-fm-quality t-sab-tfh t-sab-sound-hooks t-sab-audio t-sab-load-image t-sab-interrupt-frame-mask t-sab-dosbox-retf t-sab-oracle-boundary t-sab-oracle-exception-writes
 
 test-m68k:
 	$(PYTHON) tests/m68k_diff.py
@@ -173,7 +173,7 @@ JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc)
 RUN = @mkdir -p tmp/test; if $(2) > tmp/test/$(1).log 2>&1; then echo "ok    $(1)"; \
 	else echo "FAIL  $(1) (tmp/test/$(1).log)"; tail -n 15 tmp/test/$(1).log; exit 1; fi
 SHARDS = forms.0/4 forms.1/4 forms.2/4 forms.3/4 space.0/1 boundary.0/1 blocks.0/1
-TESTS = t-align-convergence t-replay-hooks t-replay-events t-file-dates t-mouse-irq t-display-queue t-display-palette t-amiga-input t-smc-flow t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
+TESTS = t-oracle-boundary t-oracle-exception-writes t-interrupt-frame-mask t-load-image t-align-convergence t-replay-hooks t-replay-events t-file-dates t-mouse-irq t-display-queue t-display-palette t-amiga-input t-smc-flow t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
 	t-blocks t-guards t-fm t-fm-quality t-tfh t-sound-hooks t-audio $(HOST_MILESTONES:%=t-host-%)
 
 test: host
@@ -188,6 +188,11 @@ t-display-queue:
 	$(call RUN,display-queue,$(PYTHON) tests/test_display_queue.py)
 t-sab-display-queue:
 	$(call RUN,sabotage-display-queue,$(PYTHON) tests/test_display_queue.py --sabotage)
+
+t-interrupt-frame-mask:
+	$(call RUN,interrupt-frame-mask,$(PYTHON) tests/test_interrupt_frame_mask.py)
+t-sab-interrupt-frame-mask:
+	$(call RUN,sabotage-interrupt-frame-mask,$(PYTHON) tests/test_interrupt_frame_mask.py --sabotage)
 
 t-amiga-input:
 	$(call RUN,amiga-input,$(PYTHON) tests/test_amiga_input.py)
@@ -206,8 +211,21 @@ t-next-branch:
 t-sab-next-branch:
 	$(call RUN,sabotage-next-branch,$(PYTHON) tests/test_next_branch.py --sabotage)
 
+
+
+t-oracle-exception-writes:
+	$(call RUN,oracle-exception-writes,$(PYTHON) tests/test_oracle_exception_writes.py)
+t-sab-oracle-exception-writes:
+	$(call RUN,sabotage-oracle-exception-writes,$(PYTHON) tests/test_oracle_exception_writes.py --sabotage)
+t-oracle-boundary:
+	$(call RUN,oracle-boundary,$(PYTHON) tests/test_oracle_boundary.py)
+t-sab-oracle-boundary:
+	$(call RUN,sabotage-oracle-boundary,$(PYTHON) tests/test_oracle_boundary.py --sabotage)
+
 t-dosbox-retf:
 	$(call RUN,dosbox-retf,$(PYTHON) tests/test_dosbox_retf.py)
+t-sab-dosbox-retf:
+	$(call RUN,sabotage-dosbox-retf,$(PYTHON) tests/test_dosbox_retf.py --sabotage)
 
 t-compact:
 	$(call RUN,compact,$(PYTHON) tests/test_compact.py)
@@ -404,3 +422,8 @@ t-audio:
 	$(call RUN,audio,$(PYTHON) tests/test_audio.py)
 t-sab-audio:
 	$(call RUN,sabotage-audio,$(PYTHON) tests/test_audio.py --sabotage)
+
+t-load-image:
+	$(call RUN,load-image,$(PYTHON) tests/test_load_image.py)
+t-sab-load-image:
+	$(call RUN,sabotage-load-image,$(PYTHON) tests/test_load_image.py --sabotage)

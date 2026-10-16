@@ -52,17 +52,32 @@ def dos_reads(events: Path, until: int, ref: Path) -> dict[int, int]:
             if p.is_file():
                 files.setdefault(p.name.upper(), p)
     cache, out = {}, {}
-    for line in events.open():
-        f = line.rstrip("\n").split(",", 4)
-        if len(f) < 5 or f[1] != "read" or int(f[0]) > until:
-            continue
-        name, *kv = f[4].split()
-        kv = dict(x.split("=") for x in kv)
-        if name not in cache:
-            cache[name] = files[name].read_bytes()
-        lin, pos, got = int(kv["linear"], 16), int(kv["pos"], 16), int(kv["got"])
-        for k in range(got):
-            out[lin + k] = cache[name][pos + k]
+    payload = None
+    with events.open() as stream:
+        for line in stream:
+            f = line.rstrip("\n").split(",", 4)
+            if len(f) < 5 or f[1] != "read" or int(f[0]) > until:
+                continue
+            name, *kv = f[4].split()
+            kv = dict(x.split("=") for x in kv)
+            lin, pos, got = int(kv["linear"], 16), int(kv["pos"], 16), int(kv["got"])
+            if "data" in kv:
+                if payload is None:
+                    payload = (events.parent / "reads.bin").read_bytes()
+                offset = int(kv["data"])
+                if offset < 0:
+                    raise ValueError(f"{events}: negative DOS read payload offset")
+                data = payload[offset:offset + got]
+            else:  # Legacy references predate DOS read payload capture.
+                if (events.parent / "reads.bin").exists():
+                    raise ValueError(f"{events}: DOS read missing payload offset")
+                if name not in cache:
+                    cache[name] = files[name].read_bytes()
+                data = cache[name][pos:pos + got]
+            if len(data) != got:
+                raise ValueError(f"{events}: {name} read at {pos:#x}: expected {got} bytes, got {len(data)}")
+            for k, byte in enumerate(data):
+                out[lin + k] = byte
     return out
 
 
