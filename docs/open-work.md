@@ -106,6 +106,10 @@ speed work: [speed-plan.md](speed-plan.md).
 28. `make test-amiga AMIGA_MILESTONE=m2-choose-side` (plain fixture) ends
     `SWOTL_MILESTONE_WRONG_HANDOFF`, already at 1020874; m2 passes in
     `test-amiga-replay`.
+29. Real A1200/full 68040 with MMU active: supplied preinstalled TFH archive
+    crashes during startup with a Line F emulator exception. Fault PC/opcode
+    and Guru number are unavailable. Reproduce and fix against evidence.
+    Build flags specify 68020 and soft float; cause is not yet established.
 
 ## Release
 
