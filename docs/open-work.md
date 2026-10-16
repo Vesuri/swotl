@@ -6,8 +6,6 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Guest map follow-ups
 
-9a. Cross-reference TFH Amiga `BOB` (Aztec C, same source family) in Ghidra
-   for routine naming and `.PAC`/`.GOB` formats; evidence only.
 9b. 206 indirect sites are static-only (no traced target,
    `annotations/indirect.csv`). 186 are proved switch tables or `lcall`
    through a DGROUP slot whose other sites trace one PLINK thunk; 20 have
