@@ -79,15 +79,6 @@ speed work: [speed-plan.md](speed-plan.md).
     flag bits in pushed images under the remaining `annotations/flags.csv`
     pair).
 
-27. Guest-created file metadata (c11, c14 fail the host run; not in
-    `HOST_COVERAGE`): FindFirst on a file the game wrote fills the DTA time
-    from the platform's file time (DOSBox: its DOS clock at close) and keeps
-    the runtime's cursor at `+0Dh` (DOSBox: its search slot, 0 in both
-    references, unexplained by its source). The reference DOS date is the
-    host's, so those references reproduce only on the recording day. The
-    game is not seen to read these bytes. Fix (pin the date in the tracer,
-    stamp on close, DOSBox slot) or mask (user approval).
-
 ## Amiga platform
 
 18. Framework copy declares `getVBR`, `isLongFrame`, `isBlitterBusy`,

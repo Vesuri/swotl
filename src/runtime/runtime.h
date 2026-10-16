@@ -131,6 +131,7 @@ extern volatile uint8_t rt_present_due;
 void rt_video_refresh(void);
 void rt_int67(void);
 void rt_dos_init(void);
+void rt_dos_close(void);
 uint16_t rt_psp(void);
 
 /* hardware interrupts (machine.c): the platform appends a vector (08h tick,

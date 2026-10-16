@@ -9,6 +9,7 @@ A time limit is never success.
 
 from __future__ import annotations
 
+import json
 import argparse
 import os
 import shutil
@@ -74,6 +75,7 @@ def main() -> int:
     root = prepare(run)
     env = dict(os.environ, SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy",
                SWOTL_TRACE="1", SWOTL_TRACE_DIR=str(run / "trace"),
+               SWOTL_FIXED_FILE_CLOCK="1",
                SWOTL_SNAPSHOTS=args.snapshots, SWOTL_EXIT_AFTER=args.exit_after,
                SWOTL_KEYS=args.keys)
     if args.services:
@@ -94,6 +96,9 @@ def main() -> int:
     if args.cycles:
         command += ["-set", f"cpu cycles=fixed {args.cycles}"]
     command += ["-c", f"mount c \"{root}\"", "-c", "c:", "-c", args.launch, "-c", "exit"]
+    (run / "clock-inputs.json").write_text(json.dumps({
+        "host_file_clock": "1991-01-01T12:00:00", "basis": "local calendar",
+        "SWOTL_FIXED_FILE_CLOCK": env["SWOTL_FIXED_FILE_CLOCK"]}, indent=2) + "\n")
     with open(run / "stdout.txt", "w") as out:
         try:
             proc = subprocess.run(command, cwd=run, env=env, stdout=out, stderr=subprocess.STDOUT,

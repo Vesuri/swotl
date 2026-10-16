@@ -34,4 +34,20 @@ static inline void amiga_file_date(int32_t days, int32_t minutes, int32_t ticks,
                            ((uint32_t)(minutes % 60) & 63) << 5 |
                            ((uint32_t)(ticks / 100) & 31));
 }
+/* DOS packed calendar to Amiga DateStamp; seconds have two-second precision. */
+static inline void amiga_date_stamp(uint16_t time, uint16_t date,
+                                   int32_t *days, int32_t *minutes, int32_t *ticks)
+{
+    uint32_t year = 1980 + (date >> 9), month = (date >> 5) & 15;
+    int32_t n = 0;
+    for (uint32_t y = 1978; y < year; ++y)
+        n += 365 + (y % 4 == 0 && (y % 100 != 0 || y % 400 == 0));
+    static const uint8_t lengths[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+    for (uint32_t m = 1; m < month; ++m)
+        n += lengths[m - 1] + (m == 2 && year % 4 == 0 &&
+                              (year % 100 != 0 || year % 400 == 0));
+    *days = n + (date & 31) - 1;
+    *minutes = (time >> 11) * 60 + ((time >> 5) & 63);
+    *ticks = (time & 31) * 100;
+}
 #endif

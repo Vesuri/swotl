@@ -1,0 +1,114 @@
+--- a/include/dos_system.h
++++ b/include/dos_system.h
+@@ -193,6 +193,7 @@
+ 	FILE * fhandle;
+ private:
+ 	bool read_only_medium = false;
++	bool swotl_host_written = false;
+ 	enum { NONE,READ,WRITE } last_action;
+ };
+ 
+--- a/src/dos/drive_local.cpp
++++ b/src/dos/drive_local.cpp
+@@ -41,6 +41,9 @@
+ #endif
+ #include <fcntl.h>
+ #include <sys/stat.h>
++#ifndef WIN32
++#include <sys/time.h>
++#endif
+ 
+ #include "dosbox.h"
+ #include "dos_inc.h"
+@@ -1343,6 +1346,32 @@
+     dos.loaded_codepage = cp;
+ }
+ 
++/* Reference-only external host clock. DOS-managed timestamps still use
++ * UpdateLocalDateTime; only host filesystem modification times are pinned. */
++static bool swotl_fixed_file_clock() {
++    const char *v = getenv("SWOTL_FIXED_FILE_CLOCK");
++    return v && strcmp(v, "1") == 0;
++}
++
++static void swotl_stamp_host(FILE *file) {
++    if (!swotl_fixed_file_clock()) return;
++    struct tm fixed = {};
++    fixed.tm_year = 91;
++    fixed.tm_mon = 0;
++    fixed.tm_mday = 1;
++    fixed.tm_hour = 12;
++    fixed.tm_isdst = -1;
++    const time_t stamp = mktime(&fixed);
++#ifdef WIN32
++    struct _utimbuf times = {stamp, stamp};
++    const int result = _futime(_fileno(file), &times);
++#else
++    struct timeval times[2] = {{stamp, 0}, {stamp, 0}};
++    const int result = futimes(fileno(file), times);
++#endif
++    if (result) E_Exit("SWOTL: cannot pin host file clock");
++}
++
+ bool localDrive::FileCreate(DOS_File * * file,const char * name,uint16_t attributes) {
+     if (nocachedir) EmptyCache();
+ 
+@@ -1464,6 +1493,7 @@
+ 		dirCache.AddEntry(newname, true);
+ 	}
+ 
++	swotl_stamp_host(hand);
+ 	/* Make the 16 bit device information */
+ 	*file=new LocalFile(name,hand);
+ 	(*file)->flags=OPEN_READWRITE;
+@@ -2828,6 +2858,7 @@
+ 			if (pos>-1) lseek(fileno(fhandle),pos,SEEK_SET);
+ 		} else
+ 			fseek(fhandle,ftell(fhandle),SEEK_SET);
++        if (swotl_host_written) swotl_stamp_host(fhandle);
+         if (!newtime) UpdateLocalDateTime();
+     }
+ 	last_action=READ;
+@@ -2884,9 +2915,15 @@
+ 	last_action=WRITE;
+ 	if (*size==0){
+ 		uint32_t pos=file_access_tries>0?lseek(fileno(fhandle),0,SEEK_CUR):ftell(fhandle);
+-		return !ftruncate(fileno(fhandle),pos);
++        const bool ok = !ftruncate(fileno(fhandle),pos);
++        if (ok && swotl_fixed_file_clock()) {
++            swotl_host_written = true;
++            swotl_stamp_host(fhandle);
++        }
++        return ok;
+ 	} else {
+ 		*size=file_access_tries>0?(uint16_t)write(fileno(fhandle),data,*size):(uint16_t)fwrite(data,1,*size,fhandle);
++        if (*size && swotl_fixed_file_clock()) swotl_host_written = true;
+ 		return true;
+ 	}
+ }
+@@ -3047,12 +3084,17 @@
+ 	*pos=*fake_pos;
+ #endif
+ 	*pos=file_access_tries>0?(uint32_t)lseek(fileno(fhandle),0,SEEK_CUR):(uint32_t)ftell(fhandle);
++    if (swotl_host_written) swotl_stamp_host(fhandle);
+ 	last_action=NONE;
+ 	return true;
+ }
+ 
+ bool LocalFile::Close() {
+     if (!newtime && fhandle && last_action == WRITE) UpdateLocalDateTime();
++    if (!newtime && fhandle && swotl_host_written) {
++        if (fflush(fhandle)) E_Exit("SWOTL: cannot flush host-clock file");
++        swotl_stamp_host(fhandle);
++    }
+     if (newtime && fhandle) {
+         // force STDIO to flush buffers on this file handle, or else fclose() will write buffered data
+         // and cause mtime to reset back to current time.
+@@ -3207,6 +3249,7 @@
+ 			fflush(fhandle);
+ 		}
+ 		last_action=NONE;
++        if (swotl_host_written) swotl_stamp_host(fhandle);
+         if (!newtime) UpdateLocalDateTime();
+ 	}
+ }

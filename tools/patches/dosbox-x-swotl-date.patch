@@ -1,0 +1,20 @@
+--- a/src/misc/swotl_trace.cpp
++++ b/src/misc/swotl_trace.cpp
+@@ -562,11 +562,15 @@
+ 	const char *ticks = getenv("SWOTL_BIOS_TICKS");
+ 	mem_writed(0x46c, ticks ? (uint32_t)strtoul(ticks, nullptr, 0) : 0);
+ 	mem_writeb(0x470, 0);
++	/* Recorded file-close metadata must not depend on the host calendar. */
++	dos.date.year = 1991;
++	dos.date.month = 1;
++	dos.date.day = 1;
+ 	MapRange((uint32_t)load_seg << 4, ROOT_IMAGE_BYTES, root, 0);
+ 	swotl_active = true;
+-	Event("arm", "load_seg=0x%04x psp=0x%04x bios_ticks=0x%08x", load_seg, dos.psp(),
+-	      mem_readd(0x46c));
++	Event("arm", "load_seg=0x%04x psp=0x%04x bios_ticks=0x%08x dos_date=1991-01-01",
++	      load_seg, dos.psp(), mem_readd(0x46c));
+ 	LOG_MSG("SWOTL: armed, root load segment %04x", load_seg);
+ }
+ 
+ std::string OverlayName(const uint16_t id) {

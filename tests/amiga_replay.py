@@ -74,6 +74,13 @@ def prepare(name, out):
     text += array('struct replay_step', 'replay_script', steps)
     text += 'static const uint32_t replay_service_hashes[] = {\n' + ','.join(map(str, hashes)) + '};\n'
     (out / 'replay_data.h').write_text(text)
+    calendar, clock = H.reference_clocks(trace)
+    stamp = H.dos_file_stamp(clock) if clock is not None else (0, 0)
+    (out / 'replay_clocks.h').write_text(
+        '/* Recorded external calendar inputs, diagnostic build only. */\n'
+        f'#define REPLAY_CALENDAR_DATE {calendar or 0}u\n'
+        f'#define REPLAY_FILE_TIME {stamp[0]}u\n'
+        f'#define REPLAY_FILE_DATE {stamp[1]}u\n')
     (out / 'expected.json').write_text(json.dumps(dict(services=len(services), interrupts=len(irqs), steps=len(steps))))
     print(f'{name}: {len(points)} diagnostic points, {len(irqs)} interrupts, {len(services)} service events', flush=True)
 

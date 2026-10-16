@@ -15,6 +15,9 @@
 #include "platform.h"
 #include "amiga_platform.h"
 #include "FileDate.h"
+#ifdef SWOTL_REPLAY
+#include "replay_clocks.h"
+#endif
 
 struct DosLibrary *DOSBase = 0;
 
@@ -22,11 +25,28 @@ struct DosLibrary *DOSBase = 0;
 #define GUEST_STACK_BYTES 0x10000
 
 static BPTR files[MAX_FILES];
+static uint8_t file_stamped[MAX_FILES], file_modified[MAX_FILES];
+static struct DateStamp file_stamps[MAX_FILES];
 
 int32_t amiga_guest_call(void *stack_top);
 static void key_script_step(void);
 static uint8_t *guest_block = 0;
 static uint8_t *guest_stack = 0;
+
+void *plat_alloc(uint32_t bytes)
+{
+    amiga_io_begin();
+    void *p = AllocVec(bytes, MEMF_ANY);
+    amiga_io_end();
+    return p;
+}
+
+void plat_free(void *p)
+{
+    amiga_io_begin();
+    FreeVec(p);
+    amiga_io_end();
+}
 
 static int32_t open_as(const char *path, LONG mode)
 {
@@ -37,6 +57,8 @@ static int32_t open_as(const char *path, LONG mode)
                 return -1;
             }
             files[k] = f;
+            file_stamped[k] = 0;
+            file_modified[k] = mode == MODE_NEWFILE;
             return k;
         }
     }
@@ -66,6 +88,7 @@ int32_t plat_write(int32_t handle, const void *buffer, uint32_t length)
     amiga_io_begin();
     int32_t n = length ? Write(files[handle], (APTR)buffer, (LONG)length)
                        : SetFileSize(files[handle], 0, OFFSET_CURRENT) < 0 ? -1 : 0;
+    if (n >= 0) file_modified[handle] = 1;
     amiga_io_end();
     return n;
 }
@@ -98,12 +121,46 @@ int32_t plat_seek(int32_t handle, int32_t offset, int32_t whence)
     return position;
 }
 
+uint32_t plat_calendar_date(void)
+{
+#ifdef SWOTL_REPLAY
+    if (REPLAY_CALENDAR_DATE) return REPLAY_CALENDAR_DATE;
+#endif
+    struct DateStamp stamp;
+    uint16_t time, date;
+    amiga_io_begin();
+    DateStamp(&stamp);
+    amiga_io_end();
+    amiga_file_date(stamp.ds_Days, stamp.ds_Minute, stamp.ds_Tick, &time, &date);
+    return (uint32_t)(1980 + (date >> 9)) << 16 |
+           (uint32_t)((date >> 5) & 15) << 8 | (date & 31);
+}
+
+void plat_file_stamp(int32_t handle, uint32_t time, uint32_t date)
+{
+    amiga_date_stamp((uint16_t)time, (uint16_t)date,
+                     &file_stamps[handle].ds_Days, &file_stamps[handle].ds_Minute,
+                     &file_stamps[handle].ds_Tick);
+    file_stamped[handle] = 1;
+}
+
 void plat_close(int32_t handle)
 {
+#ifdef SWOTL_REPLAY
+    if (REPLAY_FILE_DATE && file_modified[handle] && !file_stamped[handle])
+        plat_file_stamp(handle, REPLAY_FILE_TIME, REPLAY_FILE_DATE);
+#endif
+    char path[512];
     amiga_io_begin();
-    Close(files[handle]);
+    /* Resolve before closing; apply after Close so its filesystem stamp cannot
+     * overwrite the DOS timestamp. NameFromFH also survives a changed cwd. */
+    int named = !file_stamped[handle] || NameFromFH(files[handle], (STRPTR)path, sizeof path);
+    int closed = Close(files[handle]);
+    int stamped = !file_stamped[handle] ||
+                  (named && closed && SetFileDate((CONST_STRPTR)path, &file_stamps[handle]));
     amiga_io_end();
     files[handle] = 0;
+    if (!stamped) rt_stop("cannot set file timestamp", handle, 0);
 }
 
 int32_t plat_dir_entry(const char *dir, uint32_t index, char *name, struct plat_file_info *info)
@@ -428,6 +485,7 @@ long amiga_guest_run(void)
 void amiga_guest_close(void)
 {
     timer_close();
+    rt_dos_close();
     for (int32_t k = 0; k < MAX_FILES; ++k) {
         if (files[k]) {
             plat_close(k);

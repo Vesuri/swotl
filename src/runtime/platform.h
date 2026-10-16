@@ -6,6 +6,10 @@
 
 #include <stdint.h>
 
+/* Native runtime storage; allocation failure returns null. */
+void *plat_alloc(uint32_t bytes);
+void plat_free(void *memory);
+
 /* path: game-relative, upper case, '/' separated ("DATA.OVL"). mode 0 read,
  * 1 write, 2 read/write (existing file). < 0 if missing. */
 int32_t plat_open(const char *path, int32_t mode);
@@ -19,6 +23,10 @@ int32_t plat_delete(const char *path);
 /* whence 0 start, 1 current, 2 end; returns the new position, < 0 on error */
 int32_t plat_seek(int32_t handle, int32_t offset, int32_t whence);
 void plat_close(int32_t handle);
+/* DOS caches the local calendar at startup: year:16, month:8, day:8. */
+uint32_t plat_calendar_date(void);
+/* Retain this explicit DOS timestamp when the open file is closed. */
+void plat_file_stamp(int32_t handle, uint32_t dos_time, uint32_t dos_date);
 /* Entry `index` (0 first) of the files in directory `dir` (game-relative as
  * above, "" the game directory): name (up to 12 chars + NUL, case as stored)
  * and metadata (local calendar, DOS packed time/date); 0 past the last. */

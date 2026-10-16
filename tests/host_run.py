@@ -24,6 +24,7 @@ Exit 1 on any difference, a runtime stop or the time limit.
 
 from __future__ import annotations
 
+import json
 import argparse
 import csv
 import struct
@@ -176,6 +177,7 @@ class MemFile:
     def __init__(self, data: bytearray):
         self.data, self.pos = data, 0
         self.modified = False
+        self.dos_stamp = None
 
     def read(self, n: int) -> bytes:
         out = bytes(self.data[self.pos:self.pos + n])
@@ -204,6 +206,8 @@ class MemFile:
 class Host:
     def __init__(self, ref_root: Path, sabotage: str | None = None, music_skip: bool = False):
         self.root = ref_root
+        self.file_clock = None
+        self.calendar_date = None
         self.sabotage = sabotage
         functions = {}
         entry, segs, self.syms = elf_load(ELF, functions)
@@ -214,6 +218,8 @@ class Host:
             e.write(vaddr, data + bytes(memsz - len(data)))
         self.entry = entry
         self.files: dict[int, object] = {}
+        self.allocations = {}
+        self.free_spans = [(0x900000, 0x500000)]
         self.next_file = 1
         self.written: dict[str, bytearray] = {}  # files the guest wrote (game path -> bytes)
         self.file_stamps: dict[str, tuple[int, int]] = {}
@@ -222,9 +228,9 @@ class Host:
         self.exit: int | None = None
         self.services: list[tuple[str, dict]] = []
         self.stopped_at: str | None = None
-        self.stubs = {self.syms[n]: n for n in ("plat_open", "plat_create", "plat_read", "plat_write",
+        self.stubs = {self.syms[n]: n for n in ("plat_alloc", "plat_free", "plat_open", "plat_create", "plat_read", "plat_write",
                                                 "plat_delete", "plat_seek",
-                                                "plat_close", "plat_dir_entry", "plat_timer_rate", "plat_mouse", "plat_present", "plat_palette",
+                                                "plat_calendar_date", "plat_file_stamp", "plat_close", "plat_dir_entry", "plat_timer_rate", "plat_mouse", "plat_present", "plat_palette",
                                                 "plat_service", "plat_log", "plat_exit")}
         self.mouse_dx = self.mouse_dy = self.mouse_buttons = 0
         self.presents = 0
@@ -479,7 +485,26 @@ class Host:
                 matches = [p for p in path.iterdir() if p.name.upper() == part] if path.is_dir() else []
                 path = matches[0] if matches else self.root / "\0"
             on_disk = path.is_file() and name not in self.deleted
-        if n == "plat_dir_entry":
+        if n == "plat_alloc":
+            size = (args[0] + 3) & ~3
+            for i, (address, length) in enumerate(self.free_spans):
+                if length >= size:
+                    self.allocations[address] = size
+                    self.free_spans[i:i+1] = [(address+size, length-size)] if length > size else []
+                    res = address
+                    break
+        elif n == "plat_free":
+            address = args[0]
+            size = self.allocations.pop(address)
+            spans = sorted(self.free_spans + [(address, size)])
+            self.free_spans = []
+            for address, length in spans:
+                if self.free_spans and sum(self.free_spans[-1]) == address:
+                    previous, size = self.free_spans.pop()
+                    self.free_spans.append((previous, size+length))
+                else:
+                    self.free_spans.append((address, length))
+        elif n == "plat_dir_entry":
             prefix = name + "/" if name else ""
             disk = {p.name: (p.stat().st_size, *dos_file_stamp(p.stat().st_mtime)) for p in path.iterdir()
                     if p.is_file() and len(p.name) <= 12 and prefix + p.name.upper() not in self.deleted} \
@@ -504,7 +529,7 @@ class Host:
                 res = -1
         elif n == "plat_create":
             self.written[name] = bytearray()
-            self.file_stamps[name] = dos_file_stamp(time.time())
+            self.file_stamps[name] = dos_file_stamp(self.file_clock if self.file_clock is not None else time.time())
             self.deleted.discard(name)
             self.files[self.next_file] = MemFile(self.written[name])
             res, self.next_file = self.next_file, self.next_file + 1
@@ -529,12 +554,21 @@ class Host:
             f = self.files[args[0]]
             off = args[1] - (1 << 32) if args[1] & 0x80000000 else args[1]
             res = f.seek(off, args[2])
+        elif n == "plat_calendar_date":
+            calendar = time.localtime(time.time())
+            res = self.calendar_date if self.calendar_date is not None else \
+                calendar.tm_year << 16 | calendar.tm_mon << 8 | calendar.tm_mday
+        elif n == "plat_file_stamp":
+            f = self.files[args[0]]
+            if not isinstance(f, MemFile):
+                raise AssertionError('explicit timestamp on a read-only platform file')
+            f.dos_stamp = (args[1], args[2])
         elif n == "plat_close":
             f = self.files.pop(args[0])
             if isinstance(f, MemFile) and f.modified:
                 for name, data in self.written.items():
                     if data is f.data:
-                        self.file_stamps[name] = dos_file_stamp(time.time())
+                        self.file_stamps[name] = f.dos_stamp or dos_file_stamp(self.file_clock if self.file_clock is not None else time.time())
             f.close()
         elif n == "plat_mouse":
             self.e.write(args[0], struct.pack(">i", self.mouse_dx))
@@ -1006,6 +1040,25 @@ def check_sfx(h) -> list[str]:
     return [f"sfx_start: {len(h.sfx_bad)} reports differ, first {h.sfx_bad[0]}"] if h.sfx_bad else []
 
 
+def reference_clocks(trace):
+    """Use recorded external inputs; old captures retain their unpinned clocks."""
+    with (trace / 'events.csv').open() as f:
+        arm = next(csv.DictReader(f))
+    assert arm['kind'] == 'arm', arm
+    detail = dict(kv.split('=', 1) for kv in arm['detail'].split())
+    calendar = None
+    if 'dos_date' in detail:
+        y, m, d = map(int, detail['dos_date'].split('-'))
+        calendar = y << 16 | m << 8 | d
+    source = trace.parent / 'clock-inputs.json'
+    clock = None
+    if source.exists():
+        fields = json.loads(source.read_text())
+        assert fields['SWOTL_FIXED_FILE_CLOCK'] == '1' and fields['basis'] == 'local calendar'
+        clock = time.mktime(time.strptime(fields['host_file_clock'], '%Y-%m-%dT%H:%M:%S'))
+    return calendar, clock
+
+
 def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None,
           music_skip: bool = False, sound_log: Path | None = None) -> list[str]:
     class args:  # noqa: N801
@@ -1016,6 +1069,7 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
     trace = REPO / f"tmp/pc-runs/ref-{args.milestone}/trace"
     snap = trace / f"snap-{args.milestone}-{len(script['snapshots']) - 1}"  # where the run stops
     h = Host(image.M.REF, sabotage, music_skip)
+    h.calendar_date, h.file_clock = reference_clocks(trace)
     label = script["snapshots"][-1][0]
     script["irqs"], script["releases"] = reference_inputs(trace)
     summary = dict(kv.split("=", 1) for kv in (trace / "summary.txt").read_text().split())

@@ -3,12 +3,16 @@
 ; stack, 68020 C ABI), sets d0 and lets the stub return.
 
 	xdef	_start
+	xdef	plat_alloc
+	xdef	plat_free
 	xdef	plat_open
 	xdef	plat_read
 	xdef	plat_create
 	xdef	plat_write
 	xdef	plat_delete
 	xdef	plat_seek
+	xdef	plat_calendar_date
+	xdef	plat_file_stamp
 	xdef	plat_close
 	xdef	plat_dir_entry
 	xdef	plat_timer_rate
@@ -29,6 +33,10 @@ _start:
 	illegal
 
 host_stubs:
+plat_alloc:	nop
+	rts
+plat_free:	nop
+	rts
 plat_open:	nop
 	rts
 plat_read:	nop
@@ -40,6 +48,10 @@ plat_write:	nop
 plat_delete:	nop
 	rts
 plat_seek:	nop
+	rts
+plat_calendar_date:	nop
+	rts
+plat_file_stamp:	nop
 	rts
 plat_close:	nop
 	rts

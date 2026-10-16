@@ -9,8 +9,105 @@
 #define FIRST_FILE_SFT 3        /* reference: SFT 0-2 are AUX, CON, PRN */
 
 static int32_t file_of_sft[FILES];   /* platform handle per SFT entry, -1 free */
+enum file_action { FILE_NONE, FILE_READ, FILE_WRITE };
+static uint8_t file_action[FILES], file_stamped[FILES];
+static uint16_t file_time[FILES], file_date[FILES];
+static uint32_t dos_calendar; /* year:16, month:8, day:8; cached by DOS */
+static uint32_t dos_centiseconds(void);
+
+static void stamp_file(uint8_t sft)
+{
+    if (!file_stamped[sft]) {
+        /* Original reads the cached date before reading time (which consumes
+         * the BIOS midnight count), and retains this stamp across later writes. */
+        uint32_t date = dos_calendar;
+        uint32_t t = dos_centiseconds() / 100;
+        file_date[sft] = (uint16_t)((((date >> 16) - 1980) & 127) << 9 |
+                                  ((date >> 8) & 255) << 5 | (date & 255));
+        file_time[sft] = (uint16_t)((t / 3600 % 24) << 11 |
+                                  (t / 60 % 60) << 5 | (t % 60) / 2);
+        file_stamped[sft] = 1;
+    }
+}
+
 static uint16_t dta_seg, dta_off = 0x80;  /* AH=1Ah; reference: PSP:80h at start */
-static char find_dir[80];            /* directory of the last find-first */
+/* DOSBox DOS swappable data area, located by INT 21h/AH=34h in the oracle. */
+#define DOS_SDA 0x0a30u
+#define SDA_DTA 0x0cu
+static void set_dta(uint16_t seg, uint16_t off)
+{
+    dta_seg = seg;
+    dta_off = off;
+    wr16(DOS_SDA + SDA_DTA, off);
+    wr16(DOS_SDA + SDA_DTA + 2, seg);
+}
+
+/* DOSBox's search slots are independent of the DTA and its pattern. */
+#define SEARCH_SLOTS 2048
+struct search_name { struct search_name *next; char name[13]; };
+static struct { char directory[80]; struct search_name *remaining; uint8_t active; } searches[SEARCH_SLOTS];
+static uint16_t next_search;
+
+static void search_free(uint16_t slot)
+{
+    struct search_name *p = searches[slot].remaining;
+    while (p) {
+        struct search_name *next = p->next;
+        plat_free(p);
+        p = next;
+    }
+    searches[slot].remaining = 0;
+    searches[slot].active = 0;
+}
+
+void rt_dos_close(void)
+{
+    for (int k = 0; k < SEARCH_SLOTS; ++k) search_free(k);
+}
+
+static int name_order(const char *a, const char *b)
+{
+    while (*a && *a == *b) { ++a; ++b; }
+    return (uint8_t)*a - (uint8_t)*b;
+}
+
+static void search_snapshot(uint16_t slot)
+{
+    char name[13];
+    struct plat_file_info info;
+    for (uint32_t i = 0; plat_dir_entry(searches[slot].directory, i, name, &info); ++i) {
+        struct search_name *p = plat_alloc(sizeof *p);
+        if (!p) rt_stop("directory snapshot allocation", slot, i);
+        int k = 0;
+        do {
+            char c = name[k];
+            p->name[k] = c >= 'a' && c <= 'z' ? (char)(c - 32) : c;
+        } while (name[k++]);
+        struct search_name **at = &searches[slot].remaining;
+        while (*at && name_order((*at)->name, p->name) < 0) at = &(*at)->next;
+        p->next = *at;
+        *at = p;
+    }
+}
+
+/* Names are snapshotted; metadata is read at FindNext, as DOSBox stats each
+ * surviving name. New files cannot enter a search already in progress. */
+static int search_next(uint16_t slot, char *name, struct plat_file_info *info)
+{
+    while (searches[slot].remaining) {
+        struct search_name *p = searches[slot].remaining;
+        searches[slot].remaining = p->next;
+        for (int k = 0;; ++k) { name[k] = p->name[k]; if (!name[k]) break; }
+        plat_free(p);
+        char current[13];
+        for (uint32_t i = 0; plat_dir_entry(searches[slot].directory, i, current, info); ++i) {
+            for (int k = 0; current[k]; ++k)
+                if (current[k] >= 'a' && current[k] <= 'z') current[k] -= 32;
+            if (!name_order(name, current)) return 1;
+        }
+    }
+    return 0;
+}
 
 uint16_t rt_psp(void)
 {
@@ -19,7 +116,14 @@ uint16_t rt_psp(void)
 
 void rt_dos_init(void)
 {
-    dta_seg = rt_psp();
+    for (uint32_t i = 0; i < 28; ++i) wr8(DOS_SDA + i, 0);
+    wr8(DOS_SDA + 2, 0xff);     /* no critical-error drive */
+    wr16(DOS_SDA + 0x10, rt_psp());
+    wr8(DOS_SDA + 0x16, 2);     /* current drive C: */
+    set_dta(rt_psp(), 0x80);
+    next_search = 0;
+    rt_dos_close();
+    dos_calendar = plat_calendar_date();
     for (int k = 0; k < FILES; ++k) {
         file_of_sft[k] = -1;
     }
@@ -78,6 +182,8 @@ static void install(int32_t f)
         return;
     }
     file_of_sft[sft] = f;
+    file_action[sft] = FILE_NONE;
+    file_stamped[sft] = 0;
     wr8(jft(h), sft);
     rt_r.ax = h;
     set_cf(0);
@@ -110,6 +216,7 @@ static void create_file(void)
         fail(5);
         return;
     }
+    next_search = 0;  /* DOS create empties the cache but retains live searches. */
     install(f);
 }
 
@@ -148,6 +255,7 @@ static void write_file(uint16_t cs, uint16_t ip)
         fail(5);
         return;
     }
+    file_action[rd8(jft(rt_r.bx))] = FILE_WRITE;
     rt_r.ax = (uint16_t)put;
     set_cf(0);
 }
@@ -159,7 +267,10 @@ static void close_file(void)
         fail(6);
         return;
     }
-    file_of_sft[rd8(jft(rt_r.bx))] = -1;
+    uint8_t sft = rd8(jft(rt_r.bx));
+    if (file_action[sft] == FILE_WRITE) stamp_file(sft);
+    if (file_stamped[sft]) plat_file_stamp(f, file_time[sft], file_date[sft]);
+    file_of_sft[sft] = -1;
     wr8(jft(rt_r.bx), 0xff);
     plat_close(f);
     SET_AL(rt_r.ax, 1);         /* reference: AL = reference count before close */
@@ -177,6 +288,9 @@ static void read_file(void)
     if (a + rt_r.cx > RT_GUEST_BYTES) {
         rt_stop("read past guest memory", a, rt_r.cx);
     }
+    uint8_t sft = rd8(jft(rt_r.bx));
+    if (file_action[sft] == FILE_WRITE) stamp_file(sft);
+    file_action[sft] = FILE_READ;
     /* Through a buffer: a short read (end of file) must leave the rest of the
      * reversed span untouched. */
     static uint8_t buf[0x1000];
@@ -211,6 +325,7 @@ static void seek_file(void)
         fail(0x19);
         return;
     }
+    file_action[rd8(jft(rt_r.bx))] = FILE_NONE;
     rt_r.ax = (uint16_t)pos;
     rt_r.dx = (uint16_t)((uint32_t)pos >> 16);
     set_cf(0);
@@ -339,8 +454,19 @@ static void resize(uint16_t cs, uint16_t ip)
 
 /* AH=2Ch: DOS time from the BIOS tick count (reference: no RTC read after
  * start-up), hundredths = ticks * 100 * 65536 / 1193182, exact. */
-static void get_time(void)
+static uint32_t dos_centiseconds(void)
 {
+    uint8_t days = rd8(0x470);
+    wr8(0x470, 0);
+    while (days--) {
+        uint32_t year = dos_calendar >> 16, month = (dos_calendar >> 8) & 255;
+        uint32_t day = (dos_calendar & 255) + 1;
+        static const uint8_t lengths[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+        uint32_t length = lengths[month - 1] + (month == 2 && year % 4 == 0 &&
+                                               (year % 100 != 0 || year % 400 == 0));
+        if (day > length) { day = 1; if (++month > 12) { month = 1; ++year; } }
+        dos_calendar = year << 16 | month << 8 | day;
+    }
     uint32_t ticks = rd32(0x46c);
     uint32_t a = ticks * 100, q = a / 1193182, r = a % 1193182;
     uint32_t t = q * 65536;
@@ -348,10 +474,17 @@ static void get_time(void)
     t += (r / 1193182) * 256;
     r = (r % 1193182) * 256;
     t += r / 1193182;
+    return t;
+}
+
+static void get_time(void)
+{
+    uint8_t midnight = rd8(0x470);
+    uint32_t t = dos_centiseconds();
     rt_r.dx = (uint16_t)((t / 100 % 60) << 8 | t % 100);
     t /= 6000;
     rt_r.cx = (uint16_t)((t / 60 % 24) << 8 | t % 60);
-    SET_AL(rt_r.ax, 0);
+    SET_AL(rt_r.ax, midnight);
 }
 
 /* AH=08h: CON input, no echo, as the reference's CON device reads INT 16h
@@ -385,7 +518,7 @@ static void read_char(uint16_t cs, uint16_t ip)
 #define DTA_SPNAME 0x01     /* the pattern's name part as written, 8 bytes */
 #define DTA_SPEXT 0x09      /* its extension, 3 bytes */
 #define DTA_SATTR 0x0c
-#define DTA_NEXT 0x0d       /* reference dirID; here the next platform entry */
+#define DTA_SEARCH 0x0d     /* DOSBox directory-search slot */
 #define DTA_ATTR 0x15
 #define DTA_TIME 0x16
 #define DTA_DATE 0x18
@@ -429,6 +562,11 @@ static int field_len(uint32_t a, int max)
 static int find_next_entry(void)
 {
     uint32_t dta = lin(dta_seg, dta_off);
+    uint16_t slot = rd16(dta + DTA_SEARCH);
+    if (slot >= SEARCH_SLOTS || !searches[slot].active) {
+        fail(0x12);
+        return 0;
+    }
     char pat[11], fcb[11], spname[8], spext[3], name[16];
     for (int k = 0; k < 8; ++k) {
         spname[k] = (char)rd8(dta + DTA_SPNAME + k);
@@ -438,8 +576,7 @@ static int find_next_entry(void)
     }
     fcb_form(spname, field_len(dta + DTA_SPNAME, 8), spext, field_len(dta + DTA_SPEXT, 3), pat);
     struct plat_file_info info;
-    for (uint16_t index = rd16(dta + DTA_NEXT); plat_dir_entry(find_dir, index, name, &info);
-         ++index) {
+    while (search_next(slot, name, &info)) {
         int n = 0;
         for (; name[n]; ++n) {
             name[n] = name[n] >= 'a' && name[n] <= 'z' ? (char)(name[n] - 32) : name[n];
@@ -459,7 +596,6 @@ static int find_next_entry(void)
         if (!match) {
             continue;
         }
-        wr16(dta + DTA_NEXT, index + 1);
         wr8(dta + DTA_ATTR, 0x20);  /* archive, as AH=43h */
         wr16(dta + DTA_TIME, info.dos_time);
         wr16(dta + DTA_DATE, info.dos_date);
@@ -471,6 +607,7 @@ static int find_next_entry(void)
         set_cf(0);
         return 1;
     }
+    searches[slot].active = 0;
     fail(0x12);  /* no more files */
     return 0;
 }
@@ -483,6 +620,20 @@ static void find_first(uint16_t cs, uint16_t ip)
     if (AL(rt_r.cx) & 0x08) {
         rt_unsupported("find first of a volume label", 0x21, cs, ip);
     }
+    uint16_t checked = 0;
+    while (checked < SEARCH_SLOTS && searches[next_search].active) {
+        next_search = (next_search + 1) % SEARCH_SLOTS;
+        ++checked;
+    }
+    if (checked == SEARCH_SLOTS) {
+        rt_dos_close();
+        next_search = 0;
+    }
+    uint16_t slot = next_search;
+    next_search = (next_search + 1) % SEARCH_SLOTS;
+    searches[slot].active = 1;
+    searches[slot].remaining = 0;
+    char *find_dir = searches[slot].directory;
     int slash = -1;
     for (int k = 0; path[k]; ++k) {
         slash = path[k] == '/' ? k : slash;
@@ -491,6 +642,7 @@ static void find_first(uint16_t cs, uint16_t ip)
         find_dir[k] = path[k];
     }
     find_dir[slash < 0 ? 0 : slash] = 0;
+    search_snapshot(slot);
     const char *pattern = path + slash + 1;
     uint32_t dta = lin(dta_seg, dta_off);
     for (int k = 0; k < 11; ++k) {
@@ -508,7 +660,7 @@ static void find_first(uint16_t cs, uint16_t ip)
     for (int k = 0; pattern[n] && pattern[n + 1 + k] && k < 3; ++k) {
         wr8(dta + DTA_SPEXT + k, (uint8_t)pattern[n + 1 + k]);
     }
-    wr16(dta + DTA_NEXT, 0);
+    wr16(dta + DTA_SEARCH, slot);
     find_next_entry();
 }
 
@@ -522,13 +674,13 @@ void rt_int21(uint16_t cs, uint16_t ip)
         wr16(p + 0x30, G_SS);
     }
     switch (ah) {
+    case 0x0d: break;  /* DOSBox disk reset preserves registers and search slots. */
     case 0x08: read_char(cs, ip); break;
     case 0x0b:  /* CON input status */
         SET_AL(rt_r.ax, rt_key_available() ? 0xff : 0x00);
         break;
     case 0x1a:
-        dta_seg = G_DS;
-        dta_off = rt_r.dx;
+        set_dta(G_DS, rt_r.dx);
         break;
     case 0x1b:  /* reference: allocation info of drive C: */
         SET_AL(rt_r.ax, 0x40);

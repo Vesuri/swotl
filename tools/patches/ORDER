@@ -3,3 +3,5 @@ dosbox-x-swotl-mouse.patch
 dosbox-x-swotl-sound.patch
 dosbox-x-swotl-time-limit.patch
 dosbox-x-swotl-read-data.patch
+dosbox-x-swotl-date.patch
+dosbox-x-swotl-host-clock.patch

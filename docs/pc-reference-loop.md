@@ -84,6 +84,14 @@ Facts about the originals: [source-inventory.md](source-inventory.md).
 | Summary | `make trace-summary RUN=name` |
 | Image proof | `tools/load_image.py <snap>` (gate 1, also run by `make reference`): rebuilds root + overlays from `ref/` with the loader model ([source-inventory.md](source-inventory.md)); every byte of every resident row equals the rebuilt byte, the last traced DOS read, or has a CPU writer. Lists self-modified executed bytes by writer |
 
+File-metadata references pin the DOS startup date to 1991-01-01 and the
+host filesystem clock to local noon that day. These are separate inputs:
+DOSBox uses DOS time for write-close, can retain a prior read-time stamp,
+and uses filesystem time for empty creation or write-seek-close. The arm
+event records the DOS date; `clock-inputs.json` records the host-clock input.
+Host checks and diagnostic Amiga replay use those inputs. Existing-file
+dates, comparisons and interrupt scheduling are unchanged.
+
 Trace outputs (`tmp/pc-runs/<name>/trace/`, written at exit):
 
 | File | Content |
