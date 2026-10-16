@@ -267,6 +267,7 @@ class MemFile:
 
 class Host:
     def __init__(self, ref_root: Path, sabotage: str | None = None, music_skip: bool = False):
+        self.launch = ""
         self.root = ref_root
         self.file_clock = None
         self.calendar_date = None
@@ -487,6 +488,13 @@ class Host:
             if self.watching:
                 return
             self.watching = True
+            # Model the DOS shell's no-argument launch before the first guest
+            # instruction; normal fixtures retain machine.c's default PSP.
+            if self.launch:
+                psp = (self.u32(self.syms["load_segment"]) - 0x10) * 16
+                for off in (0x5d, 0x6d):
+                    self.e.write(TOP - psp - off, b" ")
+                self.e.write(TOP - psp - 0xff, (b"\0\r" + bytes(126))[::-1])
             if self.sabotage == "psp":
                 a = TOP - (0x8120 + 0x82)
                 self.e.write(a, bytes([self.mem(a, 1)[0] ^ 0x20]))
@@ -697,6 +705,9 @@ class Host:
         Hardware interrupts replay the reference's (script["irqs"]): posted at
         the same visit of the same poll point after the same service event;
         key release eligibility uses recorded trigger visits when available."""
+        self.launch = script.get("launch", "") if script else ""
+        if self.launch.lower() not in ("", "swotl", "swotl.exe"):
+            raise ValueError(f"unsupported host launch: {self.launch}")
         steps = [(t, k) for t, k in script["keys"]] + [(t, None) for t in script["snapshots"]] \
             if script else []
         releases = list(script["releases"]) if script else []
@@ -877,7 +888,7 @@ def milestone_script(name: str) -> dict:
         spec, _, key = k.partition("=")
         keys.append((trigger(spec), key if key.startswith(("mx", "my", "mb")) else key_code(key)))
     return {"keys": keys, "snapshots": [trigger(s) for s in r["snapshots"].split()],
-            "frame": r["vga_mode"] == "13"}
+            "frame": r["vga_mode"] == "13", "launch": r["launch"]}
 
 
 def machine_ranges() -> list[tuple[int, int]]:

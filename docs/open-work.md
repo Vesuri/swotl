@@ -6,14 +6,29 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Guest map follow-ups
 
-9b. 206 indirect sites are static-only (no traced target,
-   `annotations/indirect.csv`). 186 are proved switch tables or `lcall`
-   through a DGROUP slot whose other sites trace one PLINK thunk; 20 have
-   neither: C runtime exit/error paths (SWOTL+13754..+15B8A, 11), `call dx`
-   +4F7B/+50A5, FLIGHT+17DB4 `[6A60]`, FRONTEND+1958/+1B54 `[28EC]`,
-   NOTCAMP+3DBC `[5FCE]`/+487C `[6104]`, PANEL+3159/+3215 `[68EE]`. Not
-   scripted yet: campaign flight operations, film load (mouse pick in the
-   list), custom mission creation, other German/US aircraft.
+9b. 29 indirect sites are static-only (`annotations/indirect.csv`):
+   Static evidence is not execution coverage. Callback targets remain
+   unresolved at SWOTL+137F7/+1380D/+138EB (`[5876]`), +14459 (`[56F0]`)
+   and +15B8A (`[5856]`); their original initial values disable the hooks.
+   Three sites are outside VGA scope. SWOTL+4F7B/+50A5 require
+   `[2581]=0`: the out-of-scope
+   EGA/Tandy walk (D16). VGA sets it to 1 at +3C03; all ten callers of
+   setup +E50E pass its current value. FRONTEND+A90D is reached only through
+   +A8FB/+A900 testing `[9936]=0` (EGA); all admitted incoming edges are
+   fall-through, with no external seed. Keep these guards and static rows.
+   Original flight snapshots resolve `[6A60]` → RTSVGA+44F1 and `[68EE]` →
+   RTSVGA+4385 through PLINK thunks. Their setters are SWOTL+3B51 and
+   +3B42; these targets do not prove the calling sites ran.
+   C-runtime calls +14D4F/+14D74/+14D8D/+14DAB use DGROUP slots
+   583C/5840/5848/584C. DATA initializers and their segment relocations
+   resolve all four to SWOTL+150F2 (`1369:1A62`, the FP-not-loaded stub),
+   also present in original snapshots. This is an initial-target fact,
+   not a closed target-set or reachability proof; retain dynamic dispatch.
+   The near callback at SWOTL+13754 uses slot 5638: its DATA initializer
+   020B resolves to +1389B; the divide-error handler at +1373D writes 01F4,
+   resolving to +13884. Neither fact proves execution of the callback.
+   c26 usage exit reaches an unimplemented EMS release service (INT 67h,
+   AH=45h) on the host; its original trace supplies the +1391D → +15DFE target.
 9c. PLINK flag bit 13 (set on DATA only): meaning unknown; no effect seen.
 9e. `tools/sweep.py` does not seed `annotations/runtime.csv` entries, so
    `callf [56EAh]` at SWOTL+140DB (`__harderr_handler`) has no

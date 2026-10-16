@@ -175,6 +175,26 @@ service-only release format.
 | c12-b17-bombing | U, F, 4, 3, S; c6's flight keys | B-17 bombing mission; the setup writes walk cells up to `+8A6B` |
 | c13-me262-gunnery | G, F, 3, 1, S; c6's flight keys | Me 262 flight |
 | c14-film-save | c6, then D, S, name A, Enter | film saved as `A.RPY` |
+| c15-p51-gunnery | U, F, 2, 1, S; c6's flight keys | P-51B flight |
+| c16-p51d-gunnery | U, F, 3, 1, S; c6's flight keys | P-51D flight |
+| c17-p38-gunnery | U, F, 5, 1, S; c6's flight keys | P-38 flight |
+| c18-p80-gunnery | U, F, 6, 1, S; c6's flight keys | P-80 flight |
+| c19-fw190-gunnery | G, F, 2, 1, S; c6's flight keys | FW 190 flight |
+| c21-go229-gunnery | G, F, 5, 1, S; c6's flight keys | GO 229 flight |
+| c24-custom-create | U, C, C; select Leiston, create a P-47 group, assign the player, exit and save | custom mission `UNNAMEDA.MIS` |
+| c25-film-load | save A.RPY, end mission, select and load A from the main-menu viewer | REPLAY + FLIGHT resident; image proof and host comparison pass |
+| c26-exit-usage | launch `swotl` without arguments | root +138DE after C exit callbacks; host needs EMS release (AH=45h) |
+| c27-campaign-flight | strategic campaign, transfer reserve group to Leiston, skip week, create flight group, start | FLIGHT resident, +44E2 #1000 |
+| c28-me163-map-return | full c20 key sequence, then exit the in-flight map | FLIGHT resident, +44E2 #100; NOTCAMP+487C/+48B6 executed |
+| c29-he162-map-return | full c22 key sequence, then exit the in-flight map | FLIGHT resident, +44E2 #100 |
+| c30-do335-map-return | full c23 key sequence, then exit the in-flight map | FLIGHT resident, +44E2 #100 |
+| c31-map-briefing-return | full c20 key sequence, then Briefing, Map, Exit | FLIGHT resident, +44E2 #100; NOTCAMP+4857 executed |
+| c32-historical-high-view | c1, then Space, A, 0 | 12:00 HIGH view, FLIGHT and PANEL resident; PANEL+263B executed |
+| c33-b17-stations | B-17 school, gunner views, pilot/bombardier/pilot | PANEL+2A69/+2B99 executed; FLIGHT and PANEL resident |
+| c34-custom-reload | c24, select and load the saved mission | FRONTEND+5DF6/+5E29; host comparison passes |
+| c35-custom-options | custom flight group, mission/aircraft choices, weapons | FRONTEND+D21B/+D23C; host comparison passes |
+| c36-custom-flight | c24, exit editor, Fly Custom Mission, select saved mission, Start | NOTCAMP+832C/+835F; flight; host comparison passes |
+| c37-custom-roster | custom mission, Briefing, Weapons, Roster | FRONTEND+CAB6/+CB06/+DDF2/+DE1E/+DE3F; host comparison passes |
 
 Amiga regression: `AMIGA_CPU=68030 bash amiga/play_walk.sh` (then `68040`).
 The bounded `KEYS=` script enters flight and banks with mouse motion;
