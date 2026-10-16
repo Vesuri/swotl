@@ -294,9 +294,9 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R17 | palette validity per physical back buffer | Amiga platform | outside meter (later bench −2.81–3.61%, D5/D6) |
 | R18 | TF/IF/DF extraction with register bitfields; meter operand and A/B selection fixes | `support.py`, tools | −0.0126% |
 
-No further exact translator form is known (§2): the cell walk (R7b
-declined, §10), poll points (`(a6)` is guest byte 0; no thinning),
-`mulu`/`divu` themselves, stack accesses. The translator helpers
+Unpriced candidates: open-work 31 and the cell cache re-price (D3,
+open-work 32). No form left (§2): poll points (`(a6)` is guest byte 0; no
+thinning), `mulu`/`divu` themselves. The translator helpers
 `__set_flags` (POPF/IRET) and `__flags_word` are the largest runtime-side
 items left.
 
@@ -469,6 +469,8 @@ Evidence: `tmp/item14b-agent/flags-*` (frozen arms, count/cost reports).
 - **D2.** R6 may grow the code beyond +5% when each guarded copy lowers
   model cycles; the +25% stop in §3 remains.
 - **D3.** Cell cache (R7b) with exact invalidation (not built, §10).
+  Re-price approved 2026-10-17: RET-aware, consecutive destinations a long
+  at a time (open-work 32).
 - **D4.** Deterministic frame bench (§4).
 - **D5 (2026-10-14).** Bench-based acceptance for layout and Amiga platform
   work outside the host meter; all fidelity gates and no slowdown remain.
