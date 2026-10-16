@@ -34,6 +34,8 @@ TABLES = [";", "; tables of the flag helpers"] + _table("__ccr_flags", "w", _CCR
     _table("__sahf_ccr", "b", _SAHF_CCR) + _table("__parity", "b", _PARITY)
 
 
+# Local helper branches have explicit short encodings: leaving these to
+# vasm adds a relaxation cascade after the combined block-test image.
 HELPERS = r"""
 ; d7 := PF (0/1): even parity of G_PF
 __getpf:
@@ -57,13 +59,13 @@ __flags_word:
 	and.w	#$10,d6
 	or.w	d6,d7
 	tst.b	G_TF(a6)
-	beq	.1
+	beq.s	.1
 	or.w	#$100,d7
 .1:	tst.b	G_IF(a6)
-	beq	.2
+	beq.s	.2
 	or.w	#$200,d7
 .2:	tst.b	G_DF(a6)
-	beq	.3
+	beq.s	.3
 	or.w	#$400,d7
 .3:	or.w	G_FX(a6),d7
 	move.l	(a7)+,d6
@@ -96,7 +98,7 @@ __set_flags:
 	rol.b	#2,d6
 	move.b	__sahf_ccr(pc,d6.w),d6
 	btst	#11,d7
-	beq	.1
+	beq.s	.1
 	addq.b	#2,d6
 .1:	move.b	d6,G_FL+1(a6)
 	move.b	d7,d6
@@ -110,7 +112,7 @@ __set_flags:
 	move.b	d6,G_TF(a6)
 	bfextu	d7{22:1},d6
 	move.b	d6,G_IF(a6)
-	beq	.2
+	beq.s	.2
 	move.b	rt_irq_pending,G_IRQ(a6)	; re-arm (runtime.h)
 .2:	bfextu	d7{21:1},d6
 	move.b	d6,G_DF(a6)
@@ -138,20 +140,20 @@ __daa:
 	move.b	d0,d7
 	and.b	#$0f,d7
 	cmp.b	#9,d7
-	bhi	.adj
+	bhi.s	.adj
 	btst	#4,G_AF(a6)
-	beq	.noadj
+	beq.s	.noadj
 .adj:	addq.b	#6,d0
 	move.b	#$10,G_AF(a6)
-	bra	.hi
+	bra.s	.hi
 .noadj:	clr.b	G_AF(a6)
 .hi:	cmp.b	#$99,d6
-	bhi	.adj2
+	bhi.s	.adj2
 	btst	#0,G_FL+1(a6)
-	beq	.nocf
+	beq.s	.nocf
 .adj2:	add.b	#$60,d0
 	or.b	#1,G_FL+1(a6)
-	bra	.done
+	bra.s	.done
 .nocf:	and.b	#$fe,G_FL+1(a6)
 .done:	jsr	__szp_al
 	move.l	(a7)+,d6
@@ -163,25 +165,25 @@ __das:
 	move.b	d0,d7
 	and.b	#$0f,d7
 	cmp.b	#9,d7
-	bhi	.adj
+	bhi.s	.adj
 	btst	#4,G_AF(a6)
-	beq	.noadj
+	beq.s	.noadj
 .adj:	moveq	#0,d7
 	cmp.b	#6,d0
-	bcc	.nb
+	bcc.s	.nb
 	moveq	#1,d7
 .nb:	btst	#0,G_FL+1(a6)
-	beq	.nc
+	beq.s	.nc
 	moveq	#1,d7
 .nc:	subq.b	#6,d0
 	move.b	#$10,G_AF(a6)
-	bra	.hi
+	bra.s	.hi
 .noadj:	moveq	#0,d7
 	clr.b	G_AF(a6)
 .hi:	cmp.b	#$99,d6
-	bhi	.adj2
+	bhi.s	.adj2
 	btst	#0,G_FL+1(a6)
-	beq	.done
+	beq.s	.done
 .adj2:	sub.b	#$60,d0
 	moveq	#1,d7
 .done:	and.b	#$fe,G_FL+1(a6)
@@ -194,9 +196,9 @@ __aaa:
 	move.b	d0,d7
 	and.b	#$0f,d7
 	cmp.b	#9,d7
-	bhi	.adj
+	bhi.s	.adj
 	btst	#4,G_AF(a6)
-	beq	.no
+	beq.s	.no
 .adj:	add.w	#$106,d0
 	and.b	#$0f,d0
 	move.b	#$10,G_AF(a6)
@@ -211,9 +213,9 @@ __aas:
 	move.b	d0,d7
 	and.b	#$0f,d7
 	cmp.b	#9,d7
-	bhi	.adj
+	bhi.s	.adj
 	btst	#4,G_AF(a6)
-	beq	.no
+	beq.s	.no
 .adj:	sub.w	#$106,d0
 	and.b	#$0f,d0
 	move.b	#$10,G_AF(a6)
