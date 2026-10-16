@@ -5,8 +5,9 @@
 #include "runtime.h"
 
 /* Keyboard events from the platform: PC set 1 scan code, bit 7 break,
- * RT_KEY_E0 for an E0-prefixed key; appended at rt_key_tail, each followed by
- * an 09h interrupt (89h for a break: the same vector). */
+ * RT_KEY_E0 for a combined E0-prefixed key. Reference replay can instead
+ * supply the prefix and scan byte separately. Each event has one 09h
+ * interrupt (89h for a break: the same vector). */
 volatile uint16_t rt_key_ring[RT_KEY_RING];
 volatile uint8_t rt_key_tail;
 static uint8_t key_head;
@@ -159,10 +160,12 @@ void rt_keyboard_irq(void)
         return;
     }
     uint16_t ev = rt_key_ring[key_head++ % RT_KEY_RING];
-    uint8_t scan = (uint8_t)ev, e0 = (ev & RT_KEY_E0) != 0;
+    uint8_t scan = (uint8_t)ev;
     uint8_t f1 = rd8(BDA_SHIFT), f2 = rd8(BDA_FLAGS2), f3 = rd8(BDA_FLAGS3);
+    uint8_t e0 = (ev & RT_KEY_E0) != 0 || (f3 & 0x02) != 0;
     uint16_t key;
     switch (scan) {
+    case 0xe0: f3 |= 0x02; break;   /* prefix has its own IRQ, but no key */
     case 0x1d:                      /* Ctrl: left in flags 2, right in flags 3 */
         f1 |= CTRL;
         if (e0) f3 |= 0x04; else f2 |= 0x01;
@@ -242,6 +245,9 @@ void rt_keyboard_irq(void)
         }
         add_key(key);
         break;
+    }
+    if (scan != 0xe0) {
+        f3 &= ~0x02;
     }
     if ((scan & 0x80) == 0) {
         f2 &= 0xf7;

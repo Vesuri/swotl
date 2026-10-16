@@ -62,15 +62,16 @@ int main(void) {
 '''
 
 
-def check(source, broken=False):
+def check(source, broken=False, data=DATA, harness=HARNESS,
+          cases=range(5), expected=(0, 2, 2, 0, 2)):
     with tempfile.TemporaryDirectory(prefix='swotl-replay-events-') as tmp:
         p = Path(tmp)
         (p / 'amiga_replay.c').write_text(source)
         digest = 2166136261
         for byte in struct.pack('>14H', *([0] * 11 + [0x21, 0x200, 0])):
             digest = ((digest ^ byte) * 16777619) & 0xffffffff
-        (p / 'replay_data.h').write_text(DATA.replace('SERVICE_HASH', str(digest)))
-        (p / 'test.c').write_text(HARNESS)
+        (p / 'replay_data.h').write_text(data.replace('SERVICE_HASH', str(digest)))
+        (p / 'test.c').write_text(harness)
         subprocess.run([str(Path(os.environ.get('AMIGA_TOOLCHAIN', Path.home() / '.local/opt')) / 'bin/m68k-amiga-elf-gcc'), '-m68020', '-O2', '-nostdlib', '-ffreestanding', '-fno-builtin',
                         '-I' + str(ROOT / 'src/runtime'), str(p / 'test.c'),
                         '-Wl,-Ttext=0x10000,-e,main', '-o', str(p / 'test.elf')], check=True)
@@ -87,10 +88,25 @@ def check(source, broken=False):
             error = e.start(entry, symbols['test_stop'], timeout_us=1_000_000)
             assert not error, error
             return e.reg_read(H.U.M68K['d0'])
-        actual = [run(case) for case in range(5)]
-        expected = [0, 2, 2, 0, 2]
+        actual = tuple(run(case) for case in cases)
         assert (actual == expected) != broken, (actual, expected, broken)
     print('replay events: planted fault caught' if broken else 'replay events: visits, groups, IF and completion checked')
+
+
+def check_keyboard(source, broken=False):
+    data = DATA.replace('{{2,1,0,0,0}}', '{{2,1,1,0x14b,1}}')
+    harness = HARNESS.replace('    G_IF = 1;', '''
+    G_IF = 1;
+    if (test_case == 5) {
+        assert(replay_point(2) == 0);
+        assert(rt_key_tail == 4);
+        assert(rt_key_ring[0] == 0xe0 && rt_key_ring[1] == 0x4b);
+        assert(rt_key_ring[2] == 0xe0 && rt_key_ring[3] == 0xcb);
+        assert(replay_interrupts == 0 && rt_irq_tail == 0);
+        return 0;
+    }
+''')
+    check(source, broken, data, harness, (5,), (0,))
 
 
 if __name__ == '__main__':
@@ -99,7 +115,9 @@ if __name__ == '__main__':
     args = ap.parse_args()
     source = (ROOT / 'tests/amiga_replay.c').read_text()
     check(source)
+    check_keyboard(source)
     if args.sabotage:
+        check_keyboard(source.replace('if (step->value & RT_KEY_E0)', 'if (0)'), True)
         for old, new in [('irq->hits + 1', 'irq->hits + 2'),
                          ('a->point == b->point', 'a->point != b->point'),
                          ('replay_services != REPLAY_SERVICES', 'replay_services == REPLAY_SERVICES'),

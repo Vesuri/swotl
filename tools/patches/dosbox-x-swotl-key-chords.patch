@@ -1,0 +1,72 @@
+--- a/src/misc/swotl_trace.cpp
++++ b/src/misc/swotl_trace.cpp
+@@ -76,6 +76,7 @@
+ 	uint32_t count = 1;
+ 	uint32_t hits = 0;
+ 	KBD_KEYS key = KBD_NONE;
++	unsigned modifiers = 0;
+ 	bool done = false;
+ };
+ 
+@@ -418,7 +419,17 @@
+     return true;
+ }
+ 
+-KBD_KEYS KeyByName(const std::string &n) {
++KBD_KEYS KeyByName(const std::string &name, unsigned &modifiers) {
++    std::string n = name;
++    modifiers = 0;
++    size_t split;
++    while ((split = n.find('+')) != std::string::npos) {
++        const std::string prefix = n.substr(0, split);
++        const unsigned bit = prefix == "shift" ? 1u : prefix == "ctrl" ? 2u : prefix == "alt" ? 4u : 0u;
++        if (!bit || (modifiers & bit)) return KBD_NONE;
++        modifiers |= bit;
++        n = n.substr(split + 1);
++    }
+ 	static const std::map<std::string, KBD_KEYS> named = {
+ 	        {"enter", KBD_enter}, {"esc", KBD_esc}, {"space", KBD_space}, {"tab", KBD_tab},
+ 	        {"up", KBD_up}, {"down", KBD_down}, {"left", KBD_left}, {"right", KBD_right},
+@@ -435,6 +446,17 @@
+ 	if (n.size() == 1 && n[0] >= '1' && n[0] <= '9') return (KBD_KEYS)(KBD_1 + (n[0] - '1'));
+ 	if (n == "0") return KBD_0;
+ 	return KBD_NONE;
++}
++
++void KeyModifiers(const unsigned mask, const bool down) {
++    static const KBD_KEYS keys[] = {KBD_leftshift, KBD_leftctrl, KBD_leftalt};
++    if (down) {
++        for (unsigned i = 0; i < 3; ++i)
++            if (mask & (1u << i)) KEYBOARD_AddKey(keys[i], true);
++    } else {
++        for (int i = 2; i >= 0; --i)
++            if (mask & (1u << i)) KEYBOARD_AddKey(keys[i], false);
++    }
+ }
+ 
+ void Configure() {
+@@ -461,7 +483,7 @@
+ 		if (eq == std::string::npos || !ParseTarget(spec.substr(0, eq), t))
+ 			E_Exit("SWOTL: bad key spec '%s'", spec.c_str());
+ 		t.name = spec.substr(eq + 1);
+-		t.key = KeyByName(t.name);
++		t.key = KeyByName(t.name, t.modifiers);
+ 		if (t.key == KBD_NONE && !MouseAction(t.name)) E_Exit("SWOTL: unknown key '%s'", t.name.c_str());
+ 		keys.push_back(t);
+ 	}
+@@ -698,6 +720,7 @@
+ 		}
+ 	if (key_held != KBD_NONE && icount >= key_release_at) {
+ 		KEYBOARD_AddKey(key_held, false);
++		KeyModifiers(keys[key_index - 1].modifiers, false);
+ 		/* Snapshots were checked above; the next key is checked below. */
+ 		const uint64_t skip = held_trigger_hits -
+ 		                      (key_index < keys.size() && held_target ? 1u : 0u);
+@@ -717,6 +740,7 @@
+             Event("mouse", "%s", t.name.c_str());
+             return;
+         }
++		KeyModifiers(t.modifiers, true);
+ 		KEYBOARD_AddKey(t.key, true);
+ 		key_held = t.key;
+ 		held_trigger_hits = 0;

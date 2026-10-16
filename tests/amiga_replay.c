@@ -82,11 +82,24 @@ int32_t replay_point(uint32_t point)
         if (point == step->point && ++step_hits == step->hits) {
             ++replay_steps; step_hits = 0;
             switch (step->kind) {
-            case 1:
-                rt_key_ring[rt_key_tail++ % RT_KEY_RING] = step->value;
-                rt_key_ring[rt_key_tail++ % RT_KEY_RING] = step->value | 0x80;
+            case 1: {
+                static const uint8_t modifiers[] = {0x2a, 0x1d, 0x38};
+                for (unsigned i = 0; i < 3; ++i)
+                    if (step->value & (1u << (9 + i)))
+                        rt_key_ring[rt_key_tail++ % RT_KEY_RING] = modifiers[i];
+                /* One ring event per recorded IRQ9, including E0 prefixes. */
+                if (step->value & RT_KEY_E0)
+                    rt_key_ring[rt_key_tail++ % RT_KEY_RING] = 0xe0;
+                rt_key_ring[rt_key_tail++ % RT_KEY_RING] = step->value & 0xff;
+                if (step->value & RT_KEY_E0)
+                    rt_key_ring[rt_key_tail++ % RT_KEY_RING] = 0xe0;
+                rt_key_ring[rt_key_tail++ % RT_KEY_RING] = (step->value & 0xff) | 0x80;
+                for (int i = 2; i >= 0; --i)
+                    if (step->value & (1u << (9 + i)))
+                        rt_key_ring[rt_key_tail++ % RT_KEY_RING] = modifiers[i] | 0x80;
                 release_at = step->release;
                 break;
+            }
             case 2: mouse_x += step->value; break;
             case 3: mouse_y += step->value; break;
             case 4: mouse_buttons = step->value; break;

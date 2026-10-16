@@ -92,6 +92,11 @@ event records the DOS date; `clock-inputs.json` records the host-clock input.
 Host checks and diagnostic Amiga replay use those inputs. Existing-file
 dates, comparisons and interrupt scheduling are unchanged.
 
+Scripted keys accept `shift+`, `ctrl+` and `alt+` (for example `alt+c`).
+Modifiers press before the key and release afterwards; each scan byte keeps
+its recorded IRQ9 boundary. Compare recorder versions at the same launch
+path: different launch paths produced different initial IRQ visit counts.
+
 Trace outputs (`tmp/pc-runs/<name>/trace/`, written at exit):
 
 | File | Content |
@@ -143,6 +148,16 @@ checks; no determinism history needed). Menu keys are the red letters;
 filenames are typed letters then Enter; the film list needs mouse picking
 (not scripted). They feed the phase 2 map
 (`make map`: sweep, PLINK check, code-write audit, surface).
+
+Reference rows may specify `key_hold`, a positive x86 instruction count;
+omission preserves the recorder's 600,000-instruction default. This controls
+scripted input only. Host replay still checks every recorded IRQ and service.
+
+New `key_up` events include `skip=N`: visits to the next trigger while held,
+since key-down or the latest service event. A snapshot on the release
+instruction is excluded; a key trigger there is eligible. Host replay uses
+these counts without changing IRQ replay. Older captures retain their
+service-only release format.
 
 | Script | Input after K2 | Reaches |
 |---|---|---|

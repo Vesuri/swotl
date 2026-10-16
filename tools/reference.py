@@ -48,6 +48,11 @@ def run(m: dict) -> tuple[list[str], dict]:
            "--polls", str(POLLS)]
     if m["launch"]:
         cmd += ["--launch", m["launch"]]
+    if m.get("key_hold"):
+        hold = int(m["key_hold"])
+        if hold < 1:
+            raise ValueError("key_hold must be a positive instruction count")
+        cmd += ["--key-hold", str(hold)]
     row = {"name": name, "icount": "", "ram": "", "vram": "", "dac": ""}
     status = subprocess.run(cmd, stdout=subprocess.DEVNULL).returncode
     if status != 0:

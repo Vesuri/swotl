@@ -1,0 +1,58 @@
+--- a/src/misc/swotl_trace.cpp
++++ b/src/misc/swotl_trace.cpp
+@@ -132,6 +132,9 @@
+ uint64_t key_release_at = 0;
+ KBD_KEYS key_held = KBD_NONE;
+ uint64_t key_hold = 600000;
++/* Visits to the next trigger while a key is held, since key-down or the
++ * latest service event. Diagnostic metadata only; never drives input. */
++uint64_t held_trigger_hits = 0;
+ std::string exit_after;
+ /* Service log (SWOTL_SERVICES=1): every software INT raised by module code, with
+  * full registers at entry ("svc") and when execution is back at its return
+@@ -220,6 +223,7 @@
+ 
+ void ServiceEvent(const char *kind, const unsigned num) {
+ 	++service_events;
++	held_trigger_hits = 0;
+ 	poll_hits.clear();
+ 	FillFlags();
+ 	Event(kind, "%02x ax=%04x bx=%04x cx=%04x dx=%04x si=%04x di=%04x bp=%04x sp=%04x ds=%04x es=%04x "
+@@ -675,6 +679,16 @@
+ 	ServiceReturn(linear);
+ 	if (poll_gate && IsPoll(here)) ++poll_hits[here];
+ 
++	const Trigger *held_next = nullptr;
++	if (key_held != KBD_NONE) {
++		if (key_index < keys.size()) held_next = &keys[key_index];
++		else for (const auto &t : snapshots)
++			if (!t.done) { held_next = &t; break; }
++	}
++	const bool held_target = held_next && held_next->module == here.module &&
++	                         held_next->offset == here.offset;
++	if (held_target) ++held_trigger_hits;
++
+ 	/* Snapshots count after the key script, each after the previous one. */
+ 	if (key_index == keys.size() && key_held == KBD_NONE)
+ 		for (auto &t : snapshots) {
+@@ -684,7 +698,11 @@
+ 		}
+ 	if (key_held != KBD_NONE && icount >= key_release_at) {
+ 		KEYBOARD_AddKey(key_held, false);
+-		Event("key_up", "%s", keys[key_index - 1].name.c_str());
++		/* Snapshots were checked above; the next key is checked below. */
++		const uint64_t skip = held_trigger_hits -
++		                      (key_index < keys.size() && held_target ? 1u : 0u);
++		Event("key_up", "%s skip=%llu", keys[key_index - 1].name.c_str(),
++		      (unsigned long long)skip);
+ 		key_held = KBD_NONE;
+ 		if (key_index < keys.size()) keys[key_index].hits = 0;
+ 	}
+@@ -701,6 +719,7 @@
+         }
+ 		KEYBOARD_AddKey(t.key, true);
+ 		key_held = t.key;
++		held_trigger_hits = 0;
+ 		key_release_at = icount + key_hold;
+ 		Event("key_down", "%s", t.name.c_str());
+ 	}

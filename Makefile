@@ -156,7 +156,7 @@ test-x86:
 	$(PYTHON) tests/x86_diff.py
 
 test-sabotage: host
-	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-replay-hooks t-sab-replay-events t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence t-sab-fm t-sab-fm-quality t-sab-tfh t-sab-sound-hooks t-sab-audio t-sab-load-image t-sab-interrupt-frame-mask t-sab-dosbox-retf t-sab-dos-search t-sab-dos-sda t-sab-machine-vectors t-sab-oracle-boundary t-sab-oracle-exception-writes t-sab-helper-branches
+	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-replay-hooks t-sab-replay-events t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence t-sab-fm t-sab-fm-quality t-sab-tfh t-sab-sound-hooks t-sab-audio t-sab-load-image t-sab-keyboard-prefix t-sab-interrupt-frame-mask t-sab-dosbox-retf t-sab-dos-search t-sab-dos-sda t-sab-machine-vectors t-sab-oracle-boundary t-sab-oracle-exception-writes t-sab-helper-branches t-sab-key-release t-sab-key-chords t-sab-replay-chords
 
 test-m68k:
 	$(PYTHON) tests/m68k_diff.py
@@ -173,7 +173,7 @@ JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc)
 RUN = @mkdir -p tmp/test; if $(2) > tmp/test/$(1).log 2>&1; then echo "ok    $(1)"; \
 	else echo "FAIL  $(1) (tmp/test/$(1).log)"; tail -n 15 tmp/test/$(1).log; exit 1; fi
 SHARDS = forms.0/4 forms.1/4 forms.2/4 forms.3/4 space.0/1 boundary.0/1 blocks.0/1
-TESTS = t-oracle-boundary t-oracle-exception-writes t-helper-branches t-dos-sda t-dos-search t-machine-vectors t-interrupt-frame-mask t-load-image t-align-convergence t-replay-hooks t-replay-events t-file-dates t-mouse-irq t-display-queue t-display-palette t-amiga-input t-smc-flow t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
+TESTS = t-key-chords t-replay-chords t-key-release t-oracle-boundary t-oracle-exception-writes t-helper-branches t-dos-sda t-dos-search t-machine-vectors t-interrupt-frame-mask t-keyboard-prefix t-load-image t-align-convergence t-replay-hooks t-replay-events t-file-dates t-mouse-irq t-display-queue t-display-palette t-amiga-input t-smc-flow t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
 	t-blocks t-guards t-fm t-fm-quality t-tfh t-sound-hooks t-audio $(HOST_MILESTONES:%=t-host-%)
 
 test: host
@@ -193,6 +193,10 @@ t-interrupt-frame-mask:
 	$(call RUN,interrupt-frame-mask,$(PYTHON) tests/test_interrupt_frame_mask.py)
 t-sab-interrupt-frame-mask:
 	$(call RUN,sabotage-interrupt-frame-mask,$(PYTHON) tests/test_interrupt_frame_mask.py --sabotage)
+t-keyboard-prefix:
+	$(call RUN,keyboard-prefix,$(PYTHON) tests/test_keyboard_prefix.py)
+t-sab-keyboard-prefix:
+	$(call RUN,sabotage-keyboard-prefix,$(PYTHON) tests/test_keyboard_prefix.py --sabotage)
 
 t-amiga-input:
 	$(call RUN,amiga-input,$(PYTHON) tests/test_amiga_input.py)
@@ -211,7 +215,19 @@ t-next-branch:
 t-sab-next-branch:
 	$(call RUN,sabotage-next-branch,$(PYTHON) tests/test_next_branch.py --sabotage)
 
+t-key-chords:
+	$(call RUN,key-chords,$(PYTHON) tests/test_key_chords.py)
+t-sab-key-chords:
+	$(call RUN,sabotage-key-chords,$(PYTHON) tests/test_key_chords.py --sabotage)
+t-replay-chords:
+	$(call RUN,replay-chords,$(PYTHON) tests/test_replay_chords.py)
+t-sab-replay-chords:
+	$(call RUN,sabotage-replay-chords,$(PYTHON) tests/test_replay_chords.py --sabotage)
 
+t-key-release:
+	$(call RUN,key-release,$(PYTHON) tests/test_key_release.py)
+t-sab-key-release:
+	$(call RUN,sabotage-key-release,$(PYTHON) tests/test_key_release.py --sabotage)
 
 t-helper-branches:
 	$(call RUN,helper-branches,$(PYTHON) tests/test_helper_branches.py)

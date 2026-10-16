@@ -52,7 +52,9 @@ def prepare(name, out):
         if isinstance(key, str):
             kind, value, end = {'x': 2, 'y': 3, 'b': 4}[key[1]], int(key[2:]), 0
         else:
-            kind, value, end = 1, key >> 8 | (0x100 if key in H.GREY else 0), next(release)
+            base = key & 0xffff
+            kind, value, end = (1, base >> 8 | (0x100 if base in H.GREY else 0) |
+                                ((key >> 7) & 0xe00), next(release))
         steps.append((ids[lab], hits, kind, value, end))
     assert next(release, None) is None
     steps += [(ids[lab], hits, 0, 0, 0) for lab, _, hits in script['snapshots']]

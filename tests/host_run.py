@@ -57,6 +57,34 @@ KEYS = {"enter": 0x1C0D, "esc": 0x011B, "space": 0x3920, "tab": 0x0F09, "backspa
                                              + list(range(0x2C, 0x33)))},
         **{str(k): (k + 1) << 8 | ord(str(k)) for k in range(1, 10)}, "0": 0x0B30}
 GREY = {KEYS[k] for k in ("up", "down", "left", "right")}  # E0-prefixed (DOSBox KBD_up..)
+# Modifier bits belong to scripted input, above the base BIOS key word.
+KEY_MODIFIERS = {"shift": 1 << 16, "ctrl": 1 << 17, "alt": 1 << 18}
+
+
+def key_code(name: str) -> int:
+    parts = name.split("+")
+    modifiers = 0
+    for part in parts[:-1]:
+        bit = KEY_MODIFIERS.get(part, 0)
+        if not bit or modifiers & bit:
+            raise ValueError(f"invalid key chord: {name}")
+        modifiers |= bit
+    if parts[-1] not in KEYS:
+        raise ValueError(f"unknown key: {name}")
+    return modifiers | KEYS[parts[-1]]
+
+
+def key_events(key: int) -> tuple[int, ...]:
+    if key & ~0x7ffff:
+        raise ValueError(f"invalid scripted key: {key:x}")
+    base = key & 0xffff
+    scan = base >> 8
+    modifiers = tuple(scan for bit, scan in ((1 << 16, 0x2a),
+                      (1 << 17, 0x1d), (1 << 18, 0x38)) if key & bit)
+    body = (0xe0, scan, 0xe0, scan | 0x80) if base in GREY else (scan, scan | 0x80)
+    return modifiers + body + tuple(scan | 0x80 for scan in reversed(modifiers))
+
+
 KEY_HOLD = 600_000  # tracer: x86 instructions from key down to key up
 # Compared guest RAM: the DOS arena from the environment MCB to the top of
 # conventional memory; below it are IVT/BIOS/DOS internals the runtime models
@@ -119,10 +147,12 @@ def reference_services(trace: Path) -> list[tuple[str, dict]]:
     return out
 
 
-def reference_inputs(trace: Path) -> tuple[list, list[int]]:
+def reference_inputs(trace: Path, *, exact_releases: bool = False) -> tuple[list, list]:
     """The reference's hardware interrupts as (service events so far, poll
     point label, its executions since the last service event, vector), and
-    the service-event count at each key release."""
+    the service-event count at each key release. Exact releases additionally
+    retain recorded ineligible visits to the next trigger in that interval.
+    The default preserves the existing diagnostic Amiga replay input format."""
     irqs, releases, n = [], [], 0
     with (trace / "events.csv").open() as f:
         for r in csv.DictReader(f):
@@ -134,8 +164,40 @@ def reference_inputs(trace: Path) -> tuple[list, list[int]]:
                 irqs.append((n, emit.label(r["module"], int(r["offset"], 16)),
                              int(hits[5:]), int(vec, 16)))
             elif r["kind"] == "key_up":
-                releases.append(n)
+                fields = r["detail"].split()
+                release = n
+                if exact_releases and len(fields) > 1:
+                    if len(fields) != 2 or not fields[1].startswith("skip="):
+                        raise ValueError(f"invalid key release: {r}")
+                    skipped = int(fields[1][5:])
+                    if skipped < 0:
+                        raise ValueError(f"negative key release visits: {r}")
+                    release = (n, skipped)
+                releases.append(release)
     return irqs, releases
+
+
+class KeyRelease:
+    """Count trigger visits while held; IRQ replay remains independent.
+
+    The recorder resets this count on key-down and each service event. For
+    a snapshot, the release instruction itself is ineligible; for another
+    key it is eligible. The recorded skip count already includes that order.
+    Old captures retain their service-only behavior.
+    """
+
+    def __init__(self, release):
+        self.service, self.skip = (release, None) if isinstance(release, int) else release
+        self.interval, self.visits = None, 0
+
+    def ready(self, service: int, target: bool) -> bool:
+        if service != self.interval:
+            self.interval, self.visits = service, 0
+        if target:
+            self.visits += 1
+        if service != self.service:
+            return service > self.service
+        return self.skip is None or (target and self.visits > self.skip)
 
 
 def fnv(data: bytes) -> int:
@@ -623,8 +685,9 @@ class Host:
     def press(self, key: int) -> None:
         """The key's make and break scan codes (runtime.h rt_key_ring); the
         runtime's BIOS INT 09h model stores the word at the make interrupt."""
-        scan = key >> 8 | (0x100 if key in GREY else 0)
-        for ev in (scan, scan | 0x80):
+        # DOSBox posts one IRQ per scan byte, including modifiers and E0.
+        events = key_events(key)
+        for ev in events:
             tail = self.mem(self.syms["rt_key_tail"], 1)[0]
             self.e.write(self.syms["rt_key_ring"] + 2 * (tail % 16), struct.pack(">H", ev))
             self.e.write(self.syms["rt_key_tail"], bytes([(tail + 1) & 0xFF]))
@@ -633,7 +696,7 @@ class Host:
         """Run to the script's last snapshot trigger (None: until a stop).
         Hardware interrupts replay the reference's (script["irqs"]): posted at
         the same visit of the same poll point after the same service event;
-        a key's release is at the service event the reference released it."""
+        key release eligibility uses recorded trigger visits when available."""
         steps = [(t, k) for t, k in script["keys"]] + [(t, None) for t in script["snapshots"]] \
             if script else []
         releases = list(script["releases"]) if script else []
@@ -649,11 +712,13 @@ class Host:
 
         @U.CODE_CB
         def hit(h, addr, size, user):
-            if self.release is not None and len(self.services) >= self.release:
-                self.release = None  # key up: the next trigger counts from here
-            if self.step == len(steps) or self.release is not None:
+            if self.step == len(steps):
                 return
             (lab, _, n), key = steps[self.step]
+            if self.release is not None:
+                if not self.release.ready(len(self.services), addr in at[lab]):
+                    return
+                self.release = None
             if addr not in at[lab]:
                 return
             self.hits += 1
@@ -670,7 +735,7 @@ class Host:
                     self.mouse_buttons = amount
             elif key is not None:
                 self.press(key)
-                self.release = releases.pop(0)
+                self.release = KeyRelease(releases.pop(0))
             elif self.step == len(steps):
                 self.stopped_at = lab
                 self.halted = True
@@ -810,7 +875,7 @@ def milestone_script(name: str) -> dict:
     keys = []
     for k in filter(None, r["keys"].split(";")):
         spec, _, key = k.partition("=")
-        keys.append((trigger(spec), key if key.startswith(("mx", "my", "mb")) else KEYS[key]))
+        keys.append((trigger(spec), key if key.startswith(("mx", "my", "mb")) else key_code(key)))
     return {"keys": keys, "snapshots": [trigger(s) for s in r["snapshots"].split()],
             "frame": r["vga_mode"] == "13"}
 
@@ -1071,7 +1136,7 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
     h = Host(image.M.REF, sabotage, music_skip)
     h.calendar_date, h.file_clock = reference_clocks(trace)
     label = script["snapshots"][-1][0]
-    script["irqs"], script["releases"] = reference_inputs(trace)
+    script["irqs"], script["releases"] = reference_inputs(trace, exact_releases=True)
     summary = dict(kv.split("=", 1) for kv in (trace / "summary.txt").read_text().split())
     problems = rearm_problems()
     if int(summary.get("polls", "0"), 16) != fnv(POLLS.read_bytes()):
