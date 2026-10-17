@@ -23,22 +23,24 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Translator and validation
 
-14b. Speed target remains unmet: frames-fixture 68020 run medians on `5ecdf79`
-    (2026-10-17) 400, 460 and 400 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
-    §1, §9). Roughly 40% further reduction is needed from the median 400 ms. Remaining
-    cost is mostly generated guest code; priced translator candidates are 32 and 31,
+14b. Speed target remains unmet: frames-fixture 68020 run medians on R20
+    (2026-10-17) 370, 390 and 380 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
+    §1, §9). Roughly 37% further reduction is needed from the median 380 ms. Remaining
+    cost is mostly generated guest code; priced translator candidates are 31,
     FM synthesis is 34 (flag-word packing rejected, speed-plan §10). Native replacement
     requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
-    [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md), items 31–33.
+    [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md), items 31, 33.
     Bench acceptance for platform/layout work (D5) and
     a separate later palette window (D6) are approved; all fidelity gates and
-    no slowdown remain mandatory.
+    no slowdown remain mandatory, except the explicitly accepted R20 opening-bench
+    tradeoff (speed-plan §7).
 14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`
     `Harness`: each byte drew from a fresh generator with the same seed).
     A random background is stronger but changes every corpus case; needs
     user approval.
 31. Translator candidates, priced 2026-10-17 on the `5ecdf79` m4 meter (217,202,211
-    model cycles), in price order; each one a speed-plan step:
+    model cycles; outside the cell walk, which R20 replaced), in price order; each one
+    a speed-plan step:
     - Block layout: ≤ −6.06M (−2.8%). Greedy chain layout of the m4 block graph:
       local taken transfers 3.61M → 2.50M. Upper bound (free placement); bench
       acceptance (D5). Largest: D5A6's loop (`R_0D5EA`), `R_04FD5`, `R_04FF7`.
@@ -66,25 +68,14 @@ speed work: [speed-plan.md](speed-plan.md).
     `mul` (`mulu.w` is ~26 of its 31 cycles), indexed address formation itself,
     SPAZ's calibrated OPL delay spin. FLIGHT.OVL's cost per guest instruction is no
     lead: counting R6 copies it is 9.2 against SWOTL.EXE's 12.6 (35).
-32. Cell cache (D3; user 2026-10-17), priced −37.4M (−17.2% of the meter; the walk
-    −79%). m4 census: 32,799 walks, 1,935,151 mov cells, 93% in stretches of 144
-    consecutive destinations (0.255 stores per cell a long at a time); every region
-    store a RET plant or restore (three producer pairs). Banked flight (c8, whole run:
-    a fourth pair `R_0EC0D`/`R_0EC19`): 85.8% in stretches ≥ 16, 0.331 stores per cell,
-    63 other region changes (displacement patches `R_08FD5`/`R_09030`/`R_0908E`, ES
-    stores `R_0E5FD..`): walk −71.5% before the segment-load checks. Priced design:
-    decode once with the form checks; RET plants recorded at their store sites,
-    checked at restores; ≥ 8 consecutive destinations filled by aligned `move.l`
-    under a 16-bit wrap guard and a DS-overlap check per run; exact invalidation (a
-    check on DS/ES loads; any other region store re-decodes).
-    Evidence: `tmp/item30/` (`price_walk.py`).
 33. Native-routine contract (map: Native contract): emit interface for compute
     rows, register/flag/memory rules, poll-point policy (user decision, §2.9),
     Unicorn oracle on recorded entry states, sabotage. Needed before asking the
     user to authorize any routine.
-34. FM synthesis is 8.15–9.71% of the three `5ecdf79` frames captures (`loop_for`,
-    `fm_field`, `eg_advance`); R17's whole runtime/platform share was 5.96%. Platform
-    layer, outside the host meter: price and plan under D5 with the sound gates.
+34. FM synthesis is 8.15–9.71% of the three `5ecdf79` frames captures and 8.11% of
+    R20's first (`loop_for`, `fm_field`, `eg_advance`); R17's whole runtime/platform
+    share was 5.96%. Platform layer, outside the host meter: price and plan under D5
+    with the sound gates.
 35. `tools/profile_report.py`'s module column counts guest instructions at
     unsuffixed labels only: R6 copies (`_bp`) add cycles but no instructions
     (FLIGHT.OVL 21.7 cycles per guest instruction reported, 9.2 counting them).

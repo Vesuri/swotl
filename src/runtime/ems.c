@@ -57,6 +57,7 @@ static uint8_t map(uint8_t phys, uint16_t page, uint16_t handle)
             copy(store(handle, page), frame_page(k));
         }
     }
+    rt_wrote(lin(EMS_FRAME, 0) + phys * RT_EMS_PAGE, RT_EMS_PAGE);
     copy(frame, store(handle, page));
     mapped[phys].handle = handle;
     mapped[phys].page = page;

@@ -210,9 +210,20 @@ class Oracle:
         return err, out, fl, mem, list(self.ints), list(self.outs), writes
 
     def restore(self, addrs):
-        for a in sorted(addrs):
-            self.e.write(a, self.bg[a:a + 1])
+        for a, b in spans(addrs):
+            self.e.write(a, self.bg[a:b])
         self.e.flush()
+
+
+def spans(addrs) -> list[tuple[int, int]]:
+    """Contiguous [a, b) runs of a set of addresses."""
+    out = []
+    for a in sorted(addrs):
+        if out and out[-1][1] == a:
+            out[-1][1] = a + 1
+        else:
+            out.append([a, a + 1])
+    return [(a, b) for a, b in out]
 
 
 class Harness:

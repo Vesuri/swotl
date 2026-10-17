@@ -298,15 +298,36 @@ guarded copy; a profile choice, `tools/bp_regions.py`).
   `bx`/`ds` reload, the planted `ret`), each checked against the decoder,
   operand words read from guest RAM; anything else stops. Mov cells run
   counted (R7): the cells that fit before the bound are counted once, each
-  still matched when it runs (one long read: opcode and operand). Unresolved
+  still matched when it runs (one long read: opcode and operand). That
+  exact walk (`_walk_x`) serves a cell cache (D3, speed-plan R20): a cell is
+  matched once, when a walk first reaches it, and its bytes are covered; a
+  mov cell records its operand and the end of its run of consecutive
+  destinations, which the walk stores AL to a long at a time (under 8 bytes
+  one by one, offsets wrapping at 16 bits one by one). Every store that may
+  change a covered byte is seen: a CS store that may reach a region calls its
+  hook after storing (`lower.code_store`; byte `mov`s plant or restore inline):
+  a RET at a covered cell start is the walk's stop (one at a time), its first
+  byte back ends it, anything else drops the cache. A DS, ES or SS value whose
+  window reaches a region drops every cache where it is loaded
+  (`lower.putseg`, the reload cells, the runtime's `load_regs`), and so does a
+  runtime store into a region (`rt_wrote`; bounds and segment limit from the
+  program). A dropped cache is cleared at the next walk with no segment
+  reaching a region; until then walks are exact, and so is the rest of a walk
+  whose reload loads such a DS. Bytes not covered are read when reached: a
+  RET returns, other cells are decoded or walked exactly. Unresolved
   near indirect transfers range-check every walk in their module and CS,
   regardless of traced targets; proved tables retain their closed target set.
   The graph includes the walk edge. If every decoded cell instruction preserves
   arithmetic flags, a call propagates its return site's live flags through the
   walk; otherwise all flags are live. Return checks remain in place. The EGA/Tandy and/or variant ([2581]=0) is out
   of scope. Checked by `make test-blocks` (walks over every snapshot image
-  vs x86; per entry, mov cells to the bound and past it, a RET at the
-  bound, unknown cells).
+  vs x86, through a dropped cache and exactly; per entry, mov cells to the
+  bound and past it, a RET at the bound, unknown cells; warm walks between
+  RET plants, restores and operand patches made by the hooks or by the
+  lowered stores, and cells rewritten after a lowered segment load or
+  `smc_expose`; RETs inside and at the ends of runs, 16-bit wraps, a DS
+  reaching the region at the entry and from a reload, entries inside a cached
+  cell) and `make t-cell-cache` (the runtime's notifications).
 - Trap flag: the game never sets TF (its four POPF/IRET sites pop PUSHF or
   interrupt-frame images; no INT 1 and no TF in any reference). A popped
   image with TF set stops (IR exit `trap`, `rt_trap`; `rt_set_flags_word`

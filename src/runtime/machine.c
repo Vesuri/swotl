@@ -111,7 +111,7 @@ static void exec_root(uint16_t psp_seg)
     }
     uint32_t size = HW(4) * 512u - (HW(2) ? 512u - HW(2) : 0) - HW(8) * 16u;
     plat_seek(f, HW(8) * 16, 0);
-    uint8_t *image = rt_span(lin(load, 0), size);
+    uint8_t *image = rt_span_w(lin(load, 0), size);
     fail_read(plat_read(f, image, size), (int32_t)size);
     rt_span_order(image, size);
     plat_seek(f, HW(0x18), 0);

@@ -2,7 +2,7 @@
 
 Plan and evidence for speeding up SWOTL's rendering with what Their Finest Hour's
 Amiga version (TFH, same engine family) and its WHDLoad slave show. Static research
-2026-10-16, plan and prices 2026-10-17. Open work: [open-work.md](open-work.md) 14b, 31–33.
+2026-10-16, plan and prices 2026-10-17. Open work: [open-work.md](open-work.md) 14b, 31, 33.
 Rules: [speed-plan.md](speed-plan.md) §2. The full research notes are kept locally in
 `tmp/tfh-xref/swotl-tfh-rendering-map.2026-10-16.md`.
 
@@ -40,9 +40,9 @@ Rules: [speed-plan.md](speed-plan.md) §2. The full research notes are kept loca
 
 ## Plan
 
-1. **Cell cache** (open-work 32, D3; −17.2% of the meter, the walk −79%), then the
-   **translator steps** (open-work 31, each ≤ 2.8%) in price order, by the speed-plan
-   procedure (§3). No authorization needed.
+1. **Translator steps** (open-work 31, each ≤ 2.8%) in price order, by the speed-plan
+   procedure (§3). No authorization needed. The cell cache is built (speed-plan R20:
+   meter −15.31%; the walk is 3.62% of the corrected build’s first capture).
 2. **Native contract** (open-work 33): interface, rules and oracle below.
 3. **User decision per routine** from the priced table.
 4. **Native routines**, each only after its authorization; poll-free leaves first.
@@ -50,7 +50,8 @@ Rules: [speed-plan.md](speed-plan.md) §2. The full research notes are kept loca
 Bounds (first `5ecdf79` capture): the transform/projection group (`B52D`, `B54B`,
 `B4E2`, `B017`, `D5A6`) is 14.82% (R17 19.82%); with all of it gone, 400 ms would
 become ~341 ms. The 240 ms target needs −40%: every row below together is 49.9%, so
-~5× faster on average; the cell cache alone removes ~13% (the walk −79%).
+~5× faster on average. R20's medians are 370–390 ms; the rows below are the
+`5ecdf79` capture's, before R20.
 
 ## Candidates
 
@@ -214,7 +215,7 @@ in place of `BFD1`.
   displacements patched by `8F60..9096` (key `8F6A`); producers `4FF7`, `5139`, `52D5`,
   `EBBC`.
 - TFH `2CD7A` builds long offsets (and nibble masks) only on an orientation change;
-  `2BC80..2BE04` loads an offset, adds the base, writes. Reference for open-work 32.
+  `2BC80..2BE04` loads an offset, adds the base, writes. Reference for speed-plan R20.
 
 ### Kept in SWOTL
 

@@ -275,8 +275,8 @@ class M68k:
         return out, f, fx, mem, list(self.outs), set(self.writes), info
 
     def restore(self, addrs) -> None:
-        for a in addrs:
-            self.gwrite(a, self.bg[a:a + 1])
+        for a, b in X.spans(addrs):
+            self.gwrite(a, self.bg[a:b])
 
 
 def sources_key() -> str:

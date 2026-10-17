@@ -45,8 +45,18 @@ static inline uint32_t lin(uint16_t seg, uint16_t off) { return ((uint32_t)seg <
  * rt_guest - a. A span is the host bytes holding guest a..a+n-1 (in reverse),
  * for platform I/O and opaque page copies; rt_span_order puts a span in guest
  * order and back (the same call both ways). */
+/* Self-modified regions (translator/smc.py): a store into one drops their
+ * cell caches. smc_lo..smc_hi: the generated program's bounds, linear. */
+extern const uint32_t smc_lo, smc_hi;
+void smc_expose(void);
+static inline void rt_wrote(uint32_t a, uint32_t n)
+{
+    if (n && a <= smc_hi && a + n - 1 >= smc_lo) {
+        smc_expose();
+    }
+}
 static inline uint8_t rd8(uint32_t a) { return *(rt_guest - a); }
-static inline void wr8(uint32_t a, uint8_t v) { *(rt_guest - a) = v; }
+static inline void wr8(uint32_t a, uint8_t v) { rt_wrote(a, 1); *(rt_guest - a) = v; }
 /* A guest word or dword is a native one ending at the guest address, at any
  * alignment (the 68020's; gcc would split it into bytes). */
 typedef uint16_t __attribute__((may_alias)) rt_u16;
@@ -59,6 +69,7 @@ static inline uint16_t rd16(uint32_t a)
 }
 static inline void wr16(uint32_t a, uint16_t v)
 {
+    rt_wrote(a, 2);
     __asm__("move.w %1,%0" : "=m"(*(rt_u16 *)(rt_guest - a - 1)) : "d"(v));
 }
 static inline uint32_t rd32(uint32_t a)
@@ -69,9 +80,12 @@ static inline uint32_t rd32(uint32_t a)
 }
 static inline void wr32(uint32_t a, uint32_t v)
 {
+    rt_wrote(a, 4);
     __asm__("move.l %1,%0" : "=m"(*(rt_u32 *)(rt_guest - a - 3)) : "d"(v));
 }
 static inline uint8_t *rt_span(uint32_t a, uint32_t n) { return rt_guest - a - n + 1; }
+/* A span the runtime stores into. */
+static inline uint8_t *rt_span_w(uint32_t a, uint32_t n) { rt_wrote(a, n); return rt_span(a, n); }
 static inline void rt_span_order(uint8_t *span, uint32_t n)
 {
     for (uint8_t *lo = span, *hi = span + n; hi - lo > 1; ) {
@@ -82,7 +96,7 @@ static inline void rt_span_order(uint8_t *span, uint32_t n)
 }
 static inline void rt_fill(uint32_t a, uint8_t v, uint32_t n)
 {
-    for (uint8_t *p = rt_span(a, n); n--; ) {
+    for (uint8_t *p = rt_span_w(a, n); n--; ) {
         *p++ = v;
     }
 }

@@ -304,6 +304,7 @@ static void read_file(void)
             return;
         }
         uint8_t *d = rt_span(a + got, 1);
+        rt_wrote(a + got, (uint32_t)n);
         for (int32_t k = 0; k < n; ++k) {
             *d-- = buf[k];
         }

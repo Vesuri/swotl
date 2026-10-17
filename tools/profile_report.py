@@ -29,6 +29,9 @@ PREFIX = {"R": "SWOTL.EXE", "SPZ": "SPAZ.OVL", "VGA": "RTSVGA.OVL", "FE": "FRONT
           "CMP": "CAMPAIGN.OVL", "NCP": "NOTCAMP.OVL", "FLT": "FLIGHT.OVL",
           "RPL": "REPLAY.OVL", "PNL": "PANEL.OVL"}
 GUEST = re.compile(r"^(R|SPZ|VGA|FE|CMP|NCP|FLT|RPL|PNL)_([0-9A-F]{5})(\w*)$")
+# labels inside their instruction X: after a poll point (emit.poll), a segment
+# check or a CS store hook (lower.putseg, lower.code_store: cell caches)
+INSIDE = re.compile(r"_(np|sr\d+|hr\d+)$")
 # return-check trampolines (translator/emit.py mismatch_stub): generated code
 TRAMPOLINE = re.compile(r"^(R|SPZ|VGA|FE|CMP|NCP|FLT|RPL|PNL)_rm\d+$")
 DEFAULT_GEN = Path(__file__).resolve().parents[1] / "build/gen"
@@ -100,8 +103,8 @@ def symbols(objdump, elf):
     syms = []
     for line in text.splitlines():
         parts = line.split()
-        if len(parts) >= 5 and parts[-3] == ".text" and not parts[-1].endswith("_np"):
-            syms.append((int(parts[0], 16), parts[-1]))  # X_np: inside X (emit.poll)
+        if len(parts) >= 5 and parts[-3] == ".text" and not INSIDE.search(parts[-1]):
+            syms.append((int(parts[0], 16), parts[-1]))  # X_np, X_sr0, X_hr0: inside X
     syms.sort()
     return syms
 

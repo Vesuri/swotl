@@ -74,8 +74,9 @@ def static_counts(gen: Path) -> tuple[dict, dict]:
                 text[cur] = m.group(2)
             elif cur and line.startswith("\t") and not line.startswith("\t;"):
                 count[cur] += 1
-            elif line and not line.startswith((".", "\t", ";")) and not line.endswith("_np:"):
-                cur = None  # X_np: inside X (emit.poll)
+            elif line and not line.startswith((".", "\t", ";")) and \
+                    not P.INSIDE.search(line.split(":")[0]):
+                cur = None  # X_np, X_sr0, X_hr0: inside X
     return text, count
 
 
@@ -179,7 +180,7 @@ def main():
     fcyc, fexec, fstatic, flabels, fbytes = (Counter() for _ in range(5))
     for name, c in lab_cycles.items():
         t = text.get(name)
-        f = form(t) if t else ("walk" if name.endswith("_walk") else "?")
+        f = form(t) if t else ("walk" if "_walk" in name else "?")
         n = pc_count.get(by_name.get(name, -1), 0)
         fcyc[f] += c
         fexec[f] += n

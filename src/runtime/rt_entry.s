@@ -33,6 +33,8 @@ G_DS	equ	1
 	xdef	rt_vdrv_return
 
 	xref	rt_r
+	xref	smc_expose
+	xref	smc_seg_limit
 	xref	rt_guest
 	xref	rt_entry_cs
 	xref	rt_entry_ip
@@ -80,7 +82,8 @@ save_regs:
 	rts
 
 ; rt_r and the state-block segments -> guest registers (upper words
-; undefined: sign-extended) and segment bases
+; undefined: sign-extended) and segment bases. A segment whose window
+; reaches a self-modified region drops the cell caches (translator/smc.py).
 load_regs:
 	lea	rt_r,a0
 	movem.w	(a0),d0-d5/a4-a5
@@ -88,20 +91,28 @@ load_regs:
 	eori.w	#$7fff,d5
 	moveq	#0,d7
 	move.w	G_ES(a6),d7
+	bsr.s	seg_check
 	lsl.l	#4,d7
 	lea	-$7fff(a6),a1
 	suba.l	d7,a1
 	moveq	#0,d7
 	move.w	G_SS(a6),d7
+	bsr.s	seg_check
 	lsl.l	#4,d7
 	lea	-$7fff(a6),a2
 	suba.l	d7,a2
 	moveq	#0,d7
 	move.w	G_DS(a6),d7
+	bsr.s	seg_check
 	lsl.l	#4,d7
 	lea	-$7fff(a6),a3
 	suba.l	d7,a3
 	rts
+seg_check:
+	cmp.w	smc_seg_limit,d7
+	bcc.s	.ok
+	jsr	smc_expose
+.ok:	rts
 
 ; Software interrupt: d6 = CS << 16 | vector, d7 = next IP. A machine service
 ; runs in C; a vector the guest owns runs its handler on the frame C pushed.

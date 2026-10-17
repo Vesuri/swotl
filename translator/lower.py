@@ -57,6 +57,7 @@ CCR_OK = {"add": ALLC | {"X"}, "adc": ALLC | {"X"}, "sub": ALLC | {"X"}, "sbb": 
 STATE_EQU = (("G_FL", 15), ("G_PF", 14), ("G_AF", 13), ("G_DF", 12), ("G_IF", 11),
              ("G_TF", 10), ("G_IRQ", 9), ("G_FX", 7), ("G_ES", 5), ("G_SS", 3), ("G_DS", 1))
 LOADSEG = 0x0822  # load segment of every reference run (docs/source-inventory.md)
+RET_BYTE = 0xC3   # the RET planted in self-modified cells (smc.py)
 
 
 class LowerError(Exception):
@@ -99,6 +100,8 @@ class Ctx:
     far: object = None                        # (seg, off) -> label | None
     near_targets: tuple = ()                  # known targets of an indirect near transfer
     smc_targets: tuple = ()                   # (first IP, last IP, walk label): D16 regions
+    code_regions: tuple = ()                  # cell caches a CS store may reach (emit.code_regions)
+    seg_limit: int = 0                        # lowest segment reaching no cell cache (0: none, D3)
     complete: bool = False                    # near_targets is a proved switch table
     far_targets: tuple = ()                   # known (seg, off) targets of an indirect far one
     manager: bool = False                     # PLINK manager call: return skips `dw id`
@@ -298,10 +301,20 @@ class Lowering:
             self.e(f"move.w {SEGSLOT[s]}(a6),{dst}")
 
     def putseg(self, s: str, src: str, clean: bool = False) -> None:
-        """Segment register from the low word of `src` (`clean`: zero-extended)."""
+        """Segment register from the low word of `src` (`clean`: zero-extended).
+        A value whose window reaches a cell cache drops the caches (D3, smc.py),
+        out of line; the last lines of the instruction, so the label is safe."""
         if not clean:
             self.e(f"and.l #$ffff,{src}")
         self.e(f"move.w {src},{SEGSLOT[s]}(a6)")
+        if self.c.seg_limit:
+            k = sum(1 for x in self.cold if x.startswith(f"{self.c.label}_sx"))
+            cold, back = f"{self.c.label}_sx{k}", f"{self.c.label}_sr{k}"
+            self.e(f"cmp.w #{hx(self.c.seg_limit)},{src}")
+            self.e(f"bcs {cold}")
+            self.at(back)
+            self.cold += [f"{cold}:", "\tjsr smc_expose", f"\tbra {back}"]
+            self.stats["segment check (cell cache)"] += 1
         self.e(f"lsl.l #4,{src}")
         self.e(f"lea -$7fff(a6),{SEGBASE[s]}")
         self.e(f"suba.l {src},{SEGBASE[s]}")
@@ -428,9 +441,80 @@ class Lowering:
         fn()
         if "CF" in writes(i)[1] and not self.cf_result:
             self.x_cf = False
+        if self.c.code_regions:
+            for m in mem_dests(i):
+                if m.seg == "cs":
+                    self.code_store(m)
         self.out, compact_stats = compact(self.out)
         self.stats.update(compact_stats)
         return self.out
+
+    # -- D3 cell caches: CS stores that may reach a self-modified region -----
+    def code_store(self, m: Mem) -> None:
+        """After a CS-segment store: where it may reach a cell cache's bytes, the
+        region's store hook (smc.py `_wb`/`_ww`, d6.w = 1 + region offset of the
+        byte, of a word's second byte), out of line; a byte `mov` plants or
+        restores the RET inline. The last lines of the instruction (global
+        labels). Clobbers the CCR and X."""
+        regs = [r for r in (m.base, m.index) if r]
+        if self.i.op == "xchg" and any(isinstance(o, Reg) and o.name in regs
+                                       for o in self.i.operands):
+            raise LowerError(f"{self.i}: CS store hook after its address register changes")
+        word = int(m.width == 16)
+        hook = "_ww" if word else "_wb"
+        hooked = False
+        for k, (delta, n, lab) in enumerate(self.c.code_regions):
+            if not regs:
+                if any(0 <= (m.disp & 0xFFFF) + delta + j < n for j in range(1 + word)):
+                    raise LowerError(f"{self.i}: a fixed CS store into cached cells is not lowered")
+                continue
+            if delta > 0 or n - delta > 0x10000:
+                raise LowerError(f"{self.i}: cached cells across its CS window are not lowered")
+            cold, back = f"{self.c.label}_hk{k}", f"{self.c.label}_hr{k}"
+            self.getreg(regs[0], "d6")
+            disp = m.disp
+            if len(regs) == 2:
+                if regs[1] in MIRROR:       # held as 7FFFh - x
+                    self.e(f"sub.w {GREG[regs[1]]},d6")
+                    disp += 0x7FFF
+                else:
+                    self.e(f"add.w {GREG[regs[1]]},d6")
+            self.sub_const(-(disp + delta + word + 1), "d6")    # exact: the region lies inside
+            self.e(f"cmp.w #{hx(n + word + 1)},d6")
+            src = self.i.operands[1] if self.i.op == "mov" and not word else None
+            self.e(f"{'bcc' if isinstance(src, (Imm, Reg)) else 'bcs'} "
+                   f"{back if isinstance(src, (Imm, Reg)) else cold}")
+            if isinstance(src, Imm) and src.value & 0xFF == RET_BYTE:    # the RET planted
+                self.e(f"lea {lab}_cov-1,a0")
+                self.e("move.b (a0,d6.w),d7")
+                self.e(f"beq {back}")                   # not cached
+                self.e(f"cmp.w #-1,{lab}_plant")
+                self.e(f"bne {cold}")                   # dropped, or one is planted
+                self.e("subq.b #1,d7")
+                self.e(f"beq {cold}")                   # inside a cell
+                self.e(f"move.w d6,{lab}_plant")
+            elif isinstance(src, (Imm, Reg)):           # the planted cell's first byte back
+                self.e(f"cmp.w {lab}_plant,d6")
+                self.e(f"bne {cold}")
+                # Index zero is the byte before the region, not a planted
+                # cell; it also equals the dropped-cache tag and zero padding.
+                self.e("tst.w d6")
+                self.e(f"beq {back}")
+                if isinstance(src, Imm):
+                    self.e(f"moveq #{(src.value & 0xFF) - ((src.value & 0x80) << 1)},d7")
+                else:
+                    self.getreg(src.name, "d7")
+                self.e(f"lea {lab}_cov-1,a0")
+                self.e("cmp.b (a0,d6.w),d7")
+                self.e(f"bne {cold}")
+                self.e(f"move.w #-1,{lab}_plant")
+            self.at(back)
+            self.cold += [f"{cold}:", f"\tjsr {lab}{hook}", f"\tbra {back}"]
+            self.stats["code store hook"] += 1
+            hooked = True
+        if hooked:
+            self.ccr = set()
+            self.x_cf = False
 
     # -- D9 display: the graphics driver's stores to video memory ------------
     def vram_mark(self, m: Mem) -> None:

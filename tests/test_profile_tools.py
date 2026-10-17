@@ -38,6 +38,18 @@ class ProfileTools(unittest.TestCase):
             self.assertEqual(P.routine_entries(Path(tmp)),
                              {"SWOTL.EXE": [0x100], "FLIGHT.OVL": [0x200]})
 
+    def test_labels_inside_an_instruction(self):
+        # A poll's fall-through, a segment check's and a CS store hook's return
+        # label belong to their instruction; out-of-line stubs stay symbols.
+        table = "".join(f"{a:08x} g     F .text\t00000000 {n}\n" for a, n in (
+            (0x100, "R_00100"), (0x108, "R_00100_np"), (0x110, "R_00100_sr0"),
+            (0x118, "R_00100_hr1"), (0x120, "R_00102"), (0x200, "R_00100_sx0"),
+            (0x208, "R_00102_hk0")))
+        with patch.object(P.subprocess, "run", return_value=SimpleNamespace(stdout=table)):
+            self.assertEqual(P.symbols("objdump", "unused"),
+                             [(0x100, "R_00100"), (0x120, "R_00102"), (0x200, "R_00100_sx0"),
+                              (0x208, "R_00102_hk0")])
+
     def test_encoded_sizes_and_symbol_aliases(self):
         dis = """       0:\t7000           \tmoveq #0,d0
        2:\t203c 0000 0000 \tmove.l #0,d0

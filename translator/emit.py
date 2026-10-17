@@ -27,7 +27,7 @@ from collections import Counter
 from . import cfg, image, region, smc
 from .decode import Far, Rel
 from .flags import ALL, plan, transfer
-from .lower import GREG, MIRROR, Ctx, LowerError, hx
+from .lower import GREG, LOADSEG, MIRROR, Ctx, LowerError, hx
 
 M = image.M
 TAG = {"SWOTL.EXE": "R", "SPAZ.OVL": "SPZ", "RTSVGA.OVL": "VGA", "FRONTEND.OVL": "FE",
@@ -244,6 +244,7 @@ class Program:
         self.smc_forms = image.smc_forms()
         self.walk_preserves_flags = all(smc.preserves_flags(forms)
                                         for forms in self.smc_forms.values())
+        self.cell_regions()
         # D9: the `jmp far` of each PLINK thunk into the graphics driver
         # (thunk: call far manager, dw id, jmp far)
         self.driver_jumps = {at + 7 for at, mod, _ in M.thunks(image.load()) if mod == GRAPHICS_DRIVER}
@@ -511,6 +512,48 @@ class Program:
         return leaders
 
     # -- generation -------------------------------------------------------------
+    def cell_regions(self) -> None:
+        """D3 cell caches: per region its segment, first IP and covered bytes; the
+        lowest segment whose 64 KiB window (the byte past it too) reaches none."""
+        self.cells = []     # (walk label, segment, first IP, span)
+        for mod, lo, hi in sorted(self.smc_forms):
+            u = self.units.get(mod)
+            if not u or u.segment(lo) != u.segment(hi):
+                continue
+            first, last = u.ip_of(lo), u.ip_of(hi)
+            if first + smc.span(first, last) > 0x10000:
+                raise LowerError(f"{mod}+{lo:05X}: cell cache past its segment")
+            self.cells.append((walk_label(mod, lo), u.segment(lo), first, smc.span(first, last)))
+        lins = [((LOADSEG + seg) * 16 + first, (LOADSEG + seg) * 16 + first + n - 1)
+                for _, seg, first, n in self.cells]
+        self.smc_bounds = (min(a for a, _ in lins), max(b for _, b in lins)) if lins else (1, 0)
+        if lins and self.smc_bounds[0] > 0x10000:
+            raise LowerError("cell cache: a segment check from below is not lowered")
+        self.smc_limit = (self.smc_bounds[1] >> 4) + 1 if lins else 0
+
+    def code_regions(self, cs: int) -> tuple:
+        """Cell caches a CS-segment store in segment `cs` may reach: (offset to
+        region offset, span, walk label), region offset = offset + the first."""
+        out = []
+        for lab, seg, first, n in self.cells:
+            delta = (cs - seg) * 16 - first
+            if delta < n and delta + 0x10000 >= 0:
+                out.append((delta, n, lab))
+        return tuple(out)
+
+    def smc_text(self) -> tuple[list[str], list[str]]:
+        """Code (smc_expose, the runtime's bounds and segment limit) and cache data."""
+        lo, hi = self.smc_bounds
+        code = smc.expose([lab for lab, *_ in self.cells]) + [
+            "\tcnop\t0,4", f"smc_lo:\tdc.l\t{hx(lo)}", f"smc_hi:\tdc.l\t{hx(hi)}",
+            f"smc_seg_limit:\tdc.w\t{hx(self.smc_limit)}"]
+        data = []
+        for (mod, lo_, hi_) in sorted(self.smc_forms):
+            u = self.units.get(mod)
+            if u and any(lab == walk_label(mod, lo_) for lab, *_ in self.cells):
+                data += smc.tables(walk_label(mod, lo_), u.ip_of(lo_), u.ip_of(hi_))
+        return code, data
+
     def region(self, mod: str, off: int) -> tuple[int, int] | None:
         return next(((lo, hi) for m, lo, hi in self.smc_forms if m == mod and lo <= off <= hi),
                     None)
@@ -538,14 +581,18 @@ class Program:
             lines.append("\txref\trt_replay_rep")
         lines += ["\txref\t" + s for s in sorted({s for _, s in self.hle.values()})]
         lines += ["\txdef\tdispatch_table", "\txdef\tdispatch_count", "\txdef\tload_segment",
-                  "\txdef\toverlay_table", "\tsection\t.text,code"]
+                  "\txdef\toverlay_table", "\txdef\tsmc_expose", "\txdef\tsmc_lo",
+                  "\txdef\tsmc_hi", "\txdef\tsmc_seg_limit", "\tsection\t.text,code"]
         lines += [f'\tinclude\t"{f}"' for f in files]
+        code, data = self.smc_text()
+        lines += code
         rows = self.dispatch_rows()
         lines += ["\tcnop\t0,4", "load_segment:\tdc.l\tLOADSEG",
                   f"overlay_table:\tdc.l\t{hx(M.OVL_TABLE)}\t; PLINK records, id 1 first (root offset)",
                   "dispatch_count:", f"\tdc.l\t{len(rows)}", "dispatch_table:"]
         lines += [f"\tdc.w\t{cs_expr(cs)},{hx(ip)},{oid},{far}\n\tdc.l\t{lab}"
                   for cs, ip, oid, far, lab in rows]
+        lines += ["\tsection\t.bss,bss"] + data
         return "\n".join(lines) + "\n"
 
     def near_walks(self, mod: str, off: int) -> set[tuple[int, int]]:
@@ -600,6 +647,7 @@ class Program:
                    near_targets=near_t, complete=bool(sw), far_targets=far_t,
                    smc_targets=tuple(sorted((u.ip_of(lo), u.ip_of(hi), walk_label(mod, lo))
                                             for lo, hi in smc_t)),
+                   code_regions=self.code_regions(cs), seg_limit=self.smc_limit,
                    manager=off in u.manager_calls, program=True, vram=mod == GRAPHICS_DRIVER,
                    driver_call=mod == M.ROOT and off in self.driver_jumps, ret_mismatch=RM,
                    rep_hook=((self.diagnostic_reps[(mod, off)], label(mod, off))
@@ -791,7 +839,7 @@ class Program:
                 if u.ip_of(lo) > u.ip_of(hi) or u.segment(lo) != u.segment(hi):
                     raise LowerError(f"{mod}+{lo:05X}: self-modified region crosses a segment")
                 lines += smc.walk(walk_label(mod, lo), cs_expr(u.segment(lo)), u.ip_of(lo),
-                                  u.ip_of(hi), forms)
+                                  u.ip_of(hi), forms, self.smc_limit)
                 stats["self-modified walk"] += 1
         stops = {w.strip("()") for x in lines for w in x.replace(",", " ").split()
                  if w.endswith("_stop")}

@@ -34,10 +34,11 @@ from m68k_assembly import branch_widths  # noqa: E402
 import uc as U  # noqa: E402
 import x86_diff as X  # noqa: E402
 from translator import emit, image, region, smc  # noqa: E402
-from translator.decode import DecodeError, Reg  # noqa: E402
+from translator import lower as L  # noqa: E402
+from translator.decode import DecodeError, Imm, Mem, Reg  # noqa: E402
 from translator.interp import State, UndefinedFlag, step  # noqa: E402
 from translator.ir import FLAG_BIT, STATUS  # noqa: E402
-from translator.lower import CCR_BIT, LOADSEG  # noqa: E402
+from translator.lower import CCR_BIT, HALF, LOADSEG  # noqa: E402
 from translator.support import HELPERS, equates  # noqa: E402
 
 M = image.M
@@ -64,15 +65,48 @@ def program_image(p: emit.Program, cache: Path) -> tuple[bytes, dict]:
                 order += [f"{emit.label(*n)}_bpg" for n in sorted(starts)]
                 order += [f"{emit.label(*p.fall[n])}_bpr" for n in sorted(nodes)
                           if p.node_insn(n).op in region.REGUARD and p.fall.get(n) in nodes]
+    smc_code, smc_data = p.smc_text()
+    order += aux_labels(p)
     src = [equates()] + [f"{n}\tequ\t${a:x}" for n, a in STUB_AT.items()]
     src += [f"\torg\t${D.CODE:x}", "labels:"] + [f"\tdc.l\t{x}" for x in order]
-    src += body + [HELPERS]
+    src += body + [HELPERS] + smc_code + smc_data
     text = branch_widths("\n".join(src) + "\n")
     key = hashlib.sha256(text.encode()).hexdigest()[:16]
     out = cache / f"program-{key}.bin"
     image_ = out.read_bytes() if out.exists() else D.assemble(text, out)
     addr = {x: int.from_bytes(image_[4 * k:4 * k + 4], "big") for k, x in enumerate(order)}
     return image_, addr
+
+
+def aux_labels(p: emit.Program) -> list[str]:
+    """Cell cache (D3) labels the tests reach that are no block exits: the
+    exact walk, the store hooks, smc_expose and the cache data."""
+    _code, data = p.smc_text()
+    out = ["smc_expose"] + [x.split(":")[0] for x in data if ":" in x]
+    for lab, *_ in p.cells:
+        out += [f"{lab}_x", f"{lab}_wb", f"{lab}_ww"]
+    return out
+
+
+SNIP = D.CODE + 0x700000    # single lowered instructions (cache_cases), after the program
+
+
+def snippets(p: emit.Program, addr: dict, nodes: list, cache: Path) -> tuple[bytes, list[int]]:
+    """The program's lowering of each instruction alone (no run context: no
+    reused index or base), each ending in rts, assembled at SNIP against the
+    program image's cell cache labels; returns the image and the entries."""
+    src = [equates()] + [f"{n}\tequ\t${a:x}" for n, a in STUB_AT.items()]
+    src += [f"{x}\tequ\t${addr[x]:x}" for x in aux_labels(p)]
+    src += [f"\torg\t${SNIP:x}", "snips:"] + [f"\tdc.l\tS{k}" for k in range(len(nodes))]
+    cold = []
+    for k, (mod, off) in enumerate(nodes):
+        lw = L.lower(p.units[mod].insns[off], p.ctx(mod, off, Counter()))
+        src += [f"S{k}:"] + lw.out + ["\trts"]
+        cold += lw.cold
+    text = "\n".join(src + cold) + "\n"
+    out = cache / f"snip-{hashlib.sha256(text.encode()).hexdigest()[:16]}.bin"
+    image_ = out.read_bytes() if out.exists() else D.assemble(text, out)
+    return image_, [int.from_bytes(image_[4 * k:4 * k + 4], "big") for k in range(len(nodes))]
 
 
 def relocated(m: M.Module) -> bytearray:
@@ -150,31 +184,40 @@ def cells(data: bytes, start: int, forms: list[str]) -> list[str]:
 
 
 def walks(p: emit.Program, h, m, addr, stop_names, cases: int,
-          edges: int = 8) -> tuple[int, list[str]]:
+          edges: int = 8, steps: int = 24) -> tuple[int, list[str]]:
     count, bad = 0, []
+    cached = {lab for lab, *_ in p.cells}
 
-    def one(mod, u, cs, lo, data, e, code, n, want, what, edge=False):
+    def one(mod, u, cs, lo, data, e, code, n, want, what, edge=False, entry="", cold=True,
+            force=None, memory=(), self_write=False):
         """Walk from `e` over `code` (the region image, patched): `n` x86
         instructions, then the 68k reaches `want` (T_RET, or rt_stop_unknown
-        at the x86's IP). False when the case stores over its own bytes (an
-        edge case also when the x86 then ran them into an exception)."""
+        at the x86's IP). `entry`: the walk's label suffix (`_x` the exact
+        walk); `cold`: the cell cache dropped first (the harness wrote the
+        bytes), else it holds what the store hooks told it. False when the
+        case stores over its own bytes (unless `self_write`; an edge case also
+        when the x86 then ran them into an exception)."""
         nonlocal count
         ip = u.ip_of(e)
         regs, flags, flagsx, _ = h.state({"regs": {"cs": cs}, "ip": ip})
+        regs.update(force or {})
         ret_ip = h.rng.randrange(0x10000)
         sp_lin = regs["ss"] * 16 + regs["sp"]
         patches = [(sp_lin, ret_ip.to_bytes(2, "little")),
-                   (cs * 16 + u.ip_of(lo), bytes(code))]
+                   (cs * 16 + u.ip_of(lo), bytes(code))] + list(memory)
         case = (regs, flags, flagsx, ip, patches)
         err, out, fl, umem, ints, outs, uwrites = h.oracle.run(case, n)
         patched = {a: d[a - a0] for a0, d in patches for a in range(a0, a0 + len(d))}
         umem = {a: umem.get(a, h.oracle.e.read(a, 1)[0]) for a in set(umem) | uwrites}
         h.oracle.restore(uwrites | set(patched))
-        if uwrites & set(patched) or edge and (err or ints):
+        if not self_write and uwrites & set(patched) or edge and (err or ints):
             return False  # stores over the cells or the return word
+        wl = emit.walk_label(mod, lo)
+        if wl in cached and (cold or min(regs[r] for r in ("ds", "es", "ss")) < p.smc_limit):
+            m.e.write(addr[f"{wl}_plant"], b"\0\0")   # as rt_wrote or load_regs would
         m.inside, m.extra_stops = set(), stop_names
         mo, mf, mfx, mmem, mouts, mwrites, info = m.run(
-            addr[emit.walk_label(mod, lo)], case, h.rng, init={"d7": ip}, irq=False)
+            addr[wl + entry], case, h.rng, init={"d7": ip}, irq=False)
         diffs = []
         if info["err"] or info["stop"] != want:
             diffs.append(f"stop {info['stop']} err {info['err']}")
@@ -198,16 +241,23 @@ def walks(p: emit.Program, h, m, addr, stop_names, cases: int,
                 break
         count += 1
         if diffs:
-            bad.append(f"{mod}+{e:05X} walk {what}: {'; '.join(diffs[:6])}")
+            bad.append(f"{mod}+{e:05X} walk{entry} {what}: {'; '.join(diffs[:6])}")
         m.restore(set(mwrites) | set(patched))
         return True
+
+    def both(*a, exact=True, **k):
+        """Through the cell cache (dropped first), and the exact walk."""
+        r = one(*a, **k)
+        if r and exact and emit.walk_label(a[0], a[3]) in cached:
+            one(*a, **dict(k, entry="_x"))
+        return r
 
     for (mod, lo, hi), images in region_images(p).items():
         u = p.units[mod]
         cs = (LOADSEG + u.segment(lo)) & 0xFFFF
         entries = sorted(o for o in u.smc_entries if lo <= o <= hi)
         for data in images:
-            for _ in range(cases):
+            for c in range(cases):
                 e = h.rng.choice(entries)
                 chain = cells(data, e - lo, p.smc_forms[(mod, lo, hi)])
                 k = h.rng.randrange(len(chain) + 1)
@@ -215,7 +265,7 @@ def walks(p: emit.Program, h, m, addr, stop_names, cases: int,
                 at = e - lo + sum(len(smc._parse(f)[0]) for f in chain[:k])
                 code[at] = 0xC3
                 n = sum(len(smc.FORMS[f][0]) for f in chain[:k]) + 1
-                one(mod, u, cs, lo, data, e, code, n, "T_RET", f"of {k} cells")
+                both(mod, u, cs, lo, data, e, code, n, "T_RET", f"of {k} cells", exact=c % 8 == 0)
     # R7 edges, for `edges` entries per image: mov cells up to the region's
     # last IP and past it, the stop at the bound (the counted run's residue
     # varies with the entry), a RET in the last cell before the bound, and an
@@ -227,7 +277,9 @@ def walks(p: emit.Program, h, m, addr, stop_names, cases: int,
         forms = p.smc_forms[(mod, lo, hi)]
         mov, _ = smc._parse(smc.MOV)
         for data in images:
-            for e in h.rng.sample(sorted(o for o in u.smc_entries if lo <= o <= hi), edges):
+            for x, e in enumerate(h.rng.sample(sorted(o for o in u.smc_entries if lo <= o <= hi),
+                                               edges)):
+                exact = x < edges // 4      # the exact walk too, for a quarter of them
                 chain = cells(data, e - lo, forms)
                 q, ops = e - lo, []     # the operands of the image's own mov cells
                 for f in chain:
@@ -244,22 +296,258 @@ def walks(p: emit.Program, h, m, addr, stop_names, cases: int,
                     q += 4
                 q -= 8
                 if nf:
-                    one(mod, u, cs, lo, data, e, full, nf, "rt_stop_unknown",
-                        f"of {nf} cells to the bound", True)
+                    both(mod, u, cs, lo, data, e, full, nf, "rt_stop_unknown",
+                         f"of {nf} cells to the bound", True, exact=exact)
                 if q > at:
                     last = bytearray(full)
                     last[q - 4] = 0xC3
-                    one(mod, u, cs, lo, data, e, last, nf, "T_RET",
-                        f"of {nf - 1} cells, RET at the bound", True)
+                    both(mod, u, cs, lo, data, e, last, nf, "T_RET",
+                         f"of {nf - 1} cells, RET at the bound", True, exact=exact)
                 for j in sorted({1, len(chain) // 2, len(chain)} & set(range(1, len(chain) + 1))):
                     bad_cell = bytearray(data)
                     c = e - lo + sum(len(smc._parse(f)[0]) for f in chain[:j])
                     junk = h.rng.choice((b"\x90", b"\x88\x86", b"\x2e\x8b\x1f"))
                     bad_cell[c:c + len(junk)] = junk
-                    one(mod, u, cs, lo, data, e, bad_cell,
-                        sum(len(smc.FORMS[f][0]) for f in chain[:j]), "rt_stop_unknown",
-                        f"of {j} cells, unknown cell {junk.hex()}", True)
+                    both(mod, u, cs, lo, data, e, bad_cell,
+                         sum(len(smc.FORMS[f][0]) for f in chain[:j]), "rt_stop_unknown",
+                         f"of {j} cells, unknown cell {junk.hex()}", True, exact=exact)
+    cache_cases(p, h, m, addr, stop_names, one, bad, steps)
     return count, bad
+
+
+def mov_runs(data: bytes, start: int, chain: list[str]) -> list[tuple[int, int, int]]:
+    """(byte offset, operand, cells) of each run of mov cells from `start` whose
+    operands are consecutive (one reload or other cell ends a run)."""
+    out, q = [], start
+    for f in chain:
+        if f == smc.MOV:
+            w = int.from_bytes(data[q + 2:q + 4], "little")
+            if out and out[-1][0] + 4 * out[-1][2] == q and (out[-1][1] + out[-1][2]) & 0xFFFF == w:
+                out[-1] = (out[-1][0], out[-1][1], out[-1][2] + 1)
+            else:
+                out.append((q, w, 1))
+        q += len(smc._parse(f)[0])
+    return out
+
+
+def cache_cases(p: emit.Program, h, m, addr, stop_names, one, bad, steps: int) -> None:
+    """D3: walks over a warm cell cache that the store hooks keep current, each
+    against x86 on the same bytes. Per image, `steps` walks, each between a
+    RET plant and its restore made through the region's store hook (`_wb`),
+    as the generated CS stores do; some steps first patch a mov operand
+    through `_ww`, or rewrite cells unseen after a segment load whose window
+    reaches the region (a real generated `mov`/`pop` of ES or DS) or after
+    smc_expose. Then, on a cold cache: the RET inside and at the ends of runs
+    of destinations; destinations that wrap at 16 bits (first, middle, last
+    cell; also the exact walk); a DS reaching the region at the entry and from
+    a reload, whose own store plants the RET; entries inside a cached cell."""
+    loads = {}      # (op, segment) -> node, source register (None: the stack)
+    sites = {}      # kind -> [(node, insn)]: byte/word movs to CS memory a cache may see
+    for mod, u in p.units.items():
+        for off, i in sorted(u.insns.items()):
+            if i.op in ("mov", "pop") and isinstance(i.operands[0], Reg) and \
+                    i.operands[0].name in ("es", "ds") and \
+                    (i.op == "pop" or isinstance(i.operands[1], Reg) and
+                     i.operands[1].name in D.REGS and i.operands[1].name not in ("sp", "bp")):
+                loads.setdefault((i.op, i.operands[0].name),
+                                 ((mod, off), None if i.op == "pop" else i.operands[1].name))
+            if i.op == "mov" and isinstance(i.operands[0], Mem) and i.operands[0].seg == "cs" \
+                    and (i.operands[0].base or i.operands[0].index) \
+                    and p.ctx(mod, off, Counter()).code_regions:
+                a, b = i.operands
+                kind = ("word" if a.width == 16 else "plant" if isinstance(b, Imm) and b.value == 0xC3
+                        else "imm" if isinstance(b, Imm) else "reg")
+                sites.setdefault(kind, []).append(((mod, off), i))
+    loads = list(loads.values())
+    nodes = [n for n, _ in loads] + [n for v in sites.values() for n, _ in v]
+    snip, at = snippets(p, addr, nodes, image.REPO / "tmp/m68k")
+    m.e.write(SNIP, snip)
+    snip_at = dict(zip(nodes, at))
+
+    def run_aux(where, force, patches, init):
+        regs, flags, flagsx, _ = h.state({"regs": {"cs": 0x1000}, "ip": 0})
+        regs.update(force)
+        m.inside, m.extra_stops = set(), stop_names
+        out = m.run(where, (regs, flags, flagsx, 0, patches), h.rng, init=init, irq=False)
+        m.restore(out[5] | {a for a0, d in patches for a in range(a0, a0 + len(d))})
+        return out[-1]
+
+    def site_store(kind, target, value, code_at, code):
+        """One generated CS store (its lowering and hook) of `value` at IP
+        `target`; False when no site of the kind stores that value."""
+        options = [(n, i) for n, i in sites.get(kind, ())
+                   if not isinstance(i.operands[1], Imm) or i.operands[1].value == value]
+        if not options:
+            return False
+        node, i = h.rng.choice(options)
+        a, b = i.operands
+        force = {}
+        regs = [r for r in (a.base, a.index) if r]
+        for r in regs[1:]:
+            force[r] = h.rng.randrange(0x10000)
+        force[regs[0]] = (target - a.disp - sum(force.values())) & 0xFFFF
+        if isinstance(b, Reg):
+            full, sh = HALF.get(b.name, (b.name, 0))
+            if full in force:
+                return False
+            force[full] = value << sh | h.rng.randrange(0x100) << (8 - sh) if b.width == 8 else value
+        info = run_aux(snip_at[node], force, [(code_at, bytes(code))], {})
+        if info["err"] or info["stop"] != "T_RET":
+            bad.append(f"{emit.label(*node)} store: stop {info['stop']} err {info['err']}")
+        return True
+
+    def hook(wl, code_at, code, q, word=False, kind=None, value=None, ip=None):
+        """The store at region offset q is in `code`: a generated site's own
+        store of the same value (when `kind` names one), else the hook alone."""
+        if kind and h.rng.randrange(2) and site_store(kind, ip + q, value, code_at, code):
+            return
+        info = run_aux(addr[f"{wl}_ww" if word else f"{wl}_wb"], {}, [(code_at, bytes(code))],
+                       {"d6": q + word + 1})
+        if info["err"] or info["stop"] != "T_RET":
+            bad.append(f"{wl} store hook at {q:04x}: stop {info['stop']} err {info['err']}")
+
+    def until_ret(code, start, forms):
+        return sum(len(smc.FORMS[f][0]) for f in cells(code, start, forms)) + 1
+
+    for (mod, lo, hi), images in region_images(p).items():
+        wl = emit.walk_label(mod, lo)
+        if wl not in {lab for lab, *_ in p.cells}:
+            continue
+        u = p.units[mod]
+        cs = (LOADSEG + u.segment(lo)) & 0xFFFF
+        code_at = cs * 16 + u.ip_of(lo)
+        forms = p.smc_forms[(mod, lo, hi)]
+        entries = sorted(o for o in u.smc_entries if lo <= o <= hi)
+        for data in images:
+            m.e.write(addr[f"{wl}_plant"], b"\0\0")
+            cur = bytearray(data)
+            for step in range(steps):
+                e = h.rng.choice(entries)
+                chain = cells(cur, e - lo, forms)
+                movs = [q + 4 * j for q, _w, k in mov_runs(cur, e - lo, chain) for j in range(k)]
+                kind = h.rng.randrange(6) if movs else 5
+                touched = -1        # the last cell changed: the walk's RET lies after it
+                if kind == 0:       # an operand patch (a word store through the hook)
+                    q = touched = h.rng.choice(movs)
+                    w = h.rng.randrange(0x10000)
+                    cur[q + 2:q + 4] = w.to_bytes(2, "little")
+                    hook(wl, code_at, cur, q + 2, word=True, kind="word", value=w, ip=u.ip_of(lo))
+                elif kind in (1, 2):    # cells rewritten unseen after a load or smc_expose
+                    if kind == 1:
+                        node, src = h.rng.choice(loads)
+                        value = h.rng.choice((cs, 0, p.smc_limit - 1))
+                        if src:
+                            info = run_aux(snip_at[node], {src: value}, [], {})
+                        else:
+                            info = run_aux(snip_at[node], {"ss": 0x1000, "sp": 0x100},
+                                           [(0x10100, value.to_bytes(2, "little"))], {})
+                        if info["err"] or info["stop"] != "T_RET":
+                            bad.append(f"{emit.label(*node)}: stop {info['stop']} err {info['err']}")
+                    else:
+                        run_aux(addr["smc_expose"], {}, [], {})
+                    for q in h.rng.sample(movs, min(3, len(movs))):
+                        cur[q + 2:q + 4] = h.rng.randrange(0x10000).to_bytes(2, "little")
+                        touched = max(touched, q)
+                # a quarter of the RETs where the cells end (never cached): the walk
+                # must not stop at an earlier, restored one
+                ends = [e - lo + sum(len(smc._parse(f)[0]) for f in chain[:j])
+                        for j in range(len(chain) + 1)]
+                after = [j for j, q in enumerate(ends) if q > touched]
+                k = len(chain) if h.rng.randrange(4) == 0 else h.rng.choice(after)
+                at = ends[k]
+                old = cur[at]
+                cur[at] = 0xC3
+                hook(wl, code_at, cur, at, kind="plant", value=0xC3, ip=u.ip_of(lo))
+                if not one(mod, u, cs, lo, cur, e, cur, until_ret(cur, e - lo, forms), "T_RET",
+                           f"warm step {step} ({kind}), RET after {k} cells", cold=False):
+                    m.e.write(addr[f"{wl}_plant"], b"\0\0")   # not run (it stores over its cells)
+                cur[at] = old
+                hook(wl, code_at, cur, at, kind=h.rng.choice(("reg", "imm")), value=old,
+                     ip=u.ip_of(lo))
+            for e in h.rng.sample(entries, min(4, len(entries))):
+                chain = cells(data, e - lo, forms)
+                runs = [r for r in mov_runs(data, e - lo, chain) if r[2] >= 2]
+                for q, w, k in runs[:3]:    # entered at the run's first cell
+                    for j in sorted({1, 2, smc.FILL - 1, smc.FILL, smc.FILL + 1, k - 1, k} &
+                                    set(range(1, k + 1))):
+                        code = bytearray(data)
+                        code[q + 4 * j] = 0xC3
+                        one(mod, u, cs, lo, data, lo + q, code, j + 1, "T_RET",
+                            f"RET {j} cells into a run of {k}", edge=True)
+                    code = bytearray(data)
+                    code[q + 4 * k] = 0xC3
+                    for j in sorted({0, k // 2, k - 1}):
+                        bx = (0xFFFF - w - j) & 0xFFFF      # cell j stores at FFFFh
+                        for entry in ("", "_x"):
+                            one(mod, u, cs, lo, data, lo + q, code, k + 1, "T_RET",
+                                f"run of {k}, offset FFFFh at cell {j}", force={"bx": bx},
+                                edge=True, entry=entry)
+                if chain[:3] == [smc.MOV] * 3:   # the entry DS: cell 0 plants at cell 2
+                    w0 = int.from_bytes(data[e - lo + 2:e - lo + 4], "little")
+                    for ds in (cs, cs - 0x100):
+                        bx = (u.ip_of(e) + 8 + (cs - ds) * 16 - w0) & 0xFFFF
+                        one(mod, u, cs, lo, data, e, data, 3, "T_RET", f"entry DS {ds:04x} plants",
+                            force={"ds": ds, "bx": bx, "ax": 0xC3}, self_write=True, edge=True)
+                rl = [j for j, f in enumerate(chain) if f == smc.RELOAD]
+                if rl and chain[rl[0] + 1:rl[0] + 3] == [smc.MOV] * 2:  # DS from a reload
+                    at = e - lo + sum(len(smc._parse(f)[0]) for f in chain[:rl[0]])
+                    w1, w2, wn = (int.from_bytes(data[at + k:at + k + 2], "little") for k in (3, 8, 12))
+                    bx = (u.ip_of(lo) + at + 14 - wn) & 0xFFFF
+                    words = {cs * 16 + w1: bx, cs * 16 + w2: cs}
+                    inside = any(code_at - 1 <= a < code_at + len(data) for a in words)
+                    if abs(w1 - w2) >= 2 and not inside:
+                        one(mod, u, cs, lo, data, lo + at, data, 4, "T_RET", "reload DS plants",
+                            force={"ax": 0xC3},
+                            memory=[(a, v.to_bytes(2, "little")) for a, v in words.items()],
+                            self_write=True, edge=True)
+                if chain[:1] == [smc.MOV]:      # inside a cached cell: the exact walk decides
+                    code = bytearray(data)
+                    code[e - lo + 4] = 0xC3     # one cell cached
+                    one(mod, u, cs, lo, data, e, code, 2, "T_RET", "warms the cache")
+                    for d in (1, 2, 3):
+                        if code[e - lo + d] in (0x88, 0x2E, 0xC3):
+                            continue
+                        one(mod, u, cs, lo, data, e + d, code, 0, "rt_stop_unknown",
+                            f"entry {d} bytes into a cached cell", cold=False, edge=True)
+
+        # A restore must be observed before another plant or exposure can hide
+        # it. Exercise both the shared hook and an actual lowered byte store,
+        # with all non-CS segments outside the code region throughout.
+        e = entries[0]
+        q = e - lo
+        force = dict(ds=0x3000, es=0x3000, ss=0x3000, sp=0x8000, bx=0x1000, ax=0x5A)
+        for lowered in (False, True):
+            code = bytearray(images[0])
+            code[q:q + 13] = bytes.fromhex("888700008887010088870200c3")
+            one(mod, u, cs, lo, code, e, code, 4, "T_RET", "restore control warms", force=force)
+            code[q + 4] = 0xC3
+            hook(wl, code_at, code, q + 4)
+            one(mod, u, cs, lo, code, e, code, 2, "T_RET", "restore control planted",
+                cold=False, force=force)
+            code[q + 4] = 0x88
+            if lowered:
+                assert any(site_store("reg", u.ip_of(e) + 4, 0x88, code_at, code)
+                           for _ in range(32)), "no lowered register restore exercised"
+            else:
+                hook(wl, code_at, code, q + 4)
+            one(mod, u, cs, lo, code, e, code, 4, "T_RET",
+                f"restore control restored ({'lowered' if lowered else 'hook'})",
+                cold=False, force=force)
+
+        # A zero store just before the region has hook index zero, also the
+        # invalid-cache tag. It must not revive records retained after exposure.
+        # The neighbouring lower and upper addresses are outside-region controls.
+        size = smc.span(u.ip_of(lo), u.ip_of(hi))
+        for delta in (-2, -1, size, size + 1):
+            code = bytearray(images[0])
+            code[q:q + 13] = bytes.fromhex("888700008887010088870200c3")
+            one(mod, u, cs, lo, code, e, code, 4, "T_RET", "boundary control warms", force=force)
+            run_aux(addr["smc_expose"], {}, [], {})
+            code[q + 2:q + 4] = b"\x10\x00"  # unseen patch while the cache is invalid
+            assert any(site_store("reg", u.ip_of(lo) + delta, 0, code_at, code)
+                       for _ in range(32)), "no lowered zero store exercised"
+            one(mod, u, cs, lo, code, e, code, 4, "T_RET",
+                f"zero store outside region at {delta}", cold=False, force=force)
 
 
 def walk_entry(u, run, reg: str) -> dict | None:
@@ -337,8 +625,9 @@ def main(argv=None) -> int:
     cache.mkdir(parents=True, exist_ok=True)
     img, addr = program_image(p, cache)
     by_addr: dict[int, list[str]] = {}
+    aux = set(aux_labels(p))
     for x, a in addr.items():
-        if not x.endswith(("_bpg", "_bpr")):    # R6 guards run inside a block
+        if not x.endswith(("_bpg", "_bpr")) and x not in aux:   # R6 guards run inside a block
             by_addr.setdefault(a, []).append(x)
     stop_names = {a: xs[0] for a, xs in by_addr.items()}
     text_next = {}

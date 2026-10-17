@@ -438,6 +438,23 @@ def walk_plant(old, new):
     return walk
 
 
+def walk_regex(pattern, new):
+    """D3: the cell walk with every line matching `pattern` replaced (smc.walk)."""
+    rx = re.compile(pattern)
+    def walk(*a):
+        out = real_walk(*a)
+        assert any(rx.fullmatch(x) for x in out), pattern
+        return [rx.sub(new, x) if rx.fullmatch(x) else x for x in out]
+    return walk
+
+
+def cache_zero_tag_admitted(self, out):
+    """Let an outside zero store revive an invalid cache via its zero tag."""
+    return ["\tnop" if k and out[k - 1] == "\ttst.w d6" and
+            re.fullmatch(r"\tbeq \w+_hr\d+", line) else line
+            for k, line in enumerate(out)]
+
+
 def wide_bp_range(insns):
     """R6: the region guard admits BP one past each end of its range."""
     r = real_bp_range(insns)
@@ -522,6 +539,28 @@ SABOTAGE = [
      "boundary"),
     ("proved near table omits a target", table_target_omitted, "program"),
     ("untraced annotated table row omitted", untraced_table_row_omitted, "program"),
+    ("cell cache: a run stores one cell more", walk_plant("\tlsr.w #2,d6", "\tlsr.w #2,d6\n\taddq.w #1,d6"),
+     "walk"),
+    ("cell cache: offsets wrapping at 16 bits stored as one run", walk_plant("\tbvs .wrap", "\tnop"),
+     "walk"),
+    ("cell cache: a run continues past an operand gap", walk_plant("\tcmp.w d1,d2", "\tcmp.w d2,d2"),
+     "walk"),
+    ("cell cache: decode covers no bytes", walk_regex(r"\tmove\.l #\$[0-9a-f]{2}010101,\(a1,d5\.w\)", "\tnop"),
+     "walk"),
+    ("cell cache: store hook drops a RET plant", walk_regex(r"\tmove\.w d6,\w+_walk_plant", "\tnop"),
+     "walk"),
+    ("cell cache: store hook keeps a restored RET", walk_regex(r"\tmove\.w #-1,\w+_walk_plant", "\tnop"),
+     "walk"),
+    ("cell cache: store hook keeps a changed cell", walk_regex(r"\.inv:\tclr\.w \w+_walk_plant", ".inv:"),
+     "walk"),
+    ("cell cache: a dropped cache walked", walk_regex(r"\tbeq \w+_walk_reset", "\tnop"), "walk"),
+    ("cell cache: a reload's DS reaching a region kept cached",
+     walk_regex(r"\tcmp\.w #\$[0-9a-f]+,d5", "\tcmp.w d5,d5"), "walk"),
+    ("segment load keeps the cell caches", sub(r"^\tjsr smc_expose$", "\tnop"), "program"),
+    ("CS store skips its cell cache hook", sub(r"^\tjsr \w+_walk_w[bw]$", "\tnop"), "program"),
+    ("CS store drops its RET plant", sub(r"^\tmove\.w d6,\w+_walk_plant$", "\tnop"), "program"),
+    ("CS store keeps a restored RET", sub(r"^\tmove\.w #-1,\w+_walk_plant$", "\tnop"), "program"),
+    ("CS store revives invalid cache at zero tag", cache_zero_tag_admitted, "program"),
     ("walk lower bound omitted", walk_guard_omitted(0), "program"),
     ("walk upper bound omitted", walk_guard_omitted(1), "program"),
     ("flag extraction reads DF as IF", ("helpers", "\tbfextu\td7{22:1},d6",
