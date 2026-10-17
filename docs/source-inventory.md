@@ -91,7 +91,7 @@ translator output).
 | Fact | Value |
 |---|---|
 | Version | TFH 1.0, 28 Apr 1990 (`data/read.me`) |
-| Executables | `data/BOB` (game, hunks code 204,352 / data 64,020 / bss 4 B), `data/MB` (mission builder) |
+| Executables | `data/BOB` (game, code 204,352 B; initialized data 43,888 B in a 64,020 B allocation; BSS 4 B), `data/MB` (mission builder) |
 | Compiler | Manx Aztec C (`MANX` marker; `LINK A5`/`UNLK A5` frames); no symbol or debug hunks |
 | Shared with SWOTL | UI strings ("Insert Your Campaign Disk", "Do you want to fly the same mission again?") present in SWOTL's root/overlays: common C source |
-| Data formats | `.PAC` and `.GOB` in both; `.PAC` opcode bytes (`FD`/`FE`/`FB`) look like the same RLE family |
+| Data formats | Related PAC image/sprite framing and GOB terrain-ring tables, with platform-specific layouts; [cross-reference and checks](tfh-cross-reference.md) |
