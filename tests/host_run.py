@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import uc as U  # noqa: E402
 from translator import emit, image  # noqa: E402
+from tools import fixture_inputs
 
 REPO = image.REPO
 ELF = REPO / "build/host/swotl.elf"
@@ -208,6 +209,7 @@ def fnv(data: bytes) -> int:
 
 
 SABOTAGE = {
+    "missing-file": "wrong file omitted from the disk-prompt fixture",
     "mouse-motion": "scripted vertical mouse motion lost",
     "mouse-buttons": "scripted middle mouse button lost",
     "read": "first byte of each guest file read flipped",
@@ -222,7 +224,7 @@ SABOTAGE = {
 }
 # Plants a milestone other than --milestone exercises (the guest's first
 # hardware interrupt handler runs after m1b-logo).
-SABOTAGE_AT = {"sp": "m2-choose-side", "keyon": "m2-choose-side", "sfx_start": "c6-flight-keys",
+SABOTAGE_AT = {"missing-file": "c83-program-disk-prompt", "sp": "m2-choose-side", "keyon": "m2-choose-side", "sfx_start": "c6-flight-keys",
                "mouse-motion": "c9-mouse-menu",
                "mouse-buttons": "c9-mouse-menu"}
 
@@ -266,14 +268,15 @@ class MemFile:
 
 
 class Host:
-    def __init__(self, ref_root: Path, sabotage: str | None = None, music_skip: bool = False):
+    def __init__(self, ref_root: Path, sabotage: str | None = None, music_skip: bool = False,
+                 elf: Path | None = None):
         self.launch = ""
         self.root = ref_root
         self.file_clock = None
         self.calendar_date = None
         self.sabotage = sabotage
         functions = {}
-        entry, segs, self.syms = elf_load(ELF, functions)
+        entry, segs, self.syms = elf_load(elf or ELF, functions)
         self.frame_writer = functions["push_frame"]
         e = self.e = U.Engine(U.ARCH_M68K, U.MODE_BIG_ENDIAN, U.CPU_M68K_M68020)
         e.map(0, MEM)
@@ -713,12 +716,14 @@ class Host:
         releases = list(script["releases"]) if script else []
         self.irqs = list(script["irqs"]) if script else []
         self.step, self.hits, self.release = 0, 0, None
-        self.irq_i, self.visit_n, self.visits, self.group = 0, None, {}, None
+        self.irq_i, self.visit_n, self.visits, self.groups = 0, None, {}, {}
         self.irq_lost: str | None = None
         makes = 0
+        rep = script.get("rep") if script else None
+        rep_labels = set(rep.labels) if rep else set()
         # an instruction's label and its guarded copy's (R6) are one guest instruction
         at = {lab: {self.syms[x] for x in (lab, lab + "_bp") if x in self.syms}
-              for lab in {t[0] for t, _ in steps} | {lab for _, lab, _, _ in self.irqs}}
+              for lab in {t[0] for t, _ in steps} | {lab for _, lab, _, _ in self.irqs} | rep_labels}
         canon = {a: lab for lab, addrs in at.items() for a in addrs}
 
         @U.CODE_CB
@@ -768,12 +773,11 @@ class Host:
             if n != self.visit_n:  # executions of each poll point since the service event
                 self.visit_n, self.visits = n, {}
             here = canon[addr]
-            self.visits[here] = self.visits.get(here, 0) + 1
             svc, lab, hits, _ = self.irqs[self.irq_i]
             if n > svc and not self.irq_lost:
                 self.irq_lost = f"reference irq #{self.irq_i} at {lab} svc={svc} hits={hits} " \
                                 f"not reached (service events {n})"
-            if n != svc or here != lab or self.visits[here] != hits + 1:
+            if n != svc or here != lab or self.visits.get(here, 0) != hits:
                 return
             post_group(self.r("a7"))
 
@@ -793,21 +797,66 @@ class Host:
                 self.post(vector)
                 self.irq_i += 1
                 if guest:
-                    self.group = (key, a7 - 12)  # a7 at rt_irq_back: jsr rt_irq, movem d6-d7
+                    self.groups[a7 - 12] = key  # a7 at rt_irq_back: jsr rt_irq, movem d6-d7
                     return
-            self.group = None
 
         @U.CODE_CB
         def back(h, addr, size, user):
             try:
-                if self.group and self.irq_i < len(self.irqs) and \
-                        self.irqs[self.irq_i][:3] == self.group[0] and \
-                        self.r("a7") == self.group[1] and len(self.services) == self.group[0][0]:
-                    post_group(self.group[1] + 12)
+                stack = self.r("a7")
+                key = self.groups.pop(stack, None)
+                if key and self.irq_i < len(self.irqs):
+                    n = len(self.services)
+                    if n != self.visit_n:
+                        self.visit_n, self.visits = n, {}
+                    # IRET returns before the instruction. Handler visits or
+                    # services may make a new count eligible at this point.
+                    resume = (n, key[1], self.visits.get(key[1], 0))
+                    if self.irqs[self.irq_i][:3] == resume:
+                        post_group(stack + 12)
             except Exception as e:  # ctypes drops exceptions raised in hooks
                 self.irq_lost = f"interrupt replay: {e!r}"
                 self.halted = True
                 self.e.stop()
+
+        # The poll entry precedes interrupt delivery; _np is the actual
+        # instruction continuation, including returns from guarded copies.
+        continuations = {}
+        for lab in {r[1] for r in self.irqs} | rep_labels:
+            for name in (lab + "_np", lab + "_bp_np"):
+                if name in self.syms:
+                    continuations[self.syms[name]] = lab
+            if lab + "_np" not in self.syms:
+                raise ValueError(f"missing replay execution continuation: {lab}")
+
+        @U.CODE_CB
+        def executed(h, addr, size, user):
+            n = len(self.services)
+            if n != self.visit_n:
+                self.visit_n, self.visits = n, {}
+            here = continuations[addr]
+            self.visits[here] = self.visits.get(here, 0) + 1
+
+        for a in continuations:
+            self.e.hook_range(U.HOOK_CODE, executed, a, a)
+
+        rep = script.get("rep") if script else None
+        if rep is not None:
+            @U.CODE_CB
+            def rep_checkpoint(h, addr, size, user):
+                try:
+                    sp = self.r("a7")
+                    point, done = struct.unpack(">II", self.mem(sp + 4, 8))
+                    lab = rep.labels[point]
+                    regs = tuple(self.r(r) & 0xffff for r in ("d1", "a4", "a5"))
+                    resumed = rep.checkpoint(point, regs, len(self.services),
+                                             self.visits.get(lab, 0), done)
+                    self.e.write(sp + 4, struct.pack(">I", int(resumed)))
+                except Exception as error:
+                    self.irq_lost = f"REP replay: {error}"
+                    self.e.stop()
+            a = self.syms["rt_replay_rep"]
+            self.e.hook_range(U.HOOK_CODE, rep_checkpoint, a, a)
 
         # static hooks (Unicorn retranslates on every hook change)
         for a in {a for t, _ in steps for a in at[t[0]]}:
@@ -888,7 +937,9 @@ def milestone_script(name: str) -> dict:
         spec, _, key = k.partition("=")
         keys.append((trigger(spec), key if key.startswith(("mx", "my", "mb")) else key_code(key)))
     return {"keys": keys, "snapshots": [trigger(s) for s in r["snapshots"].split()],
-            "frame": r["vga_mode"] == "13", "launch": r["launch"]}
+            "frame": r["vga_mode"] == "13", "launch": r["launch"],
+            "missing_files": fixture_inputs.missing_files(r.get("missing_files") or ""),
+            "rep_chunks": r.get("rep_chunks") == "1"}
 
 
 def machine_ranges() -> list[tuple[int, int]]:
@@ -1136,15 +1187,23 @@ def reference_clocks(trace):
 
 
 def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None,
-          music_skip: bool = False, sound_log: Path | None = None) -> list[str]:
+          music_skip: bool = False, sound_log: Path | None = None,
+          trace: Path | None = None) -> list[str]:
     class args:  # noqa: N801
         pass
     args.milestone, args.timeout, args.amiga = milestone, timeout, amiga
     script = milestone_script(args.milestone)
     frame = script["frame"]
-    trace = REPO / f"tmp/pc-runs/ref-{args.milestone}/trace"
+    trace = trace or REPO / f"tmp/pc-runs/ref-{args.milestone}/trace"
     snap = trace / f"snap-{args.milestone}-{len(script['snapshots']) - 1}"  # where the run stops
-    h = Host(image.M.REF, sabotage, music_skip)
+    fixture_inputs.verify(trace.parent, script["missing_files"])
+    import rep_replay
+    chunks = rep_replay.read(trace, required=script["rep_chunks"])
+    rep = rep_replay.Replay(chunks) if chunks else None
+    diagnostic_elf = rep_replay.host_image(rep.labels) if rep else None
+    script["rep"] = rep
+    h = Host(image.M.REF, sabotage, music_skip, elf=diagnostic_elf)
+    h.deleted.update(("TARGETS.DEF",) if sabotage == "missing-file" else script["missing_files"])
     h.calendar_date, h.file_clock = reference_clocks(trace)
     label = script["snapshots"][-1][0]
     script["irqs"], script["releases"] = reference_inputs(trace, exact_releases=True)
@@ -1159,6 +1218,11 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
             h.sound_log = log
             h.run(script, args.timeout)
         h.sound_log = None
+    if rep is not None:
+        try:
+            rep.complete()
+        except ValueError as error:
+            problems.append(str(error))
     if h.irq_lost:
         problems.append(h.irq_lost)
     if music_skip:

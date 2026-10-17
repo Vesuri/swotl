@@ -16,26 +16,29 @@ import sys
 
 sys.path[:0] = [str(Path(__file__).resolve().parent), str(Path(__file__).resolve().parents[1])]
 import host_run as H
+import rep_replay
 from translator import cfg, emit, gen
 from translator.lower import LOADSEG
 
 ROOT = H.REPO
 
 
-def prepare(name, out):
+def prepare(name, out, trace=None):
     script = H.milestone_script(name)
-    trace = ROOT / f'tmp/pc-runs/ref-{name}/trace'
+    trace = trace or ROOT / f'tmp/pc-runs/ref-{name}/trace'
     irqs, releases = H.reference_inputs(trace)
+    reps = rep_replay.read(trace, required=script["rep_chunks"])
     summary = dict(x.split('=', 1) for x in (trace / 'summary.txt').read_text().split())
     assert int(summary['polls'], 16) == H.fnv(H.POLLS.read_bytes()), 'reference poll points differ'
     services = H.reference_services(trace)
     points = sorted({t[0] for t, _ in script['keys']} |
-                    {t[0] for t in script['snapshots']} | {lab for _, lab, _, _ in irqs})
+                    {t[0] for t in script['snapshots']} | {lab for _, lab, _, _ in irqs} | {c.label for c in reps})
     ids = {lab: i for i, lab in enumerate(points)}
     units = cfg.build()
     nodes = {emit.label(mod, off): (mod, off) for mod, u in units.items() for off in u.insns}
     hooks = {nodes[lab]: ids[lab] for lab in points}
-    program = emit.Program(units, diagnostic_hooks=hooks)
+    rep_hooks = {nodes[c.label]: ids[c.label] for c in reps}
+    program = emit.Program(units, diagnostic_hooks=hooks, diagnostic_reps=rep_hooks)
     assert all(nodes[lab] in program.loop_heads for _, lab, _, _ in irqs)
     out.mkdir(parents=True, exist_ok=True)
     gen.generate(out / 'gen', program=program)
@@ -71,6 +74,11 @@ def prepare(name, out):
             'struct replay_step { uint32_t point, hits, kind; int32_t value; uint32_t release; };\n'
             f'#define REPLAY_POINTS {len(points)}u\n#define REPLAY_IRQS {len(irqs)}u\n'
             f'#define REPLAY_SERVICES {len(services)}u\n#define REPLAY_STEPS {len(steps)}u\n')
+    text += ('struct replay_rep { uint32_t service, hits; uint16_t point, cx, si, di, end_cx, end_si, end_di, restart, repeat; };\n'
+             f'#define REPLAY_REPS {len(reps)}u\n')
+    text += array('struct replay_rep', 'replay_reps',
+                  [(c.service, c.hits, ids[c.label], *c.start, *c.end, int(c.restart), n)
+                   for c, n in rep_replay.compact(reps)])
     text += array('struct replay_point_info', 'replay_points', locations)
     text += array('struct replay_irq', 'replay_irqs', [(s, ids[l], h, v) for s, l, h, v in irqs])
     text += array('struct replay_step', 'replay_script', steps)
@@ -97,7 +105,7 @@ def build(out):
                     'GEN=../gen', 'REPLAY=..'], check=True)
 
 
-def run(name, out):
+def run(name, out, trace=None):
     capture = out / 'capture'
     capture.mkdir(exist_ok=True)
     template = (ROOT / 'amiga/milestone.gdb.in').read_text()
@@ -139,7 +147,7 @@ def run(name, out):
     regs = [line.removeprefix('SWOTL_REGS ') for line in lines if line.startswith('SWOTL_REGS ')]
     assert len(regs) == 1
     (capture / 'regs.txt').write_text(regs[0])
-    problems = H.check(name, 2400, capture, None)
+    problems = H.check(name, 2400, capture, None, trace=trace)
     assert not problems, '\n'.join(problems)
     print(f'Amiga diagnostic replay {name}: state, shown pixels and service history match DOSBox', flush=True)
 

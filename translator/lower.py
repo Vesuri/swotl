@@ -107,6 +107,7 @@ class Ctx:
     driver_call: bool = False                 # PLINK thunk jump into the graphics driver (D9)
     ret_mismatch: str = "rt_ret_mismatch"     # a return check's mismatch branch (emit.py: local)
     bp_direct: bool = False                   # guarded copy: [bp+d] direct (region.py, R6)
+    rep_hook: tuple[int, str] | None = None  # diagnostic-only slice check and exact restart
     retry: str = ""                           # where a divide error re-executes (default: label)
 
 
@@ -1308,10 +1309,23 @@ class Lowering:
         self.e(f"jsr rt_out{self.i.width}")
 
     # -- string instructions --------------------------------------------------------
+    def rep_checkpoint(self, done: bool) -> None:
+        if self.c.rep_hook is None:
+            return
+        point, restart = self.c.rep_hook
+        self.e(f"pea {int(done)}.w")
+        self.e(f"pea {point}.w")
+        self.e("jsr rt_replay_rep")
+        self.e("tst.l (sp)+")
+        self.e("lea 4(sp),sp")
+        self.e(f"bne {restart}")
+
     def string(self):
         """One body per direction (DF), step as immediate; REP tests CX before each
         element, REPE/REPNE test ZF after it (ZF then always stored)."""
         i = self.i
+        if self.c.rep_hook is not None:
+            self.c.need |= set(STATUS)  # an original slice boundary can expose every defined flag
         back, end = self.local(), self.local()
         self.e("tst.b G_DF(a6)")
         self.e(f"bne {back}")
@@ -1320,6 +1334,7 @@ class Lowering:
         self.at(back)
         self.string_body(-(i.width // 8), end)
         self.at(end)
+        self.rep_checkpoint(True)
         self.ccr = set()
 
     def string_body(self, step: int, end: str) -> None:
@@ -1332,11 +1347,12 @@ class Lowering:
         if self.c.vram and op in ("movs", "stos"):
             self.vram_mark_string(step)
         if i.rep:
-            if step > 0 and op != "lods":
+            if step > 0 and op != "lods" and self.c.rep_hook is None:
                 self.e("tst.w d1")
                 self.e(f"beq {end}")
                 self.string_fast(src, top, end)
             self.at(top)
+            self.rep_checkpoint(False)
             self.e("tst.w d1")
             self.e(f"beq {end}")
         k = 0 if w == 8 else -1     # [SI] at (k,src,d7.w), [ES:DI] at (k,a1,d6.w)

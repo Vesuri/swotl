@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import fixture_inputs
 import subprocess
 import sys
 from pathlib import Path
@@ -46,6 +47,10 @@ def run(m: dict) -> tuple[list[str], dict]:
            "--snapshots", ",".join(f"{n}@{t}" for n, t in zip(names, triggers)),
            "--exit-after", names[-1], "--keys", m["keys"].replace(";", ","), "--services",
            "--polls", str(POLLS)]
+    for path in fixture_inputs.missing_files(m.get("missing_files") or ""):
+        cmd += ["--missing-file", path]
+    if m.get("rep_chunks") == "1":
+        cmd += ["--rep-chunks"]
     if m["launch"]:
         cmd += ["--launch", m["launch"]]
     if m.get("key_hold"):

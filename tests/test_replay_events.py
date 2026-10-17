@@ -109,6 +109,62 @@ def check_keyboard(source, broken=False):
     check(source, broken, data, harness, (5,), (0,))
 
 
+def check_nested(source, broken=False):
+    # The interrupted instruction has not executed yet. Its handler visits
+    # that same point, then a different point, before returning to it.
+    data = DATA.replace('{{0,0,1,8},{0,0,1,8},{1,1,0,9}}',
+                        '{{0,0,0,8},{0,1,0,8},{0,0,1,8}}')
+    harness = HARNESS[:HARNESS.index('int main(void)')] + r"""
+int main(void) {
+    G_IF = 1;
+    assert(replay_point(0) == 1);
+    assert(visits[0] == 0);
+    assert(replay_point(0) == 0 && visits[0] == 1);
+    assert(replay_point(1) == 2);
+    assert(replay_point(0) == 3);
+    assert(visits[0] == 1);
+    assert(replay_next(3) == 0 && visits[0] == 2);
+    assert(replay_next(2) == 0 && visits[1] == 1);
+    /* A service inside the outer handler starts a fresh counting epoch. */
+    replay_services = 1;
+    assert(replay_next(1) == 0 && visits[0] == 1);
+    assert(epochs[0] == 2);
+    assert(replay_point(0) == 0 && visits[0] == 2);
+    return 0;
+}
+"""
+    check(source, broken, data, harness, (0,), (0,))
+    # After IRET the original rechecks the interrupted point with the counts
+    # accumulated inside the handler, before starting that instruction.
+    resumed_data = data.replace('#define REPLAY_IRQS 3u', '#define REPLAY_IRQS 4u').replace(
+        '{0,0,1,8}}', '{0,0,1,8},{0,0,2,8}}')
+    resumed_harness = harness.replace('    replay_services = 1;',
+        '    assert(replay_next(1) == 1 && replay_interrupts == 4);\n'
+        '    assert(visits[0] == 2);\n    replay_services = 1;')
+    check(source, broken, resumed_data, resumed_harness, (0,), (0,))
+    epoch_data = resumed_data.replace('{0,0,2,8}', '{1,0,0,8}')
+    epoch_harness = resumed_harness.replace(
+        '    assert(replay_next(1) == 1',
+        '    replay_services = 1;\n    assert(replay_next(1) == 1').replace(
+        'assert(visits[0] == 2);', 'assert(visits[0] == 0);')
+    check(source, broken, epoch_data, epoch_harness, (0,), (0,))
+    # Nested work at another point must not lose the outer same-point group.
+    data = data.replace('{0,0,1,8}', '{0,0,0,8}')
+    harness = HARNESS[:HARNESS.index('int main(void)')] + r"""
+int main(void) {
+    G_IF = 1;
+    assert(replay_point(0) == 1 && visits[0] == 0);
+    assert(replay_point(1) == 2 && visits[1] == 0);
+    assert(replay_next(2) == 0 && visits[1] == 1);
+    assert(replay_next(1) == 1 && visits[0] == 0);
+    assert(replay_next(1) == 0 && visits[0] == 1);
+    assert(replay_interrupts == 3);
+    return 0;
+}
+"""
+    check(source, broken, data, harness, (0,), (0,))
+
+
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--sabotage', action='store_true')
@@ -116,9 +172,12 @@ if __name__ == '__main__':
     source = (ROOT / 'tests/amiga_replay.c').read_text()
     check(source)
     check_keyboard(source)
+    check_nested(source)
     if args.sabotage:
+        check_nested(source.replace("            post();\n            return group;",
+                                    "            executed(point);\n            post();\n            return group;"), True)
         check_keyboard(source.replace('if (step->value & RT_KEY_E0)', 'if (0)'), True)
-        for old, new in [('irq->hits + 1', 'irq->hits + 2'),
+        for old, new in [('visits[point] == irq->hits', 'visits[point] == irq->hits + 1'),
                          ('a->point == b->point', 'a->point != b->point'),
                          ('replay_services != REPLAY_SERVICES', 'replay_services == REPLAY_SERVICES'),
                          ('if (!G_IF)', 'if (0 && !G_IF)'),

@@ -68,3 +68,18 @@ rt_replay_point:
 ; frame. Returning here would execute unrecorded guest code during the capture.
 rt_replay_done:
 	bra.s rt_replay_done
+
+	xdef rt_replay_rep
+	xref replay_rep
+rt_replay_rep:
+	move.w ccr,-(sp)
+	movem.l d0-d7/a0-a6,-(sp)
+	pea (sp)
+	move.l 74(sp),-(sp)
+	move.l 74(sp),-(sp)
+	jsr replay_rep
+	lea 12(sp),sp
+	move.l d0,66(sp)
+	movem.l (sp)+,d0-d7/a0-a6
+	move.w (sp)+,ccr
+	rts

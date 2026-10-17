@@ -101,7 +101,7 @@ Trace outputs (`tmp/pc-runs/<name>/trace/`, written at exit):
 
 | File | Content |
 |---|---|
-| `events.csv` | ordered: arm, DOS open/read/seek/close (name, linear buffer, file pos), INT 10h/33h/67h and selected INT 21h with registers, faults, keys, snapshots; with `--services` (`SWOTL_SERVICES`, on in `make reference`) `svc`/`svc_ret`: every software INT raised by module code with all registers and FLAGS at entry and when execution is back at its return address with the entry SP (the runtime's service oracle); with `--polls` (`SWOTL_POLLS` = `build/gen/poll-points.csv`, on in `make reference`) hardware interrupts are taken only before a translator poll point (D8) and logged as `irq`: vector, service events so far, the poll point's executions since the last one (taken before the instruction, so interrupts arriving during a handler repeat the same count after its IRET); `summary.txt` `polls=` is the FNV-1a of that file |
+| `events.csv` | ordered: arm, DOS open/read/seek/close (name, linear buffer, file pos), INT 10h/33h/67h and selected INT 21h with registers, faults, keys, snapshots; with `--services` (`SWOTL_SERVICES`, on in `make reference`) `svc`/`svc_ret`: every software INT raised by module code with all registers and FLAGS at entry and when execution is back at its return address with the entry SP (the runtime's service oracle); with `--polls` (`SWOTL_POLLS` = `build/gen/poll-points.csv`, on in `make reference`) hardware interrupts are taken only before a translator poll point (D8) and logged as `irq`: vector, service events so far, the poll point's executions since the last one (taken before the instruction; the interrupted visit counts only after IRET, while visits executed inside the handler count normally); `summary.txt` `polls=` is the FNV-1a of that file |
 | `reads.bin` | Original DOS read bytes, appended in event order; `read` events carry decimal `data=` offsets and `got=` lengths. Image proof uses these bytes even when the game later rewrites the file. Older captures retain file-based reconstruction. |
 | `modules.csv`, `executed-<module>.bin` | per-module instruction-start bitmap |
 | `edges.csv` | unique consecutive-instruction pairs |
@@ -238,3 +238,19 @@ re-recording. `tests/amiga_replay.py` builds isolated diagnostic images under
 The final guest snapshot and displayed bitplanes use the existing host/original
 comparison and display-handoff checks. The ordinary wall-clock A1200 gate stays
 mandatory; replay is additional validation, not a performance fixture.
+
+`pc_run.py --rep-chunks` additionally records `rep.csv`: original REP slices
+at existing poll points, with service/visit counts, start/end CX/SI/DI and
+restart status. Host and Amiga diagnostic builds execute each element through
+the translator and resume at those exact boundaries; every record must match
+and be consumed. Amiga metadata compacts only identical adjacent slice steps.
+Normal builds and interrupt delivery are unchanged. References lacking this
+metadata cannot represent partial REP resumptions; adding it needs the usual
+re-recording approval.
+Coverage rows with `rep_chunks=1` request this metadata on recording and require
+it during host/Amiga validation; missing or empty records fail loudly.
+
+Coverage rows may declare `missing_files` (space-separated relative DOS paths).
+`pc_run.py --missing-file PATH` removes only that file from the disposable copy
+and records `fixture-inputs.json`. Host checks require the same declaration and
+hide those files from opens and directory searches; original `ref/` stays intact.

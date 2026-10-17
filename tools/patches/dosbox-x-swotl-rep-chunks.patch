@@ -1,0 +1,105 @@
+--- a/include/swotl_trace.h
++++ b/include/swotl_trace.h
+@@ -13,6 +13,7 @@
+ 
+ void SWOTL_Instruction(uint32_t linear);
+ void SWOTL_TimeLimit();
++void SWOTL_RepChunk(uint32_t linear, uint16_t cx, uint16_t si, uint16_t di, bool restart);
+ void SWOTL_MemoryAccess(bool write, uint32_t address, uint8_t width);
+ void SWOTL_Interrupt(unsigned num, unsigned type, uint32_t oldeip);
+ void SWOTL_Port(bool write, uint8_t width, unsigned port, uint32_t value);
+--- a/src/cpu/core_normal/string.h
++++ b/src/cpu/core_normal/string.h
+@@ -17,6 +17,7 @@
+  */
+ 
+ #include "inout.h"
++#include "swotl_trace.h"
+ #include "logging.h"
+ 
+ enum STRING_OP_NORMAL {
+@@ -36,6 +37,9 @@
+ extern int cpu_rep_max;
+ 
+ void DoString(STRING_OP_NORMAL type) {
++	bool swotl_rep_restart = false;
++	const uint32_t swotl_rep_ip = SegBase(cs) + reg_eip;
++	const uint16_t swotl_rep_cx = reg_cx, swotl_rep_si = reg_si, swotl_rep_di = reg_di;
+ 	static PhysPt  si_base,di_base;
+ 	static uint32_t	si_index,di_index;
+ 	static uint32_t	add_mask;
+@@ -551,11 +555,13 @@
+ 					if (type < R_SCASB) {
+ 						/* if count != 0 then restart the instruction */
+ 						LOADIP;
++						swotl_rep_restart = true;
+ 					}
+ 					else {
+ 						/* if ZF matches the REP condition, restart the instruction */
+ 						if ((get_ZF()?1:0) == (core.rep_zero?1:0)) {
+ 							LOADIP;
++						swotl_rep_restart = true;
+ 						}
+ 					}
+ 				}
+@@ -602,5 +608,9 @@
+ 			throw;
+ 		}
+ 	}
++	if (TEST_PREFIX_REP && swotl_active)
++		SWOTL_RepChunk(swotl_rep_ip, swotl_rep_cx, swotl_rep_si, swotl_rep_di,
++		               swotl_rep_restart);
++
+ }
+ 
+--- a/src/misc/swotl_trace.cpp
++++ b/src/misc/swotl_trace.cpp
+@@ -112,6 +112,7 @@
+ std::map<uint16_t, OpenFile> files;
+ FILE *events = nullptr;
+ FILE *read_data = nullptr;
++FILE *rep_chunks = nullptr;
+ /* OPL log (SWOTL_OPL=1): every AdLib register write (index at 388h, data at
+  * 389h) with the emulated time in ms. */
+ FILE *opl = nullptr;
+@@ -377,6 +378,8 @@
+ 	}
+ 	if (read_data && fclose(read_data)) E_Exit("SWOTL: cannot flush reads.bin");
+ 	read_data = nullptr;
++	if (rep_chunks) fclose(rep_chunks);
++	rep_chunks = nullptr;
+ 	if (events) fclose(events);
+ 	events = nullptr;
+ 	if (opl) fclose(opl);
+@@ -504,6 +507,11 @@
+ 		fclose(f);
+ 		poll_gate = swotl_irq_gate = true;
+ 	}
++	if (getenv("SWOTL_REP_CHUNKS")) {
++		rep_chunks = fopen(Path("rep.csv").c_str(), "w");
++		if (!rep_chunks) E_Exit("SWOTL: cannot open rep.csv");
++		fputs("module,offset,service,hits,cx,si,di,end_cx,end_si,end_di,restart\n", rep_chunks);
++	}
+ 	read_data = fopen(Path("reads.bin").c_str(), "wb");
+ 	if (!read_data) E_Exit("SWOTL: cannot open reads.bin");
+ 	events = fopen(Path("events.csv").c_str(), "w");
+@@ -874,3 +882,19 @@
+ void SWOTL_TimeLimit() {
+ 	WriteOutputs();
+ }
++
++/* Observation only: record original decoder slices; never change cycle budgets,
++ * registers, poll counts or delivery. Zero-count REP is a completed slice too. */
++void SWOTL_RepChunk(uint32_t linear, uint16_t cx, uint16_t si, uint16_t di, bool restart)
++{
++    if (!rep_chunks || !swotl_active || !poll_gate) return;
++    const Location here = Locate(linear);
++    if (!IsPoll(here)) return;
++    const auto it = poll_hits.find(here);
++    if (it == poll_hits.end() || !it->second) E_Exit("SWOTL: REP without poll visit");
++    fprintf(rep_chunks, "%s,0x%05x,%llu,%u,%u,%u,%u,%u,%u,%u,%u\n",
++            modules[here.module].name.c_str(), here.offset,
++            (unsigned long long)service_events, it->second - 1,
++            cx, si, di, (unsigned)reg_cx, (unsigned)reg_si, (unsigned)reg_di,
++            (unsigned)restart);
++}

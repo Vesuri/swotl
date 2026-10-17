@@ -195,8 +195,10 @@ class Program:
     hle: dict = {}   # (mod, first) -> ((mod, resume), service); set from hle.csv
 
     def __init__(self, units: dict[str, cfg.Unit] | None = None, components: bool = True,
-                 diagnostic_hooks: dict[tuple[str, int], int] | None = None):
+                 diagnostic_hooks: dict[tuple[str, int], int] | None = None,
+                 diagnostic_reps: dict[tuple[str, int], int] | None = None):
         self.diagnostic_hooks = diagnostic_hooks or {}
+        self.diagnostic_reps = diagnostic_reps or {}
         self.units = units or cfg.build()
         self.align = {r["label"]: int(r["residue"]) for r in image.rows("align.csv")}
         self.indirect: dict[tuple[str, int], tuple[list, list]] = {}
@@ -532,6 +534,8 @@ class Program:
         lines = ["\txref\t" + r for r in RUNTIME]
         if self.diagnostic_hooks:
             lines.append("\txref\trt_replay_point")
+        if self.diagnostic_reps:
+            lines.append("\txref\trt_replay_rep")
         lines += ["\txref\t" + s for s in sorted({s for _, s in self.hle.values()})]
         lines += ["\txdef\tdispatch_table", "\txdef\tdispatch_count", "\txdef\tload_segment",
                   "\txdef\toverlay_table", "\tsection\t.text,code"]
@@ -597,7 +601,9 @@ class Program:
                    smc_targets=tuple(sorted((u.ip_of(lo), u.ip_of(hi), walk_label(mod, lo))
                                             for lo, hi in smc_t)),
                    manager=off in u.manager_calls, program=True, vram=mod == GRAPHICS_DRIVER,
-                   driver_call=mod == M.ROOT and off in self.driver_jumps, ret_mismatch=RM)
+                   driver_call=mod == M.ROOT and off in self.driver_jumps, ret_mismatch=RM,
+                   rep_hook=((self.diagnostic_reps[(mod, off)], label(mod, off))
+                             if (mod, off) in self.diagnostic_reps else None))
 
     def runs(self, mod: str) -> list[list[int]]:
         u = self.units[mod]

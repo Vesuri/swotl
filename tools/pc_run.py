@@ -10,6 +10,7 @@ A time limit is never success.
 from __future__ import annotations
 
 import json
+import fixture_inputs
 import argparse
 import os
 import shutil
@@ -60,9 +61,13 @@ def main() -> int:
     parser.add_argument("--exit-after", default="", help="snapshot name that ends the run")
     parser.add_argument("--keys", default="", help="MODULE+HEX[#N]=key/mx+N/my-N/mb0..7,... (mouse actions are immediate)")
     parser.add_argument("--key-hold", type=int, default=None)
+    parser.add_argument("--missing-file", action="append", default=[],
+                        help="omit a named file from the disposable fixture copy")
     parser.add_argument("--launch", default=LAUNCH)
     parser.add_argument("--services", action="store_true",
                         help="log every software INT from module code with entry/return registers")
+    parser.add_argument("--rep-chunks", action="store_true",
+                        help="record original REP decoder slices at poll points")
     parser.add_argument("--opl", action="store_true",
                         help="log every AdLib register write with emulated ms (trace/opl.csv)")
     parser.add_argument("--probes", default="",
@@ -72,7 +77,10 @@ def main() -> int:
     args = parser.parse_args()
 
     run = REPO / "tmp/pc-runs" / args.name
+    missing = fixture_inputs.missing_files(" ".join(args.missing_file))
     root = prepare(run)
+    fixture_inputs.stage_missing(root, missing)
+    fixture_inputs.record(run, missing)
     env = dict(os.environ, SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy",
                SWOTL_TRACE="1", SWOTL_TRACE_DIR=str(run / "trace"),
                SWOTL_FIXED_FILE_CLOCK="1",
@@ -80,6 +88,8 @@ def main() -> int:
                SWOTL_KEYS=args.keys)
     if args.services:
         env["SWOTL_SERVICES"] = "1"
+    if args.rep_chunks:
+        env["SWOTL_REP_CHUNKS"] = "1"
     if args.opl:
         env["SWOTL_OPL"] = "1"
     if args.probes:

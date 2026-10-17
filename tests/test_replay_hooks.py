@@ -24,6 +24,7 @@ replay_point:
  movea.l #$76543210,a1
  moveq #0,d0
  rts
+replay_rep:
 replay_enter:
 replay_return:
  move.l #$12345678,d0
@@ -41,7 +42,7 @@ replay_ip: dc.l 0
 '''
     rng = random.Random(14)
     with tempfile.TemporaryDirectory(prefix='swotl-replay-abi-') as tmp:
-        for hook in ('rt_replay_point', 'rt_replay_enter', 'rt_replay_return'):
+        for hook in ('rt_replay_point', 'rt_replay_enter', 'rt_replay_return', 'rt_replay_rep'):
             source = ' org $10000\n pea 7.w\n jsr ' + hook + '\n lea 4(sp),sp\n jmp $20000\n' + body + stubs
             code = D.assemble(source, Path(tmp) / 'hook.bin')
             for ccr in (0, 1, 4, 15, 31):
@@ -74,7 +75,7 @@ def check_terminal(body, broken=False):
     source = (' org $10000\n pea 7.w\n jsr rt_replay_point\n lea 4(sp),sp\n'
               ' moveq #99,d0\n jmp $20000\n' + body +
               '\nreplay_point: moveq #-1,d0\n rts\n'
-              'replay_enter:\nreplay_return:\nreplay_next:\nrt_irq: rts\n'
+              'replay_rep:\nreplay_enter:\nreplay_return:\nreplay_next:\nrt_irq: rts\n'
               'replay_cs: dc.l 0\nreplay_ip: dc.l 0\n')
     with tempfile.TemporaryDirectory(prefix='swotl-replay-end-') as tmp:
         code = D.assemble(source, Path(tmp) / 'end.bin')
@@ -107,7 +108,7 @@ def check_copy(hook, target, body, broken=False):
     for posted in (0, 1):
         source = (' org $10000\n' + hook + '\n jmp $20000\n' + target + ':\n jmp $20004\n' + body +
                   f'\nreplay_point: moveq #{posted},d0\n rts\n'
-                  'replay_enter:\nreplay_return:\nreplay_next: moveq #0,d0\n rts\n'
+                  'replay_rep:\nreplay_enter:\nreplay_return:\nreplay_next: moveq #0,d0\n rts\n'
                   'rt_irq: move.l #$1234,d5\n rts\nreplay_cs: dc.l 0\nreplay_ip: dc.l 0\n')
         with tempfile.TemporaryDirectory(prefix='swotl-replay-copy-') as tmp:
             code = D.assemble(source, Path(tmp) / 'copy.bin')

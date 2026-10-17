@@ -156,7 +156,7 @@ test-x86:
 	$(PYTHON) tests/x86_diff.py
 
 test-sabotage: host
-	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-replay-hooks t-sab-replay-events t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence t-sab-fm t-sab-fm-quality t-sab-tfh t-sab-sound-hooks t-sab-audio t-sab-load-image t-sab-host-launch t-sab-keyboard-prefix t-sab-interrupt-frame-mask t-sab-dosbox-retf t-sab-dos-search t-sab-dos-sda t-sab-machine-vectors t-sab-oracle-boundary t-sab-oracle-exception-writes t-sab-helper-branches t-sab-block-assembly t-sab-key-release t-sab-key-chords t-sab-replay-chords
+	@$(MAKE) -s -k -j$(JOBS) t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-replay-hooks t-sab-replay-events t-sab-host-replay-visits t-sab-rep-replay t-sab-rep-lowering t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence t-sab-fm t-sab-fm-quality t-sab-tfh t-sab-sound-hooks t-sab-audio t-sab-load-image t-sab-host-launch t-sab-keyboard-prefix t-sab-interrupt-frame-mask t-sab-dosbox-retf t-sab-dos-search t-sab-dos-sda t-sab-machine-vectors t-sab-oracle-boundary t-sab-oracle-exception-writes t-sab-helper-branches t-sab-block-assembly t-sab-key-release t-sab-key-chords t-sab-replay-chords t-sab-fixture-inputs
 
 test-m68k:
 	$(PYTHON) tests/m68k_diff.py
@@ -173,7 +173,7 @@ JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc)
 RUN = @mkdir -p tmp/test; if $(2) > tmp/test/$(1).log 2>&1; then echo "ok    $(1)"; \
 	else echo "FAIL  $(1) (tmp/test/$(1).log)"; tail -n 15 tmp/test/$(1).log; exit 1; fi
 SHARDS = forms.0/4 forms.1/4 forms.2/4 forms.3/4 space.0/1 boundary.0/1 blocks.0/1
-TESTS = t-key-chords t-replay-chords t-key-release t-oracle-boundary t-oracle-exception-writes t-helper-branches t-block-assembly t-dos-sda t-dos-search t-machine-vectors t-interrupt-frame-mask t-keyboard-prefix t-host-launch t-load-image t-align-convergence t-replay-hooks t-replay-events t-file-dates t-mouse-irq t-display-queue t-display-palette t-amiga-input t-smc-flow t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
+TESTS = t-rep-replay t-rep-lowering t-host-replay-visits t-fixture-inputs t-key-chords t-replay-chords t-key-release t-oracle-boundary t-oracle-exception-writes t-helper-branches t-block-assembly t-dos-sda t-dos-search t-machine-vectors t-interrupt-frame-mask t-keyboard-prefix t-host-launch t-load-image t-align-convergence t-replay-hooks t-replay-events t-file-dates t-mouse-irq t-display-queue t-display-palette t-amiga-input t-smc-flow t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
 	t-blocks t-guards t-fm t-fm-quality t-tfh t-sound-hooks t-audio $(HOST_MILESTONES:%=t-host-%)
 
 test: host
@@ -377,7 +377,7 @@ HOST_COVERAGE = c1-historical c2-german-school c3-custom c4-tour c5-records \
 	c33-b17-stations c34-custom-reload c35-custom-options c36-custom-flight c37-custom-roster c38-pilot-fighter c39-weapons-scroll \
 	c40-map-aircraft c41-briefing-scroll c42-flight-aircraft c43-german-campaign c44-german-map c45-german-records c46-pilot-record c47-pilot-delete \
 	c48-pilot-awards c49-german-awards \
-	c50-campaign-abort c51-film-delete c53-tour-mission-end c54-film-views c55-tour-summary c57-film-reload c58-tour-end-map c59-tour-end-map-detail c60-tour-fate-dismiss c61-tour-end-status c52-campaign-loss c56-german-mission-end c62-tour-completed-record-view c63-tour-record-scroll c64-roster-scroll c65-pilot-long-list c66-flight-calibration c67-map-scale c68-map-aircraft-close c69-map-target-close c70-custom-friendly-end c71-custom-friendly-bailout c72-historical-end-v1 c73-p38-ground-end-v2 c74-flight-v1-close c75-campaign-setup-cancel c76-b17-gunner-auto c77-me262-flight3 c78-other-pilot-crash c11-tour-mission c14-film-save c25-film-load
+	c50-campaign-abort c51-film-delete c53-tour-mission-end c54-film-views c55-tour-summary c57-film-reload c58-tour-end-map c59-tour-end-map-detail c60-tour-fate-dismiss c61-tour-end-status c52-campaign-loss c56-german-mission-end c62-tour-completed-record-view c63-tour-record-scroll c64-roster-scroll c65-pilot-long-list c66-flight-calibration c67-map-scale c68-map-aircraft-close c69-map-target-close c70-custom-friendly-end c71-custom-friendly-bailout c72-historical-end-v1 c73-p38-ground-end-v2 c74-flight-v1-close c75-campaign-setup-cancel c76-b17-gunner-auto c77-me262-flight3 c78-other-pilot-crash c79-inflight-change-orders c80-tour-briefing c81-pilot-damage c82-gunner-damage c83-program-disk-prompt c84-pilot-wing-damage c11-tour-mission c14-film-save c25-film-load
 AMIGA_REPLAY_MILESTONES = m2-choose-side m5-player-flight c9-mouse-menu c66-flight-calibration
 AMIGA_MILESTONE ?= m1b-logo
 AMIGA_CPU ?= 68030
@@ -476,3 +476,22 @@ t-host-launch:
 	$(call RUN,host-launch,$(PYTHON) tests/test_host_launch.py)
 t-sab-host-launch:
 	$(call RUN,sabotage-host-launch,$(PYTHON) tests/test_host_launch.py --sabotage)
+
+t-fixture-inputs:
+	$(call RUN,fixture-inputs,$(PYTHON) tests/test_fixture_inputs.py)
+t-sab-fixture-inputs:
+	$(call RUN,sabotage-fixture-inputs,$(PYTHON) tests/test_fixture_inputs.py --sabotage)
+
+t-host-replay-visits:
+	$(call RUN,host-replay-visits,$(PYTHON) tests/test_host_replay_visits.py)
+t-sab-host-replay-visits:
+	$(call RUN,sabotage-host-replay-visits,$(PYTHON) tests/test_host_replay_visits.py --sabotage)
+
+t-rep-replay:
+	$(call RUN,rep-replay,$(PYTHON) tests/test_rep_replay.py)
+t-sab-rep-replay:
+	$(call RUN,sabotage-rep-replay,$(PYTHON) tests/test_rep_replay.py --sabotage)
+t-rep-lowering:
+	$(call RUN,rep-lowering,$(PYTHON) tests/test_rep_lowering.py)
+t-sab-rep-lowering:
+	$(call RUN,sabotage-rep-lowering,$(PYTHON) tests/test_rep_lowering.py --sabotage)
