@@ -6,11 +6,10 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Guest map follow-ups
 
-9b. 19 indirect sites remain static-only (`annotations/indirect.csv`).
+9b. 17 indirect sites remain static-only (`annotations/indirect.csv`).
    [Coverage boundaries](indirect-coverage.md) document 13 video/default-runtime
-   exclusions with fail-loud dispatch retained. The other 6 need VGA execution
-   coverage: engine/cockpit damage (2), formatting (2),
-   joystick calibration (2). Do not infer unreachability from missed fixtures.
+   exclusions with fail-loud dispatch retained. The other 4 need VGA execution
+   coverage: engine/cockpit damage (2), formatting (2). Do not infer unreachability from missed fixtures.
    c26 usage exit also needs exact EMS release (AH=45h), including retained
    mappings and backing-page aliases; clearing the handle alone is insufficient.
 9c. PLINK flag bit 13 (set on DATA only): meaning unknown; no effect seen.

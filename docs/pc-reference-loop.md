@@ -254,3 +254,10 @@ Coverage rows may declare `missing_files` (space-separated relative DOS paths).
 `pc_run.py --missing-file PATH` removes only that file from the disposable copy
 and records `fixture-inputs.json`. Host checks require the same declaration and
 hide those files from opens and directory searches; original `ref/` stays intact.
+
+Joystick fixtures declare `joystick=1` and use `jx±0..1000`, `jy±0..1000`,
+`jb0..3` actions at existing instruction triggers. `--joystick` enables the
+original emulator device and records ordered gameport accesses in `joystick.csv`.
+Records retain direction, width, value, service count and exact repetitions.
+Diagnostic host/Amiga replay consumes every recorded access; production input
+and interrupts are unchanged. Missing metadata and mismatches fail loudly.

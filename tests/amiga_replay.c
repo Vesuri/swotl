@@ -5,6 +5,9 @@
 #ifndef REPLAY_REPS
 #define REPLAY_REPS 0u
 #endif
+#ifdef REPLAY_JOYSTICK
+void replay_joystick_complete(void);
+#endif
 static uint32_t replay_rep_index, replay_rep_active;
 #if REPLAY_REPS
 static uint32_t replay_rep_record, replay_rep_offset;
@@ -121,11 +124,16 @@ int32_t replay_point(uint32_t point)
             case 2: mouse_x += step->value; break;
             case 3: mouse_y += step->value; break;
             case 4: mouse_buttons = step->value; break;
+            /* Axis/button effects come from the exact recorded gameport reads. */
+            case 5: break;
             case 0:
                 if (replay_steps == REPLAY_STEPS) {
                     if (replay_services != REPLAY_SERVICES || replay_interrupts != REPLAY_IRQS || depth ||
                             replay_rep_index != REPLAY_REPS || replay_rep_active)
                         fail("replay incomplete", replay_interrupts, replay_steps);
+#ifdef REPLAY_JOYSTICK
+                    replay_joystick_complete();
+#endif
                     return -1;
                 }
                 break;

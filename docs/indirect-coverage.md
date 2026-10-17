@@ -27,7 +27,6 @@ These are not excluded merely because current fixtures miss them.
 | FLIGHT+17DB4 | Requires `[9792]=1` (aircraft field AF28, copied at SWOTL+123C1); B-17 damage captures have 4. Also requires `[8452+4*player]>60` and nonzero engine-state words; the recorded P-47 dive satisfies `[9792]=1` but ends with damage byte 0. `[6A60]` resolves through PLINK to RTSVGA+44F1; target identity does not cover the call. |
 | PANEL+33B2 | Cockpit damage display through `[AABC]`. |
 | FRONTEND+A4D1, +A629 | Special formatting branches. Inspected direct callers pass ordinary parameters; the required sentinel and complete incoming-flow proof remain open. |
-| SWOTL+3678, +36FE | Joystick calibration after hardware detection. The no-joystick fixture does not cover these calls. |
 
 The c26 usage-exit reference separately requires exact EMS release support on
 the host. DOSBox evidence includes retained mappings, reused handles and

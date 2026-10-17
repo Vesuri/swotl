@@ -103,12 +103,15 @@ class Replay:
             raise ValueError(f'REP slices incomplete: {self.index}/{len(self.chunks)}')
 
 
-def host_image(labels):
+def host_image(labels, joystick_header=None):
     """Link generated diagnostic REP lowering with the unchanged host runtime."""
     objects = [ROOT / 'build/host' / (p.stem + '.o') for p in sorted((ROOT / 'src/runtime').glob('*.c'))]
     objects += [ROOT / 'build/host' / n for n in ('host_s.o', 'host.o', 'rt_entry.o')]
     inputs = [Path(__file__)] + sorted((ROOT / 'translator').glob('*.py')) + sorted((ROOT / 'build/gen').glob('*.s')) + objects
     digest = hashlib.sha256(('\n'.join(labels)).encode())
+    if joystick_header is not None:
+        digest.update(joystick_header.encode())
+        digest.update((ROOT / 'tests/joystick_replay.c').read_bytes())
     for p in inputs:
         digest.update(p.name.encode()); digest.update(p.read_bytes())
     out = ROOT / 'tmp/rep-host' / digest.hexdigest()[:20]
@@ -133,6 +136,18 @@ def host_image(labels):
     subprocess.run([vasm, '-quiet', '-m68020', '-Felf', '-o', str(out / 'rep.o'),
                     str(out / 'rep.s')], check=True)
     toolchain = Path(os.environ.get('AMIGA_TOOLCHAIN') or Path.home() / '.local/opt')
+    extra = []
+    if joystick_header is not None:
+        (out / 'joystick_data.h').write_text(joystick_header)
+        # The host records software-service epochs; this value is set at wrapper entry.
+        (out / 'joystick_host.c').write_text(
+            '#include "runtime.h"\nvolatile uint32_t replay_services;\n'
+            '#include "joystick_replay.c"\n')
+        subprocess.run([str(toolchain / 'bin/m68k-amiga-elf-gcc'), '-m68020', '-msoft-float',
+                        '-O2', '-ffreestanding', '-Wall', '-Wextra', '-Werror',
+                        '-I' + str(ROOT / 'src/runtime'), '-I' + str(ROOT / 'tests'), '-I' + str(out),
+                        '-c', str(out / 'joystick_host.c'), '-o', str(out / 'joystick.o')], check=True)
+        extra = [str(out / 'joystick.o'), '--wrap=rt_port_in', '--wrap=rt_port_out']
     subprocess.run([str(toolchain / 'bin/m68k-amiga-elf-ld'), '-Ttext=0x10000', '-e', '_start',
-                    '-o', str(elf), *(str(p) for p in objects), str(out / 'program.o'), str(out / 'rep.o')], check=True)
+                    '-o', str(elf), *(str(p) for p in objects), str(out / 'program.o'), str(out / 'rep.o'), *extra], check=True)
     return elf

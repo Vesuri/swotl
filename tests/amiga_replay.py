@@ -17,6 +17,7 @@ import sys
 sys.path[:0] = [str(Path(__file__).resolve().parent), str(Path(__file__).resolve().parents[1])]
 import host_run as H
 import rep_replay
+import joystick_replay
 from translator import cfg, emit, gen
 from translator.lower import LOADSEG
 
@@ -28,6 +29,9 @@ def prepare(name, out, trace=None):
     trace = trace or ROOT / f'tmp/pc-runs/ref-{name}/trace'
     irqs, releases = H.reference_inputs(trace)
     reps = rep_replay.read(trace, required=script["rep_chunks"])
+    joystick = joystick_replay.read(trace / 'joystick.csv', required=script['joystick'])
+    if joystick and not script['joystick']:
+        raise ValueError('undeclared joystick recording')
     summary = dict(x.split('=', 1) for x in (trace / 'summary.txt').read_text().split())
     assert int(summary['polls'], 16) == H.fnv(H.POLLS.read_bytes()), 'reference poll points differ'
     services = H.reference_services(trace)
@@ -53,7 +57,7 @@ def prepare(name, out, trace=None):
     release = iter(releases)
     for (lab, _, hits), key in script['keys']:
         if isinstance(key, str):
-            kind, value, end = {'x': 2, 'y': 3, 'b': 4}[key[1]], int(key[2:]), 0
+            kind, value, end = (5 if key.startswith('j') else {'x': 2, 'y': 3, 'b': 4}[key[1]]), int(key[2:]), 0
         else:
             base = key & 0xffff
             kind, value, end = (1, base >> 8 | (0x100 if base in H.GREY else 0) |
@@ -83,6 +87,11 @@ def prepare(name, out, trace=None):
     text += array('struct replay_irq', 'replay_irqs', [(s, ids[l], h, v) for s, l, h, v in irqs])
     text += array('struct replay_step', 'replay_script', steps)
     text += 'static const uint32_t replay_service_hashes[] = {\n' + ','.join(map(str, hashes)) + '};\n'
+    if joystick:
+        text += '#define REPLAY_JOYSTICK 1\n'
+        (out / 'joystick_data.h').write_text(joystick_replay.c_header(joystick))
+    else:
+        (out / 'joystick_data.h').unlink(missing_ok=True)
     (out / 'replay_data.h').write_text(text)
     calendar, clock = H.reference_clocks(trace)
     stamp = H.dos_file_stamp(clock) if clock is not None else (0, 0)

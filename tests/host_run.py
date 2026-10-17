@@ -35,6 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import uc as U  # noqa: E402
+import joystick_replay
 from translator import emit, image  # noqa: E402
 from tools import fixture_inputs
 
@@ -298,6 +299,13 @@ class Host:
                                                 "plat_delete", "plat_seek",
                                                 "plat_calendar_date", "plat_file_stamp", "plat_close", "plat_dir_entry", "plat_timer_rate", "plat_mouse", "plat_present", "plat_palette",
                                                 "plat_service", "plat_log", "plat_exit")}
+        if '__wrap_rt_port_in' in self.syms:
+            @U.CODE_CB
+            def joystick_epoch(h, addr, size, user):
+                self.e.write(self.syms['replay_services'], struct.pack('>I', len(self.services)))
+            for name in ('__wrap_rt_port_in', '__wrap_rt_port_out'):
+                a = self.syms[name]
+                e.hook_range(U.HOOK_CODE, joystick_epoch, a, a)
         self.mouse_dx = self.mouse_dy = self.mouse_buttons = 0
         self.presents = 0
         # D9 display: every byte the guest stores to the frame is inside the
@@ -742,6 +750,8 @@ class Host:
                 return
             self.step, self.hits = self.step + 1, 0
             if isinstance(key, str):
+                if key.startswith('j'):
+                    return  # Device effects come from recorded gameport accesses.
                 amount = int(key[2:])
                 if key[1] == "x":
                     self.mouse_dx += amount
@@ -935,11 +945,11 @@ def milestone_script(name: str) -> dict:
     keys = []
     for k in filter(None, r["keys"].split(";")):
         spec, _, key = k.partition("=")
-        keys.append((trigger(spec), key if key.startswith(("mx", "my", "mb")) else key_code(key)))
+        keys.append((trigger(spec), key if (joystick_replay.action(key, r.get("joystick") == "1") or key.startswith(("mx", "my", "mb"))) else key_code(key)))
     return {"keys": keys, "snapshots": [trigger(s) for s in r["snapshots"].split()],
             "frame": r["vga_mode"] == "13", "launch": r["launch"],
             "missing_files": fixture_inputs.missing_files(r.get("missing_files") or ""),
-            "rep_chunks": r.get("rep_chunks") == "1"}
+            "rep_chunks": r.get("rep_chunks") == "1", "joystick": r.get("joystick") == "1"}
 
 
 def machine_ranges() -> list[tuple[int, int]]:
@@ -1200,7 +1210,11 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
     import rep_replay
     chunks = rep_replay.read(trace, required=script["rep_chunks"])
     rep = rep_replay.Replay(chunks) if chunks else None
-    diagnostic_elf = rep_replay.host_image(rep.labels) if rep else None
+    joystick = joystick_replay.read(trace / 'joystick.csv', required=script['joystick'])
+    if joystick and not script['joystick']:
+        raise ValueError('undeclared joystick recording')
+    joystick_header = joystick_replay.c_header(joystick) if joystick else None
+    diagnostic_elf = rep_replay.host_image(rep.labels if rep else [], joystick_header) if rep or joystick else None
     script["rep"] = rep
     h = Host(image.M.REF, sabotage, music_skip, elf=diagnostic_elf)
     h.deleted.update(("TARGETS.DEF",) if sabotage == "missing-file" else script["missing_files"])
@@ -1223,6 +1237,8 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
             rep.complete()
         except ValueError as error:
             problems.append(str(error))
+    if joystick and (h.u32(h.syms['joystick_index']) != len(joystick) or h.u32(h.syms['joystick_used'])):
+        problems.append('unconsumed joystick recording')
     if h.irq_lost:
         problems.append(h.irq_lost)
     if music_skip:

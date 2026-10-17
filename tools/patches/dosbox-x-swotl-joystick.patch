@@ -1,0 +1,149 @@
+--- a/src/misc/swotl_trace.cpp
++++ b/src/misc/swotl_trace.cpp
+@@ -23,6 +23,8 @@
+ #include "dos_inc.h"
+ #include "vga.h"
+ #include "keyboard.h"
++#include "joystick.h"
++#include "swotl_joystick_input.h"
+ #include "logging.h"
+ #include "swotl_trace.h"
+ #include "../cpu/lazyflags.h"
+@@ -113,6 +115,22 @@
+ FILE *events = nullptr;
+ FILE *read_data = nullptr;
+ FILE *rep_chunks = nullptr;
++FILE *joystick_ports = nullptr;
++struct JoystickPortRun {
++    uint64_t service = 0, count = 0;
++    bool write = false;
++    uint8_t width = 0;
++    uint32_t value = 0;
++} joystick_run;
++void FlushJoystickPorts() {
++    if (!joystick_ports || !joystick_run.count) return;
++    if (fprintf(joystick_ports, "%llu,%u,%u,%u,%llu\n",
++                (unsigned long long)joystick_run.service, joystick_run.write ? 1u : 0u,
++                (unsigned)joystick_run.width, (unsigned)joystick_run.value,
++                (unsigned long long)joystick_run.count) < 0)
++        E_Exit("SWOTL: cannot write joystick.csv");
++    joystick_run.count = 0;
++}
+ /* OPL log (SWOTL_OPL=1): every AdLib register write (index at 388h, data at
+  * 389h) with the emulated time in ms. */
+ FILE *opl = nullptr;
+@@ -378,6 +396,9 @@
+ 	}
+ 	if (read_data && fclose(read_data)) E_Exit("SWOTL: cannot flush reads.bin");
+ 	read_data = nullptr;
++    FlushJoystickPorts();
++    if (joystick_ports && fclose(joystick_ports)) E_Exit("SWOTL: cannot flush joystick.csv");
++    joystick_ports = nullptr;
+ 	if (rep_chunks) fclose(rep_chunks);
+ 	rep_chunks = nullptr;
+ 	if (events) fclose(events);
+@@ -480,6 +501,12 @@
+ 		t.name = spec.substr(0, at);
+ 		snapshots.push_back(t);
+ 	}
++    if (const char *v = getenv("SWOTL_JOYSTICK")) {
++        if (strcmp(v, "1")) E_Exit("SWOTL: SWOTL_JOYSTICK must be 1 when set");
++        joystick_ports = fopen(Path("joystick.csv").c_str(), "w");
++        if (!joystick_ports) E_Exit("SWOTL: cannot open joystick.csv");
++        fputs("service,write,width,value,repeat\n", joystick_ports);
++    }
+ 	for (const auto &spec : Split(getenv("SWOTL_KEYS"), ',')) {
+ 		Trigger t;
+ 		const auto eq = spec.rfind('=');
+@@ -487,7 +514,10 @@
+ 			E_Exit("SWOTL: bad key spec '%s'", spec.c_str());
+ 		t.name = spec.substr(eq + 1);
+ 		t.key = KeyByName(t.name, t.modifiers);
+-		if (t.key == KBD_NONE && !MouseAction(t.name)) E_Exit("SWOTL: unknown key '%s'", t.name.c_str());
++        const auto joy = SwotlParseJoystick(t.name);
++        if (joy.kind && !joystick_ports) E_Exit("SWOTL: joystick input requires SWOTL_JOYSTICK=1");
++        if (t.key == KBD_NONE && !MouseAction(t.name) && !joy.kind)
++            E_Exit("SWOTL: unknown key '%s'", t.name.c_str());
+ 		keys.push_back(t);
+ 	}
+ 	if (const char *polls = getenv("SWOTL_POLLS")) {
+@@ -600,6 +630,13 @@
+ 	dos.date.month = 1;
+ 	dos.date.day = 1;
+ 	MapRange((uint32_t)load_seg << 4, ROOT_IMAGE_BYTES, root, 0);
++    if (joystick_ports) {
++        JOYSTICK_Enable(0, true);
++        JOYSTICK_Move_X(0, 0.0f);
++        JOYSTICK_Move_Y(0, 0.0f);
++        JOYSTICK_Button(0, 0, false);
++        JOYSTICK_Button(0, 1, false);
++    }
+ 	swotl_active = true;
+ 	Event("arm", "load_seg=0x%04x psp=0x%04x bios_ticks=0x%08x dos_date=1991-01-01",
+ 	      load_seg, dos.psp(), mem_readd(0x46c));
+@@ -740,6 +777,17 @@
+ 	if (key_held == KBD_NONE && key_index < keys.size() && Hit(keys[key_index], here)) {
+ 		auto &t = keys[key_index++];
+ 		t.done = true;
++        const auto joy = SwotlParseJoystick(t.name);
++        if (joy.kind) {
++            if (joy.kind == 'x') JOYSTICK_Move_X(0, joy.value / 1000.0f);
++            if (joy.kind == 'y') JOYSTICK_Move_Y(0, joy.value / 1000.0f);
++            if (joy.kind == 'b') {
++                JOYSTICK_Button(0, 0, (joy.value & 1) != 0);
++                JOYSTICK_Button(0, 1, (joy.value & 2) != 0);
++            }
++            Event("joystick", "%s", t.name.c_str());
++            return;
++        }
+         if (MouseAction(t.name)) {
+             const int amount = atoi(t.name.c_str() + 2);
+             SWOTL_MouseInput(t.name[1] == 'x' ? amount : 0,
+@@ -819,6 +867,18 @@
+ void SWOTL_Port(const bool write, const uint8_t width, const unsigned port, const uint32_t value) {
+ 	if (!swotl_active) return;
+ 	++ports[std::make_tuple(write, width, (uint16_t)port, value, CurrentLocation())];
++    if (joystick_ports && port == 0x201) {
++        if (joystick_run.count && (joystick_run.service != service_events ||
++            joystick_run.write != write || joystick_run.width != width || joystick_run.value != value))
++            FlushJoystickPorts();
++        if (!joystick_run.count) {
++            joystick_run.service = service_events;
++            joystick_run.write = write;
++            joystick_run.width = width;
++            joystick_run.value = value;
++        }
++        ++joystick_run.count;
++    }
+ 	if (opl && write && width == 1) {
+ 		if (port == 0x388) opl_index = (uint8_t)value;
+ 		else if (port == 0x389)
+--- /dev/null
++++ b/include/swotl_joystick_input.h
+@@ -0,0 +1,26 @@
++#ifndef SWOTL_JOYSTICK_INPUT_H
++#define SWOTL_JOYSTICK_INPUT_H
++#include <string>
++
++/* Normalized axes are thousandths in [-1000,1000]; buttons are a two-bit mask. */
++struct SwotlJoystickInput {
++    char kind = 0;
++    int value = 0;
++};
++inline SwotlJoystickInput SwotlParseJoystick(const std::string &name)
++{
++    if (name.size() == 3 && name[0] == 'j' && name[1] == 'b' &&
++        name[2] >= '0' && name[2] <= '3')
++        return {'b', name[2] - '0'};
++    if (name.size() < 4 || name.size() > 7 || name[0] != 'j' ||
++        (name[1] != 'x' && name[1] != 'y') ||
++        (name[2] != '+' && name[2] != '-')) return {};
++    int value = 0;
++    for (size_t i = 3; i < name.size(); ++i) {
++        if (name[i] < '0' || name[i] > '9') return {};
++        value = value * 10 + name[i] - '0';
++    }
++    if (value > 1000) return {};
++    return {name[1], name[2] == '-' ? -value : value};
++}
++#endif

@@ -49,6 +49,8 @@ def run(m: dict) -> tuple[list[str], dict]:
            "--polls", str(POLLS)]
     for path in fixture_inputs.missing_files(m.get("missing_files") or ""):
         cmd += ["--missing-file", path]
+    if m.get("joystick") == "1":
+        cmd += ["--joystick"]
     if m.get("rep_chunks") == "1":
         cmd += ["--rep-chunks"]
     if m["launch"]:

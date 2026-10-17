@@ -66,6 +66,8 @@ def main() -> int:
     parser.add_argument("--launch", default=LAUNCH)
     parser.add_argument("--services", action="store_true",
                         help="log every software INT from module code with entry/return registers")
+    parser.add_argument("--joystick", action="store_true",
+                        help="enable deterministic joystick inputs and record exact gameport accesses")
     parser.add_argument("--rep-chunks", action="store_true",
                         help="record original REP decoder slices at poll points")
     parser.add_argument("--opl", action="store_true",
@@ -86,6 +88,9 @@ def main() -> int:
                SWOTL_FIXED_FILE_CLOCK="1",
                SWOTL_SNAPSHOTS=args.snapshots, SWOTL_EXIT_AFTER=args.exit_after,
                SWOTL_KEYS=args.keys)
+    env.pop('SWOTL_JOYSTICK', None)
+    if args.joystick:
+        env['SWOTL_JOYSTICK'] = '1'
     if args.services:
         env["SWOTL_SERVICES"] = "1"
     if args.rep_chunks:

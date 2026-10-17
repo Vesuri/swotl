@@ -50,6 +50,12 @@ ifneq ($(REPLAY),)
 CCFLAGS += -DSWOTL_REPLAY -I"$(REPLAY)"
 VASMFLAGS += -DSWOTL_REPLAY=1
 OBJECTS += obj/replay_c.o obj/replay_s.o
+ifneq ($(wildcard $(REPLAY)/joystick_data.h),)
+OBJECTS += obj/joystick_replay.o
+LDFLAGS += -Wl,--wrap=rt_port_in,--wrap=rt_port_out
+obj/joystick_replay.o: $(REPO)/tests/joystick_replay.c $(REPLAY)/joystick_data.h | obj
+	$(CC) $(CCFLAGS) -ffreestanding -I"$(RUNTIME)" -c -o $@ $<
+endif
 obj/replay_c.o: $(REPO)/tests/amiga_replay.c $(REPLAY)/replay_data.h | obj
 	$(CC) $(CCFLAGS) -ffreestanding -I"$(RUNTIME)" -c -o $@ $<
 obj/replay_s.o: $(REPO)/tests/amiga_replay.s | obj
