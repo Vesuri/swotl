@@ -6,12 +6,16 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Guest map follow-ups
 
-9b. 17 indirect sites remain static-only (`annotations/indirect.csv`).
+9b. Paused at user request. 17 indirect sites remain static-only (`annotations/indirect.csv`).
    [Coverage boundaries](indirect-coverage.md) document 13 video/default-runtime
    exclusions with fail-loud dispatch retained. The other 4 need VGA execution
    coverage: engine/cockpit damage (2), formatting (2). Do not infer unreachability from missed fixtures.
    c26 usage exit also needs exact EMS release (AH=45h), including retained
    mappings and backing-page aliases; clearing the handle alone is insufficient.
+   EMS implementation is explicitly deferred by the user.
+   Before resuming coverage, resolve pending approvals for `equals`/`minus`
+   recorder keys (damage scenarios) and isolated original-code formatting tests.
+   Such tests must not be presented as gameplay execution coverage.
 9c. PLINK flag bit 13 (set on DATA only): meaning unknown; no effect seen.
 9e. `tools/sweep.py` does not seed `annotations/runtime.csv` entries, so
    `callf [56EAh]` at SWOTL+140DB (`__harderr_handler`) has no

@@ -183,7 +183,7 @@ service-only release format.
 | c21-go229-gunnery | G, F, 5, 1, S; c6's flight keys | GO 229 flight |
 | c24-custom-create | U, C, C; select Leiston, create a P-47 group, assign the player, exit and save | custom mission `UNNAMEDA.MIS` |
 | c25-film-load | save A.RPY, end mission, select and load A from the main-menu viewer | REPLAY + FLIGHT resident; image proof and host comparison pass |
-| c26-exit-usage | launch `swotl` without arguments | root +138DE after C exit callbacks; host needs EMS release (AH=45h) |
+| c26-exit-usage | launch `swotl` without arguments | root +138DE after C exit callbacks; host needs exact EMS release and backing aliases (open-work 9b; implementation deferred) |
 | c27-campaign-flight | strategic campaign, transfer reserve group to Leiston, skip week, create flight group, start | FLIGHT resident, +44E2 #1000 |
 | c28-me163-map-return | full c20 key sequence, then exit the in-flight map | FLIGHT resident, +44E2 #100; NOTCAMP+487C/+48B6 executed |
 | c29-he162-map-return | full c22 key sequence, then exit the in-flight map | FLIGHT resident, +44E2 #100 |
