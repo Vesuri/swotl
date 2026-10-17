@@ -2,7 +2,7 @@
 
 Plan and evidence for speeding up SWOTL's rendering with what Their Finest Hour's
 Amiga version (TFH, same engine family) and its WHDLoad slave show. Static research
-2026-10-16, plan 2026-10-17. Open work: [open-work.md](open-work.md) 14b, 30–33.
+2026-10-16, plan and prices 2026-10-17. Open work: [open-work.md](open-work.md) 14b, 31–33.
 Rules: [speed-plan.md](speed-plan.md) §2. The full research notes are kept locally in
 `tmp/tfh-xref/swotl-tfh-rendering-map.2026-10-16.md`.
 
@@ -23,7 +23,7 @@ Rules: [speed-plan.md](speed-plan.md) §2. The full research notes are kept loca
 | TFH `bob` v1.1, 254,400 bytes, SHA-256 `4b5931c8…22443877` (tfh-cross-reference.md says 1.0; same file) | `../Their Finest Hour/tmp/game/TheirFinestHour/data/bob`; listing `tmp/tfh-xref/BOB.txt` |
 | TFH addresses | code-hunk offsets; `jsr d16(a4)` enters a data-hunk `jmp` thunk (A4 = data + 7FFE): resolve it first |
 | The slave (the user's): register and 68020 versions of TFH's transform, projection, divide, normalisation and scenery loops; models of the originals | `../Their Finest Hour/whdload/transform.s`, `render.s`, `tools/xform_check.py`, `docs/internals.md` |
-| SWOTL costs | R17 first frames capture, 2026-10-14, 100 fields, 28,420,397 cycles (`tmp/item14b-agent/palette-candidate/frames-1/`): own time per generated call target, before the sound work; refreshed by open-work 30 |
+| SWOTL costs | `5ecdf79` frames captures, 2026-10-17, three runs of 100 fields, 28,420,397 cycles each (`tmp/item30/frames-{1,2,3}/`): own time per generated call target; inclusive time per call by A7 (`tmp/item30/inclusive.py`: hardware interrupts and guest interrupt deliveries not charged) |
 
 ## What the slave measured (68020)
 
@@ -40,40 +40,42 @@ Rules: [speed-plan.md](speed-plan.md) §2. The full research notes are kept loca
 
 ## Plan
 
-1. **Pricing pass** (open-work 30): fresh capture and census on HEAD; fill the table
-   below and price the translator candidates and the cell cache.
-2. **Translator steps** (open-work 31) and **cell cache** (open-work 32, D3), in price
-   order, by the speed-plan procedure (§3). No authorization needed.
-3. **Native contract** (open-work 33): interface, rules and oracle below.
-4. **User decision per routine** from the priced table.
-5. **Native routines**, each only after its authorization; poll-free leaves first.
+1. **Cell cache** (open-work 32, D3; −17.2% of the meter, the walk −79%), then the
+   **translator steps** (open-work 31, each ≤ 2.8%) in price order, by the speed-plan
+   procedure (§3). No authorization needed.
+2. **Native contract** (open-work 33): interface, rules and oracle below.
+3. **User decision per routine** from the priced table.
+4. **Native routines**, each only after its authorization; poll-free leaves first.
 
-Bounds (R17): the transform/projection group (`B52D`, `B54B`, `B4E2`, `B017`, `D5A6`)
-is 19.82% of the capture; with all of it gone, 400 ms would become ~320 ms. The 240 ms
-target needs −40%: every row below together is ~62%, so ~2.8× faster on average.
+Bounds (first `5ecdf79` capture): the transform/projection group (`B52D`, `B54B`,
+`B4E2`, `B017`, `D5A6`) is 14.82% (R17 19.82%); with all of it gone, 400 ms would
+become ~341 ms. The 240 ms target needs −40%: every row below together is 49.9%, so
+~5× faster on average; the cell cache alone removes ~13% (the walk −79%).
 
 ## Candidates
 
-R17 own share, calls per 100 fields, own cycles per call. Poll points from
-`build/gen/poll-points.csv`, routine start to its first `ret` (a lower bound where a
-routine returns early); `B017..BB6F` has none at all.
+First `5ecdf79` capture: own share, calls per 100 fields, own and inclusive cycles per
+call. The other two captures lie within −25% to +32% of these shares, except `D69C`
+(0.60–1.03%) and `4DAE` (2.44–5.38%, 8–41 calls); walk 12.94–16.46%.
+Poll points from `build/gen/poll-points.csv`, routine start to its first `ret` (a lower
+bound where a routine returns early); `B017..BB6F` has none at all.
 
-| SWOTL | Function | Share | Calls | Cycles | Polls | TFH | Slave |
-|---|---|---:|---:|---:|---:|---|---|
-| `B52D`→`B54B` | camera-relative point transform | 1.43 + 8.15% | 1,955 | 208 + 1,185 | 0 | `2F48C`→`2F4AE` | `xform` |
-| `B4E2` | perspective divide, rounded scale | 2.44% | 2,699 | 257 | 0 | `2F374` | `xdiv20` |
-| `B017` | projection, rotation, viewport reject | 3.86% | 1,352 | 811 | 0 | `2F160`, `2F28A` | `xproj` |
-| `D5A6` | normalise x/y/z to 15 bits, project | 3.94% | 1,197 | 935 | 1 | `3041C` | `xpnorm` |
-| `B8A1` | face-facing test | < 0.61% | — | — | 0 | `2F822` | — |
-| `BB70` | polygon bounds, top-vertex classify | 1.60% | 280 | 1,624 | 7 | `2FA12` | — |
-| `109D6` | ground-object faces and vertices | 4.49% | 165 | 7,734 | 6 | `1142C` | `scen_verts` |
-| `4DAE` | scaled packet sprite decoder | 1.44% | 10 | 40,925 | 7 | `2BACE` | — |
-| `D69C` | clipped line | 1.09% | 156 | 1,986 | 9 | `30486` | — |
-| `BD68` | polygon edge submission | 1.09% | 163 | 1,900 | 5 | `2FBB2` (related) | — |
-| `FDE0` | terrain polygon selection, submission | 2.26% | 5 | 128,460 | ≥ 3 | `104B6..10830` | — |
-| `F290` | terrain rings, scenery selection | 1.59% | 5 | 90,377 | 2 | `11138` | `tile_scenery` |
-| `BFD1` | active-edge scan conversion, priority sweep | 7.21% | 5 | 409,822 | ≥ 2 | none | — |
-| `6A4D` walk | shared pixel writer (cells) | 15.12% | 1,770 | 2,428 | — | `2CD7A`, `2BC80` | — |
+| SWOTL | Function | Share | Calls | Own | Incl. | Polls | TFH | Slave |
+|---|---|---:|---:|---:|---:|---:|---|---|
+| `B52D`→`B54B` | camera-relative point transform | 1.08 + 6.16% | 1,478 | 208 + 1,185 | 1,393 | 0 | `2F48C`→`2F4AE` | `xform` |
+| `B4E2` | perspective divide, rounded scale | 1.81% | 2,024 | 254 | 254 | 0 | `2F374` | `xdiv20` |
+| `B017` | projection, rotation, viewport reject | 2.98% | 1,012 | 837 | 1,345 | 0 | `2F160`, `2F28A` | `xproj` |
+| `D5A6` | normalise x/y/z to 15 bits, project | 2.79% | 843 | 941 | 2,312 | 1 | `3041C` | `xpnorm` |
+| `B8A1` | face-facing test (no generated call target) | — | — | — | — | 0 | `2F822` | — |
+| `BB70` | polygon bounds, top-vertex classify | 1.35% | 178 | 2,155 | 2,162 | 7 | `2FA12` | — |
+| `109D6` | ground-object faces and vertices | 2.73% | 110 | 7,053 | 25,325 | 6 | `1142C` | `scen_verts` |
+| `4DAE` | scaled packet sprite decoder | 5.05% | 41 | 35,006 | 50,389 | 7 | `2BACE` | — |
+| `D69C` | clipped line | 1.03% | 136 | 2,152 | 2,574 | 9 | `30486` | — |
+| `BD68` | polygon edge submission | 0.68% | 94 | 2,056 | 4,821 | 5 | `2FBB2` (related) | — |
+| `FDE0` | terrain polygon selection, submission | 1.67% | 5 | 94,924 | 531,336 | ≥ 3 | `104B6..10830` | — |
+| `F290` | terrain rings, scenery selection | 1.23% | 5 | 69,914 | 111,149 | 2 | `11138` | `tile_scenery` |
+| `BFD1` | active-edge scan conversion, priority sweep | 4.83% | 5 | 274,541 | 799,860 | ≥ 2 | none | — |
+| `6A4D` walk | shared pixel writer (cells) | 16.46% | 3,055 walks | 1,531 per walk | — | — | `2CD7A`, `2BC80` | — |
 
 Not candidates: RTSVGA `+3B9A` (3.21%, changed-row copy; TFH `283A0` converts 4-bit
 chunky to planar), RTSVGA `+3DCD` packed images (`27D40`; SWOTL's FB/FC tokens), TFH

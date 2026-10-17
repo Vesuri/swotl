@@ -23,13 +23,13 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Translator and validation
 
-14b. Speed target remains unmet: last normal-fixture 68020 run medians (R17)
-    370–430 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md) §7, §9). Roughly 40%
-    further reduction is needed from the median 400 ms. Remaining cost is
-    mostly generated guest code; unpriced translator candidates are 31 and 32
-    (flag-word packing rejected, speed-plan §10). Native replacement requires
-    per-routine authorization (§2.2); what to adapt from Their Finest Hour:
-    [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md), items 30–33.
+14b. Speed target remains unmet: frames-fixture 68020 run medians on `5ecdf79`
+    (2026-10-17) 400, 460 and 400 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
+    §1, §9). Roughly 40% further reduction is needed from the median 400 ms. Remaining
+    cost is mostly generated guest code; priced translator candidates are 32 and 31,
+    FM synthesis is 34 (flag-word packing rejected, speed-plan §10). Native replacement
+    requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
+    [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md), items 31–33.
     Bench acceptance for platform/layout work (D5) and
     a separate later palette window (D6) are approved; all fidelity gates and
     no slowdown remain mandatory.
@@ -37,42 +37,57 @@ speed work: [speed-plan.md](speed-plan.md).
     `Harness`: each byte drew from a fresh generator with the same seed).
     A random background is stronger but changes every corpus case; needs
     user approval.
-30. Pricing pass for 31, 32 and the TFH candidates (map: Plan 1): fresh frames
-    capture (speed-plan §4) and host census on HEAD; fill the map's candidate
-    table (calls, own and inclusive cycles per call) and price each item of 31
-    and 32. R17's shares predate the sound work.
-31. Translator candidates, unpriced (R17 lowering report, 2026-10-17); each
-    one a speed-plan step:
-    - BP as data: `or bp,cx` at SWOTL+D5DC is 5 68k instructions (mirror
-      conversion both ways); keep BP's value in a scratch register through a
-      run. `D5DA..D5DE` are 1.59% of the capture.
-    - Block layout: near jumps and branches ≈ 4.4%; R16 counted 1,261,759
-      uncached taken transfers (m4). Make the common successor fall through
-      (D5A6's loop: 2 taken per pass, 1 possible).
-    - Far call/return: `callf` 2.26% (9 instructions, 47 cycles), `retf`
-      1.24%; one long push, pop and compare for CS:IP, SP-wrap guard.
-    - Index reuse across single-predecessor fall-through edges (`[bx+disp]`
-      is 3 instructions; `reuse.py` resets at labels).
-    - Push/pop runs: one SP step per run (push 3.49%, pop 1.99%), SP-wrap guard.
-    - Segment loads: `pop es` is 7 instructions, 25 cycles.
-    - `repe cmpsw` (1.70%): more words per iteration.
-    - From the TFH map: REP STOSB long fills (`R_0CE8B`), indexed `[bp+si]`
-      copies (`R_10028..R_10044`), carry across address formation
-      (`R_0C411`/`R_0C415`).
-    - Lead: FLIGHT.OVL takes 20.9 cycles per guest instruction against
-      SWOTL.EXE's 13.6 (13.67% of the capture): census by form.
-    Not worth it: `mul` (`mulu.w` is ~26 of its 31 cycles), indexed address
-    formation itself, SPAZ's calibrated OPL delay spin.
-32. Cell cache re-price (D3; user 2026-10-17): decode once with the same form
-    checks; a planted RET ends the run (checked at its restore sites) instead
-    of invalidating; consecutive destinations written a long at a time; exact
-    invalidation for every other store that can reach the region (R7b: CS
-    stores, segment loads). Bound: matching is 6 of 17 loop bytes per mov cell
-    (≤ 11.1M meter cycles); R7b priced −1.7%.
+31. Translator candidates, priced 2026-10-17 on the `5ecdf79` m4 meter (217,202,211
+    model cycles), in price order; each one a speed-plan step:
+    - Block layout: ≤ −6.06M (−2.8%). Greedy chain layout of the m4 block graph:
+      local taken transfers 3.61M → 2.50M. Upper bound (free placement); bench
+      acceptance (D5). Largest: D5A6's loop (`R_0D5EA`), `R_04FD5`, `R_04FF7`.
+    - REP STOSW 8 or 16 words per pass: −1.76M to −2.06M (−0.81 to −0.95%);
+      `R_0C1CA` makes 392K two-word passes (255 words a run).
+    - Far call/return: −1.75M (−0.81%; −1.52M if misaligned longs cost two accesses:
+      long address ≡ 2 mod 4 at 44% of sampled `callf`, 57% of `retf`). `callf`:
+      `addq.w #4,d4`, `bvs.w` to the exact two-word path, one `move.l` CS:IP, one
+      `cmp.l` (−8 bytes, −1 write); `retf`: one `move.l` pop (−6 bytes, −1 read), a
+      wrapped pop fails the compare and the mismatch path re-reads exactly.
+    - BP as data: −1.62M (−0.75%), the conversion pair between consecutive
+      BP-data instructions in a run (24 sites; `D5DC`/`D5DE` 62,708 each). All
+      conversions: 5.08M (executed: `or bp` 362K, `mov bp,r` 116K, `push`/`pop bp`
+      ~89K each).
+    - `repe cmpsw` 8 words per pass (`bne.s` exits): −1.38M (−0.64%);
+      `VGA_03BE9` makes 472,828 two-word passes.
+    - Carry in X across address formation (`add`/`adc`, `sub`/`sbb` pairs through
+      `move.w ccr,G_FL`): ≤ −1.03M (−0.47%), 487 sites, 68,211 executions.
+    - An ES load that repeats ES (79% of 82,280): skip the base: −0.32M (−0.15%).
+      Not DS (13% repeat: +0.5M).
+    - Push/pop runs, one `bvs.w` guard per run: −0.16M (−0.07%).
+    Not worth it: index reuse across leaders (all predecessors agreeing,
+    single-jump leaders, poll labels: −0.02M); the TFH map's forms (`R_0CE8B` never
+    runs in m4 or the captures; `R_10028..R_10044`, `R_0C411`/`R_0C415` ≤ 0.02% each);
+    `mul` (`mulu.w` is ~26 of its 31 cycles), indexed address formation itself,
+    SPAZ's calibrated OPL delay spin. FLIGHT.OVL's cost per guest instruction is no
+    lead: counting R6 copies it is 9.2 against SWOTL.EXE's 12.6 (35).
+32. Cell cache (D3; user 2026-10-17), priced −37.4M (−17.2% of the meter; the walk
+    −79%). m4 census: 32,799 walks, 1,935,151 mov cells, 93% in stretches of 144
+    consecutive destinations (0.255 stores per cell a long at a time); every region
+    store a RET plant or restore (three producer pairs). Banked flight (c8, whole run:
+    a fourth pair `R_0EC0D`/`R_0EC19`): 85.8% in stretches ≥ 16, 0.331 stores per cell,
+    63 other region changes (displacement patches `R_08FD5`/`R_09030`/`R_0908E`, ES
+    stores `R_0E5FD..`): walk −71.5% before the segment-load checks. Priced design:
+    decode once with the form checks; RET plants recorded at their store sites,
+    checked at restores; ≥ 8 consecutive destinations filled by aligned `move.l`
+    under a 16-bit wrap guard and a DS-overlap check per run; exact invalidation (a
+    check on DS/ES loads; any other region store re-decodes).
+    Evidence: `tmp/item30/` (`price_walk.py`).
 33. Native-routine contract (map: Native contract): emit interface for compute
     rows, register/flag/memory rules, poll-point policy (user decision, §2.9),
     Unicorn oracle on recorded entry states, sabotage. Needed before asking the
     user to authorize any routine.
+34. FM synthesis is 8.15–9.71% of the three `5ecdf79` frames captures (`loop_for`,
+    `fm_field`, `eg_advance`); R17's whole runtime/platform share was 5.96%. Platform
+    layer, outside the host meter: price and plan under D5 with the sound gates.
+35. `tools/profile_report.py`'s module column counts guest instructions at
+    unsuffixed labels only: R6 copies (`_bp`) add cycles but no instructions
+    (FLIGHT.OVL 21.7 cycles per guest instruction reported, 9.2 counting them).
 16. Lookup-table policy with no Fast RAM (tables are Chip reads).
 24. Lockstep RAM compare (phase 6): undefined flags and FLAGS words pushed
     below SP (PUSHF, interrupt frames) differ from DOSBox by design. The host
