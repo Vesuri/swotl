@@ -30,6 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import m68k_diff as D  # noqa: E402
+from m68k_assembly import branch_widths  # noqa: E402
 import uc as U  # noqa: E402
 import x86_diff as X  # noqa: E402
 from translator import emit, image, region, smc  # noqa: E402
@@ -66,7 +67,7 @@ def program_image(p: emit.Program, cache: Path) -> tuple[bytes, dict]:
     src = [equates()] + [f"{n}\tequ\t${a:x}" for n, a in STUB_AT.items()]
     src += [f"\torg\t${D.CODE:x}", "labels:"] + [f"\tdc.l\t{x}" for x in order]
     src += body + [HELPERS]
-    text = "\n".join(src) + "\n"
+    text = branch_widths("\n".join(src) + "\n")
     key = hashlib.sha256(text.encode()).hexdigest()[:16]
     out = cache / f"program-{key}.bin"
     image_ = out.read_bytes() if out.exists() else D.assemble(text, out)
