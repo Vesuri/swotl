@@ -24,7 +24,8 @@ its binding rules: [speed-plan.md](speed-plan.md).
   period and a capture, [speed-plan.md](speed-plan.md) §4).
 - **Target A/B**: `tools/ab_labels.py CAP_A ELF_A CAP_B ELF_B METER_A
   --meter-b METER_B` uses both meters' exact 68k execution counts. Each
-  required target PC must match the host instruction and have samples.
+  required target PC must match the host instruction and have samples. Changed-label
+  comparisons include complete shared-address alias groups from both binaries.
   Guest-entry weighting alone confounds REP length/path changes with speed;
   per-PC weighting fixes those counts, while branch timing at a PC still
   reflects the capture's taken mix. Keep both reports; neither proves fidelity.

@@ -536,6 +536,17 @@ def boundary(h: Harness) -> None:
     flag_extract_cases(h)
     string_direction_layout_cases(h)
     near_dispatch_layout_cases(h)
+    loop_layout_cases(h)
+
+
+def loop_layout_cases(h):
+    """R23: either conditional edge, including backward and wrapping targets."""
+    for cc in range(16):
+        for bits in range(32):
+            flags = {f: (bits >> k) & 1 for k, f in enumerate(("CF", "PF", "ZF", "SF", "OF"))}
+            for ip, displacement in ((0x100, 0xFC), (0, 0xFC), (0xFFFE, 4)):
+                h.case(bytes((0x70 + cc, displacement)), "b:loop-layout-jcc",
+                       overrides={"ip": ip, "flags": flags})
 
 
 def near_dispatch_layout_cases(h):

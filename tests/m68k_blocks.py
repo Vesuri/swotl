@@ -21,6 +21,7 @@ guest IP reaches the return site, with a wrong IP or CS rt_ret_mismatch
 from __future__ import annotations
 
 import argparse
+import re
 import hashlib
 import random
 import sys
@@ -134,6 +135,40 @@ def blocks(p: emit.Program, executed: dict[str, set[int]]):
                     break
                 k = nxt[1]
             yield mod, run
+
+
+def empty_guest_entries(lines):
+    """Labels with no emitted instruction before the next guest label.
+
+    Address equality alone is insufficient: a genuine self-loop can share
+    an address with a preceding zero-code instruction and still execute a BRA.
+    """
+    guest = re.compile(r"^[A-Z]+_[0-9A-F]{5}(?:_bp)?:")
+    empty, pending = set(), []
+    for line in lines:
+        if guest.match(line):
+            empty.update(pending)
+            pending = [line.split(':')[0]] if emit.LABEL_ONLY.match(line) else []
+        elif not emit.skippable(line):
+            pending = []
+    return empty
+
+
+def block_boundary(p, mod, run, addr, end, empty_entries, copy=False):
+    """Internal PCs exclude every guest CFG exit, including aliased jumps."""
+    lab = emit.copy_label if copy else emit.label
+    exits = {end}
+    last = (mod, run[-1])
+    successors = list(p.succ[last]) + [p.fall.get(last)]
+    for node in successors:
+        if not isinstance(node, tuple) or node not in p.succ:
+            continue
+        for name in (emit.label(*node), lab(*node)):
+            if name in addr:
+                exits.add(addr[name])
+    inside = {addr[lab(mod, o)] for o in run[1:]} - exits
+    empty = end == addr[lab(mod, run[0])] or all(lab(mod, o) in empty_entries for o in run)
+    return inside, empty
 
 
 def copy_blocks(p: emit.Program, nodes: set, executed: dict[str, set[int]]):
@@ -624,6 +659,7 @@ def main(argv=None) -> int:
     cache = image.REPO / "tmp/m68k"
     cache.mkdir(parents=True, exist_ok=True)
     img, addr = program_image(p, cache)
+    empty_entries = set().union(*(empty_guest_entries(p.module_text(mod)[0]) for mod in p.units))
     by_addr: dict[int, list[str]] = {}
     aux = set(aux_labels(p))
     for x, a in addr.items():
@@ -677,9 +713,8 @@ def main(argv=None) -> int:
         lab = emit.copy_label if copy else emit.label
         # first address after the block's code
         end = (copy_next if copy else text_next).get((mod, run[-1]))
-        m.inside = {addr[lab(mod, o)] for o in run[1:]} - {end}
+        m.inside, empty = block_boundary(p, mod, run, addr, end, empty_entries, copy)
         m.extra_stops = stops = stop_names
-        empty = end == addr[lab(mod, run[0])]  # lowers to no code (bra to next)
         for _ in range(states):
             regs, flags, flagsx, _ = h.state({"regs": {"cs": cs}, "ip": ip})
             # keep CX small so REP blocks stay short
@@ -1030,6 +1065,38 @@ def main(argv=None) -> int:
                         block_cases(mod, [off], 1, force, memory=memory, expected=expected)
                         if emit.copy_label(mod, off) in addr:
                             block_cases(mod, [off], 1, force, memory=memory, expected=expected, copy=True)
+    # R23: changed loop pieces and every decoded incoming predecessor block.
+    # Include arbitrary entry state and each observed placement's guarded copy.
+    if not args.only:
+        layout_nodes = {
+            ("SWOTL.EXE", off) for off in
+            (0xD5DA, 0xD5E0, 0xD5E2, 0xD5EA, 0xD5F6,
+             0xD3E9, 0xD3ED, 0xD3EF, 0xD3F5,
+             0xAEDB, 0xAEE1, 0xAEE3, 0xAEEF)
+        } | {("FLIGHT.OVL", off) for off in (0x133C0, 0x133E9, 0x133EB, 0x133EF)}
+        incoming = {n for n, successors in p.succ.items()
+                    if any(t in layout_nodes for t in successors)}
+        incoming |= {n for n, f in p.fall.items() if f in layout_nodes}
+        for mod, run in blocks(p, {m: set(u.insns) for m, u in p.units.items()}):
+            if not any((mod, o) in layout_nodes | incoming for o in run):
+                continue
+            for value in (0, 1, 0x7FFF, 0x8000, 0xFFFF):
+                force = {r: value for r in ("ax", "bx", "cx", "dx", "si", "di")}
+                force.update(ss=0x7000, sp=0x1000)
+                for copy in (False, True):
+                    if copy and not all(emit.copy_label(mod, o) in addr for o in run):
+                        continue
+                    block_cases(mod, run, 1, force, copy=copy)
+        # Direct entry at each zero-code back jump must stop before its target,
+        # while the unrotated exact/copy counterpart remains a real jump.
+        for mod, off, target in (("SWOTL.EXE", 0xD5F6, 0xD5DA),
+                                 ("SWOTL.EXE", 0xD3FD, 0xD3E9),
+                                 ("SWOTL.EXE", 0xAEFF, 0xAEDB),
+                                 ("FLIGHT.OVL", 0x13442, 0x133C0)):
+            for copy in (False, True):
+                lab = emit.copy_label if copy else emit.label
+                if lab(mod, off) in addr:
+                    block_cases(mod, [off], 2, copy=copy, expected=lab(mod, target))
     total = sum(v for k, v in count.items() if k != "return checks")
     print(f"blocks {len(picks)} of {len(allb)} executed; cases {total}", dict(count))
     print(f"poll cases {sum(polls.values()) - polls['return checks']} (interrupt posted)")

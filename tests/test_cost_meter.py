@@ -213,5 +213,27 @@ class InstructionMix(unittest.TestCase):
                                 ("R_00100", 4, "ror.w", "#8,d6", 3)])
 
 
+class LayoutAliases(unittest.TestCase):
+    def test_selection_contains_every_alias_in_either_arm(self):
+        before = [(100, "R_00100"), (102, "R_00102"), (104, "R_00104")]
+        after = [(200, "R_00100"), (200, "R_00102"), (204, "R_00104")]
+        self.assertEqual(A.expand_aliases({"R_00102"}, before, after),
+                         {"R_00100", "R_00102"})
+        self.assertEqual(A.expand_aliases({"R_00104"}, before, after), {"R_00104"})
+        self.assertEqual(A.expand_aliases(set(), before, after), set())
+        # Copy normalization and cross-arm transitive aliases must not lose work.
+        copy = [(300, "R_00102_bp"), (300, "R_00104_bp")]
+        self.assertEqual(A.expand_aliases({"R_00100"}, copy, after),
+                         {"R_00100", "R_00102", "R_00104"})
+
+    def test_alias_selection_retains_unchanged_neighbor_cost(self):
+        p = Program().prog()
+        rows = [("R_00100", 0, "move.w", "(0,a2,d7.l),d6", 10),
+                ("R_00102", 0, "subq.w", "#1,d1", 100)]
+        samples = {0x1000: (5, 30), 0x1006: (10, 20)}
+        only = A.expand_aliases({"R_00102"}, [(42, "R_00100"), (42, "R_00102")])
+        self.assertEqual(sum(A.instruction_cycles(samples, p, rows, only).values()), 260)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -174,7 +174,9 @@ guarded copy; a profile choice, `tools/bp_regions.py`).
   12–14, memory, OUT sequence, interrupt/fault. A case with a direct
   `[bp+d]` form also runs behind a region guard (copy, exact fallback).
 - Block differential (`make test-blocks`): the generated program as emitted,
-  run from executed leaders to the first transfer with random states; flags
+  run from executed leaders to the first transfer with random states. Guest CFG
+  exits remain stopping boundaries when a zero-code jump aliases its target;
+  direct zero-code entries stop without executing the target. Flags
   compared where live at the successor reached (at a cell walk: live at the
   transfer; the walk reads no flags); calls also run the return protocol
   (right IP reaches the return site, wrong IP or CS `rt_ret_mismatch`;

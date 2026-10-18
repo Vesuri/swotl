@@ -59,3 +59,8 @@ exec(bad, scope)
 with patch.object(T.A, 'instruction_cycles', scope['instruction_cycles']):
     check(T.InstructionMix, True)
 print('instruction A/B: capture REP length used as host work plant caught')
+
+check(T.LayoutAliases, False)
+with patch.object(T.A, 'expand_aliases', lambda changed, *tables: set(changed)):
+    check(T.LayoutAliases, True)
+print('instruction A/B: omitted alias-neighbor work plant caught')

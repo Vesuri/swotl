@@ -669,3 +669,9 @@ history at `781975e` and §5.)
   still runs per delivery); reverted.
 - R19 flag-word packing: priced at 18,726–29,266 model cycles
   (0.0086–0.0135%) and ten code bytes on `25dd32c`; too small (D7).
+
+- R23 loop-tail placement: model −0.1361%, changed-code target −11.3304%,
+  code +12 bytes; six opening benches per arm give median +0.0042%, mean
+  +0.0326% (overlapping ranges, five pairs slower). No-slowdown acceptance
+  not established; placement reverted. Approved alias-boundary and timing-tool
+  fixes plus oracle coverage retained; all seven gates passed. Evidence: `tmp/item31-r23/`.

@@ -42,7 +42,10 @@ speed work: [speed-plan.md](speed-plan.md).
     IRQ and other suffixed labels). Keep their cycles/instructions, but count
     guest entries only at unsuffixed/`_bp` instruction labels, as
     `profile_report.py` does. R22's first capture: 2,317,066 reported versus
-    2,290,967 guest entries. Meter totals and fixed-instruction A/B are unaffected.
+    2,290,967 guest entries. Zero-code jump aliases also hide executed guest
+    instructions: rejected R23's m4 count drops by exactly the four removed jumps' 68,070
+    entries. Recover semantic counts before comparing per-guest ratios across
+    such layouts. Meter totals and alias-aware fixed-instruction A/B are unaffected.
 31. Translator candidates, priced 2026-10-17 on the `5ecdf79` m4 meter (217,202,211
     model cycles; outside the cell walk, which R20 replaced), in price order; each one
     a speed-plan step:
@@ -50,8 +53,9 @@ speed work: [speed-plan.md](speed-plan.md).
       local taken transfers 3.61M → 2.50M. Upper bound (free placement); bench
       acceptance (D5). Largest: D5A6's loop (`R_0D5EA`), `R_04FD5`, `R_04FF7`.
       General block layout remains open after string and call outlining (R21/R22,
-      speed-plan §7); reprice on R22, starting with the D5A6 loop. The free-placement
-      bound is not an implementable price.
+      speed-plan §7); audit the remaining shapes on the current parent. The free-placement
+      bound is not an implementable price. R23 loop-tail placement rejected:
+      six bench pairs do not establish no slowdown (speed-plan §10).
     - REP STOSW 8 or 16 words per pass: −1.76M to −2.06M (−0.81 to −0.95%);
       `R_0C1CA` makes 392K two-word passes (255 words a run).
     - Far call/return: −1.75M (−0.81%; −1.52M if misaligned longs cost two accesses:

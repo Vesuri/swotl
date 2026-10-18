@@ -103,6 +103,27 @@ def changed_labels(weights, before, after):
             or before.get(k + "_bp") != after.get(k + "_bp")}
 
 
+def expand_aliases(changed: set, *symbol_tables) -> set:
+    """Compare complete shared-address groups in both arms.
+
+    Objdump may name a shared PC after its loop head while the symbol-table
+    profiler names it after the removed jump. Neither choice may discard the
+    other label's work from an exact-instruction comparison.
+    """
+    groups = []
+    for symbols in symbol_tables:
+        by_address = {}
+        for address, name in symbols:
+            by_address.setdefault(address, set()).add(canon(name))
+        groups.extend(names for names in by_address.values() if len(names) > 1)
+    result = set(changed)
+    while True:
+        expanded = result | set().union(*(names for names in groups if names & result))
+        if expanded == result:
+            return result
+        result = expanded
+
+
 def pc_samples(capture: Path) -> dict:
     """Count and total measured cycles per PC; preserve every capture record."""
     counts, cycles = Counter(), Counter()
@@ -175,7 +196,9 @@ def main(argv=None) -> int:
               f"{pa:.3f} -> {pb:.3f} cycles/call ({100 * (pb / pa - 1):+.3f}%), "
               f"{extra[name] * (pb - pa):+,.0f} census-weighted cycles")
     ba, bb = bodies(args.elf_a, args.objdump), bodies(args.elf_b, args.objdump)
-    changed = changed_labels(weights, ba, bb)
+    changed = expand_aliases(changed_labels(weights, ba, bb),
+                             P.symbols(args.objdump, str(args.elf_a)),
+                             P.symbols(args.objdump, str(args.elf_b)))
     d, den, cov = mix_delta(a, b, weights)
     print(f"all labels: mix-adjusted delta {100 * d:+.3f}% (weight covered {100 * cov:.1f}%)")
     d, den, cov = mix_delta(a, b, weights, changed)
