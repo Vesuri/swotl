@@ -48,7 +48,10 @@ speed work: [speed-plan.md](speed-plan.md).
     such layouts. Meter totals and alias-aware fixed-instruction A/B are unaffected.
 31. Translator candidates, priced 2026-10-17 on the `5ecdf79` m4 meter (217,202,211
     model cycles; outside the cell walk, which R20 replaced), in price order; each one
-    a speed-plan step:
+    a speed-plan step. Paused at user request on 2026-10-18: resume with the
+    remaining layout audit on `a1df937`, then reprice the candidates below in order.
+    No optimization is in progress; the fresh baseline meter completed in
+    `tmp/item31-layout-audit/`, but candidate pricing remains unfinished.
     - Block layout: ≤ −6.06M (−2.8%). Greedy chain layout of the m4 block graph:
       local taken transfers 3.61M → 2.50M. Upper bound (free placement); bench
       acceptance (D5). Largest: D5A6's loop (`R_0D5EA`), `R_04FD5`, `R_04FF7`.
