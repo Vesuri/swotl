@@ -162,6 +162,17 @@ class StringLayoutLabels(unittest.TestCase):
                 self.assertEqual(cycles, Counter(R_00100=22))
                 self.assertEqual(calls, Counter(R_00100=2))
 
+    def test_dispatch_fallback_cycles_belong_to_call(self):
+        from unittest.mock import patch
+        pcs = np.array([0x100, 0x200, 0x202, 0x100])
+        cost = np.array([2, 5, 7, 2])
+        for suffix in ("", "_bp"):
+            symbols = [(0x100, "R_00100" + suffix),
+                       (0x200, "R_00100" + suffix + "_dispatchcold")]
+            with patch.object(A.P, "decode", return_value={"fields": [(22, 0, pcs, cost)]}):
+                self.assertEqual(A.label_cycles(Path("unused"), symbols),
+                                 (Counter(R_00100=16), Counter(R_00100=2)))
+
 
 class InstructionMix(unittest.TestCase):
     def test_repeat_count_does_not_become_a_speed_change(self):

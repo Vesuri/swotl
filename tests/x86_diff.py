@@ -535,6 +535,29 @@ def boundary(h: Harness) -> None:
     index_fold_cases(h)
     flag_extract_cases(h)
     string_direction_layout_cases(h)
+    near_dispatch_layout_cases(h)
+
+
+def near_dispatch_layout_cases(h):
+    """R22: register and multi-register memory call targets at walk guard edges.
+    Generic x86 call semantics remain exact before dispatch selection."""
+    targets = (0, 0x209C, 0x209D, 0x447C, 0x447D, 0xFFFF)
+    for target in targets:
+        for k, reg in enumerate(("ax", "cx", "dx", "bx", "sp", "bp", "si", "di")):
+            for sp in (0, 0xFFFF):
+                regs = dict(cs=0x2000, ds=0x5000, ss=0x7000, sp=sp)
+                regs[reg] = target
+                h.case(bytes((0xFF, 0xD0+k)), "b:dispatch-layout-register",
+                       overrides={"regs": regs, "ip": 0x100})
+        for code, regs, at in (("ff10", dict(bx=0x7FF, si=1), 0x50800),
+                              ("ff13", dict(bp=0x7FF, di=1), 0x70800),
+                              ("ff16ffff", {}, 0x5FFFF),
+                              ("ff14", dict(si=0xFFFF), 0x5FFFF)):
+            for sp in (0, 0xFFFF):
+                h.case(bytes.fromhex(code), "b:dispatch-layout-memory",
+                       overrides={"regs": dict(cs=0x2000, ds=0x5000, ss=0x7000,
+                                               sp=sp, **regs), "ip": 0x100,
+                                  "mem": [(at, target.to_bytes(2, "little"))]})
 
 
 def string_direction_layout_cases(h):

@@ -23,9 +23,9 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Translator and validation
 
-14b. Speed target remains unmet: frames-fixture 68020 run medians on R21
-    (2026-10-18) 370, 370 and 370 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
-    §1, §9). Roughly 35% further reduction is needed from 370 ms; parent intervals overlap. Remaining
+14b. Speed target remains unmet: frames-fixture 68020 run medians on R22
+    (2026-10-18) 390, 370 and 380 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
+    §1, §9). Roughly 37% further reduction is needed from 380 ms; parent intervals overlap. Remaining
     cost is mostly generated guest code; priced translator candidates are 31,
     FM synthesis is 34 (flag-word packing rejected, speed-plan §10). Native replacement
     requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
@@ -38,14 +38,20 @@ speed work: [speed-plan.md](speed-plan.md).
     `Harness`: each byte drew from a fresh generator with the same seed).
     A random background is stronger but changes every corpus case; needs
     user approval.
+36. `tools/lowering_cost.py` sums helper entries into `guest_exec` (walk,
+    IRQ and other suffixed labels). Keep their cycles/instructions, but count
+    guest entries only at unsuffixed/`_bp` instruction labels, as
+    `profile_report.py` does. R22's first capture: 2,317,066 reported versus
+    2,290,967 guest entries. Meter totals and fixed-instruction A/B are unaffected.
 31. Translator candidates, priced 2026-10-17 on the `5ecdf79` m4 meter (217,202,211
     model cycles; outside the cell walk, which R20 replaced), in price order; each one
     a speed-plan step:
     - Block layout: ≤ −6.06M (−2.8%). Greedy chain layout of the m4 block graph:
       local taken transfers 3.61M → 2.50M. Upper bound (free placement); bench
       acceptance (D5). Largest: D5A6's loop (`R_0D5EA`), `R_04FD5`, `R_04FF7`.
-      String-direction outlining is kept (R21, −0.1080% meter; speed-plan §7).
-      Other layout candidates remain open; refresh their prices on R21.
+      General block layout remains open after string and call outlining (R21/R22,
+      speed-plan §7); reprice on R22, starting with the D5A6 loop. The free-placement
+      bound is not an implementable price.
     - REP STOSW 8 or 16 words per pass: −1.76M to −2.06M (−0.81 to −0.95%);
       `R_0C1CA` makes 392K two-word passes (255 words a run).
     - Far call/return: −1.75M (−0.81%; −1.52M if misaligned longs cost two accesses:

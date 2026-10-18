@@ -814,7 +814,8 @@ def main(argv=None) -> int:
             if mouts != outs:
                 diffs.append(f"out 68k={mouts} x86={outs}")
             # return protocol after a call
-            if stop in node_of and last.op in ("call", "callf") and not diffs:
+            if (stop in node_of or stop in walks_at or stop == "rt_dispatch_near") \
+                    and last.op in ("call", "callf") and not diffs:
                 ret_ip = last.next_ip + (2 if run[-1] in u.manager_calls else 0)
                 site = emit.label(mod, run[-1] + last.size + (2 if run[-1] in u.manager_calls else 0))
                 if copy and site + "_bp" in addr:   # past the guard after the call (BP in range)
@@ -999,6 +1000,36 @@ def main(argv=None) -> int:
                                         {"cx": cx, "si": 0xFFFF, "di": 0xFFFF,
                                          "ds": 0x5000, "es": 0x6000}, copy=copy,
                                         forced_flags={"DF": df})
+    # R22: every affected call entry and every guard edge. The complete
+    # predecessor blocks above still enter with their own live flag contracts.
+    if not args.only:
+        for mod, u in p.units.items():
+            for off, insn in u.insns.items():
+                ctx = p.ctx(mod, off, Counter())
+                if insn.op != "call" or not ctx.smc_targets:
+                    continue
+                operand = insn.operands[0]
+                for lo, hi, walk in ctx.smc_targets:
+                    for target in sorted({0, lo-1, lo, hi, hi+1, 0xFFFF}):
+                        if not 0 <= target <= 0xFFFF:
+                            continue
+                        force, memory = {"ss": 0x7000, "sp": 0x1000}, []
+                        if isinstance(operand, Reg):
+                            force[operand.name] = target
+                        else:
+                            assert isinstance(operand, Mem)
+                            force.update({r: 0 for r in (operand.base, operand.index) if r})
+                            if operand.seg != "cs":
+                                force[operand.seg] = 0x5000
+                            seg = ((LOADSEG + u.cs[off]) & 0xFFFF) if operand.seg == "cs" else 0x5000
+                            memory = [(seg*16+operand.disp, target.to_bytes(2, "little"))]
+                        expected = next((wl for a, b, wl in ctx.smc_targets if a <= target <= b), None)
+                        if expected is None:
+                            expected = ctx.near(target) if target in ctx.near_targets else None
+                            expected = expected or ("rt_stop_unknown" if ctx.complete else "rt_dispatch_near")
+                        block_cases(mod, [off], 1, force, memory=memory, expected=expected)
+                        if emit.copy_label(mod, off) in addr:
+                            block_cases(mod, [off], 1, force, memory=memory, expected=expected, copy=True)
     total = sum(v for k, v in count.items() if k != "return checks")
     print(f"blocks {len(picks)} of {len(allb)} executed; cases {total}", dict(count))
     print(f"poll cases {sum(polls.values()) - polls['return checks']} (interrupt posted)")

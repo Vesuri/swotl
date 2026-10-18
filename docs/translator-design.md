@@ -123,7 +123,9 @@ diffs directly); relocated words in instructions are emitted as
 - Indirect transfers (D7): compare chain over the known targets
   (`annotations/indirect.csv`); a proved switch table falls back to
   `rt_stop_unknown`, other sites to `rt_dispatch_near`/`rt_dispatch_far`
-  (target in d7, CS in d6). Table rows (`program.s`): the cfg seeds (MZ
+  (target in d7, CS in d6). The first walk call falls through to its return
+  check; its remaining targets and fallback are out of line, with both walk
+  range checks retained (R22). Table rows (`program.s`): the cfg seeds (MZ
   entry, PLINK thunks, `runtime.csv`, `indirect.csv` targets) as (CS, IP,
   overlay id, far, label); overlays sharing an area share CS:IP, so the row whose
   overlay is resident (PLINK record bit 15) wins; anything else stops.

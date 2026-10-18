@@ -33,8 +33,8 @@ import profile_report as P  # noqa: E402
 
 
 def canon(name: str) -> str:
-    """Guarded copies and outlined string bodies belong to their instruction."""
-    return name.removesuffix("_dfback").removesuffix("_bp")
+    """Guarded copies and outlined bodies belong to their instruction."""
+    return name.removesuffix("_dfback").removesuffix("_dispatchcold").removesuffix("_bp")
 
 
 def label_cycles(capture: Path, syms: list, extra=frozenset()) -> tuple[Counter, Counter]:
@@ -55,7 +55,7 @@ def label_cycles(capture: Path, syms: list, extra=frozenset()) -> tuple[Counter,
                          and names[i] not in extra):
                 continue
             cyc[canon(names[i])] += cc
-            if pc in first and pc == addrs[i] and not names[i].endswith("_dfback"):
+            if pc in first and pc == addrs[i] and not names[i].endswith(("_dfback", "_dispatchcold")):
                 execs[canon(names[i])] += nn
     return cyc, execs
 
@@ -154,7 +154,7 @@ def main(argv=None) -> int:
     meter = json.loads(args.meter.read_text())
     weights = Counter()
     for k, v in meter["labels"].items():
-        if v.get("execs") and not k.endswith("_dfback"):
+        if v.get("execs") and not k.endswith(("_dfback", "_dispatchcold")):
             weights[canon(k)] += v["execs"]
     extra = {}
     for spec in args.runtime_weight:

@@ -12,20 +12,21 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   8 MB Fast model (`AMIGA_CPU` unset): frames 4–11 median ≤ 12 fields
   (240 ms); stretch ≤ 10.
 - **Status:** R16 alignment repair, R17 palette validity, R18 flag extraction kept; R20 cell
-  cache and R21 string layout kept. Item 14b's 240 ms target remains unmet; no native replacement is
+  cache, R21 string layout and R22 call layout kept. Item 14b's 240 ms target remains unmet; no native replacement is
   authorized. Next steps priced 2026-10-17: open-work 31.
-- **Frames fixture** (R21, 2026-10-18): medians 370, 370 and
-  370 ms; same-session parent 380, 400 and 390 ms. Full intervals and spans in §7.
-- **Bench:** R20 opening 71,523 → 72,197 lines (+0.9424%), identical guest
+- **Frames fixture** (R22, 2026-10-18): medians 390, 370 and
+  380 ms; same-session parent 380, 390 and 380 ms. Full intervals and spans in §7.
+- **Bench:** R22 opening 72,205 → 72,089 lines (−0.161%), identical guest RAM.
+  R20 opening 71,523 → 72,197 lines (+0.9424%), identical guest
   RAM; approved tradeoff. Palette window 38,392–38,405 lines (R17),
   2.81–3.61% below its same-session parent.
-- **Meter** (m4, R18 weights, R21): generated + walk + runtime 183,744,876
-  model cycles (−0.1080% from parent); generated + walk 181,414,816 / 17,976,252 guest
-  instructions = 10.092 cycles each. Host platform adds 2,171 cycles.
-- **Capture** (R20, first frames run, 100 fields): generated code 81.40%
-  (cell walk 3.62%), runtime/platform 14.42% (FM synthesis 8.11%, item 34),
-  no PC 2.22%, Kickstart 1.03%, IRQ transition 0.92%. Lowering report:
-  2,254,670 guest instructions, 10.26 cycles and 2.394 68k instructions each.
+- **Meter** (m4, R18 weights, R22): generated + walk + runtime 183,699,737
+  model cycles (−0.0246% from parent); generated + walk 181,369,677 / 17,976,252 guest
+  instructions = 10.089 cycles each. Host platform adds 2,171 cycles.
+- **Capture** (R22, first frames run, 100 fields): generated code 80.18%
+  (cell walk 2.72%), runtime/platform 14.66% (three main FM functions 7.89%, item 34),
+  no PC 3.20%, Kickstart 1.04%, IRQ transition 0.93%. Profiler guest-entry count:
+  2,290,967; 9.95 cycles and 2.329 68k instructions each (see open-work 36).
 
 ## 2. Hard rules
 
@@ -146,7 +147,9 @@ lines.
   `tools/profile_report.py tmp/prof/frames.bin amiga/out/Swotl.elf
   --objdump m68k-amiga-elf-objdump --count rt_irq --count deliver --count
   plat_present`; per x86 form `tools/lowering_cost.py`. A capture is
-  1.1 GB: delete it after the report.
+  1.1 GB: delete it after the report. Until open-work 36 is fixed, use
+  `profile_report.py` guest-entry counts for ratios: `lowering_cost.py`
+  includes helper entries. Historical ratios from that tool share this limitation.
 - **Counts.** `tools/host_census.py MILESTONE --strops --vram --labels …`
   (host run, exact, free; never timing) before pricing a loop. Per drawn
   frame (m4): `repe cmpsw` `VGA_03BE9` 19,290 words (the whole view vs the
@@ -296,13 +299,52 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R17 | palette validity per physical back buffer | Amiga platform | outside meter (later bench −2.81–3.61%, D5/D6) |
 | R18 | TF/IF/DF extraction with register bitfields; meter operand and A/B selection fixes | `support.py`, tools | −0.0126% |
 | R20 | cell cache: cells matched once, runs of destinations stored by longs, exact invalidation (D3) | `smc.py`, `lower.py`, runtime | −15.3114% |
+| R21 | backward string bodies outlined; forward path falls through | `lower.py` | −0.1080% |
+| R22 | first matched walk call returns into its check; fallback outlined | `lower.py` | −0.0246% |
 
 Priced candidates (2026-10-17, `5ecdf79` meter): open-work 31 (each ≤ 2.8%). No form
 left (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
 `__set_flags` (POPF/IRET) and `__flags_word` are the largest runtime-side
 items left.
-| R21 | backward string bodies outlined; forward path falls through | `lower.py` | −0.1080% |
+
+### R22 near-call fallback layout (2026-10-18; kept)
+
+Parent `a9c2e69`. Fresh m4 meter: 183,744,876 cycles. First matched
+cell-walk call falls through to the existing return check; remaining
+range tests/targets and runtime fallback go out of line. Keep both bounds,
+zero-extension, stack effects and return validation unchanged.
+Price: −30,299 cycles (−0.0165%), conservatively allowing two extra bytes
+on each range branch and a four-byte return branch on every fallback.
+Three exercised sites, 32,799 walk calls, zero observed fallbacks; absence
+is not a correctness assumption. Test both bounds and all fallback paths.
+Evidence: `tmp/item31-r22/{meter.json,meter_raw.pkl,census.log,price.log}`.
+
+Candidate: 183,699,737 model cycles (−45,139, −0.0246%); instructions
+−32,799, executed bytes +113,194, data reads/writes unchanged. Amiga code
++52 bytes to 1,258,240; allocated hunks 1,576,576. Target comparison:
+3,974,716 → 3,774,795 weighted cycles (−5.0298%) across four changed labels;
+all required PCs mapped and sampled. Bench 72,205 → 72,089 lines, identical
+RAM SHA-256 `bb1607f7815ef1c79c754b1eabbb4a134cf625a76eeb2f7efe046061ff8aafd3`.
+Coverage before implementation: 144 operand cases and 24,052 block cases
+pass; deliberately rejecting the lower endpoint gives 13 failures.
+Candidate targeted cases pass; its endpoint plant again catches 13 failures.
+Full test passed in 499 s: 13,663 executed blocks, 52,587 cases, zero
+mismatches. All gates passed: test 499 s, sabotage 3,186 s, host-all 3,316 s,
+Amiga 70 s, smoke 191 s, restoration 352 s, five replays 2,503 s.
+Source hashes and measured ELF match after validation. Evidence: `tmp/item31-r22/`.
+First captures: 10.36 → 9.95 cycles/guest, 2.424 → 2.329
+68k instructions/guest, using the profiler guest-entry counts (open-work 36);
+guest mixes differ. No frame-rate gain is claimed.
+
+| Arm/run | Frames 4–11 intervals (fields) | Median | Span |
+|---|---|---:|---:|
+| Parent 1 | 23,22,17,21,18,20,16,17 | 380 ms | 16–23 |
+| Parent 2 | 22,22,19,20,18,25,19,19 | 390 ms | 18–25 |
+| Parent 3 | 22,22,18,21,17,20,17,16 | 380 ms | 16–22 |
+| R22 1 | 23,21,19,20,18,26,19,19 | 390 ms | 18–26 |
+| R22 2 | 22,22,17,22,17,20,16,17 | 370 ms | 16–22 |
+| R22 3 | 22,21,18,21,17,20,16,17 | 380 ms | 16–22 |
 
 ### R21 string direction layout (2026-10-18; kept)
 
@@ -595,14 +637,15 @@ frozen arms, meters, captures' reports and gates).
 
 ## 9. Gap
 
-R21's run medians are 370 ms. Reaching 240 ms requires about 35% less
-frame time from that median; the parent and candidate interval ranges overlap.
+R22's run medians are 390, 370 and 380 ms. Reaching 240 ms requires about
+37% less frame time from their 380 ms median; parent and candidate intervals overlap.
 Normal trajectories vary; acceptance uses the fixed-work meter and §3 checks.
-Top guest routines (first R20 capture, self time): SWOTL.EXE+0B54B 6.92%,
-+04DAE 6.71%, +0BFD1 4.80%, +06A4D 3.62% (walk), +0B017 3.37%,
-RTSVGA.OVL+03B9A 3.37%, SWOTL.EXE+0D5A6 3.20%, +109D6 3.10%.
-Generated guest code is 81.40%, FM synthesis 8.11%. Flag-word packing is
-rejected (§10); native replacement needs per-routine authorization (§2.2).
+Top guest routines (first R22 capture, self time): SWOTL.EXE+0B54B 8.30%,
++0BFD1 7.67%, +109D6 4.46%, +0D5A6 3.98%, +0B017 3.92%,
+RTSVGA.OVL+03B9A 3.81%, SWOTL.EXE+06A4D 2.72% (walk), +0B4E2 2.44%.
+Generated guest code is 80.18%; three main FM functions are 7.89%.
+Flag-word packing is rejected (§10); native replacement needs per-routine
+authorization (§2.2).
 
 ## 10. Rejected and not built
 

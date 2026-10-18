@@ -1663,15 +1663,22 @@ class Lowering:
 
     def dispatch_near(self, how: str) -> None:
         """Target IP in d7: compare with the known targets, else the runtime table."""
-        done = self.local() if how == "jsr" else None
-        for lo, hi, lab in self.c.smc_targets:
-            nxt = self.local()
+        # R22: a matched first walk call returns directly to the check.
+        # Keep every remaining target and fallback in an exact cold path.
+        outline = how == "jsr" and bool(self.c.smc_targets)
+        done = f"{self.c.label}_dispatchend" if outline else self.local() if how == "jsr" else None
+        hot = None
+        for k, (lo, hi, lab) in enumerate(self.c.smc_targets):
+            nxt = f"{self.c.label}_dispatchcold" if outline and k == 0 else self.local()
             self.e(f"cmp.w #{hx(lo)},d7")
             self.e(f"blo {nxt}")
             self.e(f"cmp.w #{hx(hi)},d7")
             self.e(f"bhi {nxt}")
             self.e(f"{how} {lab}")
-            if done:
+            if outline and k == 0:
+                self.at(done)
+                hot, self.out = self.out, []
+            elif done:
                 self.e(f"bra {done}")
             self.at(nxt)
         for ip in self.c.near_targets:
@@ -1695,7 +1702,11 @@ class Lowering:
             self.stats["dispatcher exit"] += 1
         else:
             self.e(f"{how} T_{'CALL' if how == 'jsr' else 'JUMP'}")
-        if done:
+        if hot is not None:
+            if not (self.c.program and self.c.complete):
+                self.e(f"bra {done}")
+            self.cold, self.out = self.cold + self.out, hot
+        elif done:
             self.at(done)
 
     def dispatch_far(self, how: str) -> None:

@@ -257,6 +257,12 @@ def folded_word_as_byte(self, out):
                    one, line) for line in out]
 
 
+def walk_low_endpoint_rejected(self, out):
+    bounds = {f"cmp.w #{L.hx(span[0])},d7" for span in self.c.smc_targets}
+    return [line.replace("blo ", "bls ") if k and out[k-1].strip() in bounds else line
+            for k, line in enumerate(out)]
+
+
 def walk_guard_omitted(edge):
     """Drop one exact region bound; out-of-range transfers must not enter a walk."""
     def fault(self, out):
@@ -565,6 +571,7 @@ SABOTAGE = [
     ("walk upper bound omitted", walk_guard_omitted(1), "program"),
     ("flag extraction reads DF as IF", ("helpers", "\tbfextu\td7{22:1},d6",
                                         "\tbfextu\td7{21:1},d6"), "boundary"),
+    ("walk lower endpoint rejected", walk_low_endpoint_rejected, "program"),
     ("string direction reads CX instead of DF",
      sub(r"^\ttst\.b G_DF\(a6\)$", "\ttst.b d1"), "boundary"),
 ]
