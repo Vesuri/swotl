@@ -534,6 +534,27 @@ def boundary(h: Harness) -> None:
     index_self_test_cases(h)
     index_fold_cases(h)
     flag_extract_cases(h)
+    string_direction_layout_cases(h)
+
+
+def string_direction_layout_cases(h):
+    """R21: both entries to the outlined direction body and its continuation.
+    Follow each string with a register/flag consumer; include offset wrapping
+    and adjacent strings whose local labels must remain distinct."""
+    for opcode in (0xA4, 0xA5, 0xA6, 0xA7, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF):
+        for prefix in (b"", b"\xf3", b"\xf2"):
+            for df in (0, 1):
+                for off, cx in ((0, 0), (1, 1), (0x7FFF, 3), (0xFFFE, 17), (0xFFFF, 2)):
+                    string = prefix + bytes([opcode])
+                    h.case(string + b"\x89\xf3\x9f", "b:string-layout",
+                           n=3, block=True,
+                           overrides={"regs": {"si": off, "di": off, "cx": cx,
+                                               "ds": 0x5000, "es": 0x6000},
+                                      "flags": {"DF": df}})
+        h.case(bytes([0xFC, opcode, 0xFD, opcode, 0xFC]),
+               "b:string-layout-adjacent", n=5, block=True,
+               overrides={"regs": {"si": 0xFFFF, "di": 0xFFFF,
+                                   "ds": 0x5000, "es": 0x6000}})
 
 
 def address_guard_cases(h):

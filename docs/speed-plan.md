@@ -12,16 +12,16 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   8 MB Fast model (`AMIGA_CPU` unset): frames 4–11 median ≤ 12 fields
   (240 ms); stretch ≤ 10.
 - **Status:** R16 alignment repair, R17 palette validity, R18 flag extraction kept; R20 cell
-  cache kept. Item 14b's 240 ms target remains unmet; no native replacement is
+  cache and R21 string layout kept. Item 14b's 240 ms target remains unmet; no native replacement is
   authorized. Next steps priced 2026-10-17: open-work 31.
-- **Frames fixture** (R20 corrected build, 2026-10-17): medians 370, 390 and
-  380 ms; parent 470, 430 and 410 ms. Full intervals and spans in §7.
+- **Frames fixture** (R21, 2026-10-18): medians 370, 370 and
+  370 ms; same-session parent 380, 400 and 390 ms. Full intervals and spans in §7.
 - **Bench:** R20 opening 71,523 → 72,197 lines (+0.9424%), identical guest
   RAM; approved tradeoff. Palette window 38,392–38,405 lines (R17),
   2.81–3.61% below its same-session parent.
-- **Meter** (m4, R18 weights, R20): generated + walk + runtime 183,943,624
-  model cycles (−15.3114%); generated + walk 181,613,565 / 17,976,252 guest
-  instructions = 10.103 cycles each. Host platform adds 2,171 cycles.
+- **Meter** (m4, R18 weights, R21): generated + walk + runtime 183,744,876
+  model cycles (−0.1080% from parent); generated + walk 181,414,816 / 17,976,252 guest
+  instructions = 10.092 cycles each. Host platform adds 2,171 cycles.
 - **Capture** (R20, first frames run, 100 fields): generated code 81.40%
   (cell walk 3.62%), runtime/platform 14.42% (FM synthesis 8.11%, item 34),
   no PC 2.22%, Kickstart 1.03%, IRQ transition 0.92%. Lowering report:
@@ -302,6 +302,50 @@ left (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
 `__set_flags` (POPF/IRET) and `__flags_word` are the largest runtime-side
 items left.
+| R21 | backward string bodies outlined; forward path falls through | `lower.py` | −0.1080% |
+
+### R21 string direction layout (2026-10-18; kept)
+
+Parent `5619afe`. Fresh m4 price before coding: −233,585 cycles (−0.127%)
+for outlining the backward string bodies; free-placement layout ceiling
+−5,983,232 cycles. Direction tests, both bodies, wraps, flags and diagnostic
+REP checkpoints are retained; the forward path falls through.
+
+Meter: 183,943,624 → 183,744,876 cycles (−198,749, −0.1080%);
+executed instructions −50,360, bytes +45,300, data reads/writes unchanged.
+Amiga code 1,257,444 → 1,258,188 bytes (+744); allocated hunks
+1,575,780 → 1,576,524. Opening bench: parent 72,238 / 72,178 lines,
+candidate 72,204; identical RAM, candidate within unchanged-parent spread.
+The bench capture executes no changed labels; normal captures cover them.
+
+Entry-weighted target A/B initially disagreed (+0.947%); the approved
+investigation found varying REP lengths (40.44 → 45.75 pairs per call).
+Exact host-instruction weighting fixes that confound: changed-label target
+cycles −4.563%, repeated −4.579%, all required PCs mapped and sampled.
+`ab_labels.py --meter-b` fails on missing samples or mismatched code;
+controls and sabotage retain actual slowdowns and removed work.
+No model weights, fixtures or references changed.
+
+| Arm/run | Frames 4–11 intervals (fields) | Median | Span |
+|---|---|---:|---:|
+| Parent 1 | 22,23,19,19,18,26,19,19 | 380 ms | 18–26 |
+| Parent 2 | 23,22,20,19,18,25,19,20 | 400 ms | 18–25 |
+| Parent 3 | 24,21,20,19,18,25,19,19 | 390 ms | 18–25 |
+| R21 1 | 22,22,17,22,17,20,16,17 | 370 ms | 16–22 |
+| R21 2 | 23,22,17,21,17,20,17,16 | 370 ms | 16–23 |
+| R21 3 | 22,22,17,22,17,20,16,17 | 370 ms | 16–22 |
+
+Intervals overlap: no frame-rate gain claimed. First paired captures:
+9.88 → 10.20 cycles/guest and 2.307 → 2.385 68k instructions/guest;
+these reflect different guest mixes, not fixed-work cost.
+Coverage first: 310 string cases; DF plant caught before implementation.
+The new full-corpus plant catches 2,314 cases. The approved diagnostic
+wrapper correction places cold code after its terminating jump: all 168
+oracle cases / 120 resumptions pass, unchanged SI-corruption plant caught.
+All gates passed: test 424 s, sabotage 3,351 s, host-all 3,299 s,
+Amiga 61 s, smoke 193 s, restoration 345 s, five replays 2,565 s.
+Source inputs and measured ELF match after validation.
+Evidence: `tmp/item31/` (frozen arms, reports, `gate-logs-2`).
 
 ### R16 audit and alignment repair (2026-10-14; kept under D5)
 
@@ -551,8 +595,8 @@ frozen arms, meters, captures' reports and gates).
 
 ## 9. Gap
 
-R20's corrected-build run medians are 370–390 ms (median 380 ms).
-Reaching 240 ms requires about 37% less frame time from that median.
+R21's run medians are 370 ms. Reaching 240 ms requires about 35% less
+frame time from that median; the parent and candidate interval ranges overlap.
 Normal trajectories vary; acceptance uses the fixed-work meter and §3 checks.
 Top guest routines (first R20 capture, self time): SWOTL.EXE+0B54B 6.92%,
 +04DAE 6.71%, +0BFD1 4.80%, +06A4D 3.62% (walk), +0B017 3.37%,

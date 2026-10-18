@@ -565,6 +565,8 @@ SABOTAGE = [
     ("walk upper bound omitted", walk_guard_omitted(1), "program"),
     ("flag extraction reads DF as IF", ("helpers", "\tbfextu\td7{22:1},d6",
                                         "\tbfextu\td7{21:1},d6"), "boundary"),
+    ("string direction reads CX instead of DF",
+     sub(r"^\ttst\.b G_DF\(a6\)$", "\ttst.b d1"), "boundary"),
 ]
 
 

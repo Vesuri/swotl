@@ -22,6 +22,12 @@ its binding rules: [speed-plan.md](speed-plan.md).
   [--vram]` (host run between milestone snapshots: label executions, string-op
   elements, A0000h writers and rows per frame); `amiga/perf_frames.gdb` (frame
   period and a capture, [speed-plan.md](speed-plan.md) §4).
+- **Target A/B**: `tools/ab_labels.py CAP_A ELF_A CAP_B ELF_B METER_A
+  --meter-b METER_B` uses both meters' exact 68k execution counts. Each
+  required target PC must match the host instruction and have samples.
+  Guest-entry weighting alone confounds REP length/path changes with speed;
+  per-PC weighting fixes those counts, while branch timing at a PC still
+  reflects the capture's taken mix. Keep both reports; neither proves fidelity.
 - Profile captures run with no breakpoint inside the window; the matching ELF is kept with the
   capture. Per-step speed decisions use the deterministic fixed-workload meter and the
   layout-blind lowering meter of [speed-plan.md](speed-plan.md) §4–5, not frame medians.

@@ -104,7 +104,8 @@ diffs directly); relocated words in instructions are emitted as
   (unchanged since), which leaves N and Z equal to SF and ZF. PF/AF are
   stored as result / `a^b^r` bytes only when live. adc/sbb/rcl/rcr derive X
   from `G_FL` and preset Z for `addx`/`subx`.
-- Strings (D11): per-element loops, one body per DF. REP with DF = 0,
+- Strings (D11): per-element loops, one body per DF; the backward body is
+  out of line and rejoins the forward body's continuation (R21). REP with DF = 0,
   CX ≠ 0 and SI/DI + size × CX < 10000h takes a fast path with host pointers
   descending: `move -(a4),-(a5)`, `move d,-(a5)`, `move -(a4),d6` + `cmp
   -(a5),d6` or `cmp -(a5),d` with `db<cc>`, the last pair's flags

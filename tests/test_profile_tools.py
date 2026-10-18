@@ -50,6 +50,14 @@ class ProfileTools(unittest.TestCase):
                              [(0x100, "R_00100"), (0x120, "R_00102"), (0x200, "R_00100_sx0"),
                               (0x208, "R_00102_hk0")])
 
+    def test_string_direction_continuation(self):
+        table = "".join(f"{a:08x} g     F .text\t00000000 {n}\n" for a, n in (
+            (0x100, "R_00100"), (0x110, "R_00100_dfend"),
+            (0x200, "R_00100_dfback")))
+        with patch.object(P.subprocess, "run", return_value=SimpleNamespace(stdout=table)):
+            self.assertEqual(P.symbols("objdump", "unused"),
+                             [(0x100, "R_00100"), (0x200, "R_00100_dfback")])
+
     def test_encoded_sizes_and_symbol_aliases(self):
         dis = """       0:\t7000           \tmoveq #0,d0
        2:\t203c 0000 0000 \tmove.l #0,d0

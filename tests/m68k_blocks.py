@@ -660,7 +660,8 @@ def main(argv=None) -> int:
     count, bad, skipped, exits = Counter(), [], Counter(), Counter()
     walks_at = {emit.walk_label(mo, lo) for mo, lo, _ in p.smc_forms}
 
-    def block_cases(mod, run, states, force=None, posted=None, copy=False, memory=(), expected=None):
+    def block_cases(mod, run, states, force=None, posted=None, copy=False, memory=(), expected=None,
+                    forced_flags=None):
         """`states` cases of one block; `force`: registers set after the random
         state; `posted` (at a poll point): an interrupt posted, rt_irq modelled as
         taking it ("taken") or as the bench watch leaving it set ("watch"); the
@@ -684,6 +685,7 @@ def main(argv=None) -> int:
             # keep CX small so REP blocks stay short
             regs["cx"] &= 0x3F
             regs.update(force or {})
+            flags.update(forced_flags or {})
             patches = list(memory)
             sp_lin = regs["ss"] * 16 + regs["sp"]
             stack = bytearray(h.rng.randrange(256) for _ in range(8))
@@ -981,6 +983,22 @@ def main(argv=None) -> int:
         print(f"annotated tables: {table_rows} rows, {len(roots)} targets, "
               f"{sum(off not in executed.get(mod, ()) for mod, off in roots)} untraced targets, "
               f"{len(table_blocks)} reachable blocks checked")
+    # R21: every emitted string entry, including guarded copies, can enter
+    # either direction body and must return to its own continuation. Existing
+    # whole-block cases above retain the original incoming guest edges.
+    if not args.only:
+        for mod, u in p.units.items():
+            for off, insn in u.insns.items():
+                if insn.op not in ("movs", "cmps", "stos", "lods", "scas"):
+                    continue
+                copies = [False] + ([True] if emit.copy_label(mod, off) in addr else [])
+                for copy in copies:
+                    for df in (0, 1):
+                        for cx in (0, 3):
+                            block_cases(mod, [off], 1,
+                                        {"cx": cx, "si": 0xFFFF, "di": 0xFFFF,
+                                         "ds": 0x5000, "es": 0x6000}, copy=copy,
+                                        forced_flags={"DF": df})
     total = sum(v for k, v in count.items() if k != "return checks")
     print(f"blocks {len(picks)} of {len(allb)} executed; cases {total}", dict(count))
     print(f"poll cases {sum(polls.values()) - polls['return checks']} (interrupt posted)")

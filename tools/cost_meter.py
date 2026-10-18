@@ -305,6 +305,18 @@ def targets(prog: Program, into: Counter) -> dict:
     return dict(out)
 
 
+def instruction_counts(prog: Program, n: Counter) -> list:
+    """Exact executed generated instructions, relocatable by symbol and offset.
+    Keep the decoded instruction so target-profile mapping can fail on stale code."""
+    rows = []
+    for pc, count in sorted(n.items()):
+        if count and prog.cls.get(pc) in ("generated", "walk"):
+            lab = prog.symbol(pc)
+            op, arg = prog.mn[pc]
+            rows.append((lab, pc - prog.by_name[lab], op, arg, count))
+    return rows
+
+
 def report(prog: Program, n: Counter, taken: Counter, coef: dict, gen: Path) -> dict:
     text, _ = L.static_counts(gen)
     classes = defaultdict(lambda: Counter())
@@ -343,7 +355,8 @@ def report(prog: Program, n: Counter, taken: Counter, coef: dict, gen: Path) -> 
             "labels": {k: dict(v) for k, v in labels.items()},
             "forms": {k: dict(v) for k, v in forms.items()},
             "ops": {k: dict(v) for k, v in ops.items()},
-            "guest_instructions": guest}
+            "guest_instructions": guest,
+            "instruction_counts": instruction_counts(prog, n)}
 
 
 def static_size(prog: Program) -> dict:

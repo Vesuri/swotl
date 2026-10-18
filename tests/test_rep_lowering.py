@@ -17,13 +17,14 @@ def check(broken=False):
     def lower(insns,cs,tag,end_ip):
         def context(k):
             return Ctx(cs=hx(cs),label=f'{tag}_{k}',rep_hook=(0,f'{tag}_{k}'))
-        lines=[f'{tag}:'];stats=Counter()
+        lines=[f'{tag}:'];cold=[];stats=Counter()
         if tag=='c0':lines += [f'rt_replay_rep equ ${HOOK:x}']
         for k,lw in enumerate(D.F.plan(insns,D.F.seq_lives(insns),{0},context)):
-            lines += [f'{tag}_{k}:']+lw.out+lw.cold
+            lines += [f'{tag}_{k}:']+lw.out
+            cold += lw.cold
             stats.update(lw.stats)
         lines += [f'\tmove.l #{hx(end_ip)},d7','\tjmp T_END']
-        return lines,stats
+        return lines+cold,stats
     def run(*a,**kw):
         resumed.clear()
         return original_run(*a,**kw)

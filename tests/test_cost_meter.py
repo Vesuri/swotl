@@ -149,5 +149,58 @@ class RuntimeLabels(unittest.TestCase):
             self.assertEqual(A.label_cycles(Path("unused"), symbols), (Counter(), Counter()))
 
 
+class StringLayoutLabels(unittest.TestCase):
+    def test_cold_cycles_belong_to_entry_without_extra_executions(self):
+        from unittest.mock import patch
+        pcs = np.array([0x100, 0x102, 0x200, 0x202, 0x100, 0x102])
+        cost = np.array([2, 3, 5, 7, 2, 3])
+        for suffix in ("", "_bp"):
+            symbols = [(0x100, "R_00100" + suffix),
+                       (0x200, "R_00100" + suffix + "_dfback")]
+            with patch.object(A.P, "decode", return_value={"fields": [(22, 0, pcs, cost)]}):
+                cycles, calls = A.label_cycles(Path("unused"), symbols)
+                self.assertEqual(cycles, Counter(R_00100=22))
+                self.assertEqual(calls, Counter(R_00100=2))
+
+
+class InstructionMix(unittest.TestCase):
+    def test_repeat_count_does_not_become_a_speed_change(self):
+        p = Program().prog()
+        counts = [("R_00102", 0, "subq.w", "#1,d1", 100),
+                  ("R_00102", 2, "bne.s", "1006 <R_00102>", 100)]
+        a = {0x1006: (10, 20), 0x1008: (10, 30)}
+        b = {0x1006: (30, 60), 0x1008: (30, 90)}
+        self.assertEqual(A.instruction_cycles(a, p, counts, {"R_00102"}),
+                         Counter(R_00102=500))
+        self.assertEqual(A.instruction_cycles(a, p, counts, {"R_00102"}),
+                         A.instruction_cycles(b, p, counts, {"R_00102"}))
+        # Real work removal and slower instructions must remain visible.
+        fewer = [(lab, off, op, arg, n // 2) for lab, off, op, arg, n in counts]
+        self.assertEqual(A.instruction_cycles(b, p, fewer, {"R_00102"}),
+                         Counter(R_00102=250))
+        b[0x1008] = (30, 120)
+        self.assertEqual(A.instruction_cycles(b, p, counts, {"R_00102"}),
+                         Counter(R_00102=600))
+
+    def test_missing_samples_and_wrong_code_fail_loudly(self):
+        p = Program().prog()
+        row = [("R_00102", 0, "subq.w", "#1,d1", 100)]
+        for samples in ({}, {0x1006: (0, 0)}):
+            with self.assertRaises(ValueError):
+                A.instruction_cycles(samples, p, row, {"R_00102"})
+        for lab, off, op, arg in (("R_99999", 0, "subq.w", "#1,d1"),
+                                  ("R_00102", 0, "addq.w", "#1,d1"),
+                                  ("R_00102", 1, "subq.w", "#1,d1")):
+            with self.assertRaises(ValueError):
+                A.instruction_cycles({0x1006: (10, 20)}, p,
+                                     [(lab, off, op, arg, 100)], {lab})
+
+    def test_meter_exports_exact_instruction_counts(self):
+        p = Program().prog()
+        rows = M.instruction_counts(p, Counter({0x1000: 3, 0x1004: 3, 0x2000: 1}))
+        self.assertEqual(rows, [("R_00100", 0, "move.w", "(0,a2,d7.l),d6", 3),
+                                ("R_00100", 4, "ror.w", "#8,d6", 3)])
+
+
 if __name__ == "__main__":
     unittest.main()

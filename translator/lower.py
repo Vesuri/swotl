@@ -1410,13 +1410,17 @@ class Lowering:
         i = self.i
         if self.c.rep_hook is not None:
             self.c.need |= set(STATUS)  # an original slice boundary can expose every defined flag
-        back, end = self.local(), self.local()
+        # R21: the forward path falls through. Both directions keep the same
+        # bodies and checks; global continuations cross the cold-code scope.
+        back, end = f"{self.c.label}_dfback", f"{self.c.label}_dfend"
         self.e("tst.b G_DF(a6)")
         self.e(f"bne {back}")
         self.string_body(i.width // 8, end)
-        self.e(f"bra {end}")
+        hot, self.out = self.out, []
         self.at(back)
         self.string_body(-(i.width // 8), end)
+        self.e(f"bra {end}")
+        self.cold, self.out = self.cold + self.out, hot
         self.at(end)
         self.rep_checkpoint(True)
         self.ccr = set()

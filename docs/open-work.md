@@ -23,9 +23,9 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Translator and validation
 
-14b. Speed target remains unmet: frames-fixture 68020 run medians on R20
-    (2026-10-17) 370, 390 and 380 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
-    §1, §9). Roughly 37% further reduction is needed from the median 380 ms. Remaining
+14b. Speed target remains unmet: frames-fixture 68020 run medians on R21
+    (2026-10-18) 370, 370 and 370 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
+    §1, §9). Roughly 35% further reduction is needed from 370 ms; parent intervals overlap. Remaining
     cost is mostly generated guest code; priced translator candidates are 31,
     FM synthesis is 34 (flag-word packing rejected, speed-plan §10). Native replacement
     requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
@@ -44,6 +44,8 @@ speed work: [speed-plan.md](speed-plan.md).
     - Block layout: ≤ −6.06M (−2.8%). Greedy chain layout of the m4 block graph:
       local taken transfers 3.61M → 2.50M. Upper bound (free placement); bench
       acceptance (D5). Largest: D5A6's loop (`R_0D5EA`), `R_04FD5`, `R_04FF7`.
+      String-direction outlining is kept (R21, −0.1080% meter; speed-plan §7).
+      Other layout candidates remain open; refresh their prices on R21.
     - REP STOSW 8 or 16 words per pass: −1.76M to −2.06M (−0.81 to −0.95%);
       `R_0C1CA` makes 392K two-word passes (255 words a run).
     - Far call/return: −1.75M (−0.81%; −1.52M if misaligned longs cost two accesses:

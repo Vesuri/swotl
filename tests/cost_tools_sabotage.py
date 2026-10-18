@@ -44,3 +44,18 @@ exec(bad, scope)
 with patch.object(T.M, 'reglist_size', scope['reglist_size']):
     check(T.RegisterAliases, True)
 print('cost meter: omitted register-alias normalization plant caught')
+
+check(T.StringLayoutLabels, False)
+with patch.object(T.A, 'canon', lambda name: name.removesuffix('_bp')):
+    check(T.StringLayoutLabels, True)
+print('label A/B: omitted cold string cycles plant caught')
+
+check(T.InstructionMix, False)
+source = inspect.getsource(T.A.instruction_cycles)
+bad = source.replace('n * cycles / executions', 'cycles')
+assert bad != source
+scope = dict(T.A.__dict__)
+exec(bad, scope)
+with patch.object(T.A, 'instruction_cycles', scope['instruction_cycles']):
+    check(T.InstructionMix, True)
+print('instruction A/B: capture REP length used as host work plant caught')

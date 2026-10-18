@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """FS-UAE mix-adjusted A/B per generated label (docs/speed-plan.md M1, §3).
 
-  ab_labels.py CAPTURE_A ELF_A CAPTURE_B ELF_B METER_JSON [--objdump ...]
+  ab_labels.py CAPTURE_A ELF_A CAPTURE_B ELF_B METER_A --meter-b METER_B
 
 Each capture (tools/profile_report.py format) gives every generated label's
 cycles per execution (its PCs up to the next symbol). Both arms are weighted
 by the same executions, the meter's (tools/cost_meter.py --out), so a
-different instruction mix in the two capture windows cannot move the result:
+different guest-entry frequencies in the two windows cannot move the result:
 delta = sum(w * (cpe_B - cpe_A)) / sum(w * cpe_A). Reported over all labels
 executed in both captures and over the changed labels only (instruction text
-differs, branch targets compared by symbol, not address).
+differs, branch targets compared by symbol, not address). This entry-level
+adjustment does not fix REP lengths or internal paths. With --meter-b, also
+weight each measured 68k instruction cost by its exact host execution count
+for that arm. Every required PC must map to matching code and have samples.
+Branch timing within one PC still reflects the capture's taken mix.
 """
 from __future__ import annotations
 
@@ -29,8 +33,8 @@ import profile_report as P  # noqa: E402
 
 
 def canon(name: str) -> str:
-    """A guarded copy's label (R6) is its instruction's."""
-    return name.removesuffix("_bp")
+    """Guarded copies and outlined string bodies belong to their instruction."""
+    return name.removesuffix("_dfback").removesuffix("_bp")
 
 
 def label_cycles(capture: Path, syms: list, extra=frozenset()) -> tuple[Counter, Counter]:
@@ -51,7 +55,7 @@ def label_cycles(capture: Path, syms: list, extra=frozenset()) -> tuple[Counter,
                          and names[i] not in extra):
                 continue
             cyc[canon(names[i])] += cc
-            if pc in first and pc == addrs[i]:
+            if pc in first and pc == addrs[i] and not names[i].endswith("_dfback"):
                 execs[canon(names[i])] += nn
     return cyc, execs
 
@@ -99,6 +103,41 @@ def changed_labels(weights, before, after):
             or before.get(k + "_bp") != after.get(k + "_bp")}
 
 
+def pc_samples(capture: Path) -> dict:
+    """Count and total measured cycles per PC; preserve every capture record."""
+    counts, cycles = Counter(), Counter()
+    for _, _, pcs, cost in P.decode(capture)["fields"]:
+        u, inv = np.unique(pcs, return_inverse=True)
+        for pc, n, c in zip(u.tolist(), np.bincount(inv).tolist(),
+                            np.bincount(inv, weights=cost).tolist()):
+            counts[pc] += n
+            cycles[pc] += c
+    return {pc: (n, cycles[pc]) for pc, n in counts.items()}
+
+
+def instruction_cycles(samples: dict, prog: M.Program, counts: list, only: set) -> Counter:
+    """Measured cycles/instruction weighted by exact host-workload executions.
+    Unlike cycles/guest-entry this retains the host REP length and path counts.
+    Missing executed PCs and different target instructions are errors, not zero
+    costs. Branch timing within a PC still reflects the capture's taken mix."""
+    result = Counter()
+    for lab, offset, op, arg, n in counts:
+        owner = canon(lab)
+        if owner not in only:
+            continue
+        if n <= 0 or offset < 0 or lab not in prog.by_name:
+            raise ValueError(f"invalid instruction count: {lab}+{offset}")
+        pc = prog.by_name[lab] + offset
+        actual = prog.mn.get(pc)
+        if actual is None or normalize(" ".join(actual)) != normalize(f"{op} {arg}"):
+            raise ValueError(f"instruction mismatch: {lab}+{offset}")
+        executions, cycles = samples.get(pc, (0, 0))
+        if executions <= 0:
+            raise ValueError(f"unmeasured executed instruction: {lab}+{offset}")
+        result[owner] += n * cycles / executions
+    return result
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("capture_a", type=Path)
@@ -106,6 +145,8 @@ def main(argv=None) -> int:
     ap.add_argument("capture_b", type=Path)
     ap.add_argument("elf_b", type=Path)
     ap.add_argument("meter", type=Path, help="cost_meter.py --out JSON (the weights)")
+    ap.add_argument("--meter-b", type=Path,
+                    help="also compare exact host instruction mixes using both meter JSONs")
     ap.add_argument("--objdump", default=M.OBJDUMP)
     ap.add_argument("--runtime-weight", action="append", default=[], metavar="LABEL=COUNT",
                     help="include a runtime helper with its independently measured host census count")
@@ -113,7 +154,7 @@ def main(argv=None) -> int:
     meter = json.loads(args.meter.read_text())
     weights = Counter()
     for k, v in meter["labels"].items():
-        if v.get("execs"):
+        if v.get("execs") and not k.endswith("_dfback"):
             weights[canon(k)] += v["execs"]
     extra = {}
     for spec in args.runtime_weight:
@@ -140,6 +181,23 @@ def main(argv=None) -> int:
     d, den, cov = mix_delta(a, b, weights, changed)
     print(f"changed labels ({len(changed)}): mix-adjusted delta {100 * d:+.3f}% of their cycles, "
           f"{d * den:+,.0f} weighted cycles (weight covered {100 * cov:.1f}%)")
+    if args.meter_b:
+        other = json.loads(args.meter_b.read_text())
+        if meter["meta"]["milestone"] != other["meta"]["milestone"]:
+            ap.error("instruction mixes must use the same host milestone")
+        totals = []
+        for capture, elf, data in ((args.capture_a, args.elf_a, meter),
+                                   (args.capture_b, args.elf_b, other)):
+            if not data.get("instruction_counts"):
+                ap.error("meter lacks instruction counts; rerun it for this arm")
+            totals.append(instruction_cycles(pc_samples(capture), M.Program(elf, args.objdump),
+                                             data["instruction_counts"], changed))
+        ca, cb = (sum(t.values()) for t in totals)
+        if not ca or not cb:
+            ap.error("no changed instructions exercised by both host workloads")
+        print(f"changed labels: fixed host instruction mix {ca:,.0f} -> {cb:,.0f} cycles; "
+              f"{cb - ca:+,.0f} ({100 * (cb / ca - 1):+.3f}%); "
+              "all executed PCs mapped and measured")
     return 0
 
 
