@@ -223,7 +223,9 @@ def main():
             j = bisect.bisect_right(el, off) - 1
             routine[(mod, el[j] if j >= 0 else 0)] += c
             rolec[role.get(pc, "other")] += c
-            if pc == syms[i][0] and not g.group(3):
+            # R6's _bp copy executes a guest instruction too; guards, poll
+            # stubs and other suffixed helpers do not start another one.
+            if pc == syms[i][0] and g.group(3) in ("", "_bp"):
                 executed[mod] += pc_count[pc]
             if pc == syms[i][0] and el and j >= 0 and off == el[j] and not g.group(3):
                 routine_calls[(mod, off)] += pc_count[pc]

@@ -67,7 +67,7 @@ speed work: [speed-plan.md](speed-plan.md).
     runs in m4 or the captures; `R_10028..R_10044`, `R_0C411`/`R_0C415` ≤ 0.02% each);
     `mul` (`mulu.w` is ~26 of its 31 cycles), indexed address formation itself,
     SPAZ's calibrated OPL delay spin. FLIGHT.OVL's cost per guest instruction is no
-    lead: counting R6 copies it is 9.2 against SWOTL.EXE's 12.6 (35).
+    lead: counting R6 copies it is 9.2 against SWOTL.EXE's 12.6 in that capture.
 33. Native-routine contract (map: Native contract): emit interface for compute
     rows, register/flag/memory rules, poll-point policy (user decision, §2.9),
     Unicorn oracle on recorded entry states, sabotage. Needed before asking the
@@ -76,9 +76,6 @@ speed work: [speed-plan.md](speed-plan.md).
     R20's first (`loop_for`, `fm_field`, `eg_advance`); R17's whole runtime/platform
     share was 5.96%. Platform layer, outside the host meter: price and plan under D5
     with the sound gates.
-35. `tools/profile_report.py`'s module column counts guest instructions at
-    unsuffixed labels only: R6 copies (`_bp`) add cycles but no instructions
-    (FLIGHT.OVL 21.7 cycles per guest instruction reported, 9.2 counting them).
 16. Lookup-table policy with no Fast RAM (tables are Chip reads).
 24. Lockstep RAM compare (phase 6): undefined flags and FLAGS words pushed
     below SP (PUSHF, interrupt frames) differ from DOSBox by design. The host

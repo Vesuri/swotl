@@ -13,6 +13,8 @@ its binding rules: [speed-plan.md](speed-plan.md).
   window) to class, module, guest routine/instruction (generated labels) and
   runtime shares; records without a PC are code outside the first hunk and
   ROM (today the Kalms c2p in hunk `code`).
+  Module instruction counts include ordinary entries and R6 `_bp` copies;
+  guard, poll and other helper entries add cycles but not guest instructions.
 - **Lowering cost**: `tools/lowering_cost.py CAPTURE ELF` groups the
   same capture by x86 form (executions, cycles and 68k instructions per
   execution) and the generated code by 68k mnemonic and role.

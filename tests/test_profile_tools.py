@@ -101,6 +101,52 @@ class CurrentRoles(unittest.TestCase):
         self.assertEqual(roles[0x2a], 'byte swap')
 
 
+class ModuleCounts(unittest.TestCase):
+    def report(self, rows, extra=()):
+        # Independent synthetic trace: (host PC, symbol, visits, cycles/visit).
+        # Body PCs have no symbol and must not count as instruction entries.
+        pcs, costs = [], []
+        for pc, _, visits, cost in rows:
+            pcs.extend([pc] * visits)
+            costs.extend([cost] * visits)
+        profile = dict(sections=[0], clock=1, unit=1,
+                       fields=[(sum(costs), 0, P.np.array(pcs), P.np.array(costs))])
+        syms = [(pc, name) for pc, name, _, _ in rows if name]
+        output = io.StringIO()
+        with patch.object(sys, "argv", ["profile_report", "unused", "unused", *extra]), \
+                patch.object(P, "decode", return_value=profile), \
+                patch.object(P, "symbols", return_value=syms), \
+                patch.object(P, "roles", return_value={}), \
+                patch.object(P, "routine_entries", return_value={"FLIGHT.OVL": [0x100]}), \
+                patch("sys.stdout", output):
+            P.main()
+        return output.getvalue()
+
+    def test_normal_and_bp_entries_add_without_body_or_stub_visits(self):
+        rows = [(0x100, "FLT_00100", 2, 4), (0x104, None, 5, 2),
+                (0x120, "FLT_00102_bp", 3, 6), (0x124, None, 7, 2)]
+        # Prefix matches such as _bp* would count guards and helper entries.
+        suffixes = ("_bpg", "_bpr", "_irq", "_bp_irq", "_sx0", "_hk0",
+                    "_walk", "_walk_go", "_bp_sx0")
+        rows += [(0x200 + k * 16, "FLT_00102" + suffix, 1, 1)
+                 for k, suffix in enumerate(suffixes)]
+        rows += [(0x300, "R_00100", 4, 2)]
+        report = self.report(rows, ("--count", "FLT_00102_bp"))
+        self.assertRegex(report, r"FLIGHT\.OVL  5  11\.8\n")
+        self.assertRegex(report, r"SWOTL\.EXE  4  2\.0\n")
+        self.assertIn("67 cycle units", report)  # cycles include all helpers
+        self.assertIn("FLT_00102_bp executions per field: [3]  total 3", report)
+
+    def test_copy_only_module(self):
+        report = self.report([(0x100, "FLT_00100_bp", 7, 6), (0x104, None, 7, 2)])
+        self.assertRegex(report, r"FLIGHT\.OVL  7  8\.0\n")
+
+    def test_helper_only_module_does_not_invent_guest_entries(self):
+        report = self.report([(0x100, "FLT_00100_bpg", 2, 3),
+                              (0x120, "FLT_00100_bp_irq", 4, 2)])
+        self.assertRegex(report, r"FLIGHT\.OVL  0  14\.0\n")
+
+
 if __name__ == "__main__":
     if "--sabotage" in sys.argv:
         source = inspect.getsource(P.roles)
@@ -113,5 +159,21 @@ if __name__ == "__main__":
                 unittest.defaultTestLoader.loadTestsFromTestCase(CurrentRoles))
         assert len(result.failures) == 1 and not result.errors, "stale poll-offset plant escaped"
         print("profile roles: stale poll-offset plant caught")
+        source = inspect.getsource(P.main)
+        for name, replacement, failures in (
+                ("BP copies omitted", 'not g.group(3)', 2),
+                ("helper labels counted", 'True', 2)):
+            broken = source.replace('g.group(3) in ("", "_bp")', replacement)
+            assert broken != source
+            scope = dict(P.__dict__)
+            exec(broken, scope)
+            # Keep the module globals so the trace/ELF fixtures also reach
+            # the planted main, rather than launching real external tools.
+            mutant = type(P.main)(scope["main"].__code__, P.__dict__)
+            with patch.object(P, "main", mutant):
+                result = unittest.TextTestRunner(stream=io.StringIO()).run(
+                    unittest.defaultTestLoader.loadTestsFromTestCase(ModuleCounts))
+            assert len(result.failures) == failures and not result.errors, name + " plant escaped"
+            print("profile module counts: " + name + " plant caught")
     else:
         unittest.main()
