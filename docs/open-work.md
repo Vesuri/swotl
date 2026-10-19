@@ -48,10 +48,7 @@ speed work: [speed-plan.md](speed-plan.md).
     such layouts. Meter totals and alias-aware fixed-instruction A/B are unaffected.
 31. Translator candidates, repriced 2026-10-19 on the `a1df937` m4 meter (183,699,737
     model cycles) unless noted, in price order; each one a speed-plan step (R24 REP
-    STOSW done). Evidence: `tmp/item31b/`.
-    - BP as data: −2.07M (−1.13%; flat byte weight): within a run, native BP kept
-      where a mirror store left it, a mirror store dropped when the next one comes
-      first (`D5DA`..`D5E6` loop 62,708 runs).
+    STOSW and R25 BP as data done). Evidence: `tmp/item31b/`.
     - `repe cmpsw` 16 words per pass (`bne.s` exits): −1.51M (8 words −1.15M);
       `VGA_03BE9` makes 472,828 two-word passes.
     - Block layout (audit on `a1df937`): free-placement bound −5.31M, 22.7% of the

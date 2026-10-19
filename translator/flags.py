@@ -249,4 +249,7 @@ def plan(insns, lives, leaders, ctx_for, program: bool = False, fences=(),
                                                    set(leaders) | set(fences),
                                                    [c.label for c in contexts],
                                                    [lw.cold for lw in out])
+        loads, stores = reuse.bp_native([lw.out for lw in out], set(leaders) | set(fences))
+        out[0].stats["BP native load"] += loads
+        out[0].stats["BP mirror store dropped"] += stores
     return out

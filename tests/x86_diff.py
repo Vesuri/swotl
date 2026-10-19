@@ -538,6 +538,39 @@ def boundary(h: Harness) -> None:
     near_dispatch_layout_cases(h)
     loop_layout_cases(h)
     string_fill_cases(h)
+    bp_data_cases(h)
+
+
+def bp_data_cases(h):
+    """R25: runs of BP-as-data instructions (BP mirrored in d5): writes of BP
+    followed by native reads, with the source register written, a [bp+d] read,
+    PUSH/MOV/XCHG readers, INC BP and MOV BP,SP between, a jump after (a jump
+    inside is the block differential's: a case ends at a taken transfer); the
+    flags live at the end compared. Values at 0, 1, 7FFFh, 8000h, FFFFh."""
+    seqs = (("8be8", "0be9", "0bee"),             # mov bp,ax; or bp,cx; or bp,si
+            ("8be9", "d1e5"),                     # mov bp,cx; shl bp,1
+            ("8be8", "40", "0be8"),               # ... inc ax; or bp,ax
+            ("8be8", "8b5602", "0be9"),           # ... mov dx,[bp+2]; or bp,cx
+            ("0be9", "0bea", "7500"),             # or bp,cx; or bp,dx; jne
+            ("8be8", "55"),                             # mov bp,ax; push bp
+            ("0be9", "8bc5"),                           # or bp,cx; mov ax,bp
+            ("03e8", "13d5"),                     # add bp,ax; adc dx,bp
+            ("8be8", "0bed"),                     # mov bp,ax; or bp,bp
+            ("0be9", "45", "0bea"),               # or bp,cx; inc bp; or bp,dx
+            ("8be8", "95", "0be9"),               # mov bp,ax; xchg bp,ax; or bp,cx
+            ("8be8", "8bec", "0be9"),             # mov bp,ax; mov bp,sp; or bp,cx
+            ("0be9", "0bea", "0bef", "0bee"),     # four ORs into BP
+            ("8be8", "0be9", "0bee", "7500"))
+    edges = (0, 1, 0x7FFF, 0x8000, 0xFFFF)
+    for seq in seqs:
+        code = b"".join(bytes.fromhex(x) for x in seq)
+        for k in range(16):
+            pick = (lambda: edges[h.rng.randrange(5)]) if k < 8 else (lambda: h.rng.randrange(0x10000))
+            regs = {r: pick() for r in ("ax", "cx", "dx", "bx", "bp", "si", "di")}
+            if k in (0, 1):
+                regs.update(ax=0, cx=0, si=0, bx=0, dx=0, di=k)
+            h.case(code, "b:bp-data", n=len(seq), block=True,
+                   overrides={"regs": dict(regs, ss=0x7000, sp=0x8000, ds=0x5000)})
 
 
 def string_fill_cases(h):

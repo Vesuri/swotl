@@ -302,3 +302,68 @@ def rewrite(g: dict, pos: tuple, x: str) -> bool:
     if ok:
         g["rewrites"][pos] = y
     return ok
+
+
+# BP as data (open-work 31): BP is held mirrored in d5 (D1). Within a run, a
+# mirror store `move.w X,d5` / `eori.w #$7fff,d5` leaves native BP in X; until
+# X is written, a native load `move.[wl] d5,Dn` / `eori.w #$7fff,Dn` becomes
+# `move.w X,Dn` (the same low word, N/Z and V/C) or, when X is Dn, `tst.w Dn`
+# (nothing before a word ALU op into Dn: it sets N, Z, V and C itself).
+# A mirror store goes when the next one follows before any line that may read
+# d5, any label, branch, call or transfer (exits see d5 as the x86 has BP).
+STORE = re.compile(r"^\tmove\.w ([ad][0-7]),d5$")
+LOAD = re.compile(r"^\tmove\.[wl] d5,(d[0-7])$")
+D5 = re.compile(r"\bd5\b")
+EXIT = re.compile(r"^\t(?:b(?!tst|set|clr|chg|f)|db|j)\w*")
+
+
+def bp_native(outs: list[list[str]], resets: set[int]) -> tuple[int, int]:
+    """Rewrite the run's lowered lines in place (`outs`, `resets` as in reuse).
+    Returns (native loads replaced, mirror stores dropped)."""
+    loads = stores = 0
+    nat = None          # register whose low word is native BP
+    pend = None         # (instruction, line) of a mirror store no line has needed
+    for k, out in enumerate(outs):
+        if k in resets:
+            nat = pend = None
+        res, j = [], 0
+        while j < len(out):
+            x = out[j]
+            nxt = out[j + 1] if j + 1 < len(out) else None
+            if not x.startswith("\t"):
+                if x.strip():
+                    nat = pend = None
+                res.append(x)
+                j += 1
+                continue
+            m = STORE.match(x)
+            if m and nxt == "\teori.w #$7fff,d5":
+                if pend is not None:
+                    pk, pj = pend
+                    del (res if pk == k else outs[pk])[pj:pj + 2]
+                    stores += 1
+                pend, nat = (k, len(res)), m.group(1)
+                res += [x, nxt]
+                j += 2
+                continue
+            m = LOAD.match(x)
+            if m and nxt == f"\teori.w #$7fff,{m.group(1)}" and nat is not None:
+                dst = m.group(1)
+                after = out[j + 2] if j + 2 < len(out) else ""
+                if nat != dst:
+                    res.append(f"\tmove.w {nat},{dst}")
+                elif not re.fullmatch(rf"\t(?:or|and|eor|add|sub)\.w [^,]+,{dst}", after):
+                    res.append(f"\ttst.w {dst}")
+                loads += 1
+                nat = dst
+                j += 2
+                continue
+            w = written(x)
+            if w is None or D5.search(x) or EXIT.match(x):
+                pend = None
+            if w is None or nat in w or "d5" in w:
+                nat = None
+            res.append(x)
+            j += 1
+        out[:] = res
+    return loads, stores

@@ -12,7 +12,7 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   8 MB Fast model (`AMIGA_CPU` unset): frames 4–11 median ≤ 12 fields
   (240 ms); stretch ≤ 10.
 - **Status:** R16 alignment repair, R17 palette validity, R18 flag extraction kept; R20 cell
-  cache, R21 string layout, R22 call layout and R24 REP STOSW fill kept. Item 14b's 240 ms target
+  cache, R21 string layout, R22 call layout, R24 REP STOSW fill and R25 BP as data kept. Item 14b's 240 ms target
   remains unmet; no native replacement is authorized. Next steps: open-work 31 (repriced 2026-10-19).
 - **Frames fixture** (R24, 2026-10-19): medians 370, 360 and
   380 ms; same-session parent 370, 370 and 370 ms. Full intervals and spans in §7.
@@ -20,9 +20,10 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   R20 opening 71,523 → 72,197 lines (+0.9424%), identical guest
   RAM; approved tradeoff. Palette window 38,392–38,405 lines (R17),
   2.81–3.61% below its same-session parent.
-- **Meter** (m4, R18 weights, R24): generated + walk + runtime 181,635,072
-  model cycles (−1.1239% from parent); generated + walk 179,305,012 / 17,976,252 guest
-  instructions = 9.975 cycles each. Host platform adds 2,171 cycles.
+- **Meter** (m4, R18 weights, R25): generated + walk + runtime 179,572,751
+  model cycles (−1.1354% from parent); generated + walk 177,242,692 cycles, 9.860 per
+  guest instruction of R24's count (17,976,252; R25's zero-code labels hide 45,439,
+  open-work 36). Host platform adds 2,171 cycles.
 - **Capture** (R24, first frames run, 100 fields): generated code 81.40%
   (cell walk 3.87%), runtime/platform 14.44% (three main FM functions 8.12%, item 34),
   no PC 2.19%, Kickstart 1.04%, IRQ transition 0.93%. Profiler guest-entry count:
@@ -302,12 +303,44 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R21 | backward string bodies outlined; forward path falls through | `lower.py` | −0.1080% |
 | R22 | first matched walk call returns into its check; fallback outlined | `lower.py` | −0.0246% |
 | R24 | REP STOSW: eight longs per pass, long-aligned stores, odd word last | `lower.py` | −1.1239% |
+| R25 | native BP kept in a run, dead mirror stores dropped | `reuse.py` | −1.1354% |
 
 Priced candidates (repriced 2026-10-19 on the `a1df937` meter): open-work 31 (each ≤ 1.2%). No form
 left (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
 `__set_flags` (POPF/IRET) and `__flags_word` are the largest runtime-side
 items left.
+
+### R25 BP as data (2026-10-19; kept)
+
+Parent `5662ea4`. Fresh m4 meter: 181,635,072 cycles. Price before coding (the
+pass simulated on the parent's generated text, label executions of the meter):
+−2,065,133 cycles at the flat byte weight, about −1.91M at the loop weight its
+hot labels have (`R_0D5DA`..`R_0D5E6`, 62,708 and 15,214 runs; `R_04ED5`/`R_04ED7`
+24,484).
+
+Built (`reuse.bp_native`, after R13/R14f): within a run, a mirror store leaves
+native BP in its source; until that register is written, a native load copies
+it (`move.w`; `tst.w` when it is the destination, nothing before a word ALU op
+into it); a mirror store goes when the next one follows before any d5 reader,
+label, branch, call or transfer.
+
+Meter: 181,635,072 → 179,572,751 cycles (−2,062,320, −1.1354%); executed bytes
+−2,255,532 (loop −2,246,996), instructions −710,216, reads, writes and taken
+unchanged (taken −12). Static generated −226 bytes. The meter's guest count
+drops by 45,439: labels such as `R_0D5E2` (`mov bp,bx`) now emit no code and
+alias the next one (open-work 36); the host run's work is the same.
+Amiga code 1,258,888 → 1,258,660 bytes, allocated hunks 1,576,996.
+Coverage first: 224 block cases (BP-write chains, the source written, a `[bp+d]`
+read, PUSH/MOV/XCHG readers, INC BP, MOV BP,SP between, a jump after; edge
+values); every pass rewrite counted in them (240 loads, 176 stores). Plants:
+native BP kept after its source changes (7 mismatches in the gate), store dropped
+before a d5 read (30), store dropped across an exit (program corpus, 21 of 26,946).
+Block differential: 13,663 executed blocks, 52,677 cases, zero mismatches.
+Gates: test 516 s, Amiga 559 s, smoke 187 s, restoration 334 s, five replays
+2,259 s, host-all 3,384 s, sabotage 3,495 s; sources unchanged after them.
+No FS-UAE check (second kept step since R22's; due at the next).
+Evidence: `tmp/item31b/` (`price_bp.txt`, `r25/`).
 
 ### R24 REP STOSW fill (2026-10-19; kept)
 

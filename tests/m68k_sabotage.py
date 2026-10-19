@@ -9,6 +9,7 @@ make test's boundary run (RECORD) is reused wherever a plant's case matches it.
 from __future__ import annotations
 
 import contextlib
+import inspect
 import io
 import os
 import re
@@ -39,6 +40,7 @@ real_fold = U.fold
 real_guard_lines = U.guard_lines
 real_slow_path = U.slow_path
 real_base_written = U.base_written
+real_bp_native = U.bp_native
 RECORD = Path(__file__).resolve().parent.parent / "tmp/test/x86-side-boundary.pkl"
 
 
@@ -468,6 +470,22 @@ def cache_zero_tag_admitted(self, out):
             for k, line in enumerate(out)]
 
 
+def bp_native_line(old, new):
+    """R25: reuse.bp_native with one source line changed."""
+    source = inspect.getsource(real_bp_native)
+    assert source.count(old) == 1, old
+    scope = dict(U.__dict__)
+    exec(source.replace(old, new), scope)
+    return scope["bp_native"]
+
+
+BP_PLANTS = {
+    "bp exit": ("D5.search(x) or EXIT.match(x)", "D5.search(x)"),
+    "bp source": ("w is None or nat in w or", "w is None or"),
+    "bp reader": ("w is None or D5.search(x) or EXIT.match(x)", "w is None or EXIT.match(x)"),
+}
+
+
 def wide_bp_range(insns):
     """R6: the region guard admits BP one past each end of its range."""
     r = real_bp_range(insns)
@@ -531,6 +549,9 @@ SABOTAGE = [
     ("fill passes of sixteen longs", sub(r"^\tlsr\.w #3,d1$", "\tlsr.w #4,d1"), "boundary"),
     ("pair count keeps the even part", sub(r"^\tandi\.w #1,d7$", "\tnop"), "boundary"),
     ("held index survives register writes", "reuse writes", "boundary"),
+    ("BP mirror store dropped across an exit", "bp exit", "program"),
+    ("native BP kept after its source changes", "bp source", "boundary"),
+    ("BP mirror store dropped before a d5 read", "bp reader", "boundary"),
     ("held index survives a block leader", "reuse leaders", "program"),
     ("high-byte clear keeps bit 8", sub(r"^\tand\.w #\$ff,(d[0-3])$", r"\tand.w #$1ff,\1"),
      "boundary"),
@@ -604,6 +625,8 @@ def plant(k: int) -> tuple[int, int, int, int]:
         E.mismatch_stub = lambda lab: [f"{lab}:"]
     elif fn == "bp range":  # region.bp_range (R6)
         R.bp_range = wide_bp_range
+    elif fn in BP_PLANTS:           # reuse.bp_native (R25)
+        U.bp_native = bp_native_line(*BP_PLANTS[fn])
     elif fn == "reuse writes":      # reuse.written (R13)
         U.written = lambda line: None if real_written(line) is None else set()
     elif fn == "reuse leaders":     # reuse.reuse (R13)
@@ -659,6 +682,7 @@ def plant(k: int) -> tuple[int, int, int, int]:
         U.guard_lines = real_guard_lines
         U.slow_path = real_slow_path
         U.base_written = real_base_written
+        U.bp_native = real_bp_native
         L.Lowering.op_jcc = real_op_jcc
         F.plan = real_plan
 
