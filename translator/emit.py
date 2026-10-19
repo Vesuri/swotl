@@ -50,6 +50,19 @@ HLE_SERVICES = tuple(sorted({"rt_hle_" + r["service"] for r in image.rows("hle.c
 GRAPHICS_DRIVER = "RTSVGA.OVL"
 
 
+def retried(i) -> bool:
+    """A divide error branches back to the instruction after rt_fault, from
+    its out-of-line path (lower.exit_fault)."""
+    return i.op in ("div", "idiv") or i.op == "aam" and i.operands[0].value == 0
+
+
+def copy_exits(p, nodes: set) -> set:
+    """Where a copy run falls out of its component into the exact code
+    (run_text): another way into those instructions."""
+    return {p.fall[n] for n in nodes if p.node_insn(n).op not in TERMINAL
+            and p.fall.get(n) not in nodes | {None}}
+
+
 def label(mod: str, off: int) -> str:
     return f"{TAG[mod]}_{off:05X}"
 
@@ -508,6 +521,7 @@ class Program:
             self.leaders |= starts
             self.leaders |= {self.fall[n] for n in nodes if self.node_insn(n).op in region.REGUARD
                              and self.fall.get(n) in nodes}
+            self.leaders |= copy_exits(self, nodes)
 
     def find_leaders(self) -> set:
         jump_preds = Counter()
@@ -525,7 +539,7 @@ class Program:
             leaders.update(sw)
             leaders.update(tr)
         for n in self.succ:
-            if jump_preds[n] or not fall_preds[n]:
+            if jump_preds[n] or not fall_preds[n] or retried(self.node_insn(n)):
                 leaders.add(n)
         return leaders
 

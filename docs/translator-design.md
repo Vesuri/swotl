@@ -94,8 +94,9 @@ diffs directly); relocated words in instructions are emitted as
   One range check on d5.w covers every displacement of the component: at
   its entry after the BP write (`<S>_bpg`) and after each call or software
   interrupt in it (`<S>_bpr`); a failure continues in the exact code, as do
-  exits, BP writes, poll stubs and divide-error retries. Entries and those
-  return points are leaders (a guard clobbers the CCR). Tools that hook an
+  exits, BP writes, poll stubs and divide-error retries. Entries, those
+  return points and where a copy run falls into the exact code are leaders (a
+  guard clobbers the CCR; the run passes start afresh there). Tools that hook an
   instruction's label (host run) hook its copy too.
 - Flags (D6): a setter stores the defined flags live after it (`flags.py`,
   global liveness in `emit.py`). The next instruction reads the CCR directly
@@ -191,7 +192,10 @@ choice, `tools/outline_sites.py` from `build/gen/outline-sites.csv`),
   12–14, memory, OUT sequence, interrupt/fault. A case with a direct
   `[bp+d]` form also runs behind a region guard (copy, exact fallback).
 - Block differential (`make test-blocks`): the generated program as emitted,
-  run from executed leaders to the first transfer with random states. Guest CFG
+  run from executed leaders to the first transfer with random states. Every
+  branch to an instruction's label targets a leader (copy exits, divide-error
+  retries: `lower.exit_fault` re-executes the instruction), except exact code
+  branching to its own fall-through (R27). Guest CFG
   exits remain stopping boundaries when a zero-code jump aliases its target;
   direct zero-code entries stop without executing the target. Each outlined
   jcc (R27) runs from the leader that falls into it, and its fall-through

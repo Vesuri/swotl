@@ -43,6 +43,8 @@ real_base_written = U.base_written
 real_bp_native = U.bp_native
 real_invert = E.INVERT
 real_cold_return = E.cold_return
+real_retried = E.retried
+real_copy_exits = E.copy_exits
 RECORD = Path(__file__).resolve().parent.parent / "tmp/test/x86-side-boundary.pkl"
 
 
@@ -614,6 +616,8 @@ SABOTAGE = [
     ("segment repeat compares another segment", seg_compare_other_slot, "boundary"),
     ("changed segment keeps the upper word", seg_changed_keeps_upper, "boundary"),
     ("held index survives a block leader", "reuse leaders", "program"),
+    ("divide retry enters no leader", "retry leaders", "program"),
+    ("copy exit enters no leader", "copy exit leaders", "program"),
     ("high-byte clear keeps bit 8", sub(r"^\tand\.w #\$ff,(d[0-3])$", r"\tand.w #$1ff,\1"),
      "boundary"),
     ("high-byte zero flags from 1", sub(r"^\tmoveq #0,d6$", "\tmoveq #1,d6"), "boundary"),
@@ -692,6 +696,10 @@ def plant(k: int) -> tuple[int, int, int, int]:
         E.INVERT = {cc: cc for cc in real_invert}
     elif fn == "outline return":        # emit.cold_return (R27)
         E.cold_return = lambda lab: []
+    elif fn == "retry leaders":         # emit.retried (leaders)
+        E.retried = lambda i: False
+    elif fn == "copy exit leaders":     # emit.copy_exits (leaders)
+        E.copy_exits = lambda p, nodes: set()
     elif fn == "reuse writes":      # reuse.written (R13)
         U.written = lambda line: None if real_written(line) is None else set()
     elif fn == "reuse leaders":     # reuse.reuse (R13)
@@ -738,6 +746,8 @@ def plant(k: int) -> tuple[int, int, int, int]:
         E.mismatch_stub = real_mismatch_stub
         E.INVERT = real_invert
         E.cold_return = real_cold_return
+        E.retried = real_retried
+        E.copy_exits = real_copy_exits
         R.bp_range = real_bp_range
         S.walk = real_walk
         F.carry_ccr = real_carry_ccr

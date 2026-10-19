@@ -51,11 +51,12 @@ speed work: [speed-plan.md](speed-plan.md).
     `bra` back to its target that never closes a loop, so R27's meter Δ is
     −0.6278%, −0.7903% counting only taken back edges (FS-UAE agreed in sign).
     Decide the definition (and recalibrate) at the next re-profile.
-38. `make gates`: host-all's c52-campaign-loss passed the R26 gates but ran past its
-    2,400 s wall-clock limit (`t-cov-%`, `host_run.py --timeout`) in the R27 and R28
-    gates (load average up to 57: sabotage, host-all and FS-UAE at once, plus
-    Spotlight), stopped short of the reference's services with no fault; alone 783 s
-    and 853 s, exact. Decide: a longer limit for long scenarios, or fewer parallel jobs.
+38. `make gates`: host-all's c52-campaign-loss passed the R26, R29 and R30 gates but
+    ran past its 2,400 s wall-clock limit (`t-cov-%`, `host_run.py --timeout`) in the
+    R27, R28 and leader-fix gates (load average up to 77: sabotage, host-all and FS-UAE
+    at once), stopped short of the reference's services with no fault; alone 783 s,
+    853 s and 771 s, exact. Decide: a longer limit for long scenarios, or fewer
+    parallel jobs.
 31. Translator candidates, repriced 2026-10-19 on the `a1df937` m4 meter (183,699,737
     model cycles) unless noted, in price order; each one a speed-plan step (R24 REP
     STOSW, R25 BP as data, R26 REPE CMPSW, R27 cold branch sides, R28 carry in X, R29

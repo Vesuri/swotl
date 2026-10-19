@@ -23,7 +23,8 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   RAM; approved tradeoff. Palette window 38,392–38,405 lines (R17),
   2.81–3.61% below its same-session parent.
 - **Meter** (m4, R18 weights, R30): generated + walk + runtime 174,303,221
-  model cycles (−0.5926% from parent); generated + walk 171,973,081 cycles, 9.567 per
+  model cycles (−0.5926% from parent; divide-retry and copy-exit leaders then
+  +387); generated + walk 171,973,081 cycles, 9.567 per
   guest instruction of R24's count (17,976,252; R25's zero-code labels hide 45,439,
   open-work 36). Host platform adds 2,171 cycles.
 - **Capture** (R24, first frames run, 100 fields): generated code 81.40%

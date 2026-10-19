@@ -208,6 +208,33 @@ def block_boundary(p, mod, run, addr, end, empty_entries, copy=False):
     return inside, empty
 
 
+TO_GUEST = re.compile(r"^\t(?:b[a-z]{2}|bra|jmp|db[a-z]{1,2})(?:\.[swl])? (?:d[0-7],)?"
+                      r"([A-Z]+_[0-9A-F]{5})$")
+
+
+def guest_entries(p: emit.Program) -> tuple[int, list[str]]:
+    """Every branch or jump to an instruction's label targets a leader, unless
+    exact code branches to its own fall-through (R27's outlined ranges): the run
+    passes (R13, R14f, R25) take another way into an instruction only at a
+    leader. Copy exits (R6) and divide-error retries (R14i) are such ways in."""
+    node_of = {emit.label(m, o): (m, o) for m in p.units for o in p.units[m].insns}
+    n, bad = 0, []
+    for mod in p.units:
+        fall = None             # the owning exact instruction's fall-through
+        for x in p.module_text(mod)[0]:
+            lab = re.match(r"^(([A-Z]+_[0-9A-F]{5})\w*):", x)
+            if lab:
+                copy = lab.group(1)[len(lab.group(2)):].startswith("_bp")
+                fall = None if copy else p.fall.get(node_of.get(lab.group(2)))
+                continue
+            t = TO_GUEST.match(x)
+            if t and t.group(1) in node_of:
+                n += 1
+                if node_of[t.group(1)] not in p.leaders and node_of[t.group(1)] != fall:
+                    bad.append(f"{x.strip()} enters no leader")
+    return n, bad
+
+
 def copy_blocks(p: emit.Program, nodes: set, executed: dict[str, set[int]]):
     """Blocks of a guarded copy (R6): from its executed leaders, within it."""
     for mod, off in sorted(nodes):
@@ -959,6 +986,9 @@ def main(argv=None) -> int:
         n, wbad = walks(p, h, m, addr, stop_names, args.walks)
         count["walks"] += n
         bad += wbad
+    n, failures = guest_entries(p)
+    count["guest entries"] += n
+    bad += failures
     n, failures = cross_entry_cases()
     count["cross predecessors"] += n
     bad += failures
