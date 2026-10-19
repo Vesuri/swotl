@@ -12,16 +12,16 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   8 MB Fast model (`AMIGA_CPU` unset): frames 4–11 median ≤ 12 fields
   (240 ms); stretch ≤ 10.
 - **Status:** R16 alignment repair, R17 palette validity, R18 flag extraction kept; R20 cell
-  cache, R21 string layout, R22 call layout, R24 REP STOSW fill and R25 BP as data kept. Item 14b's 240 ms target
+  cache, R21 string layout, R22 call layout, R24 REP STOSW fill, R25 BP as data and R26 REPE CMPSW kept. Item 14b's 240 ms target
   remains unmet; no native replacement is authorized. Next steps: open-work 31 (repriced 2026-10-19).
-- **Frames fixture** (R24, 2026-10-19): medians 370, 360 and
-  380 ms; same-session parent 370, 370 and 370 ms. Full intervals and spans in §7.
-- **Bench:** R22 opening 72,205 → 72,089 lines (−0.161%), identical guest RAM.
+- **Frames fixture** (R26, 2026-10-19): medians 380, 370 and
+  360 ms; same-session parent 360, 370 and 340 ms. Full intervals and spans in §7.
+- **Bench:** R26 opening 72,238 (R25) → 72,090 lines (−0.205%), identical guest RAM.
   R20 opening 71,523 → 72,197 lines (+0.9424%), identical guest
   RAM; approved tradeoff. Palette window 38,392–38,405 lines (R17),
   2.81–3.61% below its same-session parent.
-- **Meter** (m4, R18 weights, R25): generated + walk + runtime 179,572,751
-  model cycles (−1.1354% from parent); generated + walk 177,242,692 cycles, 9.860 per
+- **Meter** (m4, R18 weights, R26): generated + walk + runtime 178,130,612
+  model cycles (−0.8031% from parent); generated + walk 175,800,553 cycles, 9.780 per
   guest instruction of R24's count (17,976,252; R25's zero-code labels hide 45,439,
   open-work 36). Host platform adds 2,171 cycles.
 - **Capture** (R24, first frames run, 100 fields): generated code 81.40%
@@ -304,12 +304,60 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R22 | first matched walk call returns into its check; fallback outlined | `lower.py` | −0.0246% |
 | R24 | REP STOSW: eight longs per pass, long-aligned stores, odd word last | `lower.py` | −1.1239% |
 | R25 | native BP kept in a run, dead mirror stores dropped | `reuse.py` | −1.1354% |
+| R26 | REPE CMPSW: eight long compares per pass, remainder pairs first | `lower.py` | −0.8031% |
 
 Priced candidates (repriced 2026-10-19 on the `a1df937` meter): open-work 31 (each ≤ 1.2%). No form
 left (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
 `__set_flags` (POPF/IRET) and `__flags_word` are the largest runtime-side
 items left.
+
+### R26 REPE CMPSW 16 words per pass (2026-10-19; kept)
+
+Parent `18c27d1`; meter 179,572,751 cycles. Price before coding (the loop's code
+and counts unchanged since `a1df937`; `tmp/item31b/price_strings.txt`):
+−1,514,510 cycles (−0.843%) for eight pairs per pass (`bne.s` per pair, one
+`dbne` per eight, 12 bytes and a taken jump per run); four pairs −1,152,096.
+`VGA_03BE9`: 472,828 pair compares in 7,839 runs, 98% long aligned.
+
+Built: the remainder pairs (`dbne`) first, then eight long compares per pass
+(`bne.s` each, `dbne` on the eighth); a mismatching long rechecks its first
+word; an odd last word after the pairs. The end of `[ES:DI]` in d7 gives CX
+(the fast path's range ends below 10000h); the passes wait in d1's upper word,
+since a0 may hold a CS source base.
+
+Meter: 179,572,751 → 178,130,612 cycles (−1,442,139, −0.8031%); executed
+bytes +286,386 (loop −822,410), instructions +120,941, taken +7,195, reads and
+writes unchanged. Static generated +240 bytes; Amiga code 1,258,660 →
+1,258,900, allocated hunks 1,577,236.
+Coverage first: 520 boundary cases (CMPSW CX 1–40, 47–49, 63–65, 255–257; a
+mismatch at the first, second, middle, second last and last element, at every
+element for CX 15–18 and 31–34, or none; low or high byte, above or below;
+SI/DI at every offset mod 4; ranges ending two bytes below 10000h up to one
+past it; REP STOSW at the same ends). Plants: pair count keeps the even part
+(280 mismatches), remainder pairs skipped (350), early mismatch in a pass
+ignored (190); the odd-word plant moved to the new template (356).
+The first gate run failed the boundary shard: `rep cs: cmpsw` holds its
+source base in a0, which the first draft used for the end pointer.
+Block differential: 13,663 executed blocks, 52,677 cases, zero mismatches.
+Gates: test 401 s, Amiga 552 s, smoke 187 s, restoration 322 s, five replays
+2,137 s, host-all 3,285 s, sabotage 3,376 s; sources unchanged after them.
+FS-UAE check (third kept step since R22's; R25 arm against R26): opening bench
+72,238 → 72,090 lines (−0.205%), identical guest RAM; the window runs no
+changed label. Changed label `VGA_03BE9`, exact host counts (three run pairs):
+−4.10%, −6.00%, −6.52% (meter −18.8%); signs agree (§3).
+Evidence: `tmp/item31b/` (`r26/`: meters, arms, captures' reports).
+
+| Arm/run | Frames 4–11 intervals (fields) | Median | Span |
+|---|---|---:|---:|
+| R25 1 | 22,20,17,19,16,24,16,16 | 360 ms | 16–24 |
+| R25 2 | 22,21,17,21,16,20,16,16 | 370 ms | 16–22 |
+| R25 3 | 22,21,17,17,17,24,16,16 | 340 ms | 16–24 |
+| R26 1 | 23,22,19,19,18,25,18,19 | 380 ms | 18–25 |
+| R26 2 | 21,21,17,21,17,20,16,16 | 370 ms | 16–21 |
+| R26 3 | 21,21,16,22,16,20,16,16 | 360 ms | 16–22 |
+
+Intervals overlap: no frame-rate gain claimed.
 
 ### R25 BP as data (2026-10-19; kept)
 
@@ -713,7 +761,7 @@ frozen arms, meters, captures' reports and gates).
 
 ## 9. Gap
 
-R24's run medians are 370, 360 and 380 ms. Reaching 240 ms requires about
+R26's run medians are 380, 370 and 360 ms. Reaching 240 ms requires about
 35% less frame time from their 370 ms median; parent and candidate intervals overlap.
 Normal trajectories vary; acceptance uses the fixed-work meter and §3 checks.
 Top guest routines (first R22 capture, self time): SWOTL.EXE+0B54B 8.30%,

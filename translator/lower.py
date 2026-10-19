@@ -1520,11 +1520,10 @@ class Lowering:
     def string_pairs(self) -> None:
         """REP STOSW / REPE CMPSW, two elements per long (R12). The long at
         -(p) holds the guest-first element in its low word (higher host
-        address). STOSW: an odd element first, then AX doubled. CMPSW: CX/2
-        pairs by `cmp.l`; in a mismatching pair the low words decide which
-        element stopped; CX = odd + 2 * (pairs left) (+1 at the first
-        element); an odd last element alone; the flags of the last pair
-        compared as the element body does. d7 = CX at entry."""
+        address). STOSW: AX doubled (R24 below). CMPSW: CX/2 pairs by `cmp.l`;
+        in a mismatching pair the low words decide which element stopped; CX =
+        the words of [ES:DI] after it; an odd last element alone; the flags of
+        the last pair compared as the element body does."""
         loop, tail, fin = self.local(), self.local(), self.local()
         if self.i.op == "stos":
             # R24: every store writes AX and the fast path has no poll or read,
@@ -1561,32 +1560,59 @@ class Lowering:
             self.e("clr.w d1")
             self.stats["string pairs"] += 1
             return
+        # R26: eight pairs per pass after the remainder pairs; the end of
+        # [ES:DI] in d7 gives CX (the fast path's range ends below 10000h). The
+        # passes wait in d1's upper word; a0 may hold the source base.
+        rem, pairs, found = self.local(), self.local(), self.local()
+        self.e("moveq #0,d7")
         self.e("move.w d1,d7")
+        self.e("add.l d7,d7")
+        self.e("neg.l d7")
+        self.e("add.l a5,d7")
         self.e("lsr.w #1,d1")
+        self.e(f"beq.s {tail}")
+        self.e("move.w d1,d6")
+        self.e("lsr.w #3,d6")
+        self.e("swap d1")
+        self.e("move.w d6,d1")
+        self.e("swap d1")
+        self.e("andi.w #7,d1")
+        self.e("subq.w #1,d1")
+        self.e(f"bcs.s {pairs}")
+        self.at(rem)
+        self.e("move.l -(a4),d6")
+        self.e("cmp.l -(a5),d6")
+        self.e(f"dbne d1,{rem}")
+        self.e(f"bne.s {found}")
+        self.at(pairs)
+        self.e("swap d1")
         self.e("subq.w #1,d1")
         self.e(f"bcs.s {tail}")
         self.at(loop)
+        for _ in range(7):
+            self.e("move.l -(a4),d6")
+            self.e("cmp.l -(a5),d6")
+            self.e(f"bne.s {found}")
         self.e("move.l -(a4),d6")
         self.e("cmp.l -(a5),d6")
         self.e(f"dbne d1,{loop}")
         self.e(f"beq.s {tail}")
-        self.e("add.w d1,d1")
-        self.e("andi.w #1,d7")
-        self.e("add.w d7,d1")
+        self.at(found)
         self.e("move.w 2(a4),d6")
         self.e("cmp.w 2(a5),d6")
         self.e(f"beq.s {fin}")
-        self.e("addq.w #1,d1")
         self.e("addq.l #2,a4")
         self.e("addq.l #2,a5")
         self.e(f"bra.s {fin}")
         self.at(tail)
-        self.e("clr.w d1")
-        self.e("lsr.w #1,d7")
-        self.e(f"bcc.s {fin}")
+        self.e("cmpa.l d7,a5")
+        self.e(f"beq.s {fin}")
         self.e("move.w -(a4),d6")
         self.e("cmp.w -(a5),d6")
         self.at(fin)
+        self.e("move.l a5,d1")
+        self.e("sub.l d7,d1")
+        self.e("lsr.l #1,d1")
         self.compare_pair("(a4)", "(a5)")
         self.stats["string pairs"] += 1
 

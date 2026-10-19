@@ -539,6 +539,52 @@ def boundary(h: Harness) -> None:
     loop_layout_cases(h)
     string_fill_cases(h)
     bp_data_cases(h)
+    string_compare_cases(h)
+
+
+def string_compare_cases(h):
+    """R26: REPE CMPSW 16 words per pass. CX covering every remainder of 8 pairs
+    and no, one and several passes; a mismatch at the first, second, a middle,
+    the second last and the last element, at every element for CX 15-18 and
+    31-34, or none; the stop word differing in its low or high byte, above or
+    below; SI/DI at every offset mod 4; ranges ending two and one bytes below
+    10000h (fast path), at 10000h and past it (exact path); REP STOSW at the
+    same ends (R24's edge cases start at 10000h)."""
+    counts = list(range(1, 41)) + [47, 48, 49, 63, 64, 65, 255, 256, 257]
+    kinds = ((1, 0), (0, 1), (-1, 0), (0, -1))
+    for cx in counts:
+        every = 15 <= cx <= 18 or 31 <= cx <= 34
+        stops = list(range(cx)) if every else \
+            sorted({a for a in (0, 1, cx // 2, cx - 2, cx - 1) if 0 <= a < cx})
+        for n, at in enumerate(stops + [None]):
+            lo, hi = kinds[n % 4]
+            k = (n + cx) % 4
+            si, di = 0x100 + k, 0x200 + (k + n // 4) % 4
+            src = bytes(0x41 + (j * 7 & 0x3F) for j in range(2 * cx))
+            dst = bytearray(src)
+            if at is not None:
+                dst[2 * at] = dst[2 * at] + lo & 0xFF
+                dst[2 * at + 1] = dst[2 * at + 1] + hi & 0xFF
+            h.case(b"\xf3\xa7", "b:compare-cmpsw",
+                   overrides={"regs": {"cx": cx, "si": si, "di": di, "ds": 0x5000, "es": 0x6000},
+                              "flags": {"DF": 0},
+                              "mem": [(0x50000 + si, src), (0x60000 + di, bytes(dst))]})
+    for cx in (16, 17, 33, 255):
+        for slack in (-2, -1, 0, 1):
+            off = 0x10000 - 2 * cx + slack & 0xFFFF
+            for at in (0, cx // 2, cx - 1, None):
+                mem = bytearray(b"\x41" * 2 * cx)
+                if at is not None:
+                    mem[2 * at + 1] ^= 0x80
+                h.case(b"\xf3\xa7", "b:compare-cmpsw-edge",
+                       overrides={"regs": {"cx": cx, "si": off, "di": 0x300,
+                                           "ds": 0x6000, "es": 0x5000},
+                                  "flags": {"DF": 0},
+                                  "mem": [(0x60000 + off, b"\x41" * 2 * cx),
+                                          (0x50300, bytes(mem))]})
+            h.case(b"\xf3\xab", "b:fill-stosw-fast-edge",
+                   overrides={"regs": {"cx": cx, "di": off, "es": 0x5000,
+                                       "ax": h.rng.randrange(0x10000)}, "flags": {"DF": 0}})
 
 
 def bp_data_cases(h):

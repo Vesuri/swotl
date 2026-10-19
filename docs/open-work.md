@@ -23,8 +23,8 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Translator and validation
 
-14b. Speed target remains unmet: frames-fixture 68020 run medians on R24
-    (2026-10-19) 370, 360 and 380 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
+14b. Speed target remains unmet: frames-fixture 68020 run medians on R26
+    (2026-10-19) 380, 370 and 360 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
     §1, §9). Roughly 35% further reduction is needed from 370 ms; parent intervals overlap. Remaining
     cost is mostly generated guest code; priced translator candidates are 31,
     FM synthesis is 34 (flag-word packing rejected, speed-plan §10). Native replacement
@@ -48,9 +48,7 @@ speed work: [speed-plan.md](speed-plan.md).
     such layouts. Meter totals and alias-aware fixed-instruction A/B are unaffected.
 31. Translator candidates, repriced 2026-10-19 on the `a1df937` m4 meter (183,699,737
     model cycles) unless noted, in price order; each one a speed-plan step (R24 REP
-    STOSW and R25 BP as data done). Evidence: `tmp/item31b/`.
-    - `repe cmpsw` 16 words per pass (`bne.s` exits): −1.51M (8 words −1.15M);
-      `VGA_03BE9` makes 472,828 two-word passes.
+    STOSW, R25 BP as data and R26 REPE CMPSW done). Evidence: `tmp/item31b/`.
     - Block layout (audit on `a1df937`): free-placement bound −5.31M, 22.7% of the
       taken weight `dbcc` back edges. Implementable: the cold side of a hot forward
       guest `jcc` out of line, profile-chosen, ≈ −0.85M (140 sites); `jcc` over a lone

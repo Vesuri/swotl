@@ -367,9 +367,22 @@ def trust_register_upper_word(self, out):
 
 
 def pair_odd_dropped(self, out):
-    """R12/R24: the pair loops skip an odd element (STOSW's last, CMPSW's last)."""
-    return [x.replace("\tbcc.s ", "\tbra.s ") if out[k - 2:k] == ["\tclr.w d1", "\tlsr.w #1,d7"]
-            or out[k - 1:k] == ["\tlsr.w #1,d7"] and out[k - 2].startswith("\tdbf d1,")
+    """R12/R24/R26: the pair loops skip an odd element (STOSW's last, CMPSW's last)."""
+    return [x.replace("\tbcc.s ", "\tbra.s ") if out[k - 1:k] == ["\tlsr.w #1,d7"]
+            and out[k - 2].startswith("\tdbf d1,")
+            else x.replace("\tbeq.s ", "\tbra.s ") if out[k - 1:k] == ["\tcmpa.l d7,a5"]
+            else x for k, x in enumerate(out)]
+
+
+def compare_remainder_skipped(self, out):
+    """R26: REPE CMPSW compares no remainder pair before its eight-pair passes."""
+    return ["\tandi.w #0,d1" if x == "\tandi.w #7,d1" and out[k + 1:k + 2] == ["\tsubq.w #1,d1"]
+            else x for k, x in enumerate(out)]
+
+
+def compare_pass_exit_dropped(self, out):
+    """R26: the eight-pair pass ignores a mismatch before its last pair."""
+    return ["\tnop" if re.fullmatch(r"\tbne\.s \.\d+", x) and out[k - 1] == "\tcmp.l -(a5),d6"
             else x for k, x in enumerate(out)]
 
 
@@ -547,7 +560,10 @@ SABOTAGE = [
     ("fill skips the remainder longs", fill_remainder_skipped, "boundary"),
     ("fill aligning word not counted", drop_after("move.w d0,-(a5)", "subq.w #1,d1"), "boundary"),
     ("fill passes of sixteen longs", sub(r"^\tlsr\.w #3,d1$", "\tlsr.w #4,d1"), "boundary"),
-    ("pair count keeps the even part", sub(r"^\tandi\.w #1,d7$", "\tnop"), "boundary"),
+    ("pair count keeps the even part", sub(r"^\tlsr\.l #1,d1$", "\tlsr.l #1,d1\n\tbclr #0,d1"),
+     "boundary"),
+    ("compare skips the remainder pairs", compare_remainder_skipped, "boundary"),
+    ("compare pass ignores an early mismatch", compare_pass_exit_dropped, "boundary"),
     ("held index survives register writes", "reuse writes", "boundary"),
     ("BP mirror store dropped across an exit", "bp exit", "program"),
     ("native BP kept after its source changes", "bp source", "boundary"),
