@@ -115,6 +115,7 @@ class Ctx:
     smc_targets: tuple = ()                   # (first IP, last IP, walk label): D16 regions
     code_regions: tuple = ()                  # cell caches a CS store may reach (emit.code_regions)
     seg_limit: int = 0                        # lowest segment reaching no cell cache (0: none, D3)
+    seg_repeat: bool = False                  # segment load usually repeats its value (R30)
     complete: bool = False                    # near_targets is a proved switch table
     far_targets: tuple = ()                   # known (seg, off) targets of an indirect far one
     manager: bool = False                     # PLINK manager call: return skips `dw id`
@@ -326,6 +327,27 @@ class Lowering:
         self.e(f"lsl.l #4,{src}")
         self.e(f"lea -$7fff(a6),{SEGBASE[s]}")
         self.e(f"suba.l {src},{SEGBASE[s]}")
+
+    def putseg_repeat(self, s: str, src: str, clean: bool, value: str | None = None) -> None:
+        """R30 (annotations/seg-repeat.csv): a load of the value the segment holds
+        changes nothing (its base and the cell caches follow the value, D3), so
+        compare first; the store, the cell-cache check and the base go out of
+        line. `value`: a guest register holding the new value, copied into `src`
+        there."""
+        k = sum(1 for x in self.cold if x.startswith(f"{self.c.label}_gx"))
+        cold, back = f"{self.c.label}_gx{k}", f"{self.c.label}_gr{k}"
+        self.e(f"cmp.w {SEGSLOT[s]}(a6),{value or src}")
+        self.e(f"bne {cold}")
+        self.at(back)
+        hot, self.out = self.out, [f"{cold}:"]
+        if value:
+            self.e(f"moveq #0,{src}")
+            self.e(f"move.w {value},{src}")
+        self.putseg(s, src, clean or bool(value))
+        self.e(f"bra {back}")
+        self.cold += self.out
+        self.out = hot
+        self.stats["segment load compared first"] += 1
 
     def push(self, src: str | None = None, const: str | None = None) -> None:
         """Push a word: a register, a memory operand or a constant."""
@@ -1130,8 +1152,15 @@ class Lowering:
         pos = i.size - 2 if isinstance(b, Imm) and w == 16 else None
         self.check_reloc({pos} if pos is not None else set())
         if isinstance(a, Reg) and a.name in SEGBASE:
-            self.read_zx(b, "d7")
-            self.putseg(a.name, "d7", clean=True)
+            if not self.c.seg_repeat:
+                self.read_zx(b, "d7")
+                self.putseg(a.name, "d7", clean=True)
+            elif isinstance(b, Reg) and b.name in GREG and GREG[b.name][0] == "d" \
+                    and b.name not in MIRROR:
+                self.putseg_repeat(a.name, "d7", False, GREG[b.name])
+            else:
+                self.read(b, "d7")
+                self.putseg_repeat(a.name, "d7", False)
             return
         if isinstance(b, Reg) and b.name in SEGBASE:
             # straight into the word destination (no zero-extension, R4)
@@ -1265,9 +1294,9 @@ class Lowering:
 
     def lxs(self, seg: str) -> None:
         r, m = self.i.operands
-        clean = self.far_pair(m, zx=True)
+        clean = self.far_pair(m, zx=not self.c.seg_repeat)
         self.putreg(r.name, "d6")
-        self.putseg(seg, "d7", clean)
+        (self.putseg_repeat if self.c.seg_repeat else self.putseg)(seg, "d7", clean)
 
     def op_xchg(self):
         a, b = self.i.operands
@@ -1317,6 +1346,10 @@ class Lowering:
             self.e("subq.w #2,d4")
             return
         if isinstance(o, Reg) and o.name in SEGBASE:
+            if self.c.seg_repeat:
+                self.pop("d6")
+                self.putseg_repeat(o.name, "d6", False)
+                return
             self.e("moveq #0,d6")
             self.pop("d6")
             self.putseg(o.name, "d6", clean=True)

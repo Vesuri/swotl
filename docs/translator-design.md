@@ -70,6 +70,9 @@ diffs directly); relocated words in instructions are emitted as
   bits zero-extends it first (`read_zx`: segment loads, the cell walk's entry
   IP from an indirect call); the REP fast path converts SI/DI from their low
   words; the runtime masks what it takes.
+- Segment loads in `annotations/seg-repeat.csv` (R30) compare the new value
+  with `G_xS` first; only a change stores it, checks the cell caches and
+  rebuilds the base, out of line (`lower.putseg_repeat`).
 - Memory (D1, speed-plan R1): a little-endian word at linear L is the native
   word at TOP − L − 1 (68020 allows odd addresses), no byte swaps. The byte
   at offset o is `(7FFFh−o,aS)`, the word `(7FFEh−o,aS)`; a computed offset
@@ -175,7 +178,9 @@ check, read by the sweep), `data.csv` (ranges),
 (name, evidence class), `bp-regions.csv` (BP writes whose component gets a
 guarded copy; a profile choice, `tools/bp_regions.py`), `outline.csv`
 (forward jcc whose fall-through range goes out of line, R27; a profile
-choice, `tools/outline_sites.py` from `build/gen/outline-sites.csv`).
+choice, `tools/outline_sites.py` from `build/gen/outline-sites.csv`),
+`seg-repeat.csv` (segment loads that compare first, R30; a profile choice,
+`tools/seg_repeat.py`).
 
 ### Tests
 
@@ -329,7 +334,8 @@ choice, `tools/outline_sites.py` from `build/gen/outline-sites.csv`).
   a RET at a covered cell start is the walk's stop (one at a time), its first
   byte back ends it, anything else drops the cache. A DS, ES or SS value whose
   window reaches a region drops every cache where it is loaded
-  (`lower.putseg`, the reload cells, the runtime's `load_regs`), and so does a
+  (`lower.putseg`, the reload cells, the runtime's `load_regs`; reloading the
+  value a segment holds changes nothing, R30), and so does a
   runtime store into a region (`rt_wrote`; bounds and segment limit from the
   program). A dropped cache is cleared at the next walk with no segment
   reaching a region; until then walks are exact, and so is the rest of a walk

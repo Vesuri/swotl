@@ -13,17 +13,17 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   (240 ms); stretch ≤ 10.
 - **Status:** R16 alignment repair, R17 palette validity, R18 flag extraction kept; R20 cell
   cache, R21 string layout, R22 call layout, R24 REP STOSW fill, R25 BP as data, R26 REPE CMPSW, R27 cold
-  branch sides, R28 carry in X and R29 far push kept. Item 14b's 240 ms target
+  branch sides, R28 carry in X, R29 far push and R30 repeated segment loads kept. Item 14b's 240 ms target
   remains unmet; no native replacement is authorized. Next steps: open-work 31 (repriced 2026-10-19).
-- **Frames fixture** (R29, 2026-10-19): medians 380, 350 and
-  350 ms; same-session parent 370, 360 and 350 ms. Intervals for R27 in §7.
-- **Bench:** R29 opening 71,720 (R28, median of three) → 71,495 lines (−0.314%), identical guest
-  RAM; R27 72,087 → 71,740 (−0.481%).
+- **Frames fixture** (R30, 2026-10-19): medians 340, 340 and
+  340 ms; same-session parent 370, 350 and 340 ms. Intervals for R27 in §7.
+- **Bench:** R30 opening 71,542 (R29, median of three) → 70,243 lines (−1.816%), identical guest
+  RAM; R29 71,720 → 71,495 (−0.314%).
   R20 opening 71,523 → 72,197 lines (+0.9424%), identical guest
   RAM; approved tradeoff. Palette window 38,392–38,405 lines (R17),
   2.81–3.61% below its same-session parent.
-- **Meter** (m4, R18 weights, R29): generated + walk + runtime 175,342,341
-  model cycles (−0.4660% from parent); generated + walk 173,012,201 cycles, 9.624 per
+- **Meter** (m4, R18 weights, R30): generated + walk + runtime 174,303,221
+  model cycles (−0.5926% from parent); generated + walk 171,973,081 cycles, 9.567 per
   guest instruction of R24's count (17,976,252; R25's zero-code labels hide 45,439,
   open-work 36). Host platform adds 2,171 cycles.
 - **Capture** (R24, first frames run, 100 fields): generated code 81.40%
@@ -310,12 +310,59 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R27 | cold sides of hot forward jcc out of line, profile-chosen | `emit.py`, `tools/outline_sites.py` | −0.6278% (bench −0.481%) |
 | R28 | carry in X kept across an adc/sbb operand setup in d6 | `lower.py` | −0.4796% |
 | R29 | CALLF pushes CS:IP as one long; SP wrap out of line | `lower.py` | −0.4660% |
+| R30 | segment loads that mostly repeat compare first; store, check and base out of line | `lower.py`, `tools/seg_repeat.py` | −0.5926% (bench −1.816%) |
 
 Priced candidates (repriced 2026-10-19 on the `a1df937` meter): open-work 31 (each ≤ 1.2%). No form
 left (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
 `__set_flags` (POPF/IRET) and `__flags_word` are the largest runtime-side
 items left.
+
+### R30 repeated segment loads compare first (2026-10-19; kept)
+
+Parent `13e2586`; meter 175,342,341 cycles. Price before coding (census on the
+R29 host run, `tmp/item31b/r30/seg_census.txt`): of 109,713 ES and DS loads (no
+SS) in the window, 34,501 load the value the segment holds (ES 30,666 of
+37,911, DS 3,835 of 71,802). A repeat needs no store, cell-cache check or
+base: one `cmp.w G_xS(a6)` and an untaken `bne`; a change adds two taken
+branches. Sites saving ≥ 1,000 model cycles: 24, −482K (−0.275%). That census
+missed R6's `_bp` copies (FLT_163A9_bp runs 9,729 times, FLT_163A9 953); with
+them (`tools/seg_repeat.py`: 159,810 executions, 68,834 repeats) and word
+branches priced: 36 sites (34 ES, 2 DS), −818,542 (−0.467%).
+
+Built: `Lowering.putseg_repeat` for `mov sreg`, `les`/`lds` and `pop sreg` at
+the labels in `annotations/seg-repeat.csv`: `cmp.w G_xS(a6),<new>`, `bne
+<label>_gx<k>`, rejoin `<label>_gr<k>` (inside the instruction,
+`profile_report.INSIDE`); out of line the zero-extension (a data-register
+source is copied to d7 there), `putseg` (store, cell-cache check, base) and
+`bra` back. Exact: the bases and the cell caches follow the segment's value
+(D3; the runtime rebuilds a1–a3 from `G_xS`).
+
+Meter: 175,342,341 → 174,303,221 cycles (−1,039,119, −0.5926%); writes
+−65,523, reads +67,042, instructions −328,363, executed bytes −945,152 (loop
++64,016), taken −29,439. The out-of-line `bra` back widens the static loop flag
+(open-work 37): counting only taken back edges, −860,079 (−0.4919%). The first
+census's 24 sites: −934,884. Static generated +708 bytes (59 compares: 36
+sites, 23 R6 copies); Amiga code 1,349,360 → 1,350,084, allocated hunks
+1,668,420.
+Coverage first: 288 boundary cases: MOV from a data register, BP or memory,
+POP, LES and LDS into ES, DS and SS, the new value the segment's own, one bit
+off, 0 or another segment's, then an access through the segment, alone or
+after a flag setter with PUSHF; every corpus case that loads a segment also
+runs with the compare (`m68k_diff` seg-repeat variant); zero mismatches on the
+parent lowering. Plants (boundary corpus, 79,117 cases): changed load treated
+as a repeat (952), compare of another segment's slot (62), changed segment
+keeps the upper word (592). Block differential: 13,663 blocks, 55,190 cases,
+zero mismatches.
+FS-UAE check (third kept step since R27's; R29 arm against R30): opening bench
+71,542, 71,524, 71,542 → 70,243, 70,231, 70,246 lines (median −1,299,
+−1.816%; ranges disjoint), identical guest RAM. Changed labels measured in
+both captures (78–79 of 82), exact host counts: −31.62%, −31.74%, −31.61%;
+the meter over the same labels −32.45%, −32.60%, −32.45%: signs agree (§3).
+Frames medians R29 370, 350, 340 ms; R30 340, 340, 340 ms (overlapping).
+Gates: test 568 s, Amiga 93 s, smoke 373 s, restoration 499 s, five replays
+2,583 s, host-all 3,461 s, sabotage 3,795 s; sources unchanged. Evidence:
+`tmp/item31b/r30/`.
 
 ### R29 far call pushes one long (2026-10-19; kept)
 
@@ -905,8 +952,8 @@ frozen arms, meters, captures' reports and gates).
 
 ## 9. Gap
 
-R29's run medians are 380, 350 and 350 ms. Reaching 240 ms requires about
-31% less frame time from their 350 ms median; parent and candidate intervals overlap.
+R30's run medians are 340, 340 and 340 ms. Reaching 240 ms requires about
+29% less frame time from their 340 ms median; parent and candidate intervals overlap.
 Normal trajectories vary; acceptance uses the fixed-work meter and §3 checks.
 Top guest routines (first R22 capture, self time): SWOTL.EXE+0B54B 8.30%,
 +0BFD1 7.67%, +109D6 4.46%, +0D5A6 3.98%, +0B017 3.92%,

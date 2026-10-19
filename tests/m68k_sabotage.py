@@ -76,8 +76,24 @@ def kept_x_restored_late(self, out):
 
 def far_exact_cs_low(self, out):
     """R29: the wrapped far push's exact path stores CS a word low."""
-    return ["\tsubq.w #4,d4" if x == "\tsubq.w #2,d4" and k
-            and re.match(r"^\w+_pf\d+:$", out[k - 1]) else x for k, x in enumerate(out)]
+    return ["\tsubq.w #4,d4" if x == "\tsubq.w #2,d4" and k and re.match(r"^\w+_pf\d+:$", out[k - 1])
+            else x for k, x in enumerate(out)]
+
+
+def seg_compare_other_slot(self, out):
+    """R30: the repeat compare reads another segment's slot."""
+    other = {"G_ES": "G_DS", "G_DS": "G_ES", "G_SS": "G_ES"}
+    return [re.sub(r"^\tcmp\.w (G_[EDS]S)\(a6\),", lambda m: f"\tcmp.w {other[m.group(1)]}(a6),", x)
+            for x in out]
+
+
+def seg_changed_keeps_upper(self, out):
+    """R30: a changed segment's out-of-line path skips the zero-extension."""
+    res, cold = [], False
+    for x in out:
+        cold = bool(re.match(r"^\w+_gx\d+:$", x)) or cold and x.startswith("\t")
+        res.append("\tnop" if cold and re.match(r"^\tand\.l #\$ffff,d[67]$", x) else x)
+    return res
 
 
 def sub(pattern, repl):
@@ -594,6 +610,9 @@ SABOTAGE = [
      sub(r"^\tmove\.l #\(\((.+)\)<<16\)\|(\S+),-3\(a2,d4\.w\)$", r"\tmove.l #((\2)<<16)|\1,-3(a2,d4.w)"),
      "boundary"),
     ("far push exact path stores CS a word low", far_exact_cs_low, "boundary"),
+    ("changed segment load treated as a repeat", sub(r"^\tbne \w+_gx\d+$", "\tnop"), "boundary"),
+    ("segment repeat compares another segment", seg_compare_other_slot, "boundary"),
+    ("changed segment keeps the upper word", seg_changed_keeps_upper, "boundary"),
     ("held index survives a block leader", "reuse leaders", "program"),
     ("high-byte clear keeps bit 8", sub(r"^\tand\.w #\$ff,(d[0-3])$", r"\tand.w #$1ff,\1"),
      "boundary"),

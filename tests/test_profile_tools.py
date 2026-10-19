@@ -39,17 +39,19 @@ class ProfileTools(unittest.TestCase):
                              {"SWOTL.EXE": [0x100], "FLIGHT.OVL": [0x200]})
 
     def test_labels_inside_an_instruction(self):
-        # A poll's fall-through, a segment check's, a CS store hook's and a far
-        # push's return label belong to their instruction; out-of-line stubs
-        # stay symbols.
+        # A poll's fall-through, a segment check's, a CS store hook's, a far
+        # push's and a compared segment load's return label belong to their
+        # instruction; out-of-line stubs stay symbols.
         table = "".join(f"{a:08x} g     F .text\t00000000 {n}\n" for a, n in (
             (0x100, "R_00100"), (0x108, "R_00100_np"), (0x110, "R_00100_sr0"),
-            (0x118, "R_00100_hr1"), (0x11c, "R_00100_pr0"), (0x120, "R_00102"),
-            (0x200, "R_00100_sx0"), (0x208, "R_00102_hk0"), (0x210, "R_00102_pf0")))
+            (0x118, "R_00100_hr1"), (0x11c, "R_00100_pr0"), (0x11e, "R_00100_gr0"),
+            (0x120, "R_00102"), (0x200, "R_00100_sx0"), (0x208, "R_00102_hk0"),
+            (0x210, "R_00102_pf0"), (0x218, "R_00102_gx0")))
         with patch.object(P.subprocess, "run", return_value=SimpleNamespace(stdout=table)):
             self.assertEqual(P.symbols("objdump", "unused"),
                              [(0x100, "R_00100"), (0x120, "R_00102"), (0x200, "R_00100_sx0"),
-                              (0x208, "R_00102_hk0"), (0x210, "R_00102_pf0")])
+                              (0x208, "R_00102_hk0"), (0x210, "R_00102_pf0"),
+                              (0x218, "R_00102_gx0")])
 
     def test_string_direction_continuation(self):
         table = "".join(f"{a:08x} g     F .text\t00000000 {n}\n" for a, n in (

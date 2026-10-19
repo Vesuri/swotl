@@ -542,6 +542,7 @@ def boundary(h: Harness) -> None:
     string_compare_cases(h)
     carry_setup_cases(h)
     far_call_push_cases(h)
+    seg_repeat_cases(h)
 
 
 def string_compare_cases(h):
@@ -1643,6 +1644,34 @@ def far_call_push_cases(h):
                               "ip": 0x100,
                               "mem": stack + [(0x50400, bytes.fromhex("78563412")),
                                               (0x60402, bytes.fromhex("cdab0100"))]})
+
+
+def seg_repeat_cases(h):
+    """R30 (m68k_diff's seg-repeat variant): MOV from a register (mirrored BP too)
+    or memory, POP, LES and LDS into ES, DS and SS, the new value the segment's
+    own or not (another segment's value too), at 0, 1, 8000h and FFFFh; then an
+    access through that segment; alone or after a flag setter with PUSHF after."""
+    loads = {"8ec3": "es", "8ed3": "ss", "8edb": "ds", "8ec5": "es", "8e063412": "es",
+             "07": "es", "1f": "ds", "c43e3412": "es", "c5363412": "ds"}
+    uses = {"es": "268a05", "ds": "8a04", "ss": "368a05"}
+    base = {"es": 0x6000, "ds": 0x5000, "ss": 0x7000}
+    other = {"es": "ds", "ds": "es", "ss": "es"}
+    for load, seg in loads.items():
+        for old in (0x5000, 0x0001, 0x8000, 0xFFFF):
+            for new in (old, old ^ 0x0100, 0, base[other[seg]]):
+                for around in (False, True):
+                    regs = dict(base, sp=0x1000, di=0x20, si=0x30, cs=0x2000)
+                    regs[seg] = old
+                    regs.update(bx=new, bp=new)
+                    ds = regs["ds"]
+                    mem = [(ds * 16 + 0x1234, bytes.fromhex("3412") + new.to_bytes(2, "little")),
+                           (regs["ss"] * 16 + 0x1000, new.to_bytes(2, "little"))]
+                    if load in ("8e063412",):
+                        mem[0] = (ds * 16 + 0x1234, new.to_bytes(2, "little"))
+                    code = bytes.fromhex(("01c8" if around else "") + load + uses[seg] +
+                                         ("9c" if around else ""))
+                    h.case(code, "b:seg-repeat", n=2 + 2 * around, block=True,
+                           overrides={"regs": regs, "ip": 0x100, "mem": mem})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

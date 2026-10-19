@@ -23,9 +23,9 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Translator and validation
 
-14b. Speed target remains unmet: frames-fixture 68020 run medians on R29
-    (2026-10-19) 380, 350 and 350 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
-    §1, §9). Roughly 31% further reduction is needed from 350 ms; parent intervals overlap. Remaining
+14b. Speed target remains unmet: frames-fixture 68020 run medians on R30
+    (2026-10-19) 340, 340 and 340 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
+    §1, §9). Roughly 29% further reduction is needed from 340 ms; parent intervals overlap. Remaining
     cost is mostly generated guest code; priced translator candidates are 31,
     FM synthesis is 34 (flag-word packing rejected, speed-plan §10). Native replacement
     requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
@@ -58,8 +58,8 @@ speed work: [speed-plan.md](speed-plan.md).
     and 853 s, exact. Decide: a longer limit for long scenarios, or fewer parallel jobs.
 31. Translator candidates, repriced 2026-10-19 on the `a1df937` m4 meter (183,699,737
     model cycles) unless noted, in price order; each one a speed-plan step (R24 REP
-    STOSW, R25 BP as data, R26 REPE CMPSW, R27 cold branch sides, R28 carry in X and
-    R29 far push done). Evidence: `tmp/item31b/`.
+    STOSW, R25 BP as data, R26 REPE CMPSW, R27 cold branch sides, R28 carry in X, R29
+    far push and R30 repeated segment loads done). Evidence: `tmp/item31b/`.
     - Block layout (audit on `a1df937`): free-placement bound −5.31M, 22.7% of the
       taken weight `dbcc` back edges. Left: `jcc` over a lone `jmp` (the 8086 long
       conditional) as one inverted branch, static, −0.15M (118 executed sites); the
@@ -71,8 +71,6 @@ speed work: [speed-plan.md](speed-plan.md).
       2 mod 4 at 57% of sampled `retf`). A wrapped pop needs its own `bvs.w` guard (a
       compare can match by chance), and runtime consumers of a far return read CS from
       d6: a return-protocol change, which needs user approval.
-    - An ES load that repeats ES (79% of 82,280): skip the base: −0.32M (−0.15%).
-      Not DS (13% repeat: +0.5M).
     - Push/pop runs, one `bvs.w` guard per run: −0.16M (−0.07%).
     Not worth it: index reuse across leaders (all predecessors agreeing,
     single-jump leaders, poll labels: −0.02M); the TFH map's forms (`R_0CE8B` never

@@ -215,6 +215,7 @@ class Program:
         self.units = units or cfg.build()
         self.align = {r["label"]: int(r["residue"]) for r in image.rows("align.csv")}
         self.outline = {r["label"] for r in image.rows("outline.csv")}
+        self.seg_repeat = {r["label"] for r in image.rows("seg-repeat.csv")}
         self.outline_sites: dict[str, tuple] = {}  # R27, outline_cold
         self.offsets: dict[str, list[int]] = {}   # sorted instruction offsets (outline_cold)
         self.run_last: dict[str, dict[int, int]] = {}  # each run's last offset by its first
@@ -665,6 +666,7 @@ class Program:
                    smc_targets=tuple(sorted((u.ip_of(lo), u.ip_of(hi), walk_label(mod, lo))
                                             for lo, hi in smc_t)),
                    code_regions=self.code_regions(cs), seg_limit=self.smc_limit,
+                   seg_repeat=label(mod, off) in self.seg_repeat,
                    manager=off in u.manager_calls, program=True, vram=mod == GRAPHICS_DRIVER,
                    driver_call=mod == M.ROOT and off in self.driver_jumps, ret_mismatch=RM,
                    rep_hook=((self.diagnostic_reps[(mod, off)], label(mod, off))

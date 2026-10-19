@@ -82,13 +82,14 @@ def ccr_image(flags: dict) -> int:
     return flags["CF"] | flags["OF"] << 1 | flags["ZF"] << 2 | flags["SF"] << 3
 
 
-def lower_case(insns, cs: int, tag: str, end_ip: int) -> tuple[list[str], Counter]:
-    """Test-mode 68k text for a straight-line run of decoded instructions."""
+def lower_case(insns, cs: int, tag: str, end_ip: int, **extra) -> tuple[list[str], Counter]:
+    """Test-mode 68k text for a straight-line run of decoded instructions
+    (`extra`: Ctx fields every instruction gets)."""
     lives = F.seq_lives(insns)
     stats = Counter()
 
     def ctx_for(k):
-        return Ctx(cs=hx(cs), label=f"{tag}_{k}")
+        return Ctx(cs=hx(cs), label=f"{tag}_{k}", **extra)
 
     lines, cold = [f"{tag}:"], []
     for k, lw in enumerate(F.plan(insns, lives, set(), ctx_for)):
@@ -119,6 +120,13 @@ def lower_region_case(insns, cs: int, tag: str, end_ip: int):
     exact, _ = lower_case(insns, cs, f"{tag}_x", end_ip)
     stats["region case"] += 1
     return lines + exact, stats
+
+
+def loads_segment(i) -> bool:
+    """mov/pop to ES, DS or SS, les, lds (lower.putseg)."""
+    o = i.operands[0] if i.operands else None
+    return i.op in ("les", "lds") or i.op in ("mov", "pop") and getattr(o, "name", None) in \
+        ("es", "ds", "ss")
 
 
 def irq_diffs(f: dict, irq: int, pending: int) -> list[str]:
@@ -383,6 +391,16 @@ class Harness(X.Harness):
         if guarded:     # the same case through a region guard (speed-plan R6)
             self.lowered.update(guarded[1])
             self.pending.append((label + " bp-region", code, case, undef, oracle, guarded[0],
+                                 regs, flags, insns[-1].op))
+        if any(map(loads_segment, insns)):   # segment loads compared first (R30)
+            tag = f"c{len(self.pending)}"
+            try:
+                text, st = lower_case(insns, cs, tag, insns[-1].next_ip, seg_repeat=True)
+            except LowerError as e:
+                self.bad.append(f"{label} seg-repeat {code.hex()}: lowering: {e}")
+                return
+            self.lowered.update(st)
+            self.pending.append((label + " seg-repeat", code, case, undef, oracle, text,
                                  regs, flags, insns[-1].op))
         if len(self.pending) >= BATCH:
             self.flush()
