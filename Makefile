@@ -434,8 +434,11 @@ smoke: amiga
 
 # Step gates (docs/speed-plan.md §2): test first (it writes build/gen and the
 # host image), then the others at once, the FS-UAE gates in turn. Each
-# logs to tmp/gates/<gate>.log and prints its result and seconds.
-GATE = @mkdir -p tmp/gates; s=$$(date +%s); if $(MAKE) -s $(1) > tmp/gates/$(1).log 2>&1; \
+# logs to tmp/gates/<gate>.log and prints its result and seconds. They run
+# at nice GATES_NICE so the machine stays responsive (0: normal priority).
+GATES_NICE ?= 10
+GATE = @mkdir -p tmp/gates; s=$$(date +%s); \
+	if nice -n $(GATES_NICE) $(MAKE) -s $(1) > tmp/gates/$(1).log 2>&1; \
 	then r=ok; else r=FAIL; fi; echo "$(1) $$r $$(( $$(date +%s) - s ))s"; [ $$r = ok ]
 
 gates:

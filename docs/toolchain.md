@@ -109,8 +109,8 @@ provenance is in brackets.
   guard plants, gen-check, host run m1–m3; ~6 min), `make test-sabotage` (x86, 68020 and runtime plants, one plant per
   worker process; the 68020 plants reuse the x86 side `make test`'s boundary run records in
   `tmp/test/x86-side-boundary.pkl`, matched per case; ~12 min), `make test-host-all` (m1–m7 and coverage
-  c6-flight-keys, ~9 min), `make gates` (all step gates: test, then the others at once; ~18 min, logs in
-  `tmp/gates/`). Checks run in parallel (`JOBS`, default all cores;
+  c6-flight-keys, ~9 min), `make gates` (all step gates: test, then the others at once, at nice
+  `GATES_NICE`, default 10; 65–85 min, open-work 38; logs in `tmp/gates/`). Checks run in parallel (`JOBS`, default all cores;
   the differentials in `--shard K/N` pieces), each logging to `tmp/test/<name>.log`. Unicorn x86
   quirks the harness works around: [x86-notes.md](x86-notes.md#unicorn-x86-16-as-oracle).
   Multi-instruction RETF wrap checks and `tests/test_dosbox_retf.py` also need
