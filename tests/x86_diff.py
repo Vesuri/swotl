@@ -540,6 +540,7 @@ def boundary(h: Harness) -> None:
     string_fill_cases(h)
     bp_data_cases(h)
     string_compare_cases(h)
+    carry_setup_cases(h)
 
 
 def string_compare_cases(h):
@@ -1591,6 +1592,39 @@ def flag_extract_cases(h):
                     h.case(b"\x9d\x15\x01\x00", "b:flag-extract-carry", n=2, block=True,
                            overrides={"regs": dict(cs=0x2000, ss=0x7000, sp=sp, ax=0xffff),
                                       "ip": 0x100, "mem": patch})
+
+
+def carry_setup_cases(h):
+    """R28: ADC/SBB after ADD/SUB whose operand setup changes X (an index formed in
+    d7: [di], [si+d], [di+d], [bp+d], [bx+si+d]; memory destinations; immediate
+    sources; ES and CS overrides; low and high bytes), the producer's operand a
+    register or the consumer's base (a folded or reused index), at the carry and
+    sign edges with CF 0 and 1, the consumer's flags or all flags live (PUSHF);
+    indexes plain and wrapping past FFFFh."""
+    producers = ("01c8", "29c8", "00c8", "28c8", "034502", "2b4502")
+    consumers = ("135504", "1b5406", "135608", "135002", "261315", "2e1317", "115504",
+                 "81550434 12", "835d04ff", "127504", "125504", "1a5406", "105504", "195608")
+    pairs = ((0xFFFF, 1), (0, 0), (0x7FFF, 1), (0x8000, 0xFFFF), (0xFF, 1), (1, 2))
+    n = 0
+    for bases in ((0x400, 0x600, 0x800, 0xA00), (0xFFFE, 0xFFFC, 0xFFFE, 0xFFFA)):
+        bx, si, di, bp = bases
+        for producer in producers:
+            for consumer in consumers:
+                code = bytes.fromhex(producer + consumer)
+                for ax, cx in pairs:
+                    for v in (0, 0x7FFF, 0xFFFF):
+                        tail = b"\x9c" if n % 2 else b""
+                        n += 1
+                        mem = [(0x50000 + (di + 2 & 0xFFFF), cx.to_bytes(2, "little"))]
+                        for off in (di + 4, si + 6, bp + 8, bx + si + 2, di):
+                            mem.append((0x50000 + (off & 0xFFFF), v.to_bytes(2, "little")))
+                        mem.append((0x20000 + bx, v.to_bytes(2, "little")))
+                        h.case(code + tail, "b:carry-setup", n=2 + bool(tail), block=True,
+                               overrides={"regs": {"ax": ax, "cx": cx, "dx": v ^ 0x8000,
+                                                   "bx": bx, "si": si, "di": di, "bp": bp,
+                                                   "sp": 0xFFF0, "ds": 0x5000, "es": 0x5000,
+                                                   "ss": 0x5000, "cs": 0x2000},
+                                          "ip": 0x100, "mem": mem})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

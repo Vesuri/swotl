@@ -65,6 +65,15 @@ def guard_one_past(ds, slow):
     return out
 
 
+def kept_x_restored_late(self, out):
+    """R28: X kept across an operand setup comes back after the load into d6."""
+    out = list(out)
+    for k in range(len(out) - 2, -1, -1):
+        if out[k] == "\tadd.b d6,d6":
+            out[k], out[k + 1] = out[k + 1], out[k]
+    return out
+
+
 def sub(pattern, repl):
     rx = re.compile(pattern)
     return lambda self, out: [rx.sub(repl, line) for line in out]
@@ -572,6 +581,8 @@ SABOTAGE = [
     ("BP mirror store dropped before a d5 read", "bp reader", "boundary"),
     ("outlined jcc keeps its condition", "outline condition", "program"),
     ("outlined range falls through", "outline return", "program"),
+    ("carry X kept across a setup not restored", sub(r"^\tadd\.b d6,d6$", "\tnop"), "boundary"),
+    ("carry X kept across a setup restored after the load", kept_x_restored_late, "boundary"),
     ("held index survives a block leader", "reuse leaders", "program"),
     ("high-byte clear keeps bit 8", sub(r"^\tand\.w #\$ff,(d[0-3])$", r"\tand.w #$1ff,\1"),
      "boundary"),

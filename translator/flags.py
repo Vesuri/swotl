@@ -189,7 +189,7 @@ def plan(insns, lives, leaders, ctx_for, program: bool = False, fences=(),
                 reader = ctx_for(k + 1)
                 reader.live, reader.need = set(lives[k + 1]), writes(nxt)[1] & set(lives[k + 1])
                 reader.x_in = True
-                # Prove the reader's real EA/source setup preserves incoming X.
+                # Prove the reader's real EA/source setup preserves incoming X (or keeps it, R28).
                 if lower(nxt, reader).stats["carry X reused"]:
                     lw = candidate
                     lw.stats["carry pair"] += 1

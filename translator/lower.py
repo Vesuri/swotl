@@ -24,6 +24,7 @@ output against Unicorn x86-16, independently of the IR.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -58,10 +59,22 @@ STATE_EQU = (("G_FL", 15), ("G_PF", 14), ("G_AF", 13), ("G_DF", 12), ("G_IF", 11
              ("G_TF", 10), ("G_IRQ", 9), ("G_FX", 7), ("G_ES", 5), ("G_SS", 3), ("G_DS", 1))
 LOADSEG = 0x0822  # load segment of every reference run (docs/source-inventory.md)
 RET_BYTE = 0xC3   # the RET planted in self-modified cells (smc.py)
+# A closed whitelist proves X preservation; unknown instructions kill it.
+KEEPS_X = {"move", "movea", "moveq", "lea", "ror", "rol", "and", "or", "eor", "eori", "not",
+           "cmp", "cmpa", "cmpi", "tst", "btst", "bset", "bclr", "ext", "exg", "swap", "nop",
+           "sne", "seq", "smi", "spl", "bfins"}
+D6 = re.compile(r"\bd6\b")
 
 
 class LowerError(Exception):
     pass
+
+
+def keeps_x(line: str) -> bool:
+    """The 68k line leaves X as it was."""
+    line = line.strip()
+    return line.split()[0].split(".")[0] in KEEPS_X and \
+        ("ccr" not in line or line.startswith("move.w ccr,"))
 
 
 def hx(v: int) -> str:
@@ -129,12 +142,7 @@ class Lowering:
 
     # -- emission ---------------------------------------------------------
     def e(self, line: str) -> None:
-        # A closed whitelist proves X preservation; unknown instructions kill it.
-        op = line.split()[0].split(".")[0]
-        preserves = {"move", "movea", "moveq", "lea", "ror", "rol", "and", "or",
-                     "eor", "eori", "not", "cmp", "cmpa", "cmpi", "tst", "btst", "bset",
-                     "bclr", "ext", "exg", "swap", "nop", "sne", "seq", "smi", "spl", "bfins"}
-        if op not in preserves or "ccr" in line and not line.startswith("move.w ccr,"):
+        if not keeps_x(line):
             self.x_cf = False
         self.out.append("\t" + line)
 
@@ -766,18 +774,41 @@ class Lowering:
             return True
         return False
 
+    def keep_x(self, mark: int) -> bool:
+        """R28: X held guest CF at out[mark] and the operand setup after it changed
+        X. Keep it in d6 across the setup: `subx.b d6,d6` (0 or FFh, X unchanged)
+        first, `add.b d6,d6` (X from bit 7) before the setup's first use of d6,
+        when that use writes d6 without reading it, no earlier line of the
+        instruction uses d6 and every line from there keeps X."""
+        setup = self.out[mark:]
+        j = next((n for n, x in enumerate(setup) if D6.search(x)), len(setup))
+        if any(D6.search(x) for x in self.out[:mark]) or not all(x.startswith("\t") for x in setup):
+            return False
+        if j < len(setup):
+            op, _, args = setup[j].strip().partition(" ")
+            if not op.startswith("move") or not args.endswith(",d6") or D6.search(args[:-3]):
+                return False
+        if not all(map(keeps_x, setup[j:])):
+            return False
+        self.out[mark + j:mark + j] = ["\tadd.b d6,d6"]
+        self.out.insert(mark, "\tsubx.b d6,d6")
+        self.x_cf = True
+        self.stats["carry X kept across setup"] += 1
+        return True
+
     def carry_op(self, m68, kind, a, b, w) -> None:
         """adc sbb: addx/subx need X = CF and Z preset to 1. Order: addresses and the
-        source first (they may change X), then X from the state block, then X-safe
-        moves of the destination."""
+        source first (they may change X), then X from the state block or kept
+        across them (R28), then X-safe moves of the destination."""
         sz = SZ[w]
+        mark, x_in = len(self.out), self.x_cf
         if isinstance(a, Mem):
             self.lea(a)
         s = self.src_operand(b, areg=False, mem=False, scratch="d6")
         if s.startswith("#"):
             self.e(f"move.l {s},d6")
             s = "d6"
-        if self.x_cf:
+        if self.x_cf or x_in and self.keep_x(mark):
             self.stats["carry X reused"] += 1
         else:
             self.e("move.b G_FL+1(a6),d7")

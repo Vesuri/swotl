@@ -12,8 +12,8 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   8 MB Fast model (`AMIGA_CPU` unset): frames 4–11 median ≤ 12 fields
   (240 ms); stretch ≤ 10.
 - **Status:** R16 alignment repair, R17 palette validity, R18 flag extraction kept; R20 cell
-  cache, R21 string layout, R22 call layout, R24 REP STOSW fill, R25 BP as data, R26 REPE CMPSW and R27 cold
-  branch sides kept. Item 14b's 240 ms target
+  cache, R21 string layout, R22 call layout, R24 REP STOSW fill, R25 BP as data, R26 REPE CMPSW, R27 cold
+  branch sides and R28 carry in X kept. Item 14b's 240 ms target
   remains unmet; no native replacement is authorized. Next steps: open-work 31 (repriced 2026-10-19).
 - **Frames fixture** (R27, 2026-10-19): medians 370, 350 and
   370 ms; same-session parent 390, 370 and 340 ms. Full intervals and spans in §7.
@@ -21,8 +21,8 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   R20 opening 71,523 → 72,197 lines (+0.9424%), identical guest
   RAM; approved tradeoff. Palette window 38,392–38,405 lines (R17),
   2.81–3.61% below its same-session parent.
-- **Meter** (m4, R18 weights, R27): generated + walk + runtime 177,012,300
-  model cycles (−0.6278% from parent); generated + walk 174,682,240 cycles, 9.717 per
+- **Meter** (m4, R18 weights, R28): generated + walk + runtime 176,163,287
+  model cycles (−0.4796% from parent); generated + walk 173,833,147 cycles, 9.670 per
   guest instruction of R24's count (17,976,252; R25's zero-code labels hide 45,439,
   open-work 36). Host platform adds 2,171 cycles.
 - **Capture** (R24, first frames run, 100 fields): generated code 81.40%
@@ -307,12 +307,49 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R25 | native BP kept in a run, dead mirror stores dropped | `reuse.py` | −1.1354% |
 | R26 | REPE CMPSW: eight long compares per pass, remainder pairs first | `lower.py` | −0.8031% |
 | R27 | cold sides of hot forward jcc out of line, profile-chosen | `emit.py`, `tools/outline_sites.py` | −0.6278% (bench −0.481%) |
+| R28 | carry in X kept across an adc/sbb operand setup in d6 | `lower.py` | −0.4796% |
 
 Priced candidates (repriced 2026-10-19 on the `a1df937` meter): open-work 31 (each ≤ 1.2%). No form
 left (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
 `__set_flags` (POPF/IRET) and `__flags_word` are the largest runtime-side
 items left.
+
+### R28 carry in X across the operand setup (2026-10-19; kept)
+
+Parent `118bb1c`; meter 177,012,300 cycles. Price before coding (exact counts
+of the R27 meter, `tmp/item31b/r28/price_carry.py`): an add or sub whose X is
+CF, then (not at a leader) adc/sbb whose index formation in d7 changes X
+before its `G_FL` load: keep X in d6 across the setup, which also lets the
+setter drop its `G_FL` store. 445 sites, 66,169 executions, −736,988 cycles
+(−0.416%); 22,785 executions have no adjacent store-ending setter.
+
+Built: `Lowering.keep_x` (from `carry_op`): when X held CF at the
+instruction's start and the setup changed it, `subx.b d6,d6` (0 or FFh, X
+unchanged) before the setup and `add.b d6,d6` (X from bit 7) before its first
+use of d6, provided that use writes d6 without reading it, nothing earlier in
+the instruction uses d6 and every line from there keeps X (`keeps_x`, the
+whitelist `e` uses). The carry-pair proof in `flags.plan` then holds. R13/R14f
+drop or guard formations only; the slow copies keep both lines.
+
+Meter: 177,012,300 → 176,163,287 cycles (−849,013, −0.4796%); reads and
+writes −68,211 each, executed bytes −587,106 (loop +109,054), instructions
+−79,081, taken −3,930 (loop classification; no label's taken count changed),
+runtime +81. Static generated −566 bytes; Amiga code 1,259,124 → 1,258,568,
+allocated hunks 1,576,904.
+Coverage first: 3,024 boundary cases (+432 BP-region variants): ADC/SBB after
+ADD/SUB of a register or of `[di+2]` (a folded or reused index), the
+consumer's index formed in d7 (`[di]`, `[si+d]`, `[di+d]`, `[bp+d]`,
+`[bx+si+d]`), memory destinations, immediate sources, ES and CS overrides, low
+and high bytes, indexes plain and wrapping past FFFFh, carry and sign edges,
+the consumer's flags or all (PUSHF); zero mismatches on the parent lowering.
+Plants (boundary corpus, 77,683 cases): restore dropped (1,956 mismatches),
+restore after the load into d6 (1,635). Block differential: 13,663 blocks,
+55,190 cases, zero mismatches. No FS-UAE check (first kept step after R27's).
+Gates: test 959 s, Amiga 649 s, smoke 338 s, restoration 462 s, five replays
+3,764 s, sabotage 5,441 s; host-all 4,067 s with c52 past its 2,400 s
+wall-clock limit again (load average 57), alone 853 s and exact (open-work 38);
+sources unchanged.
 
 ### R27 cold sides of hot forward branches (2026-10-19; kept)
 

@@ -102,8 +102,11 @@ diffs directly); relocated words in instructions are emitted as
   between the two (speed-plan R3b). Their 68k lines keep the CCR, or the
   last one that changes it moves the setter's result register at its width
   (unchanged since), which leaves N and Z equal to SF and ZF. PF/AF are
-  stored as result / `a^b^r` bytes only when live. adc/sbb/rcl/rcr derive X
-  from `G_FL` and preset Z for `addx`/`subx`.
+  stored as result / `a^b^r` bytes only when live. adc/sbb/rcl/rcr take CF
+  from X when the instruction before (not across a leader: add, sub, adc,
+  sbb, neg, shifts) leaves X = CF, else from `G_FL`; an adc/sbb operand
+  setup that changes X keeps it in d6 (`subx.b d6,d6` first, `add.b d6,d6`
+  before the setup's load into d6, R28). Z is preset for `addx`/`subx`.
 - Strings (D11): per-element loops, one body per DF; the backward body is
   out of line and rejoins the forward body's continuation (R21). REP with DF = 0,
   CX ≠ 0 and SI/DI + size × CX < 10000h takes a fast path with host pointers

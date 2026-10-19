@@ -51,10 +51,15 @@ speed work: [speed-plan.md](speed-plan.md).
     `bra` back to its target that never closes a loop, so R27's meter Δ is
     −0.6278%, −0.7903% counting only taken back edges (FS-UAE agreed in sign).
     Decide the definition (and recalibrate) at the next re-profile.
+38. `make gates`: host-all's c52-campaign-loss passed the R26 gates but ran past its
+    2,400 s wall-clock limit (`t-cov-%`, `host_run.py --timeout`) in the R27 and R28
+    gates (load average up to 57: sabotage, host-all and FS-UAE at once, plus
+    Spotlight), stopped short of the reference's services with no fault; alone 783 s
+    and 853 s, exact. Decide: a longer limit for long scenarios, or fewer parallel jobs.
 31. Translator candidates, repriced 2026-10-19 on the `a1df937` m4 meter (183,699,737
     model cycles) unless noted, in price order; each one a speed-plan step (R24 REP
-    STOSW, R25 BP as data, R26 REPE CMPSW and R27 cold branch sides done). Evidence:
-    `tmp/item31b/`.
+    STOSW, R25 BP as data, R26 REPE CMPSW, R27 cold branch sides and R28 carry in X
+    done). Evidence: `tmp/item31b/`.
     - Block layout (audit on `a1df937`): free-placement bound −5.31M, 22.7% of the
       taken weight `dbcc` back edges. Left: `jcc` over a lone `jmp` (the 8086 long
       conditional) as one inverted branch, static, −0.15M (118 executed sites); the
@@ -66,8 +71,6 @@ speed work: [speed-plan.md](speed-plan.md).
       `cmp.l` (−8 bytes, −1 write); `retf`: one `move.l` pop (−6 bytes, −1 read). A
       wrapped pop needs its own `bvs.w` guard (a compare can match by chance), and
       runtime consumers of a far return read CS from d6 today. 5ecdf79 price.
-    - Carry in X across address formation (`add`/`adc`, `sub`/`sbb` pairs through
-      `move.w ccr,G_FL`): ≤ −1.03M (−0.47%), 487 sites, 68,211 executions.
     - An ES load that repeats ES (79% of 82,280): skip the base: −0.32M (−0.15%).
       Not DS (13% repeat: +0.5M).
     - Push/pop runs, one `bvs.w` guard per run: −0.16M (−0.07%).
