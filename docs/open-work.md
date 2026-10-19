@@ -23,9 +23,9 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Translator and validation
 
-14b. Speed target remains unmet: frames-fixture 68020 run medians on R22
-    (2026-10-18) 390, 370 and 380 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
-    §1, §9). Roughly 37% further reduction is needed from 380 ms; parent intervals overlap. Remaining
+14b. Speed target remains unmet: frames-fixture 68020 run medians on R24
+    (2026-10-19) 370, 360 and 380 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
+    §1, §9). Roughly 35% further reduction is needed from 370 ms; parent intervals overlap. Remaining
     cost is mostly generated guest code; priced translator candidates are 31,
     FM synthesis is 34 (flag-word packing rejected, speed-plan §10). Native replacement
     requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
@@ -46,32 +46,26 @@ speed work: [speed-plan.md](speed-plan.md).
     instructions: rejected R23's m4 count drops by exactly the four removed jumps' 68,070
     entries. Recover semantic counts before comparing per-guest ratios across
     such layouts. Meter totals and alias-aware fixed-instruction A/B are unaffected.
-31. Translator candidates, priced 2026-10-17 on the `5ecdf79` m4 meter (217,202,211
-    model cycles; outside the cell walk, which R20 replaced), in price order; each one
-    a speed-plan step. Paused at user request on 2026-10-18: resume with the
-    remaining layout audit on `a1df937`, then reprice the candidates below in order.
-    No optimization is in progress; the fresh baseline meter completed in
-    `tmp/item31-layout-audit/`, but candidate pricing remains unfinished.
-    - Block layout: ≤ −6.06M (−2.8%). Greedy chain layout of the m4 block graph:
-      local taken transfers 3.61M → 2.50M. Upper bound (free placement); bench
-      acceptance (D5). Largest: D5A6's loop (`R_0D5EA`), `R_04FD5`, `R_04FF7`.
-      General block layout remains open after string and call outlining (R21/R22,
-      speed-plan §7); audit the remaining shapes on the current parent. The free-placement
-      bound is not an implementable price. R23 loop-tail placement rejected:
-      six bench pairs do not establish no slowdown (speed-plan §10).
-    - REP STOSW 8 or 16 words per pass: −1.76M to −2.06M (−0.81 to −0.95%);
-      `R_0C1CA` makes 392K two-word passes (255 words a run).
+31. Translator candidates, repriced 2026-10-19 on the `a1df937` m4 meter (183,699,737
+    model cycles) unless noted, in price order; each one a speed-plan step (R24 REP
+    STOSW done). Evidence: `tmp/item31b/`.
+    - BP as data: −2.07M (−1.13%; flat byte weight): within a run, native BP kept
+      where a mirror store left it, a mirror store dropped when the next one comes
+      first (`D5DA`..`D5E6` loop 62,708 runs).
+    - `repe cmpsw` 16 words per pass (`bne.s` exits): −1.51M (8 words −1.15M);
+      `VGA_03BE9` makes 472,828 two-word passes.
+    - Block layout (audit on `a1df937`): free-placement bound −5.31M, 22.7% of the
+      taken weight `dbcc` back edges. Implementable: the cold side of a hot forward
+      guest `jcc` out of line, profile-chosen, ≈ −0.85M (140 sites); `jcc` over a lone
+      `jmp` (the 8086 long conditional) as one inverted branch, static, −0.15M
+      (118 executed sites). Bench acceptance (D5). R23 loop-tail placement rejected
+      (speed-plan §10).
     - Far call/return: −1.75M (−0.81%; −1.52M if misaligned longs cost two accesses:
       long address ≡ 2 mod 4 at 44% of sampled `callf`, 57% of `retf`). `callf`:
       `addq.w #4,d4`, `bvs.w` to the exact two-word path, one `move.l` CS:IP, one
-      `cmp.l` (−8 bytes, −1 write); `retf`: one `move.l` pop (−6 bytes, −1 read), a
-      wrapped pop fails the compare and the mismatch path re-reads exactly.
-    - BP as data: −1.62M (−0.75%), the conversion pair between consecutive
-      BP-data instructions in a run (24 sites; `D5DC`/`D5DE` 62,708 each). All
-      conversions: 5.08M (executed: `or bp` 362K, `mov bp,r` 116K, `push`/`pop bp`
-      ~89K each).
-    - `repe cmpsw` 8 words per pass (`bne.s` exits): −1.38M (−0.64%);
-      `VGA_03BE9` makes 472,828 two-word passes.
+      `cmp.l` (−8 bytes, −1 write); `retf`: one `move.l` pop (−6 bytes, −1 read). A
+      wrapped pop needs its own `bvs.w` guard (a compare can match by chance), and
+      runtime consumers of a far return read CS from d6 today. 5ecdf79 price.
     - Carry in X across address formation (`add`/`adc`, `sub`/`sbb` pairs through
       `move.w ccr,G_FL`): ≤ −1.03M (−0.47%), 487 sites, 68,211 executions.
     - An ES load that repeats ES (79% of 82,280): skip the base: −0.32M (−0.15%).

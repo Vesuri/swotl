@@ -12,21 +12,21 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   8 MB Fast model (`AMIGA_CPU` unset): frames 4–11 median ≤ 12 fields
   (240 ms); stretch ≤ 10.
 - **Status:** R16 alignment repair, R17 palette validity, R18 flag extraction kept; R20 cell
-  cache, R21 string layout and R22 call layout kept. Item 14b's 240 ms target remains unmet; no native replacement is
-  authorized. Next steps priced 2026-10-17: open-work 31.
-- **Frames fixture** (R22, 2026-10-18): medians 390, 370 and
-  380 ms; same-session parent 380, 390 and 380 ms. Full intervals and spans in §7.
+  cache, R21 string layout, R22 call layout and R24 REP STOSW fill kept. Item 14b's 240 ms target
+  remains unmet; no native replacement is authorized. Next steps: open-work 31 (repriced 2026-10-19).
+- **Frames fixture** (R24, 2026-10-19): medians 370, 360 and
+  380 ms; same-session parent 370, 370 and 370 ms. Full intervals and spans in §7.
 - **Bench:** R22 opening 72,205 → 72,089 lines (−0.161%), identical guest RAM.
   R20 opening 71,523 → 72,197 lines (+0.9424%), identical guest
   RAM; approved tradeoff. Palette window 38,392–38,405 lines (R17),
   2.81–3.61% below its same-session parent.
-- **Meter** (m4, R18 weights, R22): generated + walk + runtime 183,699,737
-  model cycles (−0.0246% from parent); generated + walk 181,369,677 / 17,976,252 guest
-  instructions = 10.089 cycles each. Host platform adds 2,171 cycles.
-- **Capture** (R22, first frames run, 100 fields): generated code 80.18%
-  (cell walk 2.72%), runtime/platform 14.66% (three main FM functions 7.89%, item 34),
-  no PC 3.20%, Kickstart 1.04%, IRQ transition 0.93%. Profiler guest-entry count:
-  2,290,967; 9.95 cycles and 2.329 68k instructions each (see open-work 36).
+- **Meter** (m4, R18 weights, R24): generated + walk + runtime 181,635,072
+  model cycles (−1.1239% from parent); generated + walk 179,305,012 / 17,976,252 guest
+  instructions = 9.975 cycles each. Host platform adds 2,171 cycles.
+- **Capture** (R24, first frames run, 100 fields): generated code 81.40%
+  (cell walk 3.87%), runtime/platform 14.44% (three main FM functions 8.12%, item 34),
+  no PC 2.19%, Kickstart 1.04%, IRQ transition 0.93%. Profiler guest-entry count:
+  2,238,188; 10.34 cycles each (see open-work 36).
 
 ## 2. Hard rules
 
@@ -301,12 +301,55 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R20 | cell cache: cells matched once, runs of destinations stored by longs, exact invalidation (D3) | `smc.py`, `lower.py`, runtime | −15.3114% |
 | R21 | backward string bodies outlined; forward path falls through | `lower.py` | −0.1080% |
 | R22 | first matched walk call returns into its check; fallback outlined | `lower.py` | −0.0246% |
+| R24 | REP STOSW: eight longs per pass, long-aligned stores, odd word last | `lower.py` | −1.1239% |
 
-Priced candidates (2026-10-17, `5ecdf79` meter): open-work 31 (each ≤ 2.8%). No form
+Priced candidates (repriced 2026-10-19 on the `a1df937` meter): open-work 31 (each ≤ 1.2%). No form
 left (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
 `__set_flags` (POPF/IRET) and `__flags_word` are the largest runtime-side
 items left.
+
+### R24 REP STOSW fill (2026-10-19; kept)
+
+Parent `826b383` (code of `a1df937`). Fresh m4 meter: 183,699,737 cycles.
+Price before coding: −2,147,183 cycles (−1.169%) for 16 words per pass
+(dbf once per 8 longs, remainder by computed entry, 12 bytes and a taken jump
+per run); 8 words −1,824,717. `R_0C1CA`: 392,303 long stores in 3,089 runs,
+every one at a host address ≡ 2 mod 4 (its odd first word shifts them);
+`R_10A3D_bp`/`R_10A47_bp`/`R_10A51_bp` 8,232 each, `R_0FE0F_bp` 6,223.
+
+Built: the fast path stores AX only and has no read or poll, so the order is
+free: a first word where the pointer is not long aligned, eight longs per pass
+(remainder by computed entry), an odd last word after them. Every long store
+is aligned; the meter does not price misalignment.
+
+Meter: 183,699,737 → 181,635,072 cycles (−2,064,665, −1.1239%); executed
+bytes −1,342,860 (loop −1,473,534), writes +1,029, taken +10,392, instructions
+−309,786, reads unchanged. Static generated +656 bytes; Amiga code 1,258,240 →
+1,258,888, allocated hunks 1,577,224.
+FS-UAE changed labels, exact host counts (three run pairs): −27.99%, −28.00%,
+−27.96%; `R_0C1CA` −34.5%. The three 8-pair fills `R_10A3D/47/51_bp` run
+11–17% slower (meter −3 to −9%): the meter underrates the per-run computed
+entry. Signs agree over the changed labels (§3).
+Coverage first: 228 fill cases (CX 1–40 and remainders around 48–257 at
+every DI mod 4, 7FFFh words, range ends at FFFFh). Plants: the odd-word plant
+moved to the new template (288 mismatches); remainder skipped 400, aligning
+word not counted 244, passes of 16 longs 151; half store 399.
+Gates: test 480 s, Amiga 708 s, smoke 246 s, restoration 431 s, five replays
+8,742 s, sabotage 10,242 s under heavy machine load; host-all timed out
+18 coverage runs at 2,400 s there, passed alone on the same sources in 1,780 s.
+Evidence: `tmp/item31b/` (prices, census, `r24/` meters, arms, captures' reports).
+
+| Arm/run | Frames 4–11 intervals (fields) | Median | Span |
+|---|---|---:|---:|
+| Parent 1 | 22,21,18,21,17,19,17,17 | 370 ms | 17–22 |
+| Parent 2 | 22,21,17,22,17,20,16,16 | 370 ms | 16–22 |
+| Parent 3 | 22,22,17,21,18,19,17,16 | 370 ms | 16–22 |
+| R24 1 | 22,21,17,21,17,20,16,17 | 370 ms | 16–22 |
+| R24 2 | 22,22,17,22,17,19,17,16 | 360 ms | 16–22 |
+| R24 3 | 22,21,18,21,17,20,16,17 | 380 ms | 16–22 |
+
+Intervals overlap: no frame-rate gain claimed.
 
 ### R22 near-call fallback layout (2026-10-18; kept)
 
@@ -637,8 +680,8 @@ frozen arms, meters, captures' reports and gates).
 
 ## 9. Gap
 
-R22's run medians are 390, 370 and 380 ms. Reaching 240 ms requires about
-37% less frame time from their 380 ms median; parent and candidate intervals overlap.
+R24's run medians are 370, 360 and 380 ms. Reaching 240 ms requires about
+35% less frame time from their 370 ms median; parent and candidate intervals overlap.
 Normal trajectories vary; acceptance uses the fixed-work meter and §3 checks.
 Top guest routines (first R22 capture, self time): SWOTL.EXE+0B54B 8.30%,
 +0BFD1 7.67%, +109D6 4.46%, +0D5A6 3.98%, +0B017 3.92%,

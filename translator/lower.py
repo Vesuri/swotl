@@ -1527,18 +1527,36 @@ class Lowering:
         compared as the element body does. d7 = CX at entry."""
         loop, tail, fin = self.local(), self.local(), self.local()
         if self.i.op == "stos":
+            # R24: every store writes AX and the fast path has no poll or read,
+            # so the order is free: a first word where the pointer is not long
+            # aligned, eight longs per pass (the remainder by a computed entry),
+            # an odd last word after them. AX:AX in a0, the word count in d7.
             self.e("move.w d0,d6")
             self.e("swap d6")
             self.e("move.w d0,d6")
-            self.e("lsr.w #1,d1")
+            self.e("movea.l d6,a0")
+            self.e("move.w a5,d7")
+            self.e("lsr.b #2,d7")
             self.e(f"bcc.s {tail}")
             self.e("move.w d0,-(a5)")
-            self.at(tail)
             self.e("subq.w #1,d1")
-            self.e(f"bcs.s {fin}")
+            self.at(tail)
+            self.e("move.w d1,d7")
+            self.e("lsr.w #1,d1")
+            self.e("moveq #7,d6")
+            self.e("and.w d1,d6")
+            self.e("lsr.w #3,d1")
+            self.e("neg.w d6")
+            self.e(f"jmp {fin}(pc,d6.w*2)")
             self.at(loop)
-            self.e("move.l d6,-(a5)")
+            for _ in range(8):
+                self.e("move.l a0,-(a5)")
+            self.at(fin)
             self.e(f"dbf d1,{loop}")
+            fin = self.local()
+            self.e("lsr.w #1,d7")
+            self.e(f"bcc.s {fin}")
+            self.e("move.w d0,-(a5)")
             self.at(fin)
             self.e("clr.w d1")
             self.stats["string pairs"] += 1

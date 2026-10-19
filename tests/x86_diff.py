@@ -537,6 +537,30 @@ def boundary(h: Harness) -> None:
     string_direction_layout_cases(h)
     near_dispatch_layout_cases(h)
     loop_layout_cases(h)
+    string_fill_cases(h)
+
+
+def string_fill_cases(h):
+    """R24: REP STOSW 16 words per pass. CX covering every remainder of 8 pairs,
+    no, one and several passes, an odd last word; DI at every offset mod 4 (the
+    aligning first word or none); 7FFFh words; ranges ending at FFFFh (fast
+    path) and one past it."""
+    counts = list(range(1, 41)) + [47, 48, 49, 63, 64, 65, 127, 128, 129, 255, 256, 257]
+    for cx in counts:
+        for d in range(4):
+            h.case(b"\xf3\xab", "b:fill-stosw",
+                   overrides={"regs": {"cx": cx, "di": 0x200 + d, "es": 0x5000,
+                                       "ax": h.rng.randrange(0x10000)}, "flags": {"DF": 0}})
+    for cx, di in ((0x1000, 2), (0x1000, 3), (0x7FFF, 0), (0x7FFF, 1)):
+        h.case(b"\xf3\xab", "b:fill-stosw-long",
+               overrides={"regs": {"cx": cx, "di": di, "es": 0x5000,
+                                   "ax": h.rng.randrange(0x10000)}, "flags": {"DF": 0}})
+    for cx in (16, 17, 33, 255):
+        for slack in (0, 1, 2, 3):
+            h.case(b"\xf3\xab", "b:fill-stosw-edge",
+                   overrides={"regs": {"cx": cx, "di": 0x10000 - 2 * cx + slack & 0xFFFF,
+                                       "es": 0x5000, "ax": h.rng.randrange(0x10000)},
+                              "flags": {"DF": 0}})
 
 
 def loop_layout_cases(h):

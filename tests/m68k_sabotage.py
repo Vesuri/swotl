@@ -365,10 +365,17 @@ def trust_register_upper_word(self, out):
 
 
 def pair_odd_dropped(self, out):
-    """R12: the pair loops skip an odd element (STOSW's first, CMPSW's last)."""
-    return [x.replace("\tbcc.s ", "\tbra.s ") if out[k - 2:k] in (["\tmove.w d0,d6", "\tlsr.w #1,d1"],
-                                                               ["\tclr.w d1", "\tlsr.w #1,d7"])
+    """R12/R24: the pair loops skip an odd element (STOSW's last, CMPSW's last)."""
+    return [x.replace("\tbcc.s ", "\tbra.s ") if out[k - 2:k] == ["\tclr.w d1", "\tlsr.w #1,d7"]
+            or out[k - 1:k] == ["\tlsr.w #1,d7"] and out[k - 2].startswith("\tdbf d1,")
             else x for k, x in enumerate(out)]
+
+
+def fill_remainder_skipped(self, out):
+    """R24: REP STOSW enters its eight-long loop at the dbf whatever the remainder."""
+    return ["\tmoveq #0,d6" if x == "\tneg.w d6" and out[k + 1:k + 2]
+            and out[k + 1].startswith("\tjmp ") and out[k + 1].endswith("(pc,d6.w*2)") else x
+            for k, x in enumerate(out)]
 
 
 def pair_half_store(self, out):
@@ -519,6 +526,9 @@ SABOTAGE = [
      "boundary"),
     ("pair loop skips the odd element", pair_odd_dropped, "boundary"),
     ("pair store writes AX in one word", pair_half_store, "boundary"),
+    ("fill skips the remainder longs", fill_remainder_skipped, "boundary"),
+    ("fill aligning word not counted", drop_after("move.w d0,-(a5)", "subq.w #1,d1"), "boundary"),
+    ("fill passes of sixteen longs", sub(r"^\tlsr\.w #3,d1$", "\tlsr.w #4,d1"), "boundary"),
     ("pair count keeps the even part", sub(r"^\tandi\.w #1,d7$", "\tnop"), "boundary"),
     ("held index survives register writes", "reuse writes", "boundary"),
     ("held index survives a block leader", "reuse leaders", "program"),
