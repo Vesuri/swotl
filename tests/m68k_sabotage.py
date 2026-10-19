@@ -41,6 +41,7 @@ real_guard_lines = U.guard_lines
 real_slow_path = U.slow_path
 real_base_written = U.base_written
 real_bp_native = U.bp_native
+real_stack_runs = U.stack_runs
 real_invert = E.INVERT
 real_cold_return = E.cold_return
 real_retried = E.retried
@@ -534,6 +535,23 @@ BP_PLANTS = {
 }
 
 
+def stack_runs_line(old, new):
+    """R31: reuse.stack_runs with one source line changed."""
+    source = inspect.getsource(real_stack_runs)
+    assert source.count(old) == 1, old
+    scope = dict(U.__dict__)
+    exec(source.replace(old, new), scope)
+    return scope["stack_runs"]
+
+
+STACK_PLANTS = {
+    "stack wrap": (', f"\\tbvs {cold}"] if j == 0', '] if j == 0'),
+    "stack push slot": ("{2 * (j - n) + 1}(a2", "{2 * (j - n) + 3}(a2"),
+    "stack pop order": ("{2 * (n - j) - 1}(a2", "{2 * j + 1}(a2"),
+    "stack undo": ('[f"{cold}:", f"\\t{sub}{q}.w #{size},d4"]', '[f"{cold}:"]'),
+}
+
+
 def wide_bp_range(insns):
     """R6: the region guard admits BP one past each end of its range."""
     r = real_bp_range(insns)
@@ -615,6 +633,11 @@ SABOTAGE = [
     ("changed segment load treated as a repeat", sub(r"^\tbne \w+_gx\d+$", "\tnop"), "boundary"),
     ("segment repeat compares another segment", seg_compare_other_slot, "boundary"),
     ("changed segment keeps the upper word", seg_changed_keeps_upper, "boundary"),
+    ("stack run ignores the SP wrap", "stack wrap", "boundary"),
+    ("stack run push slots one step off", "stack push slot", "boundary"),
+    ("stack run pops in reverse order", "stack pop order", "boundary"),
+    ("stack run exact path keeps the step", "stack undo", "boundary"),
+    ("stack run spans a block leader", "stack leaders", "program"),
     ("held index survives a block leader", "reuse leaders", "program"),
     ("divide retry enters no leader", "retry leaders", "program"),
     ("copy exit enters no leader", "copy exit leaders", "program"),
@@ -692,6 +715,10 @@ def plant(k: int) -> tuple[int, int, int, int]:
         R.bp_range = wide_bp_range
     elif fn in BP_PLANTS:           # reuse.bp_native (R25)
         U.bp_native = bp_native_line(*BP_PLANTS[fn])
+    elif fn in STACK_PLANTS:        # reuse.stack_runs (R31)
+        U.stack_runs = stack_runs_line(*STACK_PLANTS[fn])
+    elif fn == "stack leaders":     # reuse.stack_runs (R31)
+        U.stack_runs = lambda outs, resets, labels, colds: real_stack_runs(outs, set(), labels, colds)
     elif fn == "outline condition":     # emit.INVERT (R27)
         E.INVERT = {cc: cc for cc in real_invert}
     elif fn == "outline return":        # emit.cold_return (R27)
@@ -760,6 +787,7 @@ def plant(k: int) -> tuple[int, int, int, int]:
         U.slow_path = real_slow_path
         U.base_written = real_base_written
         U.bp_native = real_bp_native
+        U.stack_runs = real_stack_runs
         L.Lowering.op_jcc = real_op_jcc
         F.plan = real_plan
 

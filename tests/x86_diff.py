@@ -543,6 +543,7 @@ def boundary(h: Harness) -> None:
     carry_setup_cases(h)
     far_call_push_cases(h)
     seg_repeat_cases(h)
+    stack_run_cases(h)
 
 
 def string_compare_cases(h):
@@ -1644,6 +1645,39 @@ def far_call_push_cases(h):
                               "ip": 0x100,
                               "mem": stack + [(0x50400, bytes.fromhex("78563412")),
                                               (0x60402, bytes.fromhex("cdab0100"))]})
+
+
+def stack_run_cases(h):
+    """R31: runs of 2-9 PUSHes (registers, mirrored BP, segments, memory through
+    DS, SS and ES) and 2-7 POPs (registers, mirrored BP, SI/DI, memory, ES
+    last), SP at every value from which the run wraps SS:0 (0 to 2k+1), around
+    7FFFh/8000h, FFF0h-FFFFh and one middle value, distinct stack bytes on both
+    sides; alone or after a flag setter with PUSHF after."""
+    pushes = (["50", "53", "06", "55", "56", "ff7002", "1e", "ff76ee", "26ff35"],
+              ["ff76ee", "57", "0e", "52", "26ff35", "16", "51", "55", "ff7002"])
+    pops = (["58", "5b", "5d", "5e", "8f4702", "5f", "07"],
+            ["8f4604", "5a", "5f", "59", "5d", "5e", "07"])
+    runs = [(seq[:k], k) for seq in pushes for k in range(2, 10)]
+    runs += [(seq[:k - 1] + [seq[-1]] if k < 7 else seq, k) for seq in pops for k in range(2, 8)]
+    for seq, k in runs:
+        sps = list(range(2 * k + 2)) + [0x7FFE, 0x7FFF, 0x8000, 0x8001, 0x8000 + 2 * k,
+                                         0xFFF0, 0xFFFE, 0xFFFF, 0x1234]
+        for sp in sps:
+            for around in (False, True):
+                stack = [(0x70000 + (sp + j & 0xFFFF), bytes([0x3C + 29 * j & 0xFF]))
+                         for j in range(-2 * k - 2, 2 * k + 3)]
+                code = bytes.fromhex(("01c8" if around else "") + "".join(seq) +
+                                     ("9c" if around else ""))
+                h.case(code, "b:stack-run", n=k + 2 * around, block=True,
+                       overrides={"regs": {"sp": sp, "ss": 0x7000, "cs": 0x2000, "ds": 0x5000,
+                                           "es": 0x6000, "bx": 0x400, "si": 0x10, "di": 0x20,
+                                           "bp": 0x1000},
+                                  "ip": 0x100,
+                                  "mem": stack + [(0x50402, bytes.fromhex("3412")),
+                                                  (0x50412, bytes.fromhex("7856")),
+                                                  (0x71004, bytes.fromhex("1032")),
+                                                  (0x60020, bytes.fromhex("bc9a")),
+                                                  (0x70fee, bytes.fromhex("f0de"))]})
 
 
 def seg_repeat_cases(h):

@@ -13,8 +13,10 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   (240 ms); stretch ≤ 10.
 - **Status:** R16 alignment repair, R17 palette validity, R18 flag extraction kept; R20 cell
   cache, R21 string layout, R22 call layout, R24 REP STOSW fill, R25 BP as data, R26 REPE CMPSW, R27 cold
-  branch sides, R28 carry in X, R29 far push and R30 repeated segment loads kept. Item 14b's 240 ms target
-  remains unmet; no native replacement is authorized. Next steps: open-work 31 (repriced 2026-10-19).
+  branch sides, R28 carry in X, R29 far push, R30 repeated segment loads and R31 push/pop runs
+  kept. Item 14b's 240 ms target remains unmet; no native replacement is authorized. Next
+  steps: open-work 38 (gate wall time), then open-work 31: the jcc/jmp fusion, then the far
+  return (approved 2026-10-19).
 - **Frames fixture** (R30, 2026-10-19): medians 340, 340 and
   340 ms; same-session parent 370, 350 and 340 ms. Intervals for R27 in §7.
 - **Bench:** R30 opening 71,542 (R29, median of three) → 70,243 lines (−1.816%), identical guest
@@ -22,9 +24,9 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   R20 opening 71,523 → 72,197 lines (+0.9424%), identical guest
   RAM; approved tradeoff. Palette window 38,392–38,405 lines (R17),
   2.81–3.61% below its same-session parent.
-- **Meter** (m4, R18 weights, R30): generated + walk + runtime 174,303,221
-  model cycles (−0.5926% from parent; divide-retry and copy-exit leaders then
-  +387); generated + walk 171,973,081 cycles, 9.567 per
+- **Meter** (m4, R18 weights, R31): generated + walk + runtime 174,160,495
+  model cycles (−0.0821% from parent, which added +387 for divide-retry and
+  copy-exit leaders); generated + walk 171,830,355 cycles, 9.559 per
   guest instruction of R24's count (17,976,252; R25's zero-code labels hide 45,439,
   open-work 36). Host platform adds 2,171 cycles.
 - **Capture** (R24, first frames run, 100 fields): generated code 81.40%
@@ -312,12 +314,56 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R28 | carry in X kept across an adc/sbb operand setup in d6 | `lower.py` | −0.4796% |
 | R29 | CALLF pushes CS:IP as one long; SP wrap out of line | `lower.py` | −0.4660% |
 | R30 | segment loads that mostly repeat compare first; store, check and base out of line | `lower.py`, `tools/seg_repeat.py` | −0.5926% (bench −1.816%) |
+| R31 | push (pop) runs step SP once; SP wrap out of line | `reuse.py` | −0.0821% |
 
 Priced candidates (repriced 2026-10-19 on the `a1df937` meter): open-work 31 (each ≤ 1.2%). No form
 left (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
 `__set_flags` (POPF/IRET) and `__flags_word` are the largest runtime-side
 items left.
+
+### R31 push and pop runs step SP once (2026-10-19; kept)
+
+Parent `cd79526`; meter 174,303,609 cycles. Price before coding (R30 meter and
+build, `tmp/item31b/r31/price_pushpop.py`): consecutive one-word PUSHes (POPs)
+with no label between them, one SP step per run (`addq` to 8, else `add.w`)
+and a `bvs` guard instead of a step each; runs of four or more: pushes 27,986
+executions, −128,296 model cycles, pops 7,795, −27,002; together −155,298
+(−0.089%). Shorter runs gain nothing (three even, two +2 bytes).
+
+Built: `reuse.stack_runs` (after `bp_native`): instructions with no leader or
+fence between, each a one-word push (pop) whose other lines neither use SP
+nor transfer control. The first steps SP by the whole run and `bvs
+<label>_kx0` (only that step can overflow d4.w: the run wraps SS:0); the
+stores (loads) address from the final SP; out of line the exact lines,
+rejoining at `<last>_kr0` (`profile_report.INSIDE`). 265 push runs (1,218
+pushes) and 8 pop runs (40 pops), 32 of them in R6 copies.
+The first build stopped m1's host run at a return check: a guarded copy falls
+into the exact code at POP BP inside a pop run, which was no leader (the block
+differential starts blocks at leaders only); the parent makes copy exits and
+divide-error retries leaders.
+
+Meter: 174,303,609 → 174,160,495 cycles (−143,113, −0.0821%); instructions
+−143,380, executed bytes −47,792 (loop −106,886), taken +558 (loop
+classification; no label's taken count changed); counting only taken back
+edges −147,593 (−0.0848%). Static generated +11,880 bytes (the exact lines out
+of line); Amiga code 1,350,084 (R30) → 1,362,104 (the parent's leaders
+included), allocated hunks 1,680,440.
+Coverage first: 1,184 boundary cases: runs of 2–9 PUSHes (registers, BP,
+segment registers, memory through DS, SS and ES) and 2–7 POPs (registers, BP,
+SI/DI, memory, ES last), SP at every start that wraps SS:0 (0 to 2k+1),
+7FFEh–8001h, 8000h+2k, FFF0h, FFFEh, FFFFh and 1234h, distinct stack bytes,
+alone or after a flag setter with PUSHF; 2,272 with the bp-region and
+seg-repeat variants; zero mismatches on the parent. Plants (boundary corpus,
+81,389 cases): wrap ignored (520), push slots a step off (440), pops in
+reverse order (644), exact path keeps the step (600); a run across a leader
+(program corpus, 7 of 45,912). Block differential: 13,925 blocks (the parent's
+leaders), 72,191 cases including 16,351 guest entries, zero mismatches. No
+FS-UAE check (first kept step after R30's).
+Gates: test 640 s, Amiga 97 s, smoke 406 s, restoration 530 s, five replays
+2,777 s, sabotage 4,255 s; host-all 3,690 s with c52 past its 2,400 s
+wall-clock limit, alone 758 s and exact (23,539 interrupts, 3,895,576
+services); sources unchanged. Evidence: `tmp/item31b/r31/`.
 
 ### R30 repeated segment loads compare first (2026-10-19; kept)
 

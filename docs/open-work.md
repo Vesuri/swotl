@@ -60,7 +60,8 @@ speed work: [speed-plan.md](speed-plan.md).
 31. Translator candidates, repriced 2026-10-19 on the `a1df937` m4 meter (183,699,737
     model cycles) unless noted, in price order; each one a speed-plan step (R24 REP
     STOSW, R25 BP as data, R26 REPE CMPSW, R27 cold branch sides, R28 carry in X, R29
-    far push and R30 repeated segment loads done). Evidence: `tmp/item31b/`.
+    far push, R30 repeated segment loads and R31 push/pop runs done). Evidence:
+    `tmp/item31b/`.
     - Block layout (audit on `a1df937`): free-placement bound −5.31M, 22.7% of the
       taken weight `dbcc` back edges. Left: `jcc` over a lone `jmp` (the 8086 long
       conditional) as one inverted branch, static, −0.15M (118 executed sites); the
@@ -71,8 +72,8 @@ speed work: [speed-plan.md](speed-plan.md).
       −1.75M for both (−1.52M if misaligned longs cost two accesses: long address ≡
       2 mod 4 at 57% of sampled `retf`). A wrapped pop needs its own `bvs.w` guard (a
       compare can match by chance), and runtime consumers of a far return read CS from
-      d6: a return-protocol change, which needs user approval.
-    - Push/pop runs, one `bvs.w` guard per run: −0.16M (−0.07%).
+      d6: a return-protocol change, approved by the user (2026-10-19), after the
+      jcc/jmp fusion.
     Not worth it: index reuse across leaders (all predecessors agreeing,
     single-jump leaders, poll labels: −0.02M); the TFH map's forms (`R_0CE8B` never
     runs in m4 or the captures; `R_10028..R_10044`, `R_0C411`/`R_0C415` ≤ 0.02% each);

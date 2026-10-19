@@ -30,9 +30,9 @@ PREFIX = {"R": "SWOTL.EXE", "SPZ": "SPAZ.OVL", "VGA": "RTSVGA.OVL", "FE": "FRONT
           "RPL": "REPLAY.OVL", "PNL": "PANEL.OVL"}
 GUEST = re.compile(r"^(R|SPZ|VGA|FE|CMP|NCP|FLT|RPL|PNL)_([0-9A-F]{5})(\w*)$")
 # labels inside their instruction X: after a poll point (emit.poll), a segment
-# check, CS store hook, far push (R29), repeated segment load (R30) or string
-# direction join (lower.py)
-INSIDE = re.compile(r"_(np|sr\d+|hr\d+|pr\d+|gr\d+|dfend|dispatchend)$")
+# check, CS store hook, far push (R29), repeated segment load (R30), stack run
+# (R31, reuse.stack_runs) or string direction join (lower.py)
+INSIDE = re.compile(r"_(np|sr\d+|hr\d+|pr\d+|gr\d+|kr\d+|dfend|dispatchend)$")
 # return-check trampolines (translator/emit.py mismatch_stub): generated code
 TRAMPOLINE = re.compile(r"^(R|SPZ|VGA|FE|CMP|NCP|FLT|RPL|PNL)_rm\d+$")
 DEFAULT_GEN = Path(__file__).resolve().parents[1] / "build/gen"

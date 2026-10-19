@@ -80,7 +80,11 @@ diffs directly); relocated words in instructions are emitted as
   register `move.w Rn` / `sub.w #disp`) and indexes as `(0,aS,d7.w)` /
   `(−1,aS,d7.w)`, keeping the 16-bit wrap; SP/BP alone index directly. A word
   at offset FFFFh is two consecutive linear bytes. Push is `addq.w #2,d4` +
-  `move.w v,(−1,a2,d4.w)`. SP/BP as values convert with `eori.w #$7fff`
+  `move.w v,(−1,a2,d4.w)`. A run of four or more pushes (pops) with no leader
+  between steps SP once in its first instruction, `bvs` (only that step can
+  overflow d4.w: the run wraps SS:0) to the exact lines out of line; the rest
+  address from the final SP (`reuse.stack_runs`, R31; R29 for CALLF's long
+  push). SP/BP as values convert with `eori.w #$7fff`
   (dead-flag add/sub/inc/dec, NOT and `or/and/test r,r` stay in place).
   Byte and word memory operands fold into the 68k op (source, read-modify-
   write destination, INC/DEC/NEG/NOT, CMP with an immediate) where AF and

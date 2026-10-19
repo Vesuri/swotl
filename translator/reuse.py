@@ -367,3 +367,74 @@ def bp_native(outs: list[list[str]], resets: set[int]) -> tuple[int, int]:
             j += 1
         out[:] = res
     return loads, stores
+
+
+# R31: a run of PUSHes (POPs) steps SP once, in its first instruction, and the
+# later stores (loads) take the remaining steps in their displacement. Only
+# that step can overflow d4.w (SP is mirrored), exactly when the run wraps
+# SS:0; then the instructions' own lines run out of line.
+STEP = {"push": "\taddq.w #2,d4", "pop": "\tsubq.w #2,d4"}
+PUSHED = re.compile(r"^\tmove\.w (.+),-1\(a2,d4\.w\)$")
+POPPED = re.compile(r"^\t(movea?\.w) -1\(a2,d4\.w\),(.+)$")
+LEAST_RUN = 4           # one bvs and a wider step against the steps dropped
+
+
+def quiet(x: str) -> bool:
+    """A line that neither uses SP nor transfers control."""
+    if not x.startswith("\t") or "d4" in x:
+        return False
+    op = x.split()[0].split(".")[0]
+    return written(x) is not None and not BRANCH_CC.match(op) and not op.startswith("db")
+
+
+def stack_item(out: list[str]) -> tuple | None:
+    """('push', prefix, source, []) or ('pop', prefix, (op, dest), suffix): a
+    one-word push (pop) whose other lines are quiet."""
+    for j, x in enumerate(out):
+        if x == STEP["push"] and j + 2 == len(out):
+            m = PUSHED.match(out[j + 1])
+            if m and "d4" not in m.group(1) and all(map(quiet, out[:j])):
+                return "push", out[:j], m.group(1), []
+            return None
+        m = POPPED.match(x)
+        if m and out[j + 1:j + 2] == [STEP["pop"]]:
+            if "d4" not in m.group(2) and all(map(quiet, out[:j] + out[j + 2:])):
+                return "pop", out[:j], m.groups(), out[j + 2:]
+            return None
+    return None
+
+
+def stack_runs(outs: list[list[str]], resets: set[int], labels: list[str],
+               colds: list[list[str]]) -> int:
+    """Merge the SP steps of push (pop) runs of at least LEAST_RUN in place;
+    the exact lines go to `colds[k]`, labelled from `labels[k]`. Returns the
+    steps dropped."""
+    items = [stack_item(out) for out in outs]
+    dropped, k = 0, 0
+    while k < len(outs):
+        e = k + 1
+        while (items[k] and e < len(outs) and e not in resets and items[e]
+               and items[e][0] == items[k][0]):
+            e += 1
+        if not items[k] or e - k < LEAST_RUN:
+            k = e
+            continue
+        n, kind = e - k, items[k][0]
+        size = 2 * n
+        cold, back = f"{labels[k]}_kx0", f"{labels[e - 1]}_kr0"
+        add, sub = ("add", "sub") if kind == "push" else ("sub", "add")
+        q = "q" if size <= 8 else ""
+        exact = [x for x in outs[k][len(items[k][1]):]] + [x for out in outs[k + 1:e] for x in out]
+        colds[k] += [f"{cold}:", f"\t{sub}{q}.w #{size},d4"] + exact + [f"\tbra {back}"]
+        for j in range(n):
+            _, prefix, what, suffix = items[k + j]
+            step = [f"\t{add}{q}.w #{size},d4", f"\tbvs {cold}"] if j == 0 else []
+            if kind == "push":
+                body = [f"\tmove.w {what},{2 * (j - n) + 1}(a2,d4.w)"]
+            else:
+                body = [f"\t{what[0]} {2 * (n - j) - 1}(a2,d4.w),{what[1]}"]
+            outs[k + j][:] = prefix + step + body + suffix
+        outs[e - 1].append(f"{back}:")
+        dropped += n - 1
+        k = e
+    return dropped
