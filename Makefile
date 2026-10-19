@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae host test-host test-host-all test-amiga test-amiga-replay test-amiga-restore amiga amiga-release smoke smoke-release size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-all test-amiga test-amiga-replay test-amiga-restore amiga amiga-release smoke smoke-release size clean
 
 PYTHON ?= python3
 # AmigaXDev's shared Python package (amigaxdev.dos.mz_info).
@@ -173,11 +173,14 @@ JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc)
 RUN = @mkdir -p tmp/test; if $(2) > tmp/test/$(1).log 2>&1; then echo "ok    $(1)"; \
 	else echo "FAIL  $(1) (tmp/test/$(1).log)"; tail -n 15 tmp/test/$(1).log; exit 1; fi
 SHARDS = forms.0/4 forms.1/4 forms.2/4 forms.3/4 space.0/1 boundary.0/1 blocks.0/1
-TESTS = t-block-boundary t-joystick t-rep-replay t-rep-lowering t-host-replay-visits t-fixture-inputs t-key-chords t-replay-chords t-key-release t-oracle-boundary t-oracle-exception-writes t-helper-branches t-block-assembly t-dos-sda t-dos-search t-machine-vectors t-interrupt-frame-mask t-keyboard-prefix t-host-launch t-load-image t-align-convergence t-replay-hooks t-replay-events t-file-dates t-mouse-irq t-display-queue t-display-palette t-amiga-input t-smc-flow t-cell-cache t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
+TESTS = t-gate-runner t-block-boundary t-joystick t-rep-replay t-rep-lowering t-host-replay-visits t-fixture-inputs t-key-chords t-replay-chords t-key-release t-oracle-boundary t-oracle-exception-writes t-helper-branches t-block-assembly t-dos-sda t-dos-search t-machine-vectors t-interrupt-frame-mask t-keyboard-prefix t-host-launch t-load-image t-align-convergence t-replay-hooks t-replay-events t-file-dates t-mouse-irq t-display-queue t-display-palette t-amiga-input t-smc-flow t-cell-cache t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
 	t-blocks t-guards t-fm t-fm-quality t-tfh t-sound-hooks t-audio $(HOST_MILESTONES:%=t-host-%)
 
 test: host
 	@$(MAKE) -s -k -j$(JOBS) $(TESTS)
+
+t-gate-runner:
+	$(call RUN,gate-runner,$(PYTHON) tests/test_gate_runner.py)
 
 t-display-palette:
 	$(call RUN,display-palette,$(PYTHON) tests/test_display_palette.py)
@@ -330,7 +333,7 @@ t-host-%:
 t-hle-music-skip:
 	$(call RUN,hle-music-skip,$(PYTHON) tests/host_run.py --milestone m2-choose-side --music-skip --timeout 2400)
 t-cov-%:
-	$(call RUN,host-$*,$(PYTHON) tests/host_run.py --table reference/coverage.csv --milestone $* --timeout 2400)
+	$(call RUN,host-$*,$(PYTHON) tests/host_run.py --table reference/coverage.csv --milestone $* --timeout $(if $(filter $*,$(HOST_LONG)),4800,2400))
 t-sab-x86:
 	$(call RUN,sabotage-x86,$(PYTHON) tests/x86_sabotage.py)
 t-sab-m68k:
@@ -391,18 +394,23 @@ AMIGA_REPLAY_MILESTONES = m2-choose-side m5-player-flight c9-mouse-menu c66-flig
 AMIGA_MILESTONE ?= m1b-logo
 AMIGA_CPU ?= 68030
 AMIGA_CAPTURE = tmp/amiga-$(AMIGA_MILESTONE)
+GATE_LAUNCH = $(if $(GATE_ISOLATED),$(PYTHON) "$(CURDIR)/tools/gate_launch.py",)
 
 test-host: host
 	@$(MAKE) -s -k -j$(JOBS) $(HOST_MILESTONES:%=t-host-%)
 
+# Long scenarios first: the tail of the R31 host-all run, c52 longest.
+# More wall time accommodates contention; every endpoint/comparison is unchanged.
+HOST_LONG = c52-campaign-loss c25-film-load c14-film-save c82-gunner-damage c78-other-pilot-crash
+HOST_ORDERED = $(filter $(HOST_COVERAGE),$(HOST_LONG)) $(filter-out $(HOST_LONG),$(HOST_COVERAGE))
 test-host-all: host
-	@$(MAKE) -s -k -j$(JOBS) $(HOST_MILESTONES_ALL:%=t-host-%) $(HOST_COVERAGE:%=t-cov-%) t-hle-music-skip
+	@$(MAKE) -s -k -j$(JOBS) $(HOST_ORDERED:%=t-cov-%) $(HOST_MILESTONES_ALL:%=t-host-%) t-hle-music-skip
 
 test-amiga: amiga host
 	@mkdir -p $(AMIGA_CAPTURE)
 	sed -e "s|@LABEL@|$$($(PYTHON) tests/host_run.py --label --milestone $(AMIGA_MILESTONE))|" \
 		-e "s|@OUT@|../$(AMIGA_CAPTURE)|" amiga/milestone.gdb.in > $(AMIGA_CAPTURE)/fixture.gdb
-	. amiga/env.sh && cd amiga && AMIGA_CPU=$(AMIGA_CPU) ./debug.sh "" "../$(AMIGA_CAPTURE)/fixture.gdb" 2>&1 | \
+	. amiga/env.sh && cd amiga && AMIGA_CPU=$(AMIGA_CPU) $(GATE_LAUNCH) ./debug.sh "" "../$(AMIGA_CAPTURE)/fixture.gdb" 2>&1 | \
 		tee ../$(AMIGA_CAPTURE)/gdb.log | sed -n 's/^SWOTL_REGS //p' > ../$(AMIGA_CAPTURE)/regs.txt
 	grep -q '^SWOTL_MILESTONE_OK$$' $(AMIGA_CAPTURE)/gdb.log
 	$(PYTHON) tests/host_run.py --milestone $(AMIGA_MILESTONE) --amiga $(AMIGA_CAPTURE)
@@ -414,7 +422,7 @@ t-amiga-replay-%:
 	$(call RUN,amiga-replay-$*,. amiga/env.sh && $(PYTHON) tests/amiga_replay.py --milestone $*)
 
 test-amiga-restore: amiga
-	bash amiga/restore_check.sh
+	$(GATE_LAUNCH) bash amiga/restore_check.sh
 
 amiga: gen-check
 	. amiga/env.sh && $(MAKE) -C amiga
@@ -430,15 +438,16 @@ size: amiga
 	$(PYTHON) tools/hunk_size.py amiga/out/Swotl.exe
 
 smoke: amiga
-	. amiga/env.sh && amiga/debug.sh "" "$(CURDIR)/amiga/diag_smoke.gdb" | grep -q '^SWOTL_SMOKE_OK'
+	. amiga/env.sh && $(GATE_LAUNCH) amiga/debug.sh "" "$(CURDIR)/amiga/diag_smoke.gdb" | grep -q '^SWOTL_SMOKE_OK'
 
 # Step gates (docs/speed-plan.md §2): test first (it writes build/gen and the
-# host image), then the others at once, the FS-UAE gates in turn. Each
+# host image), then the others at once. Build the Amiga image before its
+# three independent checks; replays follow them. Each
 # logs to tmp/gates/<gate>.log and prints its result and seconds. They run
 # at nice GATES_NICE so the machine stays responsive (0: normal priority).
 GATES_NICE ?= 10
 GATE = @mkdir -p tmp/gates; s=$$(date +%s); \
-	if nice -n $(GATES_NICE) $(MAKE) -s $(1) > tmp/gates/$(1).log 2>&1; \
+	if nice -n $(GATES_NICE) $(MAKE) -s $(2) $(1) > tmp/gates/$(1).log 2>&1; \
 	then r=ok; else r=FAIL; fi; echo "$(1) $$r $$(( $$(date +%s) - s ))s"; [ $$r = ok ]
 
 gates:
@@ -450,10 +459,15 @@ g-sabotage:
 g-host-all:
 	$(call GATE,test-host-all)
 g-fsuae:
-	$(call GATE,test-amiga)
-	$(call GATE,smoke)
-	$(call GATE,test-amiga-restore)
+	@nice -n $(GATES_NICE) $(MAKE) -s amiga
+	@$(MAKE) -s -k -j3 g-amiga g-smoke g-restore
 	$(call GATE,test-amiga-replay)
+g-amiga:
+	$(call GATE,test-amiga,-o amiga -o host GATE_ISOLATED=1)
+g-smoke:
+	$(call GATE,smoke,-o amiga GATE_ISOLATED=1)
+g-restore:
+	$(call GATE,test-amiga-restore,-o amiga GATE_ISOLATED=1)
 
 clean:
 	$(MAKE) -C amiga clean

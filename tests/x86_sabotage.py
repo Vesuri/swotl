@@ -68,6 +68,17 @@ SABOTAGE = [
 ]
 
 
+class CaughtCase(Exception):
+    pass
+
+
+class PlantHarness(X.Harness):
+    def case(self, *args, **kwargs):
+        super().case(*args, **kwargs)
+        if self.bad:
+            raise CaughtCase(len(self.bad))
+
+
 def plant(k: int) -> int:
     """Plant SABOTAGE[k] and run its corpus: the mismatches."""
     _name, target, fake, corpus = SABOTAGE[k]
@@ -76,7 +87,9 @@ def plant(k: int) -> int:
     if target == "decode":
         I.decode = fake
     try:
-        return len(X.run(["--only", corpus, "--states", "2", "--space", "4"], quiet=True).bad)
+        return len(X.run(["--only", corpus, "--states", "2", "--space", "4"], quiet=True, harness=PlantHarness).bad)
+    except CaughtCase as caught:
+        return caught.args[0]
     finally:
         I.status, I.execute, D.decode, I.decode = real_status, real_execute, real_decode, real_decode
 

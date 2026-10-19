@@ -2,7 +2,8 @@
 """Sabotage the 68020 differential (translation-lessons #42): each planted fault in
 the lowering's output must produce mismatches. Exit 1 if one passes unnoticed.
 Corpus "program" runs the generated-program block differential (m68k_blocks).
-The plants run in parallel, one at a time per worker process. The x86 side of
+The plants run in parallel, one at a time per worker process, stopping after
+the first caught batch. Uncaught plants exhaust their corpus and fail. The x86 side of
 make test's boundary run (RECORD) is reused wherever a plant's case matches it.
 """
 
@@ -696,6 +697,26 @@ SABOTAGE = [
 ]
 
 
+class CaughtBatch(Exception):
+    """Only a completed differential batch with mismatches may stop a plant."""
+
+
+class CaughtProgram(Exception):
+    pass
+
+
+def completed_program_batch(total, failures):
+    if failures:
+        raise CaughtProgram(len(failures), total, 0, 0)
+
+
+class PlantHarness(D.Harness):
+    def flush(self):
+        super().flush()
+        if self.bad:
+            raise CaughtBatch(self)
+
+
 def plant(k: int) -> tuple[int, int, int, int]:
     """Plant SABOTAGE[k] and run its corpus: (mismatches, cases, x86 sides replayed, of)."""
     name, fn, corpus = SABOTAGE[k]
@@ -756,13 +777,18 @@ def plant(k: int) -> tuple[int, int, int, int]:
         if corpus in ("program", "walk"):
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
-                B.main(["--blocks", "1500", "--states", "1"])
+                B.main(["--blocks", "1500", "--states", "1"], on_batch=completed_program_batch)
             return (int(re.search(r"(\d+) mismatches", out.getvalue()).group(1)),
                     int(re.search(r"cases (\d+)", out.getvalue()).group(1)), 0, 0)
         D.REPLAY = RECORD
         h = D.X.run(["--only", corpus, "--states", "1", "--space", "2", "--blocks", "1500"],
-                    quiet=True, harness=D.Harness)
+                    quiet=True, harness=PlantHarness)
         h.flush()
+        return len(h.bad), sum(h.count.values()), h.replayed, h.ncases
+    except CaughtProgram as caught:
+        return caught.args
+    except CaughtBatch as caught:
+        h = caught.args[0]
         return len(h.bad), sum(h.count.values()), h.replayed, h.ncases
     finally:
         D.Harness.tidy()

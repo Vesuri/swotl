@@ -283,7 +283,7 @@ def cells(data: bytes, start: int, forms: list[str]) -> list[str]:
 
 
 def walks(p: emit.Program, h, m, addr, stop_names, cases: int,
-          edges: int = 8, steps: int = 24) -> tuple[int, list[str]]:
+          edges: int = 8, steps: int = 24, on_batch=None) -> tuple[int, list[str]]:
     count, bad = 0, []
     cached = {lab for lab, *_ in p.cells}
 
@@ -342,6 +342,8 @@ def walks(p: emit.Program, h, m, addr, stop_names, cases: int,
         if diffs:
             bad.append(f"{mod}+{e:05X} walk{entry} {what}: {'; '.join(diffs[:6])}")
         m.restore(set(mwrites) | set(patched))
+        if on_batch:
+            on_batch(count, bad)
         return True
 
     def both(*a, exact=True, **k):
@@ -710,7 +712,7 @@ def flag_helper_entries():
     return result
 
 
-def main(argv=None) -> int:
+def main(argv=None, on_batch=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--blocks", type=int, default=0, help="sample size (0: every block)")
@@ -954,6 +956,8 @@ def main(argv=None) -> int:
                 st = " ".join(f"{k}={v:04x}" for k, v in regs.items())
                 bad.append(f"{mod}+{run[0]:05X}..{run[-1]:05X} [{st}]: {'; '.join(diffs[:6])}")
             m.restore(set(mwrites) | set(patched))
+        if on_batch:
+            on_batch(sum(v for k, v in count.items() if k != "return checks"), bad)
 
     for mod, run in picks:
         block_cases(mod, run, args.states)
@@ -983,7 +987,10 @@ def main(argv=None) -> int:
                     count["guard decisions"] += 1
         m.extra_stops = stop_names
     if not args.only:
-        n, wbad = walks(p, h, m, addr, stop_names, args.walks)
+        n, wbad = walks(p, h, m, addr, stop_names, args.walks,
+                         on_batch=(lambda n, failures: on_batch(
+                             sum(v for k, v in count.items() if k != "return checks") + n,
+                             bad + failures)) if on_batch else None)
         count["walks"] += n
         bad += wbad
     n, failures = guest_entries(p)

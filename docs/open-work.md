@@ -51,17 +51,6 @@ speed work: [speed-plan.md](speed-plan.md).
     `bra` back to its target that never closes a loop, so R27's meter Δ is
     −0.6278%, −0.7903% counting only taken back edges (FS-UAE agreed in sign).
     Decide the definition (and recalibrate) at the next re-profile.
-38. `make gates` wall time: 65–85 min per step, plus a 13 min c52 rerun about half
-    the time. `test` (~10 min), then sabotage (60–72 min), host-all (55–60 min) and
-    the FS-UAE lane (60–65 min) at once: ~40 CPU-bound processes on 18 cores (load
-    70+). c52-campaign-loss then runs past its 2,400 s wall-clock limit (`t-cov-%`,
-    `host_run.py --timeout`; R27, R28, leader-fix and R31 gates), stopped short with
-    no fault; alone 758–853 s, exact. Planned (2026-10-19, before the jcc/jmp fusion),
-    the checks unchanged, about 50–60 min without reruns:
-    - sabotage: each plant stops at its first caught batch (60–72 → ~10–15 min);
-      a step's plant counts come from its own cases;
-    - host-all: longest scenarios first; a longer limit for long scenarios;
-    - FS-UAE lane: Amiga test, smoke and restoration at once (now in turn).
 31. Translator candidates, repriced 2026-10-19 on the `a1df937` m4 meter (183,699,737
     model cycles) unless noted, in price order; each one a speed-plan step (R24 REP
     STOSW, R25 BP as data, R26 REPE CMPSW, R27 cold branch sides, R28 carry in X, R29

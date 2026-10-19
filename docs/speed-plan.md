@@ -15,7 +15,7 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   cache, R21 string layout, R22 call layout, R24 REP STOSW fill, R25 BP as data, R26 REPE CMPSW, R27 cold
   branch sides, R28 carry in X, R29 far push, R30 repeated segment loads and R31 push/pop runs
   kept. Item 14b's 240 ms target remains unmet; no native replacement is authorized. Next
-  steps: open-work 38 (gate wall time), then open-work 31: the jcc/jmp fusion, then the far
+  steps: open-work 31: the jcc/jmp fusion, then the far
   return (approved 2026-10-19).
 - **Frames fixture** (R30, 2026-10-19): medians 340, 340 and
   340 ms; same-session parent 370, 350 and 340 ms. Intervals for R27 in §7.
