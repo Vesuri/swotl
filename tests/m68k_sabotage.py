@@ -74,6 +74,12 @@ def kept_x_restored_late(self, out):
     return out
 
 
+def far_exact_cs_low(self, out):
+    """R29: the wrapped far push's exact path stores CS a word low."""
+    return ["\tsubq.w #4,d4" if x == "\tsubq.w #2,d4" and k
+            and re.match(r"^\w+_pf\d+:$", out[k - 1]) else x for k, x in enumerate(out)]
+
+
 def sub(pattern, repl):
     rx = re.compile(pattern)
     return lambda self, out: [rx.sub(repl, line) for line in out]
@@ -583,6 +589,11 @@ SABOTAGE = [
     ("outlined range falls through", "outline return", "program"),
     ("carry X kept across a setup not restored", sub(r"^\tadd\.b d6,d6$", "\tnop"), "boundary"),
     ("carry X kept across a setup restored after the load", kept_x_restored_late, "boundary"),
+    ("far push long ignores the SP wrap", sub(r"^\tbvs \w+_pf\d+$", "\tnop"), "boundary"),
+    ("far push long swaps CS and IP",
+     sub(r"^\tmove\.l #\(\((.+)\)<<16\)\|(\S+),-3\(a2,d4\.w\)$", r"\tmove.l #((\2)<<16)|\1,-3(a2,d4.w)"),
+     "boundary"),
+    ("far push exact path stores CS a word low", far_exact_cs_low, "boundary"),
     ("held index survives a block leader", "reuse leaders", "program"),
     ("high-byte clear keeps bit 8", sub(r"^\tand\.w #\$ff,(d[0-3])$", r"\tand.w #$1ff,\1"),
      "boundary"),

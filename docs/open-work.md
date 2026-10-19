@@ -23,9 +23,9 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Translator and validation
 
-14b. Speed target remains unmet: frames-fixture 68020 run medians on R27
-    (2026-10-19) 370, 350 and 370 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
-    §1, §9). Roughly 35% further reduction is needed from 370 ms; parent intervals overlap. Remaining
+14b. Speed target remains unmet: frames-fixture 68020 run medians on R29
+    (2026-10-19) 380, 350 and 350 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
+    §1, §9). Roughly 31% further reduction is needed from 350 ms; parent intervals overlap. Remaining
     cost is mostly generated guest code; priced translator candidates are 31,
     FM synthesis is 34 (flag-word packing rejected, speed-plan §10). Native replacement
     requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
@@ -58,19 +58,19 @@ speed work: [speed-plan.md](speed-plan.md).
     and 853 s, exact. Decide: a longer limit for long scenarios, or fewer parallel jobs.
 31. Translator candidates, repriced 2026-10-19 on the `a1df937` m4 meter (183,699,737
     model cycles) unless noted, in price order; each one a speed-plan step (R24 REP
-    STOSW, R25 BP as data, R26 REPE CMPSW, R27 cold branch sides and R28 carry in X
-    done). Evidence: `tmp/item31b/`.
+    STOSW, R25 BP as data, R26 REPE CMPSW, R27 cold branch sides, R28 carry in X and
+    R29 far push done). Evidence: `tmp/item31b/`.
     - Block layout (audit on `a1df937`): free-placement bound −5.31M, 22.7% of the
       taken weight `dbcc` back edges. Left: `jcc` over a lone `jmp` (the 8086 long
       conditional) as one inverted branch, static, −0.15M (118 executed sites); the
       block differential must follow the fused jump across the zero-code `jmp`.
       Bench acceptance (D5). R23 loop-tail placement rejected (speed-plan §10).
-    - Far call/return: −1.75M (−0.81%; −1.52M if misaligned longs cost two accesses:
-      long address ≡ 2 mod 4 at 44% of sampled `callf`, 57% of `retf`). `callf`:
-      `addq.w #4,d4`, `bvs.w` to the exact two-word path, one `move.l` CS:IP, one
-      `cmp.l` (−8 bytes, −1 write); `retf`: one `move.l` pop (−6 bytes, −1 read). A
-      wrapped pop needs its own `bvs.w` guard (a compare can match by chance), and
-      runtime consumers of a far return read CS from d6 today. 5ecdf79 price.
+    - Far return (R29 pushes CS:IP as one long): `retf` as one `move.l` pop (−6 bytes,
+      −1 read) and the return check as one `cmp.l`, the rest of the 5ecdf79 price of
+      −1.75M for both (−1.52M if misaligned longs cost two accesses: long address ≡
+      2 mod 4 at 57% of sampled `retf`). A wrapped pop needs its own `bvs.w` guard (a
+      compare can match by chance), and runtime consumers of a far return read CS from
+      d6: a return-protocol change, which needs user approval.
     - An ES load that repeats ES (79% of 82,280): skip the base: −0.32M (−0.15%).
       Not DS (13% repeat: +0.5M).
     - Push/pop runs, one `bvs.w` guard per run: −0.16M (−0.07%).

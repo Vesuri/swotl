@@ -332,6 +332,19 @@ class Lowering:
         self.e("addq.w #2,d4")
         self.e(f"move.w {'#' + const if const is not None else src},-1(a2,d4.w)")
 
+    def push_far(self, cs: str, ip: str) -> None:
+        """R29: CS then IP as one long (CS at the lower host address); a push
+        across SS:0 (d4.w overflows) stores the two words out of line."""
+        k = sum(1 for x in self.cold if x.startswith(f"{self.c.label}_pf"))
+        cold, back = f"{self.c.label}_pf{k}", f"{self.c.label}_pr{k}"
+        self.e("addq.w #4,d4")
+        self.e(f"bvs {cold}")
+        self.e(f"move.l #(({cs})<<16)|{ip},-3(a2,d4.w)")
+        self.at(back)
+        self.cold += [f"{cold}:", "\tsubq.w #2,d4", f"\tmove.w #{cs},-1(a2,d4.w)",
+                      "\taddq.w #2,d4", f"\tmove.w #{ip},-1(a2,d4.w)", f"\tbra {back}"]
+        self.stats["far push as one long"] += 1
+
     def pop(self, dst: str) -> None:
         self.e(f"move.w -1(a2,d4.w),{dst}")
         self.e("subq.w #2,d4")
@@ -1865,8 +1878,7 @@ class Lowering:
     def op_callf(self):
         i = self.i
         f = self.far_operand()
-        self.push(const=self.c.cs)
-        self.push(const=hx(i.next_ip))
+        self.push_far(self.c.cs, hx(i.next_ip))
         ret = i.next_ip + (2 if self.c.manager else 0)  # the manager skips `dw id`
         if f:
             self.goto_far(f[0], f[1], "jsr")

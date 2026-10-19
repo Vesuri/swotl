@@ -541,6 +541,7 @@ def boundary(h: Harness) -> None:
     bp_data_cases(h)
     string_compare_cases(h)
     carry_setup_cases(h)
+    far_call_push_cases(h)
 
 
 def string_compare_cases(h):
@@ -1625,6 +1626,23 @@ def carry_setup_cases(h):
                                                    "sp": 0xFFF0, "ds": 0x5000, "es": 0x5000,
                                                    "ss": 0x5000, "cs": 0x2000},
                                           "ip": 0x100, "mem": mem})
+
+
+def far_call_push_cases(h):
+    """R29: CALLF pushes CS:IP as one long unless SP wraps its segment: direct and
+    through m32 (ds and es), SP at every value 0-7, around 7FFFh/8000h and
+    FFF8h-FFFFh; the stack bytes either side kept (they show a wide store)."""
+    sps = list(range(8)) + list(range(0x7FFC, 0x8005)) + list(range(0xFFF8, 0x10000)) + [0x1234]
+    for code in ("9a34127856", "9a0000ffff", "ff1f", "26ff5f02"):
+        for sp in sps:
+            stack = [(0x70000 + (sp - k & 0xFFFF), bytes([0xA5 + 17 * k & 0xFF]))
+                     for k in range(-2, 7)]
+            h.case(bytes.fromhex(code), "b:far-call-push",
+                   overrides={"regs": {"sp": sp, "ss": 0x7000, "cs": 0x2000, "ds": 0x5000,
+                                       "es": 0x6000, "bx": 0x400},
+                              "ip": 0x100,
+                              "mem": stack + [(0x50400, bytes.fromhex("78563412")),
+                                              (0x60402, bytes.fromhex("cdab0100"))]})
 
 
 def run(argv: list[str] | None = None, quiet: bool = False, harness=None) -> Harness:

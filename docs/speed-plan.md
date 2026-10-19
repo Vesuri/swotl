@@ -13,16 +13,17 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   (240 ms); stretch ≤ 10.
 - **Status:** R16 alignment repair, R17 palette validity, R18 flag extraction kept; R20 cell
   cache, R21 string layout, R22 call layout, R24 REP STOSW fill, R25 BP as data, R26 REPE CMPSW, R27 cold
-  branch sides and R28 carry in X kept. Item 14b's 240 ms target
+  branch sides, R28 carry in X and R29 far push kept. Item 14b's 240 ms target
   remains unmet; no native replacement is authorized. Next steps: open-work 31 (repriced 2026-10-19).
-- **Frames fixture** (R27, 2026-10-19): medians 370, 350 and
-  370 ms; same-session parent 390, 370 and 340 ms. Full intervals and spans in §7.
-- **Bench:** R27 opening 72,087 (R26, median of three) → 71,740 lines (−0.481%), identical guest RAM.
+- **Frames fixture** (R29, 2026-10-19): medians 380, 350 and
+  350 ms; same-session parent 370, 360 and 350 ms. Intervals for R27 in §7.
+- **Bench:** R29 opening 71,720 (R28, median of three) → 71,495 lines (−0.314%), identical guest
+  RAM; R27 72,087 → 71,740 (−0.481%).
   R20 opening 71,523 → 72,197 lines (+0.9424%), identical guest
   RAM; approved tradeoff. Palette window 38,392–38,405 lines (R17),
   2.81–3.61% below its same-session parent.
-- **Meter** (m4, R18 weights, R28): generated + walk + runtime 176,163,287
-  model cycles (−0.4796% from parent); generated + walk 173,833,147 cycles, 9.670 per
+- **Meter** (m4, R18 weights, R29): generated + walk + runtime 175,342,341
+  model cycles (−0.4660% from parent); generated + walk 173,012,201 cycles, 9.624 per
   guest instruction of R24's count (17,976,252; R25's zero-code labels hide 45,439,
   open-work 36). Host platform adds 2,171 cycles.
 - **Capture** (R24, first frames run, 100 fields): generated code 81.40%
@@ -308,12 +309,52 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R26 | REPE CMPSW: eight long compares per pass, remainder pairs first | `lower.py` | −0.8031% |
 | R27 | cold sides of hot forward jcc out of line, profile-chosen | `emit.py`, `tools/outline_sites.py` | −0.6278% (bench −0.481%) |
 | R28 | carry in X kept across an adc/sbb operand setup in d6 | `lower.py` | −0.4796% |
+| R29 | CALLF pushes CS:IP as one long; SP wrap out of line | `lower.py` | −0.4660% |
 
 Priced candidates (repriced 2026-10-19 on the `a1df937` meter): open-work 31 (each ≤ 1.2%). No form
 left (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
 `__set_flags` (POPF/IRET) and `__flags_word` are the largest runtime-side
 items left.
+
+### R29 far call pushes one long (2026-10-19; kept)
+
+Parent `d63a393`; meter 176,163,287 cycles. Price before coding (R28 meter
+forms): CALLF pushes CS and IP with one `addq.w #4,d4` and one `move.l`
+(CS at the lower host address), the two-word push out of line when d4.w
+overflows (SP 0–3, the stack wrapping SS:0): −2 bytes and −1 write for each of
+94,996 executions, −489K cycles (−0.278%); the 68020 splits a long write at
+an address ≡ 2 mod 4 (44% of sampled `callf`, 5ecdf79), which the meter does
+not model. The return check and RETF stay (open-work 31: protocol change).
+
+Built: `Lowering.push_far`: `addq.w #4,d4`, `bvs <label>_pf<k>`, `move.l
+#((CS)<<16)|IP,-3(a2,d4.w)`, rejoin `<label>_pr<k>` (inside the instruction,
+`profile_report.INSIDE`); the out-of-line path stores the words as before.
+
+Meter: 176,163,287 → 175,342,341 cycles (−820,947, −0.4660%); writes and
+instructions −94,996, executed bytes −2,028,224 (loop bytes +1,803,224), taken
+−48,328. The out-of-line paths' `bra` back makes the static loop flag cover
+more code (open-work 37): counting only taken back edges, −595,317. Static
+generated +90,816 bytes (5,229 sites); Amiga code 1,258,568 → 1,349,360,
+allocated hunks 1,667,696.
+Coverage first: 104 boundary cases: CALLF direct and through m32 (DS, ES),
+SP 0–7, 7FFCh–8004h, FFF8h–FFFFh and one middle value, the stack bytes either
+side; zero mismatches on the parent. Plants (boundary corpus, 77,787 cases):
+wrap ignored (16; SP 0 and 1 stay contiguous), CS and IP swapped (128), exact
+path's CS a word low (40). Block differential: 13,663 blocks, 55,190 cases,
+zero mismatches.
+FS-UAE check (not due; the meter's misaligned-write blind spot and loop
+artifact; R28 arm against R29): opening bench 71,700, 71,722, 71,720 → 71,495,
+71,530, 71,492 lines (median −225, −0.314%; ranges disjoint), identical guest
+RAM. Changed labels measured in both captures (253–260 of 267), exact host
+counts: −6.51%, −6.34%, −6.35%; the meter over the same labels −12.70%,
+−12.66%, −12.71%: signs agree (§3), FS-UAE about half the meter. The final RAM
+of both arms differs from R27's in one byte, SS:F6B0 just below the reference
+SP: dead CF and SF in a popped FLAGS image (R28 drops their `G_FL` store;
+open-work 24). Frames medians R28 370, 360, 350 ms; R29 380, 350, 350 ms
+(overlapping). Gates: test 540 s, Amiga 669 s, smoke 365 s, restoration 475 s,
+five replays 1,999 s, host-all 3,358 s (c52 within its limit), sabotage 3,654 s;
+sources unchanged. Evidence: `tmp/item31b/r29/`.
 
 ### R28 carry in X across the operand setup (2026-10-19; kept)
 
@@ -864,8 +905,8 @@ frozen arms, meters, captures' reports and gates).
 
 ## 9. Gap
 
-R27's run medians are 370, 350 and 370 ms. Reaching 240 ms requires about
-35% less frame time from their 370 ms median; parent and candidate intervals overlap.
+R29's run medians are 380, 350 and 350 ms. Reaching 240 ms requires about
+31% less frame time from their 350 ms median; parent and candidate intervals overlap.
 Normal trajectories vary; acceptance uses the fixed-work meter and §3 checks.
 Top guest routines (first R22 capture, self time): SWOTL.EXE+0B54B 8.30%,
 +0BFD1 7.67%, +109D6 4.46%, +0D5A6 3.98%, +0B017 3.92%,
