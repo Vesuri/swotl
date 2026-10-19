@@ -23,8 +23,8 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Translator and validation
 
-14b. Speed target remains unmet: frames-fixture 68020 run medians on R26
-    (2026-10-19) 380, 370 and 360 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
+14b. Speed target remains unmet: frames-fixture 68020 run medians on R27
+    (2026-10-19) 370, 350 and 370 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
     §1, §9). Roughly 35% further reduction is needed from 370 ms; parent intervals overlap. Remaining
     cost is mostly generated guest code; priced translator candidates are 31,
     FM synthesis is 34 (flag-word packing rejected, speed-plan §10). Native replacement
@@ -46,15 +46,20 @@ speed work: [speed-plan.md](speed-plan.md).
     instructions: rejected R23's m4 count drops by exactly the four removed jumps' 68,070
     entries. Recover semantic counts before comparing per-guest ratios across
     such layouts. Meter totals and alias-aware fixed-instruction A/B are unaffected.
+37. `tools/cost_meter.py` flags a range as a cached loop when any backward branch
+    within `LOOP` bytes closes it, executed or not: an R27 outlined range ends in a
+    `bra` back to its target that never closes a loop, so R27's meter Δ is
+    −0.6278%, −0.7903% counting only taken back edges (FS-UAE agreed in sign).
+    Decide the definition (and recalibrate) at the next re-profile.
 31. Translator candidates, repriced 2026-10-19 on the `a1df937` m4 meter (183,699,737
     model cycles) unless noted, in price order; each one a speed-plan step (R24 REP
-    STOSW, R25 BP as data and R26 REPE CMPSW done). Evidence: `tmp/item31b/`.
+    STOSW, R25 BP as data, R26 REPE CMPSW and R27 cold branch sides done). Evidence:
+    `tmp/item31b/`.
     - Block layout (audit on `a1df937`): free-placement bound −5.31M, 22.7% of the
-      taken weight `dbcc` back edges. Implementable: the cold side of a hot forward
-      guest `jcc` out of line, profile-chosen, ≈ −0.85M (140 sites); `jcc` over a lone
-      `jmp` (the 8086 long conditional) as one inverted branch, static, −0.15M
-      (118 executed sites). Bench acceptance (D5). R23 loop-tail placement rejected
-      (speed-plan §10).
+      taken weight `dbcc` back edges. Left: `jcc` over a lone `jmp` (the 8086 long
+      conditional) as one inverted branch, static, −0.15M (118 executed sites); the
+      block differential must follow the fused jump across the zero-code `jmp`.
+      Bench acceptance (D5). R23 loop-tail placement rejected (speed-plan §10).
     - Far call/return: −1.75M (−0.81%; −1.52M if misaligned longs cost two accesses:
       long address ≡ 2 mod 4 at 44% of sampled `callf`, 57% of `retf`). `callf`:
       `addq.w #4,d4`, `bvs.w` to the exact two-word path, one `move.l` CS:IP, one

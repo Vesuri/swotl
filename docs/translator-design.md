@@ -132,6 +132,13 @@ diffs directly); relocated words in instructions are emitted as
   `far` = 0 for a row seeded only as a target of indirect near `jmp`/`call`
   sites: `rt_dispatch_far` (and interrupt delivery, the guest entry) stops
   there (R14e).
+- Layout: runs in offset order, stubs (poll, cold paths) after a run that
+  cannot fall through. A forward jcc listed in `annotations/outline.csv`
+  (R27) branches, inverted, to its fall-through range, which goes first among
+  the stubs after the next closing transfer and ends with `bra` to the target
+  unless it ends in a transfer; every instruction keeps its lowering.
+  `build/gen/outline-sites.csv` lists every eligible site and where its range
+  would go.
 - Runtime entries (`jsr`, contract in registers): `rt_int` (d7 next IP, d6
   CS << 16 | vector; the runtime writes the CPU's IRET frame below SS:SP;
   services read no guest flags and leave undefined-by-them flags in the
@@ -163,7 +170,9 @@ diffs directly); relocated words in instructions are emitted as
 check, read by the sweep), `data.csv` (ranges),
 `hle.csv` (guest range, service, reason, oracle; below), `names.csv`
 (name, evidence class), `bp-regions.csv` (BP writes whose component gets a
-guarded copy; a profile choice, `tools/bp_regions.py`).
+guarded copy; a profile choice, `tools/bp_regions.py`), `outline.csv`
+(forward jcc whose fall-through range goes out of line, R27; a profile
+choice, `tools/outline_sites.py` from `build/gen/outline-sites.csv`).
 
 ### Tests
 
@@ -176,7 +185,10 @@ guarded copy; a profile choice, `tools/bp_regions.py`).
 - Block differential (`make test-blocks`): the generated program as emitted,
   run from executed leaders to the first transfer with random states. Guest CFG
   exits remain stopping boundaries when a zero-code jump aliases its target;
-  direct zero-code entries stop without executing the target. Flags
+  direct zero-code entries stop without executing the target. Each outlined
+  jcc (R27) runs from the leader that falls into it, and its fall-through
+  range as paths from there (registers and the words a path loads at edge
+  values or its immediates; cases taking a jump on the way are skipped). Flags
   compared where live at the successor reached (at a cell walk: live at the
   transfer; the walk reads no flags); calls also run the return protocol
   (right IP reaches the return site, wrong IP or CS `rt_ret_mismatch`;

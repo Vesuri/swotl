@@ -12,16 +12,17 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   8 MB Fast model (`AMIGA_CPU` unset): frames 4–11 median ≤ 12 fields
   (240 ms); stretch ≤ 10.
 - **Status:** R16 alignment repair, R17 palette validity, R18 flag extraction kept; R20 cell
-  cache, R21 string layout, R22 call layout, R24 REP STOSW fill, R25 BP as data and R26 REPE CMPSW kept. Item 14b's 240 ms target
+  cache, R21 string layout, R22 call layout, R24 REP STOSW fill, R25 BP as data, R26 REPE CMPSW and R27 cold
+  branch sides kept. Item 14b's 240 ms target
   remains unmet; no native replacement is authorized. Next steps: open-work 31 (repriced 2026-10-19).
-- **Frames fixture** (R26, 2026-10-19): medians 380, 370 and
-  360 ms; same-session parent 360, 370 and 340 ms. Full intervals and spans in §7.
-- **Bench:** R26 opening 72,238 (R25) → 72,090 lines (−0.205%), identical guest RAM.
+- **Frames fixture** (R27, 2026-10-19): medians 370, 350 and
+  370 ms; same-session parent 390, 370 and 340 ms. Full intervals and spans in §7.
+- **Bench:** R27 opening 72,087 (R26, median of three) → 71,740 lines (−0.481%), identical guest RAM.
   R20 opening 71,523 → 72,197 lines (+0.9424%), identical guest
   RAM; approved tradeoff. Palette window 38,392–38,405 lines (R17),
   2.81–3.61% below its same-session parent.
-- **Meter** (m4, R18 weights, R26): generated + walk + runtime 178,130,612
-  model cycles (−0.8031% from parent); generated + walk 175,800,553 cycles, 9.780 per
+- **Meter** (m4, R18 weights, R27): generated + walk + runtime 177,012,300
+  model cycles (−0.6278% from parent); generated + walk 174,682,240 cycles, 9.717 per
   guest instruction of R24's count (17,976,252; R25's zero-code labels hide 45,439,
   open-work 36). Host platform adds 2,171 cycles.
 - **Capture** (R24, first frames run, 100 fields): generated code 81.40%
@@ -305,12 +306,77 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R24 | REP STOSW: eight longs per pass, long-aligned stores, odd word last | `lower.py` | −1.1239% |
 | R25 | native BP kept in a run, dead mirror stores dropped | `reuse.py` | −1.1354% |
 | R26 | REPE CMPSW: eight long compares per pass, remainder pairs first | `lower.py` | −0.8031% |
+| R27 | cold sides of hot forward jcc out of line, profile-chosen | `emit.py`, `tools/outline_sites.py` | −0.6278% (bench −0.481%) |
 
 Priced candidates (repriced 2026-10-19 on the `a1df937` meter): open-work 31 (each ≤ 1.2%). No form
 left (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
 `__set_flags` (POPF/IRET) and `__flags_word` are the largest runtime-side
 items left.
+
+### R27 cold sides of hot forward branches (2026-10-19; kept)
+
+Parent `93cca1c`; meter 178,130,612 cycles. Price before coding (per-PC counts
+of the parent meter, `tmp/item31b/r27/price_outline.txt`): a forward guest jcc
+taken more often than not branches, inverted, to its fall-through range, which
+moves after the run's closing transfer and returns with `bra` unless it ends
+in a transfer; the branch grows to `.w` where the moved range leaves it out of
+reach. 236 profitable sites, −928,173 cycles (−0.521%); the 85 sites worth at
+least 1,000 cycles each −905,258 (`R_0B4F1` −78,507, `R_0B611` −55,425).
+Profile-chosen like R8 (`annotations/outline.csv`, from the meter); layout,
+so an FS-UAE check with opening benches per arm (§3, R23).
+
+Built: `emit.outline_cold` lists every eligible site (target later in the run,
+or the next run's first instruction after a closing transfer; no guard in the
+range) in `build/gen/outline-sites.csv` with the instruction whose run end
+receives the range; `tools/outline_sites.py` prices them from a meter of a
+build with an empty `outline.csv` (exact per-PC and taken counts, new in
+`cost_meter.py`): taken branches saved, less the range's new taken branches and
+return, cached-loop bytes moved out, `.w` growth. Not chosen: a range landing
+inside an executed loop (96), a back edge moved out of reach (12), the smaller
+of nested sites (1). 96 sites (74 SWOTL.EXE, 13 FLIGHT.OVL, 9 SPAZ.OVL; 56 ranges
+end in a transfer), model −852,473. `drop_next_branches` runs backwards, so a
+chain of jumps to the next line goes (vasm ran out of passes on one).
+A first selection of 112 sites by price alone gave −0.4388%: ranges landed in
+loops, and stub returns counted as loops.
+
+Meter: 178,130,612 → 177,012,300 cycles (−1,118,312, −0.6278%); executed
+bytes −2,462,394 with loop bytes +2,684,544, taken −209,496, instructions
++3,190, reads and writes unchanged. The meter flags any backward branch within
+256 bytes as a loop, executed or not: an outlined range's `bra` back to its
+target makes the code between "cached". Counting only taken back edges,
+−1,404,120 (−0.7903%). Static generated +254 bytes; Amiga code 1,258,900 →
+1,259,124, allocated hunks 1,577,460.
+Coverage first: the block differential runs each outlined jcc from the leader
+that falls into it, and its range as paths from there (random registers; the
+words a path loads at edge values or its immediates, up to 512 tries for four
+cases a path); 236 paths, 2,513 cases. Full run: 13,663 executed blocks,
+55,190 cases, zero mismatches (4,664 path cases taking a jump on the way
+skipped). Plants (program corpus): outlined jcc keeps its condition (2,078
+mismatches), range falls through instead of returning (358).
+`tests/test_next_branch.py` gains chain cases; the first gate run failed
+there (the forward drop's expectation).
+Gates: test 612 s, Amiga 739 s, smoke 463 s, restoration 481 s, five replays
+2,328 s, sabotage 4,188 s; host-all 3,933 s with c52 past its 2,400 s
+wall-clock limit (FS-UAE runs beside the gates), alone 783 s and exact
+(23,539 interrupts, 3,895,576 services); sources unchanged after them.
+FS-UAE check (layout; R26 arm against R27): opening bench 72,117, 72,077,
+72,087 → 71,750, 71,726, 71,740 lines (median −347, −0.481%; ranges disjoint),
+identical guest RAM. Changed labels measured in both captures of a run pair
+(259–265 of 276), exact host counts: −10.42%, −11.50%, −11.49%; the meter
+over the same labels −10.66%, −10.15%, −10.35%; signs agree (§3).
+Evidence: `tmp/item31b/r27/`.
+
+| Arm/run | Frames 4–11 intervals (fields) | Median | Span |
+|---|---|---:|---:|
+| R26 1 | 22,22,18,20,17,25,19,19 | 390 ms | 17–25 |
+| R26 2 | 22,21,17,21,17,20,16,16 | 370 ms | 16–22 |
+| R26 3 | 22,21,17,17,17,24,16,16 | 340 ms | 16–24 |
+| R27 1 | 22,20,17,22,16,20,16,15 | 370 ms | 15–22 |
+| R27 2 | 22,19,18,17,17,24,16,16 | 350 ms | 16–24 |
+| R27 3 | 22,20,17,22,16,20,16,15 | 370 ms | 15–22 |
+
+Intervals overlap: no frame-rate gain claimed.
 
 ### R26 REPE CMPSW 16 words per pass (2026-10-19; kept)
 
@@ -761,7 +827,7 @@ frozen arms, meters, captures' reports and gates).
 
 ## 9. Gap
 
-R26's run medians are 380, 370 and 360 ms. Reaching 240 ms requires about
+R27's run medians are 370, 350 and 370 ms. Reaching 240 ms requires about
 35% less frame time from their 370 ms median; parent and candidate intervals overlap.
 Normal trajectories vary; acceptance uses the fixed-work meter and §3 checks.
 Top guest routines (first R22 capture, self time): SWOTL.EXE+0B54B 8.30%,

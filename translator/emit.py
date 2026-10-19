@@ -21,6 +21,7 @@ sites and starts without a fall-through predecessor.
 
 from __future__ import annotations
 
+import bisect
 import re
 from collections import Counter
 
@@ -121,22 +122,22 @@ def skippable(line: str) -> bool:
 def drop_next_branches(lines: list[str], stats: Counter) -> None:
     """A `bra`/`jmp` to a label that follows it with no code between goes:
     execution falls through to the same instruction. vasm runs out of passes
-    on some images that have one (speed-plan R7, R9). Before `align`, so no pad
-    follows a dropped branch."""
-    drop = []
-    for k, x in enumerate(lines):
-        m = BRANCH.match(x)
+    on some images that have one (speed-plan R7, R9). Backwards, so a chain of
+    them goes too (outlined ranges ending in jumps to one target, R27). Before
+    `align`, so no pad follows a dropped branch."""
+    dropped = 0
+    for k in range(len(lines) - 1, -1, -1):
+        m = BRANCH.match(lines[k])
         if not m:
             continue
         j = k + 1
         while j < len(lines) and skippable(lines[j]):
             if LABEL_ONLY.match(lines[j]) and lines[j].split(":")[0] == m.group(3):
-                drop.append(k)
+                del lines[k]
+                dropped += 1
                 break
             j += 1
-    for k in reversed(drop):
-        del lines[k]
-    stats["branch to the next line dropped"] += len(drop)
+    stats["branch to the next line dropped"] += dropped
 
 
 def align(lines: list[str], residues: dict[str, int], stats: Counter) -> None:
@@ -163,6 +164,18 @@ def align(lines: list[str], residues: dict[str, int], stats: Counter) -> None:
             stats["alignment not applied"] += 1
     for j, r in reversed(at):
         lines.insert(j, ALIGN + r)
+
+
+# R27: a forward jcc listed in annotations/outline.csv branches, inverted, to its
+# fall-through range, placed out of line; the range ends in cold_return.
+INVERT = {"eq": "ne", "ne": "eq", "cs": "cc", "cc": "cs", "vs": "vc", "vc": "vs", "mi": "pl",
+          "pl": "mi", "lt": "ge", "ge": "lt", "le": "gt", "gt": "le", "hi": "ls", "ls": "hi"}
+BCC = re.compile(r"^\tb(" + "|".join(INVERT) + r")(\.[swl])?\s+(\S+)$")
+
+
+def cold_return(lab: str) -> list[str]:
+    """The end of an outlined fall-through range (R27): on to the jcc's target."""
+    return [f"\tbra {lab}"]
 
 
 def mismatch_stub(lab: str) -> list[str]:
@@ -201,6 +214,10 @@ class Program:
         self.diagnostic_reps = diagnostic_reps or {}
         self.units = units or cfg.build()
         self.align = {r["label"]: int(r["residue"]) for r in image.rows("align.csv")}
+        self.outline = {r["label"] for r in image.rows("outline.csv")}
+        self.outline_sites: dict[str, tuple] = {}  # R27, outline_cold
+        self.offsets: dict[str, list[int]] = {}   # sorted instruction offsets (outline_cold)
+        self.run_last: dict[str, dict[int, int]] = {}  # each run's last offset by its first
         self.indirect: dict[tuple[str, int], tuple[list, list]] = {}
         for r in image.rows("indirect.csv"):
             def parse(col):
@@ -708,8 +725,11 @@ class Program:
             raise LowerError(f"{mod}+{run[0]:05X} run: {e}") from None
         lab = label if comp is None else copy_label
         lines: list[str] = []
+        starts: list[int] = []      # each instruction's first line
+        at = len(stubs)             # this run's stubs start here
         for o, lw in zip(run, lws):
             n = u.insns[o]
+            starts.append(len(lines))
             lines.append(f"{lab(mod, o)}:\t; {u.cs[o]:04X}:{n.ip:04X} {n}")
             if (mod, o) in self.diagnostic_hooks:
                 point = self.diagnostic_hooks[(mod, o)]
@@ -753,12 +773,15 @@ class Program:
                 lines.append(f"{label(*f)}_bpr:")   # guest code ran: BP may have changed
                 lines += region.guard(self.comps[comp][3], label(*f), SIZED)
                 stats["region guard"] += 1
+        opened = False
+        if comp is None:
+            lines, opened = self.outline_cold(mod, run, starts, lines, stubs, at, stats)
         # fall-through out of the run into something not decoded here (or, from a
         # copy, into the exact code)
         last = run[-1]
         i = u.insns[last]
-        closed = i.op in TERMINAL
-        if not closed:
+        closed = i.op in TERMINAL and not opened
+        if not closed and not opened:
             nxt = last + i.size + (2 if last in u.manager_calls else 0)
             if nxt not in u.insns:
                 lines.append(f"\tbra {smc_label(mod, nxt) if nxt in u.smc_entries else stop_label(mod, last)}")
@@ -767,6 +790,59 @@ class Program:
                 lines.append(f"\tbra{SIZED} {label(mod, nxt)}")
                 closed = True
         return lines, closed
+
+    def outline_cold(self, mod: str, run: list[int], starts: list[int], lines: list[str],
+                     stubs: list[str], at: int, stats: Counter) -> tuple[list[str], bool]:
+        """R27: a jcc listed in annotations/outline.csv (tools/outline_sites.py: the
+        meter takes it more often than not) whose target follows its fall-through
+        range F, in the run or (F ending in a transfer) as the next run's first
+        instruction, branches, inverted, to F. F moves out of line, first among
+        the run's stubs (after the next closing transfer), and goes on to the
+        target (cold_return) unless it ends in a transfer. Every instruction keeps
+        its lowering: both edges see the same registers and CCR. Each eligible
+        site goes to outline_sites (gen.py writes them for the tool), with the
+        instruction whose run's end receives F. Returns the lines and whether
+        they now fall into the next run."""
+        u = self.units[mod]
+        pos = {o: k for k, o in enumerate(run)}
+        offs = self.offsets.setdefault(mod, sorted(u.insns))
+        nxt = bisect.bisect_right(offs, run[-1])
+        place = {}
+        if u.insns[run[-1]].op in TERMINAL and nxt < len(offs):
+            pos[offs[nxt]] = len(run)   # the next run starts at the target
+            lasts = self.run_last.setdefault(mod, {r[0]: r[-1] for r in self.runs(mod)})
+            place[len(run)] = label(mod, lasts[offs[nxt]])
+        starts = starts + [len(lines)]
+        cuts, end = [], 0
+        for k, o in enumerate(run):
+            if u.insns[o].op != "jcc":
+                continue
+            t = self.succ[(mod, o)][0]
+            j = pos.get(t[1]) if t in self.succ and t[0] == mod else None
+            m = BCC.match(lines[starts[k + 1] - 1])
+            if j is None or j <= k + 1 or not m or m.group(3) != label(*t) \
+                    or any((mod, x) in self.guard_at for x in run[k:j]):
+                continue
+            on = label(mod, o) in self.outline and k >= end
+            self.outline_sites[label(mod, o)] = (label(mod, run[k + 1]), label(mod, run[j - 1]),
+                                                 label(*t), u.insns[run[j - 1]].op in TERMINAL,
+                                                 place.get(j, label(mod, run[-1])), on)
+            if on:
+                cuts.append((k, j, m.group(1)))
+                end = j
+        if not cuts:
+            return lines, False
+        out, last, chunks = [], 0, []
+        for k, j, cc in cuts:
+            b = starts[k + 1]
+            out += lines[last:b - 1] + [f"\tb{INVERT[cc]} {label(mod, run[k + 1])}"]
+            chunks += lines[b:starts[j]]
+            if u.insns[run[j - 1]].op not in TERMINAL:
+                chunks += cold_return(label(*self.succ[(mod, run[k])][0]))
+            last = starts[j]
+        stubs[at:at] = chunks
+        stats["cold side outlined"] += len(cuts)
+        return out + lines[last:], end == len(run)
 
     def module_text(self, mod: str) -> tuple[list[str], Counter]:
         u = self.units[mod]
@@ -807,8 +883,10 @@ class Program:
                        and self.guard_at[(mod, o)] not in copies]
             place(start, closed)
             if closed:
-                lines += stubs
+                start = len(lines)
+                lines += stubs      # outlined ranges (R27) may hold return checks
                 stubs = []
+                place(start, True)
                 for k in copies:
                     if k in copied:
                         continue
@@ -824,12 +902,14 @@ class Program:
                     stats["guarded copy"] += 1
                 copies = []
         assert not copies, (mod, copies)
+        start = len(lines)
+        lines += stubs  # after the last run, with the entries below
+        place(start, False)
         if pending:
             here = f"{TAG[mod]}_rm{tramps}"
             for k in pending:
                 lines[k] = f"\tbne.w {here}"
             lines += mismatch_stub(here)
-        lines += stubs  # after the last run, with the entries below
         for off in sorted(u.smc_entries):
             lo, _ = self.region(mod, off)
             lines += [f"{smc_label(mod, off)}:\t; self-modified code (D16)",

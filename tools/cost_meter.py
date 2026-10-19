@@ -317,6 +317,13 @@ def instruction_counts(prog: Program, n: Counter) -> list:
     return rows
 
 
+def taken_counts(prog: Program, taken: Counter) -> list:
+    """Taken transfers per generated instruction, as instruction_counts
+    (tools/outline_sites.py, speed-plan R27)."""
+    return [(prog.symbol(pc), pc - prog.by_name[prog.symbol(pc)], *prog.mn[pc], k)
+            for pc, k in sorted(taken.items()) if k and prog.cls.get(pc) in ("generated", "walk")]
+
+
 def report(prog: Program, n: Counter, taken: Counter, coef: dict, gen: Path) -> dict:
     text, _ = L.static_counts(gen)
     classes = defaultdict(lambda: Counter())
@@ -356,7 +363,8 @@ def report(prog: Program, n: Counter, taken: Counter, coef: dict, gen: Path) -> 
             "forms": {k: dict(v) for k, v in forms.items()},
             "ops": {k: dict(v) for k, v in ops.items()},
             "guest_instructions": guest,
-            "instruction_counts": instruction_counts(prog, n)}
+            "instruction_counts": instruction_counts(prog, n),
+            "taken_counts": taken_counts(prog, taken)}
 
 
 def static_size(prog: Program) -> dict:

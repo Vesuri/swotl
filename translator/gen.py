@@ -37,6 +37,7 @@ VERSION = "swotl-gen 2 (ir, 68020)"
 AUDIT = image.REPO / "tests/audit.csv"
 SUPPORT = "support"
 POLLS = "poll-points.csv"
+OUTLINE = "outline-sites.csv"
 PROGRAM = "program"  # assembly root: equates, runtime xrefs, includes, dispatch table
 OUT = image.REPO / "build/gen"
 M = image.M
@@ -165,6 +166,11 @@ def generate(out: Path, program: emit.Program | None = None) -> tuple[dict[str, 
     # hardware interrupts only there, so the host can replay them exactly
     (out / POLLS).write_text("module,offset\n" + "".join(
         f"{m},0x{o:05x}\n" for m, o in sorted(prog.loop_heads)))
+    # R27 sites for tools/outline_sites.py: jcc, its fall-through range, target,
+    # the instruction after whose run the range goes
+    (out / OUTLINE).write_text("label,first,last,target,ends,place,outlined\n" + "".join(
+        f"{lab},{a},{b},{t},{int(e)},{pl},{int(on)}\n"
+        for lab, (a, b, t, e, pl, on) in sorted(prog.outline_sites.items())))
     return units, total, per
 
 

@@ -118,23 +118,60 @@ def relocated(m: M.Module) -> bytearray:
     return data
 
 
+def block_at(p: emit.Program, mod: str, off: int) -> list[int]:
+    """The block from `off` to its first transfer or the next leader."""
+    u = p.units[mod]
+    run, k = [], off
+    while True:
+        i = u.insns[k]
+        run.append(k)
+        if i.op in TRANSFER or k in u.manager_calls:
+            return run
+        nxt = p.fall.get((mod, k))
+        if nxt is None or nxt in p.leaders:
+            return run
+        k = nxt[1]
+
+
 def blocks(p: emit.Program, executed: dict[str, set[int]]):
     for mod, u in p.units.items():
         for off in sorted(u.insns):
             n = (mod, off)
             if n not in p.leaders or off not in executed.get(mod, ()):
                 continue
-            run, k = [], off
-            while True:
-                i = u.insns[k]
-                run.append(k)
-                if i.op in TRANSFER or k in u.manager_calls:
-                    break
-                nxt = p.fall.get((mod, k))
-                if nxt is None or nxt in p.leaders:
-                    break
-                k = nxt[1]
-            yield mod, run
+            yield mod, block_at(p, mod, off)
+
+
+def outlined_blocks(p: emit.Program, node_of: dict) -> list[tuple[str, list[int], set[int]]]:
+    """R27: each outlined jcc with the code from the leader that falls into it,
+    then its fall-through range's blocks as paths: a block that starts at a
+    leader alone, any other one after the path that falls into it (a lowering
+    after a non-leader may use what that path left in registers or the CCR).
+    The set: path indices whose instruction must fall through (block_cases
+    skips the cases that take one)."""
+    out = []
+    for lab, (first, last, _target, _ends, _place, on) in sorted(p.outline_sites.items()):
+        if not on:
+            continue
+        (mod, jcc), (_, lo), (_, hi) = node_of[lab], node_of[first], node_of[last]
+        u = p.units[mod]
+        prev = [o for o in sorted(u.insns) if o < jcc]
+        head = jcc      # back to a leader, through jumps that fall into the next
+        while prev and (mod, head) not in p.leaders and p.fall.get((mod, prev[-1])) == (mod, head):
+            head = prev.pop()
+        path = [o for o in sorted(u.insns) if head <= o <= jcc]
+        fall = {k for k, o in enumerate(path[:-1]) if u.insns[o].op in TRANSFER}
+        out.append((mod, path, fall))
+        rng = [o for o in sorted(u.insns) if lo <= o <= hi]
+        for a, b in zip([None] + rng, rng):
+            if a is not None and (mod, b) not in p.leaders and u.insns[a].op not in TRANSFER:
+                continue    # inside the previous block
+            if (mod, b) in p.leaders:
+                path, fall = block_at(p, mod, b), set()
+            else:
+                path, fall = path + block_at(p, mod, b), fall | {len(path) - 1}
+            out.append((mod, path, fall))
+    return out
 
 
 def empty_guest_entries(lines):
@@ -697,12 +734,13 @@ def main(argv=None) -> int:
     walks_at = {emit.walk_label(mo, lo) for mo, lo, _ in p.smc_forms}
 
     def block_cases(mod, run, states, force=None, posted=None, copy=False, memory=(), expected=None,
-                    forced_flags=None):
+                    forced_flags=None, fall=frozenset()):
         """`states` cases of one block; `force`: registers set after the random
         state; `posted` (at a poll point): an interrupt posted, rt_irq modelled as
         taking it ("taken") or as the bench watch leaving it set ("watch"); the
         poll must call it once with its CS:IP. `memory` adds fixture bytes;
-        `expected` additionally requires the named generated entry."""
+        `expected` additionally requires the named generated entry. `fall`: run
+        indices that must fall through (R27 paths; cases taking one are skipped)."""
         u = p.units[mod]
         data = reloc[mod]
         last = u.insns[run[-1]]
@@ -721,22 +759,25 @@ def main(argv=None) -> int:
             regs["cx"] &= 0x3F
             regs.update(force or {})
             flags.update(forced_flags or {})
-            patches = list(memory)
             sp_lin = regs["ss"] * 16 + regs["sp"]
             stack = bytearray(h.rng.randrange(256) for _ in range(8))
             for k in (1, 3, 5, 7):
                 stack[k] &= 0xFE
-            patches.append((sp_lin, bytes(stack)))
+            patches = [(sp_lin, bytes(stack))] + list(memory)    # fixtures over the stack
             patches.append((cs * 16 + ip, code))
             case = (regs, flags, flagsx, ip, patches)
             s = State(dict(regs, flagsx=flagsx), dict(flags), h.mem, ip)
             s.port_in = lambda port, w: X.port_value(port, w // 8)
             for a, d in patches:
                 h.mem[a:a + len(d)] = d
+            took = False
             try:
                 for _k in range(len(run)):
                     ex, _i = step(s)
                     if ex.kind in ("int", "fault"):
+                        break
+                    if _k in fall and s.ip != u.insns[run[_k + 1]].ip:
+                        took = True
                         break
             except (UndefinedFlag, DecodeError) as e:
                 skipped["IR reads an undefined flag" if isinstance(e, UndefinedFlag)
@@ -745,6 +786,9 @@ def main(argv=None) -> int:
                 continue
             undef = set(s.undef)
             h.reset(patches, s.writes, set())
+            if took:
+                skipped["outlined path takes a jump"] += 1
+                continue
             err, out, fl, umem, ints, outs, uwrites = h.oracle.run(case, len(run))
             if set(range(cs * 16 + ip, cs * 16 + ip + len(code))) & uwrites:
                 skipped["writes its own code"] += 1
@@ -1087,6 +1131,67 @@ def main(argv=None) -> int:
                     if copy and not all(emit.copy_label(mod, o) in addr for o in run):
                         continue
                     block_cases(mod, run, 1, force, copy=copy)
+        # R27: outlined jcc blocks take both edges; each outlined range runs from
+        # its blocks' starts out of line to the jcc's target or its own exits.
+        # A path's registers and the words it loads (probed: the background is
+        # one byte) are random, three in four of them edge values or the path's
+        # own immediates and their neighbours; until four cases fall through.
+        unrun, prng = [], random.Random(27)
+
+        def path_reads(mod, run, force, memory):
+            """Linear addresses the x86 path loads under `force` and `memory`."""
+            u = p.units[mod]
+            cs = (LOADSEG + u.cs[run[0]]) & 0xFFFF
+            ip = u.insns[run[0]].ip
+            code = bytes(reloc[mod][run[0]:run[-1] + u.insns[run[-1]].size])
+            regs, flags, flagsx, _ = h.state({"regs": dict(force, cs=cs), "ip": ip})
+            patches = list(memory) + [(cs * 16 + ip, code)]
+            for a, d in patches:
+                h.mem[a:a + len(d)] = d
+            st = State(dict(regs, flagsx=flagsx), dict(flags), h.mem, ip)
+            st.port_in = lambda port, w: X.port_value(port, w // 8)
+            seen = []
+            st.load = lambda seg, off, w: (seen.append(seg * 16 + off), State.load(st, seg, off, w))[1]
+            try:
+                for _k in range(len(run)):
+                    ex, _i = step(st)
+                    if ex.kind in ("int", "fault") or (_k + 1 < len(run) and st.ip != u.insns[run[_k + 1]].ip):
+                        break
+            except (UndefinedFlag, DecodeError):
+                pass
+            h.reset(patches, st.writes, set())
+            return [a for a in seen if not cs * 16 + ip <= a < cs * 16 + ip + len(code)]
+
+        def word(near):
+            if prng.random() < 0.25:
+                return prng.randrange(0x10000)
+            return prng.choice((0, 1, 0x7FFF, 0x8000, 0xFFFF) + near)
+
+        for mod, run, fall in outlined_blocks(p, node_of):
+            before = count[mod]
+            for value in (0, 1, 0x7FFF, 0x8000, 0xFFFF):
+                force = {r: value for r in ("ax", "bx", "cx", "dx", "si", "di")}
+                force.update(ss=0x7000, sp=0x1000)
+                block_cases(mod, run, 4 if fall else 2, force, fall=fall)
+            near = tuple(sorted({(o.value + d) & 0xFFFF for x in run for o in p.units[mod].insns[x].operands
+                                 if isinstance(o, Imm) for d in (-1, 0, 1)}))
+            fixed = count[mod]
+            for _ in range(512 if fall else 0):
+                if count[mod] - fixed >= 4:
+                    break
+                force = {r: word(near) for r in ("ax", "bx", "cx", "dx", "si", "di", "bp")}
+                force.update(ds=0x5000, es=0x6000, ss=0x7000, sp=0x1000)
+                memory = []
+                for _round in range(2):     # the words the path reads, then through them
+                    memory += [(a, word(near).to_bytes(2, "little"))
+                               for a in path_reads(mod, run, force, memory) if all(a != b for b, _ in memory)]
+                block_cases(mod, run, 1, force, memory=memory, fall=fall)
+            if count[mod] == before:
+                unrun.append(f"{mod}+{run[0]:05X}..{run[-1]:05X}")
+            count["outlined sides"] += count[mod] - before
+            count[mod] = before
+        if unrun:
+            print(f"outlined paths never falling through: {len(unrun)}", unrun[:20])
         # Direct entry at each zero-code back jump must stop before its target,
         # while the unrotated exact/copy counterpart remains a real jump.
         for mod, off, target in (("SWOTL.EXE", 0xD5F6, 0xD5DA),

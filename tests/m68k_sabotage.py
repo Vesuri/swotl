@@ -41,6 +41,8 @@ real_guard_lines = U.guard_lines
 real_slow_path = U.slow_path
 real_base_written = U.base_written
 real_bp_native = U.bp_native
+real_invert = E.INVERT
+real_cold_return = E.cold_return
 RECORD = Path(__file__).resolve().parent.parent / "tmp/test/x86-side-boundary.pkl"
 
 
@@ -568,6 +570,8 @@ SABOTAGE = [
     ("BP mirror store dropped across an exit", "bp exit", "program"),
     ("native BP kept after its source changes", "bp source", "boundary"),
     ("BP mirror store dropped before a d5 read", "bp reader", "boundary"),
+    ("outlined jcc keeps its condition", "outline condition", "program"),
+    ("outlined range falls through", "outline return", "program"),
     ("held index survives a block leader", "reuse leaders", "program"),
     ("high-byte clear keeps bit 8", sub(r"^\tand\.w #\$ff,(d[0-3])$", r"\tand.w #$1ff,\1"),
      "boundary"),
@@ -643,6 +647,10 @@ def plant(k: int) -> tuple[int, int, int, int]:
         R.bp_range = wide_bp_range
     elif fn in BP_PLANTS:           # reuse.bp_native (R25)
         U.bp_native = bp_native_line(*BP_PLANTS[fn])
+    elif fn == "outline condition":     # emit.INVERT (R27)
+        E.INVERT = {cc: cc for cc in real_invert}
+    elif fn == "outline return":        # emit.cold_return (R27)
+        E.cold_return = lambda lab: []
     elif fn == "reuse writes":      # reuse.written (R13)
         U.written = lambda line: None if real_written(line) is None else set()
     elif fn == "reuse leaders":     # reuse.reuse (R13)
@@ -687,6 +695,8 @@ def plant(k: int) -> tuple[int, int, int, int]:
         D.HELPERS = real_helpers
         E.poll_stub = real_poll_stub
         E.mismatch_stub = real_mismatch_stub
+        E.INVERT = real_invert
+        E.cold_return = real_cold_return
         R.bp_range = real_bp_range
         S.walk = real_walk
         F.carry_ccr = real_carry_ccr
