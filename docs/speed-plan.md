@@ -13,22 +13,22 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   (240 ms); stretch ≤ 10.
 - **Status:** R16 alignment repair, R17 palette validity, R18 flag extraction kept; R20 cell
   cache, R21 string layout, R22 call layout, R24 REP STOSW fill, R25 BP as data, R26 REPE CMPSW, R27 cold
-  branch sides, R28 carry in X, R29 far push, R30 repeated segment loads and R31 push/pop runs
+  branch sides, R28 carry in X, R29 far push, R30 repeated segment loads,
+  R31 push/pop runs and R32 conditional-over-jump fusion
   kept. Item 14b's 240 ms target remains unmet; no native replacement is authorized. Next
-  steps: open-work 31: the jcc/jmp fusion, then the far
-  return (approved 2026-10-19).
+  step: open-work 31: the far return (approved 2026-10-19).
 - **Frames fixture** (R30, 2026-10-19): medians 340, 340 and
   340 ms; same-session parent 370, 350 and 340 ms. Intervals for R27 in §7.
-- **Bench:** R30 opening 71,542 (R29, median of three) → 70,243 lines (−1.816%), identical guest
+- **Bench:** R32 opening 70,486 → 70,124 lines (−0.514%), identical guest RAM.
+  R30 opening 71,542 (R29, median of three) → 70,243 lines (−1.816%), identical guest
   RAM; R29 71,720 → 71,495 (−0.314%).
   R20 opening 71,523 → 72,197 lines (+0.9424%), identical guest
   RAM; approved tradeoff. Palette window 38,392–38,405 lines (R17),
   2.81–3.61% below its same-session parent.
-- **Meter** (m4, R18 weights, R31): generated + walk + runtime 174,160,495
-  model cycles (−0.0821% from parent, which added +387 for divide-retry and
-  copy-exit leaders); generated + walk 171,830,355 cycles, 9.559 per
-  guest instruction of R24's count (17,976,252; R25's zero-code labels hide 45,439,
-  open-work 36). Host platform adds 2,171 cycles.
+- **Meter** (m4, R18 weights, R32): generated + walk + runtime 173,852,891
+  model cycles (−0.1766% from parent). R32 removes 46,981 JMP executions
+  from the label-derived guest count; no new per-guest ratio (open-work 36).
+  Host platform adds 2,171 cycles.
 - **Capture** (R24, first frames run, 100 fields): generated code 81.40%
   (cell walk 3.87%), runtime/platform 14.44% (three main FM functions 8.12%, item 34),
   no PC 2.19%, Kickstart 1.04%, IRQ transition 0.93%. Profiler guest-entry count:
@@ -315,6 +315,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R29 | CALLF pushes CS:IP as one long; SP wrap out of line | `lower.py` | −0.4660% |
 | R30 | segment loads that mostly repeat compare first; store, check and base out of line | `lower.py`, `tools/seg_repeat.py` | −0.5926% (bench −1.816%) |
 | R31 | push (pop) runs step SP once; SP wrap out of line | `reuse.py` | −0.0821% |
+| R32 | invert conditional over a lone jump; preserve jump entry aliases | `emit.py` | −0.1766% |
 
 Priced candidates (repriced 2026-10-19 on the `a1df937` meter): open-work 31 (each ≤ 1.2%). No form
 left (§2): poll points

@@ -544,6 +544,7 @@ def boundary(h: Harness) -> None:
     far_call_push_cases(h)
     seg_repeat_cases(h)
     stack_run_cases(h)
+    long_conditional_cases(h)
 
 
 def string_compare_cases(h):
@@ -1797,6 +1798,19 @@ def main() -> int:
         print(b)
     print(f"{len(h.bad)} mismatches")
     return 1 if h.bad or total == 0 else 0
+
+
+def long_conditional_cases(h):
+    """R32: the two constituent transfers, all condition bits and rel16 wraps."""
+    for cc in range(16):
+        for bits in range(32):
+            flags = {f: bits >> k & 1 for k, f in enumerate(("CF", "PF", "ZF", "SF", "OF"))}
+            for ip in (0, 0x100, 0xFFFC):
+                h.case(bytes((0x70 + cc, 3)), "b:long-conditional", overrides={"ip": ip, "flags": flags})
+    for ip in (0, 0x100, 0xFFFC):
+        for displacement in (0, 1, 0x7FFF, 0x8000, 0xFFFD, 0xFFFF):
+            h.case(b"\xe9" + displacement.to_bytes(2, "little"), "b:long-conditional-jump",
+                   overrides={"ip": ip})
 
 
 if __name__ == "__main__":

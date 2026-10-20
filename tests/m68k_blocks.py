@@ -725,6 +725,7 @@ def main(argv=None, on_batch=None) -> int:
     cache = image.REPO / "tmp/m68k"
     cache.mkdir(parents=True, exist_ok=True)
     img, addr = program_image(p, cache)
+    print(f"conditional-over-jump: {len(p.fused_jumps)} emitted sites", flush=True)
     empty_entries = set().union(*(empty_guest_entries(p.module_text(mod)[0]) for mod in p.units))
     by_addr: dict[int, list[str]] = {}
     aux = set(aux_labels(p))
@@ -774,6 +775,13 @@ def main(argv=None, on_batch=None) -> int:
         data = reloc[mod]
         last = u.insns[run[-1]]
         lo, hi = run[0], run[-1] + last.size
+        lab = emit.copy_label if copy else emit.label
+        fused = p.fused_jumps.get(lab(mod, run[-1]))
+        fused_off = node_of[fused][1] if fused else None
+        if fused_off is not None:
+            assert last.op == "jcc" and u.insns[fused_off].op == "jmp"
+            assert p.fall[(mod, run[-1])] == (mod, fused_off)
+            hi = fused_off + u.insns[fused_off].size
         code = bytes(data[lo:hi])
         cs = (LOADSEG + u.cs[run[0]]) & 0xFFFF
         ip = u.insns[run[0]].ip
@@ -800,6 +808,7 @@ def main(argv=None, on_batch=None) -> int:
             for a, d in patches:
                 h.mem[a:a + len(d)] = d
             took = False
+            oracle_steps = len(run)
             try:
                 for _k in range(len(run)):
                     ex, _i = step(s)
@@ -808,6 +817,12 @@ def main(argv=None, on_batch=None) -> int:
                     if _k in fall and s.ip != u.insns[run[_k + 1]].ip:
                         took = True
                         break
+                # R32: the original still executes its direct JMP when the
+                # conditional falls through. Follow exactly that instruction;
+                # all state, writes, flags and final CS:IP remain compared.
+                if not took and fused_off is not None and s.ip == u.insns[fused_off].ip:
+                    ex, _i = step(s)
+                    oracle_steps += 1
             except (UndefinedFlag, DecodeError) as e:
                 skipped["IR reads an undefined flag" if isinstance(e, UndefinedFlag)
                         else "block rewrites its own bytes"] += 1
@@ -818,8 +833,9 @@ def main(argv=None, on_batch=None) -> int:
             if took:
                 skipped["outlined path takes a jump"] += 1
                 continue
-            err, out, fl, umem, ints, outs, uwrites = h.oracle.run(case, len(run))
-            if set(range(cs * 16 + ip, cs * 16 + ip + len(code))) & uwrites:
+            err, out, fl, umem, ints, outs, uwrites = h.oracle.run(case, oracle_steps)
+            checked_bytes = len(code) if oracle_steps > len(run) else run[-1] + last.size - lo
+            if set(range(cs * 16 + ip, cs * 16 + ip + checked_bytes)) & uwrites:
                 skipped["writes its own code"] += 1
                 h.oracle.restore(uwrites | {a for a0, d in patches for a in range(a0, a0 + len(d))})
                 continue
@@ -1239,6 +1255,52 @@ def main(argv=None, on_batch=None) -> int:
                 lab = emit.copy_label if copy else emit.label
                 if lab(mod, off) in addr:
                     block_cases(mod, [off], 2, copy=copy, expected=lab(mod, target))
+    # R32: every fused conditional in exact code and guarded copies, plus
+    # every decoded predecessor (taken, fall-through, call/return entries).
+    # This adds to the traced-block corpus rather than selecting it down.
+    if not args.only:
+        fused_nodes = {node_of[lab] for lab in p.fused_jumps}
+        incoming = {n for n, ss in p.succ.items() if any(t in fused_nodes for t in ss)}
+        incoming |= {n for n, f in p.fall.items() if f in fused_nodes}
+        affected = fused_nodes | incoming
+        decoded = {m: set(u.insns) for m, u in p.units.items()}
+        for mod, run in blocks(p, decoded):
+            if not any((mod, off) in affected for off in run):
+                continue
+            for bits in range(32):
+                flags = {f: bits >> k & 1 for k, f in enumerate(("CF", "PF", "ZF", "SF", "OF"))}
+                block_cases(mod, run, 1, forced_flags=flags)
+        for _ws, starts, nodes, rng in p.comps:
+            bmin, bmax = 0x7FFF - rng[1], 0x7FFF - rng[0]
+            for mod, run in copy_blocks(p, nodes, decoded):
+                if not any((mod, off) in affected for off in run):
+                    continue
+                for bp in (bmin, bmax, h.rng.randrange(bmin, bmax + 1)):
+                    for bits in range(32):
+                        flags = {f: bits >> k & 1 for k, f in enumerate(("CF", "PF", "ZF", "SF", "OF"))}
+                        block_cases(mod, run, 1, {"bp": bp}, copy=True, forced_flags=flags)
+        # Preserve the invalid-copy input as an exact-path regression and
+        # verify that the real region entry rejects it before any copy runs.
+        mod, first, last, bp = "FLIGHT.OVL", 0x159E7, 0x15A29, 0x020B
+        run = next(run for m_, run in blocks(p, decoded)
+                   if m_ == mod and run[0] == first and run[-1] == last)
+        for bits in range(32):
+            flags = {f: bits >> k & 1 for k, f in enumerate(("CF", "PF", "ZF", "SF", "OF"))}
+            block_cases(mod, run, 1, {"bp": bp, "ss": 0x57C2}, forced_flags=flags)
+        entry = (mod, 0x1538F)
+        component = next(c for c in p.comps if (mod, first) in c[2])
+        assert entry in component[1]
+        bmin, bmax = 0x7FFF - component[3][1], 0x7FFF - component[3][0]
+        assert not bmin <= bp <= bmax
+        fast, exact = emit.copy_label(*entry), emit.label(*entry)
+        m.e.reg_write(U.M68K["d5"], upper_rng.randrange(0x10000) << 16 | bp ^ 0x7FFF)
+        m.extra_stops = {addr[fast]: fast, addr[exact]: exact}
+        m.inside, m.stop, m.entry = set(), None, None
+        m.e.start(addr[exact + "_bpg"], 0xFFFFFFFF, 1000)
+        if m.stop != exact:
+            bad.append(f"R32 invalid copy BP {bp:04x} reached {m.stop}, want {exact}")
+        count["guard decisions"] += 1
+        m.extra_stops = stop_names
     total = sum(v for k, v in count.items() if k != "return checks")
     print(f"blocks {len(picks)} of {len(allb)} executed; cases {total}", dict(count))
     print(f"poll cases {sum(polls.values()) - polls['return checks']} (interrupt posted)")

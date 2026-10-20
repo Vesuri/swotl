@@ -51,29 +51,13 @@ speed work: [speed-plan.md](speed-plan.md).
     `bra` back to its target that never closes a loop, so R27's meter Δ is
     −0.6278%, −0.7903% counting only taken back edges (FS-UAE agreed in sign).
     Decide the definition (and recalibrate) at the next re-profile.
-31. Translator candidates, repriced 2026-10-19 on the `a1df937` m4 meter (183,699,737
-    model cycles) unless noted, in price order; each one a speed-plan step (R24 REP
-    STOSW, R25 BP as data, R26 REPE CMPSW, R27 cold branch sides, R28 carry in X, R29
-    far push, R30 repeated segment loads and R31 push/pop runs done). Evidence:
-    `tmp/item31b/`.
-    - Block layout (audit on `a1df937`): free-placement bound −5.31M, 22.7% of the
-      taken weight `dbcc` back edges. Left: `jcc` over a lone `jmp` (the 8086 long
-      conditional) as one inverted branch, static, −0.15M (118 executed sites); the
-      block differential must follow the fused jump across the zero-code `jmp`.
-      Bench acceptance (D5). R23 loop-tail placement rejected (speed-plan §10).
-    - Far return (R29 pushes CS:IP as one long): `retf` as one `move.l` pop (−6 bytes,
-      −1 read) and the return check as one `cmp.l`, the rest of the 5ecdf79 price of
-      −1.75M for both (−1.52M if misaligned longs cost two accesses: long address ≡
-      2 mod 4 at 57% of sampled `retf`). A wrapped pop needs its own `bvs.w` guard (a
-      compare can match by chance), and runtime consumers of a far return read CS from
-      d6: a return-protocol change, approved by the user (2026-10-19), after the
-      jcc/jmp fusion.
-    Not worth it: index reuse across leaders (all predecessors agreeing,
-    single-jump leaders, poll labels: −0.02M); the TFH map's forms (`R_0CE8B` never
-    runs in m4 or the captures; `R_10028..R_10044`, `R_0C411`/`R_0C415` ≤ 0.02% each);
-    `mul` (`mulu.w` is ~26 of its 31 cycles), indexed address formation itself,
-    SPAZ's calibrated OPL delay spin. FLIGHT.OVL's cost per guest instruction is no
-    lead: counting R6 copies it is 9.2 against SWOTL.EXE's 12.6 in that capture.
+31. Far return (next speed-plan step): R29 pushes CS:IP as one long; pop it
+    with one `move.l` (−6 bytes, −1 read) and check it with one `cmp.l`.
+    Re-price the remaining part of the old −1.75M-cycle combined estimate
+    (−1.52M if misaligned longs cost two accesses; long address ≡ 2 mod 4 at
+    57% of sampled `retf`). A wrapped pop needs its own `bvs.w` guard: a
+    compare can match by chance. Runtime consumers read returned CS from d6;
+    the protocol change was approved by the user (2026-10-19).
 33. Native-routine contract (map: Native contract): emit interface for compute
     rows, register/flag/memory rules, poll-point policy (user decision, §2.9),
     Unicorn oracle on recorded entry states, sabotage. Needed before asking the

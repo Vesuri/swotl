@@ -44,6 +44,9 @@ real_base_written = U.base_written
 real_bp_native = U.bp_native
 real_stack_runs = U.stack_runs
 real_invert = E.INVERT
+real_fuse_jumps = E.fuse_jumps
+real_retarget_aliases = E.retarget_jump_aliases
+real_outline_cold = E.Program.outline_cold
 real_cold_return = E.cold_return
 real_retried = E.retried
 real_copy_exits = E.copy_exits
@@ -622,6 +625,8 @@ SABOTAGE = [
     ("BP mirror store dropped across an exit", "bp exit", "program"),
     ("native BP kept after its source changes", "bp source", "boundary"),
     ("BP mirror store dropped before a d5 read", "bp reader", "boundary"),
+    ("fused conditional keeps its condition", "jump condition", "program"),
+    ("fused jump aliases fall-through", "jump alias", "program"),
     ("outlined jcc keeps its condition", "outline condition", "program"),
     ("outlined range falls through", "outline return", "program"),
     ("carry X kept across a setup not restored", sub(r"^\tadd\.b d6,d6$", "\tnop"), "boundary"),
@@ -740,8 +745,26 @@ def plant(k: int) -> tuple[int, int, int, int]:
         U.stack_runs = stack_runs_line(*STACK_PLANTS[fn])
     elif fn == "stack leaders":     # reuse.stack_runs (R31)
         U.stack_runs = lambda outs, resets, labels, colds: real_stack_runs(outs, set(), labels, colds)
-    elif fn == "outline condition":     # emit.INVERT (R27)
-        E.INVERT = {cc: cc for cc in real_invert}
+    elif fn == "jump alias":
+        E.retarget_jump_aliases = lambda *args: None
+    elif fn == "jump condition":
+        def wrong_fusion(lines, candidates, stats):
+            saved = E.INVERT
+            E.INVERT = {cc: cc for cc in saved}
+            try:
+                return real_fuse_jumps(lines, candidates, stats)
+            finally:
+                E.INVERT = saved
+        E.fuse_jumps = wrong_fusion
+    elif fn == "outline condition":     # R27 only: do not plant R32 too
+        def wrong_outline(*args, **kwargs):
+            saved = E.INVERT
+            E.INVERT = {cc: cc for cc in saved}
+            try:
+                return real_outline_cold(*args, **kwargs)
+            finally:
+                E.INVERT = saved
+        E.Program.outline_cold = wrong_outline
     elif fn == "outline return":        # emit.cold_return (R27)
         E.cold_return = lambda lab: []
     elif fn == "retry leaders":         # emit.retried (leaders)
@@ -798,6 +821,9 @@ def plant(k: int) -> tuple[int, int, int, int]:
         E.poll_stub = real_poll_stub
         E.mismatch_stub = real_mismatch_stub
         E.INVERT = real_invert
+        E.fuse_jumps = real_fuse_jumps
+        E.retarget_jump_aliases = real_retarget_aliases
+        E.Program.outline_cold = real_outline_cold
         E.cold_return = real_cold_return
         E.retried = real_retried
         E.copy_exits = real_copy_exits

@@ -186,6 +186,71 @@ INVERT = {"eq": "ne", "ne": "eq", "cs": "cc", "cc": "cs", "vs": "vc", "vc": "vs"
 BCC = re.compile(r"^\tb(" + "|".join(INVERT) + r")(\.[swl])?\s+(\S+)$")
 
 
+def fuse_jumps(lines: list[str], candidates: dict, stats: Counter) -> dict:
+    """Invert a conditional over a sole non-entry JMP. Candidates are proved
+    from the guest CFG; the text check also preserves every intervening hook,
+    guard and out-of-line body. Keep the unused JMP label as a zero-code alias.
+    """
+    fused = {}
+    for k in range(len(lines) - 1, -1, -1):
+        branch = BCC.match(lines[k])
+        if not branch:
+            continue
+        j, labels = k + 1, []
+        while j < len(lines) and skippable(lines[j]):
+            if LABEL_ONLY.match(lines[j]):
+                labels.append(lines[j].split(":")[0])
+            j += 1
+        if len(labels) != 1 or labels[0] not in candidates or j == len(lines):
+            continue
+        source, skip, target = candidates[labels[0]]
+        jump = BRANCH.match(lines[j])
+        if not jump or jump.group(3) != target or branch.group(3) != skip:
+            continue
+        # The branch must belong to the proved conditional, not a later stub.
+        before = k - 1
+        while before >= 0 and not LABEL_ONLY.match(lines[before]):
+            before -= 1
+        if before < 0 or lines[before].split(":")[0] != source:
+            continue
+        after, following = j + 1, []
+        while after < len(lines) and skippable(lines[after]):
+            if LABEL_ONLY.match(lines[after]):
+                following.append(lines[after].split(":")[0])
+            after += 1
+        if skip not in following:
+            continue
+        lines[k] = f"\tb{INVERT[branch.group(1)]} {target}"
+        del lines[j]
+        fused[source] = labels[0]
+    stats["conditional over jump fused"] += len(fused)
+    return fused
+
+
+def retarget_jump_aliases(lines: list[str], fused: dict, candidates: dict) -> None:
+    """A bypassed JMP's zero-code entry means its original destination. Move
+    its label there so direct entry retains exactly the JMP's semantics.
+    Targets cannot themselves be bypassed JMPs: a jump target is a leader.
+    """
+    destinations = {jump: candidates[jump][2] for jump in fused.values()}
+    assert not destinations.keys() & set(destinations.values())
+    aliases, body = {}, []
+    for line in lines:
+        name = line.split(":")[0] if LABEL_ONLY.match(line) else None
+        if name in destinations:
+            aliases.setdefault(destinations[name], []).append(line)
+        else:
+            body.append(line)
+    assert sum(map(len, aliases.values())) == len(destinations)
+    out = []
+    for line in body:
+        name = line.split(":")[0] if LABEL_ONLY.match(line) else None
+        out.extend(aliases.pop(name, []))
+        out.append(line)
+    assert not aliases, aliases  # never silently discard an unresolved entry
+    lines[:] = out
+
+
 def cold_return(lab: str) -> list[str]:
     """The end of an outlined fall-through range (R27): on to the jcc's target."""
     return [f"\tbra {lab}"]
@@ -288,6 +353,7 @@ class Program:
                            and s[0] == n[0] and s[1] <= n[1]}
         self.live_in: dict = {}
         self.live_out: dict = {}
+        self.fused_jumps: dict = {}    # conditional label -> removed direct JMP
         self.ccr_only: dict = {}    # label -> live flags only the CCR holds there (R14d)
         self.ret_of: dict = {}
         self.returns()
@@ -944,6 +1010,33 @@ class Program:
             lines += [f"{s}:\t; transfer out of the translated modules",
                       f"\tmove.l #{hx(u.ip_of(off))},d7", "\tjmp rt_stop_unknown"]
             stats["stop_unknown site"] += 1
+        candidates = {}
+        for node in self.succ:
+            if node[0] != mod or self.node_insn(node).op != "jcc":
+                continue
+            jump = self.fall.get(node)
+            if jump not in self.succ or jump in self.leaders:
+                continue
+            ji = self.node_insn(jump)
+            if ji.op != "jmp" or not isinstance(ji.operands[0], Rel):
+                continue
+            skip = (mod, jump[1] + ji.size)
+            if self.succ[node][0] != skip or skip not in self.succ:
+                continue
+            for lab, ctx in ((label, self.ctx), (copy_label, None)):
+                if ctx is None:
+                    comp = next((k for k, c in enumerate(self.comps) if node in c[2] and jump in c[2]), None)
+                    if comp is None:
+                        continue
+                    target = self.copy_ctx(mod, jump[1], stats, comp).near(ji.operands[0].target)
+                    skip_label = self.copy_ctx(mod, node[1], stats, comp).near(self.node_insn(node).operands[0].target)
+                else:
+                    target = ctx(mod, jump[1], stats).near(ji.operands[0].target)
+                    skip_label = label(*skip)
+                candidates[lab(*jump)] = (lab(*node), skip_label, target)
+        fused = fuse_jumps(lines, candidates, stats)
+        retarget_jump_aliases(lines, fused, candidates)
+        self.fused_jumps.update(fused)
         drop_next_branches(lines, stats)
         align(lines, self.align, stats)
         size_branches(lines)
