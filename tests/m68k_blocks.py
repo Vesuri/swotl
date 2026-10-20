@@ -690,6 +690,13 @@ def cross_entry_cases():
     return n, bad
 
 
+def compute_entry_cases():
+    # Synthetic callback bodies are generated from x86; independent Unicorn
+    # x86 supplies expected state for both arms and every predecessor.
+    from test_compute_contract import differential
+    return differential(), []
+
+
 def flag_helper_entries():
     """R18: POPF and IRET callers, then both predecessors of the DF block.
 
@@ -757,7 +764,7 @@ def main(argv=None, on_batch=None) -> int:
         print("\n".join(lines[k:k + 400]).split(emit.label(mo, picks[0][1][-1]) + ":")[0][-6000:])
     h = X.Harness(args.seed)
     upper_rng = random.Random(5)
-    m = D.M68k(h.bg, STUB_AT)
+    m = D.M68k(h.bg, STUB_AT, {p.hle[n][1] for n in p.compute_rows})
     m.load(img)
     reloc = {name: relocated(mods[name]) for name in p.units}
     count, bad, skipped, exits = Counter(), [], Counter(), Counter()
@@ -1018,6 +1025,9 @@ def main(argv=None, on_batch=None) -> int:
     bad += failures
     n, failures = cross_entry_cases()
     count["cross predecessors"] += n
+    bad += failures
+    n, failures = compute_entry_cases()
+    count['compute predecessors'] += n
     bad += failures
     n, failures = flag_helper_entries()
     count["flag helper predecessors"] += n

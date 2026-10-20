@@ -29,7 +29,8 @@ speed work: [speed-plan.md](speed-plan.md).
     cost is mostly generated guest code; no priced translator candidate remains.
     FM synthesis is 34 (flag-word packing rejected, speed-plan §10). Native replacement
     requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
-    [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md), item 33.
+    [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md); interface and validation:
+    [native-compute.md](native-compute.md).
     Bench acceptance for platform/layout work (D5) and
     a separate later palette window (D6) are approved; all fidelity gates and
     no slowdown remain mandatory, except the explicitly accepted R20 opening-bench
@@ -51,10 +52,6 @@ speed work: [speed-plan.md](speed-plan.md).
     `bra` back to its target that never closes a loop, so R27's meter Δ is
     −0.6278%, −0.7903% counting only taken back edges (FS-UAE agreed in sign).
     Decide the definition (and recalibrate) at the next re-profile.
-33. Native-routine contract (map: Native contract): emit interface for compute
-    rows, register/flag/memory rules, poll-point policy (user decision, §2.9),
-    Unicorn oracle on recorded entry states, sabotage. Needed before asking the
-    user to authorize any routine.
 34. FM synthesis is 8.15–9.71% of the three `5ecdf79` frames captures and 8.11% of
     R20's first (`loop_for`, `fm_field`, `eg_advance`); R17's whole runtime/platform
     share was 5.96%. Platform layer, outside the host meter: price and plan under D5

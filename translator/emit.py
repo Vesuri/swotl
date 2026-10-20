@@ -25,7 +25,7 @@ import bisect
 import re
 from collections import Counter
 
-from . import cfg, image, region, smc
+from . import cfg, compute, image, region, smc
 from .decode import Far, Rel
 from .flags import ALL, plan, transfer
 from .lower import GREG, LOADSEG, MIRROR, Ctx, LowerError, hx
@@ -324,6 +324,7 @@ class Program:
                       for r in image.rows("flags.csv")}
         self.hle: dict[tuple[str, int], tuple[tuple[str, int], str]] = {}
         self.hle_args: dict[tuple[str, int], list[str]] = {}
+        self.compute_rows: set[tuple[str, int]] = set()
         for r in image.rows("hle.csv"):
             mod, first, last = r["module"], int(r["first"], 16), int(r["last"], 16)
             u = self.units[mod]
@@ -335,6 +336,13 @@ class Program:
             if len(args) > 2 or any(a not in GREG or a in MIRROR for a in args):
                 raise LowerError(f"hle.csv: {mod}+{first:05X} args {args}: two plain word registers at most")
             self.hle_args[(mod, first)] = args
+            kind = r.get('kind') or 'hook'
+            if kind not in {'hook', 'compute'}:
+                raise LowerError(f'hle.csv: unknown kind {kind}')
+            if kind == 'compute':
+                if args or not r.get('reason') or not r.get('oracle'):
+                    raise LowerError('hle.csv: compute needs reason/oracle and no args')
+                self.compute_rows.add((mod, first))
         int0 = [r for r in image.rows("runtime.csv") if r["name"] == "__cintDIV"]
         self.int0 = (int0[0]["module"], int(int0[0]["offset"], 16)) if int0 else None
         # D16: self-modified regions, each lowered as one cell walk
@@ -358,6 +366,8 @@ class Program:
         self.ccr_only: dict = {}    # label -> live flags only the CCR holds there (R14d)
         self.ret_of: dict = {}
         self.returns()
+        self.compute_bodies = {n: compute.validate(self, n, self.hle[n][0])
+                               for n in self.compute_rows}
         self.liveness()
         self.leaders = self.find_leaders()
         for mod, off in self.diagnostic_hooks:
@@ -829,8 +839,11 @@ class Program:
                     lines.append("\tlea 4(sp),sp")
             if (mod, o) in self.hle:
                 resume, service = self.hle[(mod, o)]
-                lines += [f"\tmove.w {GREG[a]},{d}" for a, d in zip(self.hle_args[(mod, o)], ("d7", "d6"))]
-                lines += [f"\tjsr {service}", f"\tbne {label(*resume)}"]
+                if (mod, o) in self.compute_rows:
+                    lines += compute.hook(service, label(*resume), cs_expr(u.cs[o]))
+                else:
+                    lines += [f"\tmove.w {GREG[a]},{d}" for a, d in zip(self.hle_args[(mod, o)], ("d7", "d6"))]
+                    lines += [f"\tjsr {service}", f"\tbne {label(*resume)}"]
                 stats["HLE hook"] += 1
             if ((mod, o) in self.hle or (mod, o) in self.hle_resumes) and lw.ccr_only:
                 raise LowerError(f"{mod}+{o:05X}: HLE hook where the CCR holds live flags")

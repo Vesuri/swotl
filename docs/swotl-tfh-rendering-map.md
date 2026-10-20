@@ -2,7 +2,7 @@
 
 Plan and evidence for speeding up SWOTL's rendering with what Their Finest Hour's
 Amiga version (TFH, same engine family) and its WHDLoad slave show. Static research
-2026-10-16, plan and prices 2026-10-17. Open work: [open-work.md](open-work.md) 14b, 31, 33.
+2026-10-16, plan and prices 2026-10-17. Open work: [open-work.md](open-work.md) 14b.
 Rules: [speed-plan.md](speed-plan.md) §2. The full research notes are kept locally in
 `tmp/tfh-xref/swotl-tfh-rendering-map.2026-10-16.md`.
 
@@ -40,10 +40,10 @@ Rules: [speed-plan.md](speed-plan.md) §2. The full research notes are kept loca
 
 ## Plan
 
-1. **Translator steps** (open-work 31, each ≤ 2.8%) in price order, by the speed-plan
+1. **Translator steps** (speed-plan history) in price order, by the speed-plan
    procedure (§3). No authorization needed. The cell cache is built (speed-plan R20:
    meter −15.31%; the walk is 3.62% of the corrected build’s first capture).
-2. **Native contract** (open-work 33): interface, rules and oracle below.
+2. **Native contract**: [interface, rules and oracle](native-compute.md).
 3. **User decision per routine** from the priced table.
 4. **Native routines**, each only after its authorization; poll-free leaves first.
 
@@ -83,24 +83,27 @@ chunky to planar), RTSVGA `+3DCD` packed images (`27D40`; SWOTL's FB/FC tokens),
 image payloads and terrain map, TFH projectile dispatch, TFH's two-chain rasterizer
 in place of `BFD1`.
 
-## Native contract (open-work 33)
+## Native contract
+
+Interface and validation: [native-compute.md](native-compute.md).
+User-approved initial scope: poll-free reachable bodies and callees only;
+generation rejects other compute rows. No routine replacement is authorized.
 
 - Range: the routine's first instruction to the one before its `ret`/`retf`; the guest
   return and its return check still run.
-- Registers: every guest register the original writes holds the original's value at
-  the resume unless the translator proves it dead (no annotation asserts it, §2.3).
-  Flags exact where live at the resume.
+- Registers: every guest register matches the original at the resume. The initial
+  contract omits no register comparisons. Flags are exact where live at the resume.
 - Memory: every store the original makes, same value. The slave keeps TFH's scratch
   in registers because it proved every other user writes first; SWOTL's host run
   compares RAM with DOSBox. `B54B` writes scratch DS:`22C6..22D4` besides its outputs.
 - Layout: a guest word at L is the 68k word at TOP−L−1, a dword the 68k long at
   TOP−L−3; no byte swaps. 16-bit offset wrap keeps its x86 meaning.
-- Interrupts: poll-free routines leave delivery unchanged. Routines with poll points
-  need a user decision: §2.9 forbids removing or thinning them, and the host run
-  replays each reference interrupt at the same visit of the same poll point.
-- Interface: `hle.csv` passes at most two guest word registers (d7/d6); a compute row
-  reads and writes the guest register file and stack directly: extend the emit
-  contract and the block differential.
+- Interrupts: poll-free routines leave delivery unchanged. Reachable poll points,
+  including in callees, reject a compute row. Supporting them needs a separately
+  approved contract; §2.9 forbids removing or thinning them.
+- Interface: ordinary `hle.csv` hooks pass at most two guest word registers
+  (d7/d6); `kind=compute` uses the complete generated register ABI and d7.l
+  as handled/declined result, with original RET/RETF retained.
 - Oracle: the original x86 under Unicorn on recorded entry states (as
   `tools/sfx_levels.py` runs SPAZ): registers, live flags and every write compared,
   with the cases below; `make test-host-all` with the row on and references unchanged;

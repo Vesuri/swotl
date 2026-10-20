@@ -141,7 +141,8 @@ def irq_diffs(f: dict, irq: int, pending: int) -> list[str]:
 class M68k:
     """Unicorn 68020 with guest RAM, state block, stubs and native stack."""
 
-    def __init__(self, background: bytes, stubs: dict[str, int] | None = None):
+    def __init__(self, background: bytes, stubs: dict[str, int] | None = None,
+                 compute_services=frozenset()):
         assert len(background) == X.RAM
         self.bg = background
         self.stub_at = stubs or STUB_AT
@@ -202,6 +203,9 @@ class M68k:
                 w = 8 if n == "rt_out8" else 16
                 self.outs.append((self.r("d7") & 0xFFFF, w, self.r("d6") & ((1 << w) - 1)))
                 self.e.reg_write(U.M68K["pc"], addr + 2)
+            elif n in compute_services:  # d7=0: exact fallback, as x86
+                self.e.reg_write(U.M68K['d7'], 0)
+                self.e.reg_write(U.M68K['pc'], addr + 2)
             elif n.startswith("rt_hle_"):  # EQ: the guest code runs (as x86)
                 self.e.reg_write(U.M68K["sr"], self.r("sr") | 4)
                 self.e.reg_write(U.M68K["pc"], addr + 2)
