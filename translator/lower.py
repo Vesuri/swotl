@@ -123,6 +123,7 @@ class Ctx:
     vram: bool = False                        # graphics driver: stores to A000h mark rows (D9)
     driver_call: bool = False                 # PLINK thunk jump into the graphics driver (D9)
     ret_mismatch: str = "rt_ret_mismatch"     # a return check's mismatch branch (emit.py: local)
+    far_ret_mismatch: str = "rt_ret_far_mismatch"
     bp_direct: bool = False                   # guarded copy: [bp+d] direct (region.py, R6)
     rep_hook: tuple[int, str] | None = None  # diagnostic-only slice check and exact restart
     retry: str = ""                           # where a divide error re-executes (default: label)
@@ -370,6 +371,21 @@ class Lowering:
     def pop(self, dst: str) -> None:
         self.e(f"move.w -1(a2,d4.w),{dst}")
         self.e("subq.w #2,d4")
+
+    def pop_far(self) -> None:
+        """R33: packed CS:IP in d7. Overflow guards SP wrapping between
+        the word pops; the slow path retains each original word access."""
+        k = sum(x.startswith(f"{self.c.label}_rf") for x in self.cold)
+        cold, back = f"{self.c.label}_rf{k}", f"{self.c.label}_rr{k}"
+        self.e("subq.w #4,d4")
+        self.e(f"bvs {cold}")
+        self.e("move.l 1(a2,d4.w),d7")
+        self.at(back)
+        self.cold += [f"{cold}:", "\taddq.w #4,d4",
+                      "\tmove.w -1(a2,d4.w),d7", "\tsubq.w #2,d4",
+                      "\tmove.w -1(a2,d4.w),d6", "\tsubq.w #2,d4",
+                      "\tswap d7", "\tmove.w d6,d7", "\tswap d7", f"\tbra {back}"]
+        self.stats["far pop as one long"] += 1
 
     # -- flags --------------------------------------------------------------
     def kills(self, kind: str) -> set:
@@ -1775,11 +1791,12 @@ class Lowering:
     def return_check(self, ip: int, cs: str | None) -> None:
         if not self.c.program:
             return
-        self.e(f"cmp.w #{hx(ip)},d7")
-        self.e(f"bne {self.c.ret_mismatch}")
-        if cs is not None:
-            self.e(f"cmp.w #{cs},d6")
+        if cs is None:
+            self.e(f"cmp.w #{hx(ip)},d7")
             self.e(f"bne {self.c.ret_mismatch}")
+        else:
+            self.e(f"cmp.l #(({cs})<<16)|{hx(ip)},d7")
+            self.e(f"bne {self.c.far_ret_mismatch}")
         self.stats["return check"] += 1
 
     def dispatch_near(self, how: str) -> None:
@@ -1993,12 +2010,12 @@ class Lowering:
         self.ret(far=True)
 
     def ret(self, far: bool) -> None:
-        """Popped IP/CS in the low words of d7/d6: their consumers (return checks,
-        the runtime) read only those (speed-plan R5)."""
+        """Near IP in d7.w (R5); far CS:IP packed in d7.l (R33)."""
         i = self.i
-        self.pop("d7")
         if far:
-            self.pop("d6")
+            self.pop_far()
+        else:
+            self.pop("d7")
         if i.operands:
             self.sub_const(i.operands[0].value, "d4")
         self.e("rts")
@@ -2013,6 +2030,9 @@ class Lowering:
         self.pop("d7")
         self.pop("d6")
         self.e("subq.w #2,d4")
+        self.e("swap d7")
+        self.e("move.w d6,d7")
+        self.e("swap d7")
         self.e("rts")
 
     def op_int(self):

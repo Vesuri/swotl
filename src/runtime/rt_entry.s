@@ -25,6 +25,7 @@ G_DS	equ	1
 	xdef	rt_out8
 	xdef	rt_out16
 	xdef	rt_ret_mismatch
+	xdef	rt_ret_far_mismatch
 	xdef	rt_dispatch_near
 	xdef	rt_dispatch_far
 	xdef	rt_stop_unknown
@@ -143,10 +144,8 @@ deliver_guest:	; d7 = CS << 16 | IP of the pushed frame; the handler's IRET pops
 	move.w	rt_deliver_ip,d7
 	movea.l	rt_deliver_code,a0	; rt_lookup's far entry (deliver)
 	jsr	(a0)
-	cmp.w	2(a7),d7
-	bne	rt_ret_mismatch
-	cmp.w	(a7),d6
-	bne	rt_ret_mismatch
+	cmp.l	(a7),d7
+	bne	rt_ret_far_mismatch
 	addq.l	#4,a7
 rt_exit_guest:
 	ifd SWOTL_REPLAY
@@ -183,18 +182,14 @@ rt_irq_back:				; back at the poll point (host run: next interrupt)
 irq_done:	rts
 
 ; The BIOS INT 08h handler, reached by a guest handler chaining to the vector
-; it replaced (jmp far): the tick, then IRET; d7/d6 = popped IP/CS for the
+; it replaced (jmp far): the tick, then IRET; d7.l = popped CS:IP for the
 ; return check of the code that delivered the interrupt.
 rt_bios_int08:
 	bsr	save_regs
 	jsr	rt_bios_int08_c
 	move.l	d0,-(a7)
 	bsr	load_regs
-	moveq	#0,d7
-	move.w	2(a7),d7
-	moveq	#0,d6
-	move.w	(a7)+,d6
-	addq.l	#2,a7
+	move.l	(a7)+,d7
 	rts
 
 ; Divide error: d6 = CS << 16 | 0, d7 = IP of the faulting instruction; the
@@ -324,6 +319,10 @@ dispatch:
 	jmp	(a0)
 
 ; Return site reached with another guest IP (d7) / CS (d6).
+; R33 far returns carry both words in d7; normalize only the failure path.
+rt_ret_far_mismatch:
+	move.l	d7,d6
+	swap	d6
 rt_ret_mismatch:
 	bsr	save_regs
 	move.l	d6,-(a7)
@@ -487,7 +486,7 @@ vram_row:	; row of each 64-byte block of the frame: k / 5
 	even
 
 ; D9: the `jmp far` of a PLINK thunk into the graphics driver called the
-; entry; its retf returns here (d6/d7 = the popped CS:IP for the caller's
+; entry; its retf returns here (d7.l = the popped CS:IP for the caller's
 ; return check). The outermost return publishes what the driver drew.
 rt_vdrv_return:
 	subq.w	#1,rt_vdrv_depth

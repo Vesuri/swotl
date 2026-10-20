@@ -461,6 +461,17 @@ def return_check_32(self, out):
     return [x.replace("cmp.w", "cmp.l", 1) if x.startswith("\tcmp.w #") and x.endswith(",d7")
             and out[k + 1:k + 2] == [f"\tbne {E.RM}"] else x for k, x in enumerate(out)]
 
+def far_return_check_word(self, out):
+    return [re.sub(r"^\tcmp\.l #(.+),d7$", r"\tcmp.w #((\1)&$ffff),d7", x)
+            if x.startswith("\tcmp.l #") and x.endswith(",d7")
+            and out[k + 1:k + 2] == [f"\tbne {E.RMF}"] else x for k, x in enumerate(out)]
+
+
+def far_return_exact_cs_lost(self, out):
+    if self.i.op == "retf" and any(re.match(r"^\w+_rf\d+:$", x) for x in out):
+        return ["\tnop" if x == "\tmove.w d6,d7" else x for x in out]
+    return out
+
 
 def direct_bp_off_by_one(self, out):
     """R6: a guarded copy's direct [bp+d] one byte off."""
@@ -636,6 +647,11 @@ SABOTAGE = [
      sub(r"^\tmove\.l #\(\((.+)\)<<16\)\|(\S+),-3\(a2,d4\.w\)$", r"\tmove.l #((\2)<<16)|\1,-3(a2,d4.w)"),
      "boundary"),
     ("far push exact path stores CS a word low", far_exact_cs_low, "boundary"),
+    ("far pop long ignores the SP wrap", sub(r"^\tbvs \w+_rf\d+$", "\tnop"), "boundary"),
+    ("far pop long reads a word low",
+     sub(r"^\tmove\.l 1\(a2,d4\.w\),d7$", "\tmove.l -1(a2,d4.w),d7"), "boundary"),
+    ("far pop exact path loses CS", far_return_exact_cs_lost, "boundary"),
+    ("far return check ignores CS", far_return_check_word, "program"),
     ("changed segment load treated as a repeat", sub(r"^\tbne \w+_gx\d+$", "\tnop"), "boundary"),
     ("segment repeat compares another segment", seg_compare_other_slot, "boundary"),
     ("changed segment keeps the upper word", seg_changed_keeps_upper, "boundary"),
@@ -736,7 +752,7 @@ def plant(k: int) -> tuple[int, int, int, int]:
     elif fn == "flags dead":    # Lowering.flags_dead (R4)
         L.Lowering.flags_dead = lambda self, kind: True
     elif fn == "mismatch stub":     # emit.mismatch_stub (R5)
-        E.mismatch_stub = lambda lab: [f"{lab}:"]
+        E.mismatch_stub = lambda lab, far=False: [f"{lab}:"]
     elif fn == "bp range":  # region.bp_range (R6)
         R.bp_range = wide_bp_range
     elif fn in BP_PLANTS:           # reuse.bp_native (R25)

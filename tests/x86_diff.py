@@ -545,6 +545,7 @@ def boundary(h: Harness) -> None:
     seg_repeat_cases(h)
     stack_run_cases(h)
     long_conditional_cases(h)
+    far_return_cases(h)
 
 
 def string_compare_cases(h):
@@ -1811,6 +1812,23 @@ def long_conditional_cases(h):
         for displacement in (0, 1, 0x7FFF, 0x8000, 0xFFFD, 0xFFFF):
             h.case(b"\xe9" + displacement.to_bytes(2, "little"), "b:long-conditional-jump",
                    overrides={"ip": ip})
+
+
+def far_return_cases(h):
+    """R33: word-read boundaries, SP wrapping between pops, cleanup and flags."""
+    for sp in (0, 1, 2, 3, 0x7FFE, 0x7FFF, 0x8000,
+               0xFFFA, 0xFFFB, 0xFFFC, 0xFFFD, 0xFFFE, 0xFFFF):
+        for immediate in (None, 0, 2, 0xFFFF):
+            for ip, cs in ((0, 0), (0x1234, 0x4321), (0xFFFF, 0x5678)):
+                for bit in (0, 1):
+                    code = b"\x90" + (b"\xcb" if immediate is None else
+                                        b"\xca" + immediate.to_bytes(2, "little"))
+                    h.case(code, "b:far-return", n=2, overrides={
+                        "regs": {"cs": 0x2000, "ss": 0x7000, "sp": sp}, "ip": 0x100,
+                        "flags": {f: bit for f in ("CF", "PF", "AF", "ZF", "SF", "OF", "DF", "IF")},
+                        "flagsx": 0x7000,
+                        "mem": [(0x70000 + sp, ip.to_bytes(2, "little")),
+                                (0x70000 + ((sp + 2) & 0xFFFF), cs.to_bytes(2, "little"))]})
 
 
 if __name__ == "__main__":

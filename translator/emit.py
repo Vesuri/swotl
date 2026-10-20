@@ -37,7 +37,7 @@ TAG = {"SWOTL.EXE": "R", "SPAZ.OVL": "SPZ", "RTSVGA.OVL": "VGA", "FRONTEND.OVL":
 RET, UNKNOWN, SMC = "ret", "unknown", "smc"
 TERMINAL = {"jmp", "jmpf", "ret", "retf", "iret", "hlt"}
 RUNTIME = ("rt_int", "rt_irq", "rt_fault", "rt_halt", "rt_trap", "rt_in8", "rt_in16", "rt_out8", "rt_out16",
-           "rt_ret_mismatch", "rt_dispatch_near", "rt_dispatch_far", "rt_stop_unknown",
+           "rt_ret_mismatch", "rt_ret_far_mismatch", "rt_dispatch_near", "rt_dispatch_far", "rt_stop_unknown",
            "rt_vram_mark", "rt_vdrv_depth", "rt_vdrv_return", "rt_irq_pending")
 # G3 native replacements (annotations/hle.csv): runtime service rt_hle_<service>
 # at a range's first instruction; NE skips the range to the instruction after
@@ -101,6 +101,7 @@ def poll_stub(lab: str, ip: int, cs: str) -> list[str]:
 # trampoline nearest by estimated bytes, placed after a run that cannot fall
 # through. Any choice is correct: vasm sizes the branch.
 RM = "__ret_mismatch"
+RMF = "__ret_far_mismatch"
 NEAR = 96  # estimated bytes within which bne.s is chosen (real 0.69-1.18x; reach 126)
 SIZED = ".?"  # a guarded copy's branch (R6), sized at the end of module_text (same rule)
 
@@ -256,8 +257,8 @@ def cold_return(lab: str) -> list[str]:
     return [f"\tbra {lab}"]
 
 
-def mismatch_stub(lab: str) -> list[str]:
-    return [f"{lab}:", "\tjmp rt_ret_mismatch"]
+def mismatch_stub(lab: str, far: bool = False) -> list[str]:
+    return [f"{lab}:", "\tjmp " + ("rt_ret_far_mismatch" if far else "rt_ret_mismatch")]
 
 
 def est_bytes(line: str) -> int:
@@ -749,6 +750,7 @@ class Program:
                    seg_repeat=label(mod, off) in self.seg_repeat,
                    manager=off in u.manager_calls, program=True, vram=mod == GRAPHICS_DRIVER,
                    driver_call=mod == M.ROOT and off in self.driver_jumps, ret_mismatch=RM,
+                   far_ret_mismatch=RMF,
                    rep_hook=((self.diagnostic_reps[(mod, off)], label(mod, off))
                              if (mod, off) in self.diagnostic_reps else None))
 
@@ -934,28 +936,32 @@ class Program:
         copies: list[int] = []  # guarded copies (R6), placed there too
         copied: set[int] = set()
         tramps = 0             # return-check trampolines placed (RM)
-        last_tramp = None      # line index of the latest
-        pending: list[int] = []  # RM lines waiting for the next trampoline
+        last_tramp = {}        # marker -> (line index, label) of its latest stub
+        pending = {RM: [], RMF: []}
 
         def place(start: int, closed: bool) -> None:
-            nonlocal tramps, last_tramp, pending
-            pending += [k for k in range(start, len(lines)) if lines[k] == f"\tbne {RM}"]
-            if closed and pending:
-                base = pending[0] if last_tramp is None else last_tramp
+            nonlocal tramps
+            for marker in pending:
+                pending[marker] += [k for k in range(start, len(lines))
+                                    if lines[k] == f"\tbne {marker}"]
+            for marker, waiting in pending.items():
+                if not closed or not waiting:
+                    continue
+                previous = last_tramp.get(marker)
+                base = waiting[0] if previous is None else previous[0]
                 at = [0]  # estimated byte position of lines[base + j]
                 for x in lines[base:]:
                     at.append(at[-1] + est_bytes(x))
                 here = f"{TAG[mod]}_rm{tramps}"
-                prev = f"{TAG[mod]}_rm{tramps - 1}"
-                for k in pending:
-                    back = at[k - base] if last_tramp is not None else 1 << 30
+                for k in waiting:
+                    back = at[k - base] if previous is not None else 1 << 30
                     fwd = at[-1] - at[k - base]
                     lines[k] = f"\tbne.{'s' if min(back, fwd) <= NEAR else 'w'} " \
-                               f"{prev if back < fwd else here}"
-                last_tramp = len(lines)
-                lines.extend(mismatch_stub(here))
+                               f"{previous[1] if back < fwd else here}"
+                last_tramp[marker] = (len(lines), here)
+                lines.extend(mismatch_stub(here, marker == RMF))
                 tramps += 1
-                pending = []
+                waiting.clear()
 
         for run in self.runs(mod):
             start = len(lines)
@@ -987,11 +993,14 @@ class Program:
         start = len(lines)
         lines += stubs  # after the last run, with the entries below
         place(start, False)
-        if pending:
+        for marker, waiting in pending.items():
+            if not waiting:
+                continue
             here = f"{TAG[mod]}_rm{tramps}"
-            for k in pending:
+            for k in waiting:
                 lines[k] = f"\tbne.w {here}"
-            lines += mismatch_stub(here)
+            lines += mismatch_stub(here, marker == RMF)
+            tramps += 1
         for off in sorted(u.smc_entries):
             lo, _ = self.region(mod, off)
             lines += [f"{smc_label(mod, off)}:\t; self-modified code (D16)",

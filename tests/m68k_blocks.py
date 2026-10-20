@@ -15,7 +15,7 @@ sequence, interrupt/fault, the successor reached (CS:IP), and the flags live
 at that successor (flags.py; undefined ones masked by the IR). Calls also check
 the return protocol: resuming at the native return address with the right
 guest IP reaches the return site, with a wrong IP or CS rt_ret_mismatch
-(upper words of the popped IP and CS undefined).
+(near IP's upper word undefined; far returns carry packed CS:IP).
 """
 
 from __future__ import annotations
@@ -881,7 +881,7 @@ def main(argv=None, on_batch=None) -> int:
                 exits["label"] += 1
             elif stop == "T_RET":
                 mip = info["d7"]
-                mcs = info["d6"] if last.op in ("retf", "iret") else cs
+                mcs = info["d7.l"] >> 16 if last.op in ("retf", "iret") else cs
                 live = p.ret_live_of((mod, run[-1])) if last.op != "iret" else set()
                 exits["ret"] += 1
             elif stop in ("rt_dispatch_near", "rt_dispatch_far"):
@@ -944,21 +944,25 @@ def main(argv=None, on_batch=None) -> int:
                 site = emit.label(mod, run[-1] + last.size + (2 if run[-1] in u.manager_calls else 0))
                 if copy and site + "_bp" in addr:   # past the guard after the call (BP in range)
                     site += "_bp"
-                # popped IP/CS with undefined upper words (speed-plan R4, R5)
+                # Near IP has an undefined upper word (R5); far CS:IP is packed (R33).
                 for good, bad_cs in ((True, False), (False, False)) + \
                         (((False, True),) if last.op == "callf" else ()):
                     a7 = m.r("a7")
                     native = int.from_bytes(m.e.read(a7, 4), "big")
                     m.e.reg_write(U.M68K["a7"], a7 + 4)
                     popped = ret_ip if good or bad_cs else ret_ip ^ 0x55
-                    m.e.reg_write(U.M68K["d7"], upper_rng.randrange(0x10000) << 16 | popped)
+                    upper = upper_rng.randrange(0x10000)
+                    if last.op == "callf":
+                        upper = cs ^ 0x55 if bad_cs else cs
+                    m.e.reg_write(U.M68K["d7"], upper << 16 | popped)
                     m.e.reg_write(U.M68K["d6"], upper_rng.randrange(0x10000) << 16
                                   | (cs ^ 0x55 if bad_cs else cs))
                     m.extra_stops = {addr[site]: site} if site in addr else {}
                     saved_inside, m.inside = m.inside, set()
                     m.stop, m.entry = None, None
                     m.e.start(native, 0xFFFFFFFF, 1000)
-                    want = site if good else "rt_ret_mismatch"
+                    want = site if good else ("rt_ret_far_mismatch" if last.op == "callf"
+                                              else "rt_ret_mismatch")
                     if m.stop != want:
                         diffs.append(f"return protocol: {'right' if good else 'wrong'} "
                                      f"{'CS' if bad_cs else 'IP'} reached {m.stop}, want {want}")
@@ -1301,6 +1305,23 @@ def main(argv=None, on_batch=None) -> int:
             bad.append(f"R32 invalid copy BP {bp:04x} reached {m.stop}, want {exact}")
         count["guard decisions"] += 1
         m.extra_stops = stop_names
+    # R33: returns and all decoded predecessors, including untraced entries.
+    # Wrap/cleanup/flag combinations are independently covered by the x86
+    # boundary corpus; these cases cover the emitted block and copy contexts.
+    if not args.only:
+        returns = {n for n in p.succ if p.node_insn(n).op in ("retf", "iret")}
+        affected = returns | {n for n, ss in p.succ.items() if any(t in returns for t in ss)}
+        affected |= {n for n, f in p.fall.items() if f in returns}
+        decoded = {mod: set(u.insns) for mod, u in p.units.items()}
+        for mod, run in blocks(p, decoded):
+            if any((mod, off) in affected for off in run):
+                block_cases(mod, run, 1, {"sp": 0x120})
+                block_cases(mod, run, 1, {"sp": 0x121})
+        for _ws, _starts, nodes, rng in p.comps:
+            for mod, run in copy_blocks(p, nodes, decoded):
+                if any((mod, off) in affected for off in run):
+                    for bp in (0x7FFF - rng[1], 0x7FFF - rng[0]):
+                        block_cases(mod, run, 1, {"bp": bp, "sp": 0x120}, copy=True)
     total = sum(v for k, v in count.items() if k != "return checks")
     print(f"blocks {len(picks)} of {len(allb)} executed; cases {total}", dict(count))
     print(f"poll cases {sum(polls.values()) - polls['return checks']} (interrupt posted)")

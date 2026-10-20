@@ -120,6 +120,22 @@ class CurrentRoles(unittest.TestCase):
             self.assertEqual(roles[addr], 'return check', hex(addr))
         self.assertEqual(roles[0x2a], 'byte swap')
 
+    def test_packed_far_return_check_roles(self):
+        dis = """00000000 <R_00100>:
+       0: cmp.l #305419896,d7
+       6: bne.w 40 <rt_ret_far_mismatch>
+       a: cmp.w #4660,d7
+       e: bne.w 50 <rt_ret_mismatch>
+      12: cmp.l #305419896,d7
+      18: bne.w 60 <R_00200>
+"""
+        with patch.object(P.subprocess, 'run', return_value=SimpleNamespace(stdout=dis)):
+            roles = P.roles('objdump', 'unused')
+        for addr in (0, 6, 10, 14):
+            self.assertEqual(roles[addr], 'return check')
+        for addr in (18, 24):
+            self.assertEqual(roles[addr], 'other')
+
 
 class ModuleCounts(unittest.TestCase):
     def report(self, rows, extra=()):

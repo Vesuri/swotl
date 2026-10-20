@@ -14,19 +14,19 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
 - **Status:** R16 alignment repair, R17 palette validity, R18 flag extraction kept; R20 cell
   cache, R21 string layout, R22 call layout, R24 REP STOSW fill, R25 BP as data, R26 REPE CMPSW, R27 cold
   branch sides, R28 carry in X, R29 far push, R30 repeated segment loads,
-  R31 push/pop runs and R32 conditional-over-jump fusion
-  kept. Item 14b's 240 ms target remains unmet; no native replacement is authorized. Next
-  step: open-work 31: the far return (approved 2026-10-19).
+  R31 push/pop runs, R32 conditional-over-jump fusion and R33 packed far returns
+  kept. Item 14b's 240 ms target remains unmet; no native replacement is authorized.
 - **Frames fixture** (R30, 2026-10-19): medians 340, 340 and
   340 ms; same-session parent 370, 350 and 340 ms. Intervals for R27 in §7.
-- **Bench:** R32 opening 70,486 → 70,124 lines (−0.514%), identical guest RAM.
+- **Bench:** R33 opening 70,150 → 68,524 lines (−2.318%), identical guest RAM.
+  R32 opening 70,486 → 70,124 lines (−0.514%), identical guest RAM.
   R30 opening 71,542 (R29, median of three) → 70,243 lines (−1.816%), identical guest
   RAM; R29 71,720 → 71,495 (−0.314%).
   R20 opening 71,523 → 72,197 lines (+0.9424%), identical guest
   RAM; approved tradeoff. Palette window 38,392–38,405 lines (R17),
   2.81–3.61% below its same-session parent.
-- **Meter** (m4, R18 weights, R32): generated + walk + runtime 173,852,891
-  model cycles (−0.1766% from parent). R32 removes 46,981 JMP executions
+- **Meter** (m4, R18 weights, R33): generated + walk + runtime 172,620,455
+  model cycles (−0.7089% from parent). R32 removes 46,981 JMP executions
   from the label-derived guest count; no new per-guest ratio (open-work 36).
   Host platform adds 2,171 cycles.
 - **Capture** (R24, first frames run, 100 fields): generated code 81.40%
@@ -316,9 +316,9 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R30 | segment loads that mostly repeat compare first; store, check and base out of line | `lower.py`, `tools/seg_repeat.py` | −0.5926% (bench −1.816%) |
 | R31 | push (pop) runs step SP once; SP wrap out of line | `reuse.py` | −0.0821% |
 | R32 | invert conditional over a lone jump; preserve jump entry aliases | `emit.py` | −0.1766% |
+| R33 | guarded packed far-return pop and full CS:IP check | `lower.py`, `emit.py`, `rt_entry.s` | −0.7089% (bench −2.318%) |
 
-Priced candidates (repriced 2026-10-19 on the `a1df937` meter): open-work 31 (each ≤ 1.2%). No form
-left (§2): poll points
+No priced translator candidate remains. Unchanged (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
 `__set_flags` (POPF/IRET) and `__flags_word` are the largest runtime-side
 items left.
@@ -420,7 +420,7 @@ forms): CALLF pushes CS and IP with one `addq.w #4,d4` and one `move.l`
 overflows (SP 0–3, the stack wrapping SS:0): −2 bytes and −1 write for each of
 94,996 executions, −489K cycles (−0.278%); the 68020 splits a long write at
 an address ≡ 2 mod 4 (44% of sampled `callf`, 5ecdf79), which the meter does
-not model. The return check and RETF stay (open-work 31: protocol change).
+not model. The return check and RETF stay; R33 packs the return protocol.
 
 Built: `Lowering.push_far`: `addq.w #4,d4`, `bvs <label>_pf<k>`, `move.l
 #((CS)<<16)|IP,-3(a2,d4.w)`, rejoin `<label>_pr<k>` (inside the instruction,

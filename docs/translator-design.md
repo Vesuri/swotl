@@ -124,13 +124,15 @@ diffs directly); relocated words in instructions are emitted as
   `move.l`/`cmp.l` (speed-plan R12: an odd element alone, a mismatching
   long's guest-first word first). Checked by the boundary corpus (guard and
   stop edges, overlap) and sabotage plants.
-- Calls (D1): the guest stack stays byte-exact (return CS:IP pushed as the
-  CPU does); a guest call is `jsr`, `ret`/`retf` pop into the low words of
-  d7/d6 and `rts`; the return site checks d7 (and d6) with `cmp.w` against
-  its own IP/CS and otherwise branches (`bne.s`/`bne.w`) to a module-local
-  trampoline `<tag>_rm<n>` (`jmp rt_ret_mismatch`) after a run that cannot
-  fall through. A PLINK manager call's return site is 2 bytes later (the
-  manager advances the return IP).
+- Calls (D1): the guest stack stays byte-exact; a guest call is `jsr` and
+  returns with `rts`. Near returns carry IP in d7.w; RETF and IRET carry
+  CS:IP in d7.l (R33). RETF pops one long after a word SP step guarded by
+  overflow; wrapping uses the original two word reads and wraps SP between
+  them. IRET retains its word reads and flag handling, then packs the pair.
+  Return sites compare the near word or far long and branch to a module-local
+  `<tag>_rm<n>` trampoline after a run that cannot fall through. Far failure
+  normalizes CS into d6 before the existing fail-loud diagnostic. A PLINK
+  manager call's return site is 2 bytes later (the manager advances the IP).
 - Indirect transfers (D7): compare chain over the known targets
   (`annotations/indirect.csv`); a proved switch table falls back to
   `rt_stop_unknown`, other sites to `rt_dispatch_near`/`rt_dispatch_far`
@@ -207,8 +209,8 @@ choice, `tools/outline_sites.py` from `build/gen/outline-sites.csv`),
   values or its immediates; cases taking a jump on the way are skipped). Flags
   compared where live at the successor reached (at a cell walk: live at the
   transfer; the walk reads no flags); calls also run the return protocol
-  (right IP reaches the return site, wrong IP or CS `rt_ret_mismatch`;
-  upper words of the popped IP/CS random). Register calls and jumps that
+  (right IP/CS reaches the return site, wrong IP or CS reaches the mismatch
+  handler; near IP’s upper word random, far CS:IP packed). Register calls and jumps that
   can enter a self-modified region also run with the target in each region.
   Every executed block of a guarded copy runs with BP at both ends of the
   range its guard admits and inside it; every guard runs just inside and

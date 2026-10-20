@@ -277,6 +277,7 @@ class M68k:
         fx = int.from_bytes(st[16 - 10:16 - 8], "big")
         d6, d7 = self.r("d6") & 0xFFFF, self.r("d7") & 0xFFFF
         info = {"stop": self.stop, "err": err, "d6": d6, "d7": d7, "d6.l": self.r("d6"),
+                "d7.l": self.r("d7"),
                 "irq": irq_diffs(f, st[16 - 8], e.read(PENDING, 1)[0]),
                 "a7": self.r("a7"), "segbase": {a: self.r(a) for a in ("a1", "a2", "a3")}}
         mem = {a: self.gread(a, 1)[0] for a in sorted(self.writes)}
@@ -519,6 +520,8 @@ class Harness(X.Harness):
         # CS:IP
         far = stop in ("T_JUMPF", "T_CALLF") or stop == "T_RET" and last in ("retf", "iret")
         mcs = info["d6"] if far else regs["cs"]
+        if stop == "T_RET" and last in ("retf", "iret"):
+            mcs = info["d7.l"] >> 16
         mip = info["d7"]
         if mip != out["ip"]:
             diffs.append(f"ip 68k={mip:04x} x86={out['ip']:04x} ({stop})")

@@ -26,10 +26,10 @@ speed work: [speed-plan.md](speed-plan.md).
 14b. Speed target remains unmet: frames-fixture 68020 run medians on R30
     (2026-10-19) 340, 340 and 340 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
     §1, §9). Roughly 29% further reduction is needed from 340 ms; parent intervals overlap. Remaining
-    cost is mostly generated guest code; priced translator candidates are 31,
+    cost is mostly generated guest code; no priced translator candidate remains.
     FM synthesis is 34 (flag-word packing rejected, speed-plan §10). Native replacement
     requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
-    [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md), items 31, 33.
+    [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md), item 33.
     Bench acceptance for platform/layout work (D5) and
     a separate later palette window (D6) are approved; all fidelity gates and
     no slowdown remain mandatory, except the explicitly accepted R20 opening-bench
@@ -51,13 +51,6 @@ speed work: [speed-plan.md](speed-plan.md).
     `bra` back to its target that never closes a loop, so R27's meter Δ is
     −0.6278%, −0.7903% counting only taken back edges (FS-UAE agreed in sign).
     Decide the definition (and recalibrate) at the next re-profile.
-31. Far return (next speed-plan step): R29 pushes CS:IP as one long; pop it
-    with one `move.l` (−6 bytes, −1 read) and check it with one `cmp.l`.
-    Re-price the remaining part of the old −1.75M-cycle combined estimate
-    (−1.52M if misaligned longs cost two accesses; long address ≡ 2 mod 4 at
-    57% of sampled `retf`). A wrapped pop needs its own `bvs.w` guard: a
-    compare can match by chance. Runtime consumers read returned CS from d6;
-    the protocol change was approved by the user (2026-10-19).
 33. Native-routine contract (map: Native contract): emit interface for compute
     rows, register/flag/memory rules, poll-point policy (user decision, §2.9),
     Unicorn oracle on recorded entry states, sabotage. Needed before asking the

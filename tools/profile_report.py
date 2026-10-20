@@ -124,7 +124,8 @@ def roles(objdump, elf):
         if m:
             addr, op, arg = int(m.group(1), 16), m.group(2), m.group(3)
             insns.append((addr, op, arg, stub))
-    mismatch = lambda arg: "rt_ret_mismatch" in arg or bool(re.search(r"<\w+_rm\d+>", arg))
+    mismatch = lambda arg: bool(re.search(r"rt_ret_(?:far_)?mismatch", arg)) or \
+                           bool(re.search(r"<\w+_rm\d+>", arg))
     for i, (addr, op, arg, stub) in enumerate(insns):
         if mismatch(arg) or (op.startswith("cmp") and i + 1 < len(insns)
                              and insns[i + 1][1].startswith("bne")
