@@ -39,7 +39,7 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 | U2 | Approved 2026-10-21: transform pilot at `B54B` from `xform20`; retain generated `B52D` wrapper and return checks | — |
 | U3 | Confirmed 2026-10-21: keep every byte's complete write history, SMC/display bookkeeping and all other state checks | — |
 | U4 | Deferred 2026-10-21: further routines need viable prices/contracts and individual authorization | N2 |
-| U5 | Pending: approve the C1 poll contract; requested in C2, no decision received | C3, N4 |
+| U5 | Approved 2026-10-21: chosen polls (removed interior polls, return poll, optional sync polls), up to one PIT period of interrupt delay in a native routine, affected references re-recorded per row ([contract](native-compute.md#poll-contract-u5)); replaces C1 | — |
 | U6 | Authorize each routine that needs C | N4 |
 | U7 | Direction if Z1 leaves the target unmet (FM quality tradeoff, `BFD1`, revised target) | — |
 
@@ -79,16 +79,17 @@ explicit unpriced savings; do not invent a native price for them.
 
 ## C. Contract for routines with polls and loops
 
-Design: [C1 poll contract](native-compute.md#proposed-poll-contract-c1-awaiting-u5).
-It is not implemented or approved; existing poll-free admission remains active.
+Contract: [U5 poll contract](native-compute.md#poll-contract-u5) (approved, not
+implemented); poll-free admission stays active until C3.
 
-- **C2** U5, recorded in native-compute.md.
-- **C3** Admission, emitter (exit sites as leaders), oracle, tests and plants: stale
-  register at an exit, missing store before an exit, skipped visit, wrong exit site,
-  wrong visit count. Done: plants caught, full gates green.
-- **N4** Routines that need C, each after U6, by S1–S9 plus C's exit cases, in B3 price
-  order: expected `D5A6` (`xpnorm20`), `109D6` (`scen_verts`, `clr_scenery`), `F290`
-  (`tile_scenery`), then `4DAE`, `BB70`, `BD68`, `D69C`, `FDE0`, `BFD1`.
+- **C3** Admission (no waiting loops, latency bound, kept shared polls), emitter
+  (poll removal in both arms, return poll, sync-poll exit trampolines), oracle
+  (sync-visit prefixes), tests and the contract's plants. Done: plants caught, full
+  gates green.
+- **N4** Routines that need C, each after U6, by S1–S9 plus C's cases, in B3 price
+  order; S8 includes re-recording the references its poll set affects. Price each
+  with its return/sync polls and exits. Expected: `D5A6` (`xpnorm20`), `109D6`
+  (`scen_verts`, `clr_scenery`), `F290` (`tile_scenery`), then `4DAE`, `BB70`, `BD68`, `D69C`, `FDE0`, `BFD1`.
 
 ## Z. Close
 

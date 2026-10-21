@@ -79,8 +79,9 @@ Breaking any of these voids the step, whatever it measures.
    the exact condition that makes it exact (DF, CX, no 16-bit offset wrap,
    no overlap) and falls back to an exact body otherwise. Flags live after
    the instruction keep their exact x86 values. No dropped return check,
-   poll point, fail-loud stop or wrap handling; no "usually true" or "never
-   seen" assumption; no annotation asserting what the translator must prove.
+   poll point (except as native-plan U5 allows), fail-loud stop or wrap
+   handling; no "usually true" or "never seen" assumption; no annotation
+   asserting what the translator must prove.
 4. **D16:** every cell is matched against the writer forms from the guest RAM
    bytes when a walk first reaches it and after every change its cache sees
    (R20, D3); a dropped cache walks exactly.
@@ -114,8 +115,9 @@ Breaking any of these voids the step, whatever it measures.
    outermost graphics driver call returns), reading the frame to find
    changes, or skipping published frames; changing the PIT or timer rate
    or the order of interrupt delivery; removing or thinning poll points or
-   return checks; shortening the guest's own delay loops (SPAZ OPL waits
-   are guest semantics); a double buffer or copper display;
+   return checks (exception: native-plan U5 polls of a U6-authorized routine,
+   with its references re-recorded); shortening the guest's own delay loops
+   (SPAZ OPL waits are guest semantics); a double buffer or copper display;
    Chip-only memory (19). Exception: the deterministic frame bench (§4,
    user 2026-10-08) posts PIT ticks on a fixed schedule in its own runtime
    mode, as an instrument only.
@@ -149,7 +151,8 @@ Breaking any of these voids the step, whatever it measures.
 
 **Stop and ask the user** when: a gate fails for a reason that is not a
 plain bug; a step needs any of §2 beyond what was approved; references
-need re-recording or an interrupt delivery moves; two consecutive steps
+need re-recording or an interrupt delivery moves (beyond a U5 row's approved
+re-recording); two consecutive steps
 are rejected by the meter; meter and FS-UAE disagree on represented work; a step is ambiguous.
 
 **Per step:** price from meter counts (D5: fresh target capture and census);
@@ -370,9 +373,9 @@ items left.
 N3's frames-fixture medians are 370, 350 and 340 ms: the middle run needs
 110 ms (31.4%) less to reach 240 ms; the run range needs 100–130 ms less.
 No priced translator candidate remains (§7). N1 is kept; N2 has no currently
-priced, authorized next routine. C1's proposed poll contract is in
-[native-compute.md](native-compute.md#proposed-poll-contract-c1-awaiting-u5);
-next is C2/U5 approval, then C3 implementation and individual U6 authorization.
+priced, authorized next routine. The U5 poll contract (approved 2026-10-21) is in
+[native-compute.md](native-compute.md#poll-contract-u5); next is C3
+implementation, then individual U6 authorization.
 N2's exceptional-flow/multiple-return extensions need separate approved contracts
 and U4 authorization. See [native-plan.md](native-plan.md).
 

@@ -27,9 +27,8 @@ speed work: [speed-plan.md](speed-plan.md).
     (N3, 2026-10-21) 370, 350 and 340 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
     §1, §9). The middle run needs 110 ms (31.4%) less; no controlled frame-rate
     gain claimed against saved A3. No priced translator candidate remains;
-    flag-word packing is rejected (speed-plan §10). Next: C2/U5 approval of the proposed
-    [poll contract](native-compute.md#proposed-poll-contract-c1-awaiting-u5), then
-    C3 implementation; each N4 routine needs U6. N2 still
+    flag-word packing is rejected (speed-plan §10). Next: C3 implements the approved U5
+    [poll contract](native-compute.md#poll-contract-u5); each N4 routine needs U6. N2 still
     needs viable prices/contracts and individual authorization (U4).
     Current meter/target costs: speed-plan §1; candidate facts: the rendering map.
     Native replacement

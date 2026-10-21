@@ -20,9 +20,9 @@ remain generated and valid. A rejected row is a generation error, not fallback
 authorization. Arithmetic faults must use an exact, unchanged-state fallback;
 an exceptional CFG edge that violates admission rejects the row.
 
-**Poll policy (user, 2026-10-20):** reject routines whose reachable body or
-callees contain polls. Supporting them requires a separately approved contract.
-Do not alter the poll set, interrupt order or PIT rate.
+**Poll policy:** until C3 implements the [U5 poll contract](#poll-contract-u5),
+reject routines whose reachable body or callees contain polls. U5 changes the
+poll set only for an authorized row (U6); interrupt order and PIT rate stay.
 
 ## ABI
 
@@ -107,115 +107,80 @@ with that row active. Keep each row's oracle command and evidence in its
 Captures and byte-derived test material remain local; never re-record an
 existing reference without approval.
 
-## Proposed poll contract (C1; awaiting U5)
+## Poll contract (U5)
 
-Design only. C2/U5 decision requested 2026-10-21; awaiting the user’s approval.
-The enabled ABI and poll-free admission above remain unchanged.
-U5 approves this contract before C3 implementation; U6 separately authorizes
-each routine. No new poll site, PIT rate, interrupt order or reference is
-approved here. C3 must retain the poll-set fingerprint and existing references.
+Approved by the user 2026-10-21 (native-plan U5); replaces the C1 exact-handoff
+design (`f4a7c68`). Not implemented: C3 builds it; each routine still needs U6
+and S1–S9. Exceptional flow, multiple root returns, REP, device or
+interrupt-control effects and nested HLE remain outside this contract.
 
-### Admission and visit semantics
+The native routine is written by us, so its polls are chosen, not copied. Each
+chosen poll stands for an original x86 point (address, visit) at which the native
+state equals the original's. The reference takes interrupts only at poll points
+(`build/gen/poll-points.csv`, pc-reference-loop.md `--polls`), so the poll set is
+a translator decision that the reference follows.
 
-The translator proves the complete reachable CFG and enumerates every existing
-poll, including callees. Cycles are allowed only with proved control flow and
-an exact mapping from native execution to the original ordered poll visits.
-No profile-derived bounds or annotation assertions substitute for that proof.
-Unresolved transfers, exceptional flow, multiple root returns, REP, device or
-interrupt-control effects and nested HLE remain outside the existing contract;
-C does not independently admit them. A callee that fails admission rejects the
-whole row. Internal entries retain their generated implementation.
+### Poll set of a row
 
-A visit is arrival at a poll before its guest instruction, including entry by
-fall-through or a forward edge; it is not just a taken backward branch. For each
-entry state, native execution must preserve the ordered sequence of site identities
-and visit counts, not just totals. At every visit it performs a fresh byte read of
-G_IRQ. It must not gate that read or handoff on IF: G_IRQ also requests bench and
-presentation work, and the runtime owns pending-IRQ/IF handling.
+- **Removed:** every poll reachable only through the row's body. Both arms
+  (native and the declined generated body) omit them.
+- **Kept:** a poll also reachable from outside the row (shared callee, internal
+  entry) stays in the set; the native routine treats each of its visits as a
+  sync poll, or the row is rejected.
+- **Return poll:** a poll at the retained original return instruction, emitted in
+  generated code before it, so both arms visit it once per call.
+- **Sync polls (optional):** x86 sites inside the body, listed in the row. At each
+  visit the native state equals the original's at that site and visit: all
+  registers, segments, live/control flags, RAM and each byte's write history (U3);
+  no store moves across it. Visit order and counts at sync sites match the
+  original. With G_IRQ set the callback returns POLL_EXIT (translator-assigned
+  exit ID) to a generated trampoline that restores the site's ABI and enters its
+  existing IRQ stub; generated code completes the routine and its return checks.
+  The native loop is never resumed. Choose sites where this state is cheap
+  (outer-loop heads after a pass).
+- Every poll reads G_IRQ fresh and does not test IF (G_IRQ also carries bench and
+  presentation requests); the runtime owns IF and the pending queue.
 
-An algorithm with fewer arithmetic passes still performs every original poll
-visit in order. For example, xpnorm20 may calculate a shift count once, but must
-visit D5DA once for each original arrival, including the terminating visit, and
-reconstruct each visit's intermediate values and flags. It may not do final guest
-stores before their original visit interval, replay all checks at the end, or
-replace repeated G_IRQ reads with one read plus a count. Computing private
-intermediates early is allowed only if it cannot fault or expose future state.
-If the exact visit sequence or intermediate state cannot be proved, keep the
-original loop. Price the retained checks, state reconstruction and stores.
+### Admission
 
-### State and generated handoff
+- **No waiting:** every loop whose poll is removed must terminate without
+  interrupt or device effects (proved bound or entry-derived trip count). A loop
+  that can wait on timer, key, mouse or other interrupt-written state keeps its
+  poll as a sync poll, or the row is rejected.
+- **Latency (user, 2026-10-21):** a posted guest interrupt may wait up to one PIT
+  period inside a native routine. The longest stretch without a poll visit
+  (entry to first sync, between syncs, last sync to the return poll), in A1200
+  cycles on all S3 inputs and boundary cases, is at most one period at the
+  game's rate (236.7 Hz: about 59,900 cycles at 14.19 MHz). Over the bound: add
+  sync polls or reject. Ticks queue in the 32-entry `rt_irq_ring` and are
+  delivered in order at the next poll; the bound keeps a routine from delaying
+  more than one tick.
+- Poll-free rows (the `B54B` transform) are unchanged: no return poll is added.
 
-At a requested exit, materialize the exact pre-instruction guest state: all
-registers and segments, coherent segment bases and SP/BP mirrors, live defined
-status flags and all control flags. Liveness includes the generated IRQ path
-and its pushed FLAGS, not merely the normal successor. Retain all RAM and each
-byte's complete write history up to that visit (U3), with existing SMC/display
-bookkeeping. Store reordering across a poll boundary is forbidden. Uncaptured
-memory and self-modification retain the rejection/guard rules above.
+### References (user, 2026-10-21)
 
-Extend the callback result explicitly, without reinterpreting existing compute
-rows: DECLINE (unchanged), COMPLETE (original generated return), or POLL_EXIT
-(translator-assigned exit ID). Invalid IDs fail loudly. Only the emitter maps
-IDs to guest sites; runtime helpers do not test guest addresses. The callback
-balances its native stack and returns to a generated exit trampoline, which
-restores the site's generated ABI and enters its existing IRQ stub. It must not
-retest G_IRQ, re-enter the HLE hook, or count the same visit twice. The stub alone
-calls rt_irq with the original CS:IP and continues at the exact generated
-post-poll label; it leaves any BP-specialized copy. All normal guards and return
-checks remain. Handler changes to registers, segments or RAM take effect: there
-is no return to a stale native loop continuation. Even if IF is clear or no
-vector is delivered, execution stays generated after handoff.
+A row that changes the poll set re-records every affected DOSBox reference with
+the new `poll-points.csv` in the same commit, then runs full gates against them.
+Record the old and new poll-set fingerprints (`summary.txt` `polls=`) and the
+re-recorded references in the commit message. This is the only approved
+reference change: no PIT rate, interrupt order, fixture or tolerance changes.
 
-Callee exits also require the original guest call/stack writes and generated
-return-check continuations. Admission must prove that the emitter can rebuild
-that continuation chain without replaying guest writes or leaving native stack
-frames behind. If it cannot, reject the row; jumping into a callee with only its
-guest stack reconstructed is insufficient. Guards that can decline run before
-any mutation; a late unsupported case cannot restart the original entry.
+### Validation and plants
 
-Diagnostic replay and host validation must observe the same logical visits as
-the generated path, even when G_IRQ was initially clear. A due diagnostic event
-requires materializing state and leaving the callback before the generated
-diagnostic hook delivers it. Use a distinct generated entry before that hook,
-without running the HLE hook again; this differs from the production pending-IRQ
-exit directly to the IRQ stub. Preserve visit/service counts and same-visit IRQ
-groups: each observer runs once, and the handoff must not repeat its accounting. Bench mode uses
-the same G_IRQ handoff and rt_irq_c accounting, never a native approximation.
-C3 must validate these paths with native execution enabled, not silently disable
-it in diagnostic builds. No event is delivered inside a native callback.
+- Rows without sync polls: the existing compute oracle, entry to retained return.
+- Sync polls: the x86 oracle stops before the n-th arrival at each sync site and
+  records the original state/write-history prefix; the native exit is compared
+  against it, then the generated continuation through the return. Native tests
+  get the same inputs and forced-pending schedule, never the x86 results.
+- Diagnostic replay and bench observe the same visits in both arms, with native
+  execution enabled in diagnostic builds. No event is delivered inside a callback.
+- Coverage: zero/one/many passes; first, middle and terminating sync visits;
+  G_IRQ clear, pending on entry and between visits; IF clear/set; queued ticks
+  across a long routine; decline and complete arms.
+- Plants, each caught: a removed poll still emitted in one arm, a missing return
+  poll, a removed poll on a waiting loop, stale register/flag or missing store at
+  a sync exit, a store before its sync poll, skipped/duplicate sync visit, wrong
+  exit site, cached G_IRQ or IF gating, resumed native loop, latency over bound.
 
-### Oracle, controls and C3 completion
-
-Extend the x86 oracle to stop before the instruction at the n-th arrival at each
-poll. Record the ordered visit trace and state/write-history prefix from the
-original; never derive expected visits from native results. Establish the
-extended harness against generated code first. Native tests receive the same
-entry state and forced-pending schedule, without the x86 outputs.
-
-For every exercised site and visit, compare the native exit against that x86
-prefix: registers, defined live/control flags, full RAM, written-address set and
-per-byte history. Then run the generated continuation and compare against the
-original through the retained return. IRQ cases compare the original handler,
-interrupt frame, ordering, modified state and subsequent execution too. Existing
-DOSBox fixtures remain the service/IRQ oracle; synthetic x86 cases supply
-boundary coverage. Missing sites, visits, input or an execution limit fail loudly.
-
-C3 coverage must include:
-
-- Zero/one/many loop passes, first/middle/last and terminating visits, every
-  proved predecessor kind, multiple sites and nested calls; generated-only
-  internal entries, decline and complete arms.
-- Clear G_IRQ throughout; pending on entry and between successive visits;
-  IF clear/set, BIOS and guest handlers, multiple queued vectors at one visit,
-  handler changes to BP/segments/RAM, and existing re-arm behaviour.
-- Prefix writes, wrap/alias and guard boundaries, IRQ-visible flags, diagnostic
-  event scheduling and bench visits; original return checks after every exit.
-- Plants for stale registers/flags, missing prefix stores, a future store before
-  its poll, skipped/duplicate visits, wrong site/count, cached G_IRQ or IF gating,
-  lost callee continuation and stale native resumption. Every plant must be caught.
-
-C3 is complete only when admission, generated exit leaders/trampolines, oracle,
-positive controls and sabotage pass, followed by full gates (the change spans
-control flow, flags, interrupts and validation). This does not enable a routine:
-N4 still needs U6 and S1–S9, a viable price including exit overhead, and unchanged
-references. Exceptional-flow/multiple-return contracts remain separate work.
+C3 is complete when admission, emitter (poll removal, return poll, exit
+trampolines), oracle, controls and plants pass, followed by full gates.
