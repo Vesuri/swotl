@@ -17,8 +17,8 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   branch sides, R28 carry in X, R29 far push, R30 repeated segment loads,
   R31 push/pop runs, R32 conditional-over-jump fusion and R33 packed far returns
   kept; R34 FM continuity accepted as a quality tradeoff. Item 14b's 240 ms target
-  remains unmet; only the N1 transform pilot is authorized (native-plan U2);
-  none is enabled.
+  remains unmet. R35 enables the authorized N1 transform pilot; further native
+  routines remain deferred (native-plan U4).
   Next: [native-plan.md](native-plan.md).
 - **Frames fixture** (A3, `6bf8aef`, 2026-10-21): medians 370, 390 and
   400 ms; run-median span 370–400 ms. Frames 4–11 intervals (fields):
@@ -31,11 +31,17 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   All three final guest RAM hashes match the established bench endpoint
   (`951adbe5…39b6c63`). This spread exceeds the introduction's two-line observation
   (§4); no build-to-build claim. Palette window 38,392–38,405 lines (R17).
-- **Meter** (m4, A4 weights/rule, unchanged `e891ace`): generated + walk +
-  runtime 173,907,930 model cycles; host platform adds 2,035. Recalibration of
-  the same work changes the old 172,620,455 estimate by +0.7458%; no game speed
-  change. R32 removes 46,981 JMP executions from the label-derived guest count;
-  historical label-derived counts omit those executions.
+- **Meter** (N1/R35, m4, A4 weights): generated + walk + runtime
+  165,769,039 model cycles, down 4.6800% from 173,907,930; unchanged host
+  platform adds 2,035. Three identical runs per arm. Native callbacks bypass
+  body labels, so label-derived guest counts are not semantic work counts.
+- **N1 measurements** (2026-10-21): transform 1,182.182 → 634.432 target
+  cycles/call (−46.334%). Opening-bench medians 68,526 → 68,540 lines
+  (+0.0204%; user accepted), spans 68,495–68,553 → 68,502–68,540; all six
+  final RAM hashes match. Single frames captures: `[25,16,21,19,21,19,19,16]`
+  → `[21,19,16,17,18,26,17,17]`, medians 380 → 350 ms, spans 16–25 →
+  16–26 fields. These per-call captures do not establish a frame-rate gain;
+  N3 retains the three-run checkpoint. Payload +446 bytes; full gates green.
 - **Capture** (A3, second frames run, 100 fields): generated code 76.18%
   (cell walk 3.75%), runtime/platform 19.52% (`render`, `fm_field`, `loop_for`
   12.11%), no PC 2.23%, Kickstart 1.03%, IRQ transition 1.03%.
@@ -319,6 +325,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | B3-cal | separately probed unsigned register long-arithmetic cost | cost meter/model | 0 on saved A4 workload |
 | B3 | native candidate prices under both U3 rules; unpriced rows retain ceilings | rendering map | pricing only |
 | B4 | consolidate 14 candidates; record U0–U4, authorize only the transform pilot | docs | no code change |
+| R35 / N1 | guarded native point transform from authorized xform20; complete byte-write history | runtime, compute oracle | −4.6800% (bench +0.0204%, user-approved tradeoff) |
 
 No priced translator candidate remains. Unchanged (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
@@ -356,8 +363,8 @@ items left.
 
 A3's frames-fixture medians are 370, 390 and 400 ms: the middle run needs
 150 ms (38.5%) less to reach 240 ms; the run range needs 130–160 ms less.
-No priced translator candidate remains (§7). Next: the authorized transform pilot (N1), in
-[native-plan.md](native-plan.md).
+No priced translator candidate remains (§7). N1 is kept; further routines need U4 authorization and viable prices/contracts.
+Next: N2 decisions and N3 checkpoint in [native-plan.md](native-plan.md).
 
 Current candidate costs, A3 run 2 (`6bf8aef`, 100 fields, 28,420,399 profiler cycle
 units). Own cost groups generated instructions by call-target boundary; inclusive

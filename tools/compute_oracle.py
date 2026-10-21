@@ -57,6 +57,12 @@ def load_entry(path):
     return CapturedRAM(ram, captured_bytes), regs
 
 
+def check_code_writes(written, fetched):
+    """A static compute entry may not rewrite instructions it executes."""
+    if written & fetched:
+        raise ValueError('oracle self-modifying code entry')
+
+
 def run(ram, registers, resume, limit=100000):
     """Execute original bytes, stopping *before* the guest return.
 
@@ -88,15 +94,24 @@ cases belong in the block differential before a compute row can be enabled.
     word = regs.pop('flags')
     flags = {f: (word >> FLAG_BIT[f]) & 1 for f in FLAGS}
     state = State(dict(regs, flagsx=word & 0xf000), dict(flags), bytearray(ram), regs['ip'])
-    written, count = set(), 0
+    written, fetched, count = set(), set(), 0
+    # The original return remains generated: modifying it is outside the
+    # contract even though this oracle stops immediately before executing it.
+    return_at = resume[0] * 16 + resume[1]
+    if memory_known(return_at, 1, captured_bytes) and ram[return_at] in (0xc2, 0xc3, 0xca, 0xcb):
+        return_size = 3 if ram[return_at] in (0xc2, 0xca) else 1
+        fetched.update(range(return_at, min(return_at + return_size, captured_bytes)))
     try:
         while (regs['cs'], regs['ip']) != tuple(resume):
             if count >= limit:
                 raise ValueError('oracle instruction limit before resume')
             at = regs['cs'] * 16 + regs['ip']
+            check_code_writes(written, {at})
             insn = decode(x.e.read(at, 16), regs['ip'])
             if not memory_known(at, insn.size, captured_bytes):
                 raise ValueError('oracle instruction fetch outside captured memory')
+            fetched.update(range(at, at + insn.size))
+            check_code_writes(written, fetched)
             step(state)  # only state.undef is used as expected-result metadata
             case = (regs, flags, word & 0xf000, regs['ip'], [])
             err, regs, word, mem, ints, outs, writes = x.run(case, 1)
@@ -105,6 +120,7 @@ cases belong in the block differential before a compute row can be enabled.
             if err or ints or outs or 'trap' in regs or insn.op == 'in':
                 raise ValueError(f'oracle external effect/fault at {at:05x}: {err, ints, outs}')
             written.update(writes)
+            check_code_writes(written, fetched)
             flags = {f: (word >> FLAG_BIT[f]) & 1 for f in FLAGS}
             state.regs.update(regs, flagsx=word & 0xf000)
             state.ip, state.flags = regs['ip'], dict(flags)

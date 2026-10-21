@@ -497,3 +497,6 @@ rt_vdrv_return:
 	jsr	rt_video_publish
 	movem.l	(a7)+,d0-d1/a0-a1
 .inner:	rts
+
+; Authorized compute callbacks share the generated ABI above.
+	include "compute_transform.s"

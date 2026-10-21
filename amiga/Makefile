@@ -130,8 +130,8 @@ obj/c2p1x1_8_c5_bm.o: $(AMIGA_SRC)/c2p1x1_8_c5_bm.s | obj
 obj/rt_%.o: $(RUNTIME)/%.c | obj
 	$(CC) $(CCFLAGS) -ffreestanding -I"$(RUNTIME)" -c -o $@ $<
 
-obj/rt_entry.o: $(RUNTIME)/rt_entry.s | obj
-	$(VASM) $(VASMFLAGS) -o $@ $<
+obj/rt_entry.o: $(RUNTIME)/rt_entry.s $(RUNTIME)/compute_transform.s | obj
+	$(VASM) $(VASMFLAGS) -I"$(RUNTIME)" -o $@ $<
 
 obj/program.o: $(GEN)/program.s $(wildcard $(GEN)/*.s) | obj
 	$(VASM) $(VASMGEN) -I"$(GEN)" -o $@ $<

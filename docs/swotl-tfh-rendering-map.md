@@ -43,8 +43,8 @@ research notes are kept locally in `tmp/tfh-xref/swotl-tfh-rendering-map.2026-10
 
 Order, procedure and user decisions: [native-plan.md](native-plan.md).
 B4 consolidates the source inventory (B1), admission (B2) and prices (B3).
-Next: the authorized `B54B` transform pilot (N1), retaining generated `B52D`
-and return checks. U1 remains approved: executed backward branches.
+N1 enables `B54B`, retaining generated `B52D` and return checks. Next: N2
+authorization/contracts and N3 checkpoint. U1 retains executed backward branches.
 
 ## Candidates
 
@@ -57,7 +57,7 @@ costs, adaptation inventory and eligibility sensitivity: [B3](#b3-candidate-pric
 | SWOTL | Function | Own share | Calls/100 fields | Own ceiling (ms) | Improved slave source | Admission / blocker | Priced saving (ms/frame) |
 |---|---|---:|---:|---:|---|---|---|
 | `B52D` | transform wrapper | 1.02% | 1,483 | 3.99 | generated wrapper retained | Admitted | Shared with `B54B`; do not add |
-| `B54B` | point transform | 6.17% | 1,483 | 24.06 | `xform20` | Admitted | 11.48–12.04 |
+| `B54B` | point transform | 6.17% | 1,483 | 24.06 | `xform20` | Enabled (N1) | 11.48–12.04 priced; measured per-call ratio below |
 | `B4E2` | perspective divide | 1.82% | 2,072 | 7.09 | `xdiv20` | Exceptional-flow contract | Unpriced |
 | `B017` | projection | 2.99% | 1,036 | 11.65 | `xproj20`, long path only | Exceptional flow, multiple returns | Unpriced |
 | `D5A6` | normalise/project | 2.07% | 836 | 8.07 | `xpnorm20` | Poll contract | Unpriced |
@@ -87,7 +87,7 @@ U1 retains executed backward branches; U2 authorizes only the `B54B` transform
 pilot with generated `B52D` and return checks; U3 keeps complete byte-write
 history and all bookkeeping/state checks; U4 defers further routines pending
 viable prices/contracts and individual authorization. `B8A1` has no captured
-A3 work or improved source. No native routine is enabled.
+A3 work or improved source. Only the authorized transform is enabled.
 
 Not candidates: the cell walk (already optimized by R20), RTSVGA `+3B9A`
 (changed-row copy; TFH `283A0` converts 4-bit chunky to planar), RTSVGA `+3DCD`
@@ -202,7 +202,7 @@ terrain caches/visitation/clipping respectively. `BFD1` retains its own merge,
 priority, lifetime and emission semantics. Their detailed addresses and oracle
 cases below remain binding; none inherits a TFH register or dead-store contract.
 These are source facts and adaptation requirements, not equivalence or admission
-proofs. Admission and B3 prices are recorded below. No routine is enabled; authorization is limited to U2.
+proofs. Admission and B3 prices are recorded below. Only the U2 transform is enabled; no further routine is authorized.
 
 ## Compute admission inventory
 
@@ -357,7 +357,23 @@ missing implementations/contracts. Their measured ceilings are above; unpriced
 is neither zero cost nor zero potential. C's poll contract does not resolve all
 B2 blockers. U3 retains every-byte write history; the relaxed alternative was not selected.
 
-### Cumulative projection and limits
+### N1 measured calibration
+
+R35 keeps the authorized transform with complete byte-write history. Same-session
+68020 captures: **1,182.182 → 634.432 cycles/call (−46.334%)**, 1,483/1,804 calls;
+all 1,804 native calls handle. Saving 547.750 cycles is **92.59–97.12% of B3's
+predicted saving**. The approved CS-window overlap guard was separately priced
+at +20.4835 cycles before coding; against that price, the saving is 95.91–100.78%.
+At A3 run 2's unchanged mix this calibrates the projection to **11.15 ms/frame**;
+this is extrapolation, not a measured frame-rate gain. Other rows have no native
+implementation price to rescale; their ceilings and raw-kernel bounds remain
+explicitly unpriced. Reprice before each authorized implementation.
+
+The meter falls 4.6800%; payload grows 446 bytes. The user accepted the
++0.0204% opening-bench median tradeoff (equal RAM, overlapping ranges).
+Full gates pass; measurements are in speed-plan §1 and the R35 commit.
+
+### B3 cumulative projection and limits
 
 Run 2: 390 ms → **377.96–378.52 ms** after the transform pair, counted once;
 `B8A1` adds zero observed work. Remaining gap to 240 ms: **137.96–138.52 ms**.
@@ -371,20 +387,21 @@ These assume every call is eligible and the A3 work mix scales with P. A decline
 call adds about 55.3706 model cycles to its unchanged generated body. For eligible
 fraction q, use `calls × [q × (old − fast) − (1−q) × 55.3706]` as saved cycles;
 convert with the same P/total factor. Do not treat the all-eligible projection
-as a guaranteed speedup. N1 must measure and rescale it under S3–S7.
+as a guaranteed speedup. N1 calibration is above; the older guard budget
+does not include the CS-window overlap check.
 
 TFH cross-check: its projection-entry saving was 278/1,360 = 20.44%, and
 scenery 2,618/17,481 = 14.98%. Those original 68000 routines, callers and dropped
 scratch writes differ from SWOTL's translated code. Applying either percentage
 to SWOTL's entire projection/scenery row would invent a price. The transform's
-47.71–50.05% body reduction is an analytical hypothesis to validate in N1;
+47.71–50.05% body reduction was B3’s hypothesis; N1 calibration is above;
 there is no corresponding measured TFH per-call transform ratio in the inputs.
 
 Evidence: `tmp/native/B3/{baseline,path-costs,kernel-costs,transform-price,transform-contract-check}.json`,
 with local reproduction scripts alongside them. Arithmetic checks, source hash,
 all 14 rows, non-overlapping accounting and current admission/flag/store inventory
-verified. Native fidelity and performance remain S3–S8; no replacement or HLE row
-is installed. The consolidated decision table is under Candidates.
+verified. The transform passed S3–S8; other replacements retain their blockers.
+The consolidated decision table is under Candidates.
 
 ## Facts per candidate
 

@@ -72,10 +72,6 @@ explicit unpriced savings; do not invent a native price for them.
 
 ## N. Native routines
 
-- **N1** Authorized pilot (U2): `B54B` from `xform20`, retaining the generated
-  `B52D` wrapper and return checks, by S1–S9. Then compare its measured
-  saving with B3's price and rescale the remaining prices. Done: kept or reverted, with
-  the ratio in the rendering map.
 - **N2** The other admitted routines in B3 price order, each after U4. B2 admits
   `B8A1` (no A3 calls); `B4E2`/`B017` are blocked by exceptional flow, and
   `B017` also has multiple returns. Any admission extension needs a separate

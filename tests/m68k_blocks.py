@@ -1029,6 +1029,8 @@ def main(argv=None, on_batch=None) -> int:
     n, failures = compute_entry_cases()
     count['compute predecessors'] += n
     bad += failures
+    from test_point_transform import run as point_transform_entries
+    count['point transform predecessors'] += point_transform_entries(predecessors=True)
     n, failures = flag_helper_entries()
     count["flag helper predecessors"] += n
     bad += failures

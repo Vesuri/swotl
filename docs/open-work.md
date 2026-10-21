@@ -28,16 +28,18 @@ speed work: [speed-plan.md](speed-plan.md).
     §1, §9). The middle run needs 150 ms (38.5%) less; this is a baseline, not a parent comparison. Remaining
     cost is mostly generated guest code; no priced translator candidate remains;
     flag-word packing is rejected (speed-plan §10). The rest, with user decisions
-    U0–U7: [native-plan.md](native-plan.md), next N1: authorized `B54B` transform
-    pilot, generated `B52D` retained, complete byte-write history; further routines
-    deferred (U4). Native replacement
+    U0–U7: [native-plan.md](native-plan.md). Next N2: further routines need
+    viable prices/contracts and individual authorization (U4); N3 must measure
+    the post-native frame-rate gap with three runs. Current meter/target costs:
+    speed-plan §1; candidate facts: the rendering map.
+    Native replacement
     requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
     [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md); interface and validation:
     [native-compute.md](native-compute.md).
     Bench acceptance for platform/layout work (D5) and
     a separate later palette window (D6) are approved; all fidelity gates and
-    no slowdown remain mandatory, except the explicitly accepted R20 opening-bench
-    tradeoff (speed-plan §7).
+    no slowdown remain mandatory, except the explicitly accepted R20/R35 opening-bench
+    tradeoffs (speed-plan §7).
 14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`
     `Harness`: each byte drew from a fresh generator with the same seed).
     A random background is stronger but changes every corpus case; needs

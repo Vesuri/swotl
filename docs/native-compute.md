@@ -1,6 +1,6 @@
 # Native compute contract
 
-No guest routine is enabled. User authorization (2026-10-21, native-plan U2):
+Enabled: the user-authorized (2026-10-21, native-plan U2)
 `SWOTL.EXE+B54B` transform pilot from `xform20`, retaining generated `B52D`
 and return checks. U3 keeps complete byte-write history. Further routines
 remain deferred and need individual authorization (speed-plan §2.2).
@@ -69,6 +69,15 @@ synthetic test record (`ram.bin`, `regs.json`). Original x86 runs under Unicorn
 to the specified pre-return CS:IP. Unicorn supplies flow, registers and writes;
 the IR supplies only undefined-flag metadata. Missing input, zero executed
 instructions, a limit, an unexpected service or a fault fails loudly.
+User-approved entry boundary (2026-10-21): the oracle rejects writes to an
+instruction already fetched, or later fetching an instruction byte previously
+written during the call, including the retained return instruction. It reports
+failure, never a skipped/passing comparison.
+The transform declines unchanged unless DS is at least CS+1000h (computed
+without 16-bit wrap) and DS ≤ F000h; its data cannot overlap the CS window.
+The original generated fallback remains responsible for declined entries;
+arbitrary self-modifying code outside D16 is not admitted by this contract.
+
 The recorded RAM extent is retained separately from mapped padding. Both x86
 and native validation reject reads or writes outside that extent; x86 instruction
 fetches must also lie within it.
@@ -82,7 +91,9 @@ for a future native implementation. The native differential must use the same
 inputs without seeing the x86 results. Recorded game states supplement, never
 replace, arithmetic boundaries and guard-edge cases from the rendering map.
 
-Tests: `make t-compute-contract t-sab-compute-contract`; the predecessor cases
+Tests: `make t-compute-contract t-sab-compute-contract`,
+`t-point-transform t-sab-point-transform`, and
+`t-compute-code-writes t-sab-compute-code-writes`; the predecessor cases
 also run in `tests/m68k_blocks.py`. Generated synthetic callback bodies exercise
 both arms against x86 without hand-porting guest code. Admission, wrong-arm,
 register, missing/duplicate store, live-flag and uncaptured-memory plants must
