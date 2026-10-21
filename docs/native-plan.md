@@ -42,6 +42,7 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 | U5 | Approved 2026-10-21: chosen polls (removed interior polls, return poll, optional sync sites), up to one PIT period of interrupt delay in a native routine, affected references re-recorded per row ([contract](native-compute.md#poll-contract-u5), implemented by C3) | — |
 | U6 | Authorize each routine that needs C | N4 |
 | U7 | Direction if Z1 leaves the target unmet (FM quality tradeoff, `BFD1`, revised target) | — |
+| U8 | Approved 2026-10-21: REP away from kept polls, divide-fault decline, multiple returns; range/unresolved flow by annotations ([extensions](native-compute.md#contract-extensions-u8), implemented by C4); routines still need U4/U6 | — |
 
 ## Candidate evidence
 
@@ -74,8 +75,7 @@ explicit unpriced savings; do not invent a native price for them.
 
 - **N2** The other admitted routines in B3 price order, each after U4. B2 admits
   `B8A1` (no A3 calls); `B4E2`/`B017` are blocked by exceptional flow, and
-  `B017` also has multiple returns. Any admission extension needs a separate
-  approved contract before those candidates can enter N2.
+  `B017` also has multiple returns: both enter N2 after C4 (U8).
 
 ## C. Contract for routines with polls and loops
 
@@ -86,6 +86,11 @@ candidates admits none yet: other blockers remain outside U5 (REP: `D5A6`,
 `B4E2`; flow out of range: `BD68`; unresolved: `4DAE`; multiple returns:
 `109D6`, `B017`). `BB70` admits with `BBAC` (an internally entered loop head) as
 its sync site; its other 6 polls are removed.
+
+- **C4** Implement [U8](native-compute.md#contract-extensions-u8) in
+  `compute.py`/`emit.py` with admission, emission and handoff controls and
+  plants; rerun admission on every candidate. Range/unresolved annotations come
+  with the routine that needs them.
 
 - **N4** Routines that need C, each after U6, by S1–S9 plus C's cases, in B3 price
   order; S8 includes re-recording the references its poll set affects. Price each

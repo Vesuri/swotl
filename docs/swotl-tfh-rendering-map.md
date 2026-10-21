@@ -235,11 +235,10 @@ Local reproduction and results: `tmp/native/B2/admission.py`, `admission.json`.
 Three entries admitted, eleven rejected (18 trial rows). Rejections are the
 checker's first failure, not an exhaustive list of blockers. In particular,
 zero polls in a routine's own body does not prove transitive admission:
-`B4E2`/`B017` retain their divide-error edges. Supporting these needs an approved
-contract for exact fault fallback; projection also needs multiple exits.
-C's poll contract alone does not settle exceptional edges, multiple returns
-or REP. Keep these blockers explicit in B3/B4, without assuming authorization
-to change admission. `B8A1` has no calls in A3, so admission alone gives no
+`B4E2`/`B017` retain their divide-error edges. C's poll contract alone does not
+settle exceptional edges, multiple returns or REP; the approved U8 extensions
+(native-compute.md) do, once C4 implements them. Until then these blockers stay
+explicit in B3/B4. `B8A1` has no calls in A3, so admission alone gives no
 priced saving. Admission is not native correctness or replacement authorization;
 S3–S6 still apply. Existing admission controls: 19 pass; removing the effect/poll
 guard is caught (`poll admitted`).

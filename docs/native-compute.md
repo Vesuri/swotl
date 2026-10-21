@@ -14,15 +14,13 @@ The original return and its caller's return check stay generated.
 
 `translator/compute.py` proves reachable flow, including callees, from the CFG.
 The initial contract requires one root return, no cycles, no unresolved flow,
-no poll points, no nested HLE hooks and no runtime/device effects. REP, interrupt
+no poll points, no nested HLE hooks and no runtime/device effects. Interrupt
 control and diagnostic replay hooks are rejected too. Internal entry points
 remain generated and valid. A rejected row is a generation error, not fallback
-authorization. Arithmetic faults must use an exact, unchanged-state fallback;
-an exceptional CFG edge that violates admission rejects the row.
-
-**Poll policy:** until C3 implements the [U5 poll contract](#poll-contract-u5),
-reject routines whose reachable body or callees contain polls. U5 changes the
-poll set only for an authorized row (U6); interrupt order and PIT rate stay.
+authorization. [U5](#poll-contract-u5) admits polls and loops;
+[U8](#contract-extensions-u8) admits REP, divide faults (exact decline) and
+multiple returns. U5 changes the poll set only for an authorized row (U6);
+interrupt order and PIT rate stay.
 
 ## ABI
 
@@ -111,8 +109,8 @@ existing reference without approval.
 
 Approved by the user 2026-10-21 (native-plan U5); replaces the C1 exact-handoff
 design (`f4a7c68`). Implemented by C3; no row uses it yet: each routine needs
-U6 and S1–S9. Exceptional flow, multiple root returns, REP, device or
-interrupt-control effects and nested HLE remain outside this contract.
+U6 and S1–S9. Divide faults, multiple root returns and REP: [U8](#contract-extensions-u8).
+Device or interrupt-control effects and nested HLE remain outside every contract.
 
 The native routine is written by us, so its polls are chosen, not copied. Each
 chosen poll stands for an original x86 point at which the native state equals
@@ -194,3 +192,26 @@ reference change: no PIT rate, interrupt order, fixture or tolerance changes.
   missing store, store before its sync site, skipped and duplicate visits,
   wrong resume site, stale native continuation, latency over the bound; an
   invalid resume id stops loudly.
+
+## Contract extensions (U8)
+
+Approved by the user 2026-10-21 (native-plan U8); implemented by C4. They apply
+to poll-free and U5 rows alike; everything else in the contract is unchanged.
+
+- **REP:** a REP string instruction in the body is admitted when its address is
+  not a poll in the row's resulting poll set. The reference delivers interrupts
+  only at polls (`SWOTL_IrqPoint`, trace patch) and resumes a sliced REP at its
+  own address, so elsewhere a REP is uninterruptible, as the x86 oracle runs it.
+  A REP at a removed poll is removed like any poll (U5, references re-recorded);
+  a REP at a kept poll still rejects the row.
+- **Divide fault:** the `div`/`idiv`/`aam` edge to the INT 00h handler is a
+  decline edge, not body. The native checks the fault condition (divisor 0,
+  quotient out of range) and declines before any mutation in its current segment
+  (at entry or at the sync site that began it), so the generated code takes the
+  exact fault. A plant that faults natively or mutates before declining is caught.
+- **Multiple returns:** every root return is a resume. d7.l out = 1..R selects
+  return r (ascending offset), R + k sync site k; U5 rows poll at each return.
+  Poll-free rows with one return keep `tst.l d7; bne resume`.
+- **Flow out of range, unresolved flow:** no contract change. Widen the row's
+  declared range to cover the shared code, or resolve the targets in
+  `annotations/` as for any translated code; otherwise the row is rejected.
