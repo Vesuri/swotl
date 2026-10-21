@@ -16,6 +16,7 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   branch sides, R28 carry in X, R29 far push, R30 repeated segment loads,
   R31 push/pop runs, R32 conditional-over-jump fusion and R33 packed far returns
   kept. Item 14b's 240 ms target remains unmet; no native replacement is authorized.
+  Next: [native-plan.md](native-plan.md).
 - **Frames fixture** (R30, 2026-10-19): medians 340, 340 and
   340 ms; same-session parent 370, 350 and 340 ms. Intervals for R27 in §7.
 - **Bench:** R33 opening 70,150 → 68,524 lines (−2.318%), identical guest RAM.
@@ -30,7 +31,7 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   from the label-derived guest count; no new per-guest ratio (open-work 36).
   Host platform adds 2,171 cycles.
 - **Capture** (R24, first frames run, 100 fields): generated code 81.40%
-  (cell walk 3.87%), runtime/platform 14.44% (three main FM functions 8.12%, item 34),
+  (cell walk 3.87%), runtime/platform 14.44% (three main FM functions 8.12%),
   no PC 2.19%, Kickstart 1.04%, IRQ transition 0.93%. Profiler guest-entry count:
   2,238,188; 10.34 cycles each (see open-work 36).
 

@@ -26,8 +26,9 @@ speed work: [speed-plan.md](speed-plan.md).
 14b. Speed target remains unmet: frames-fixture 68020 run medians on R30
     (2026-10-19) 340, 340 and 340 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
     §1, §9). Roughly 29% further reduction is needed from 340 ms; parent intervals overlap. Remaining
-    cost is mostly generated guest code; no priced translator candidate remains.
-    FM synthesis is 34 (flag-word packing rejected, speed-plan §10). Native replacement
+    cost is mostly generated guest code; no priced translator candidate remains;
+    flag-word packing is rejected (speed-plan §10). The rest, with user decisions
+    U0–U7: [native-plan.md](native-plan.md). Native replacement
     requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
     [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md); interface and validation:
     [native-compute.md](native-compute.md).

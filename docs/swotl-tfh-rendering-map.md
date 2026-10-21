@@ -40,6 +40,8 @@ Rules: [speed-plan.md](speed-plan.md) §2. The full research notes are kept loca
 
 ## Plan
 
+Ordered, with identifiers and user decisions: [native-plan.md](native-plan.md).
+
 1. **Translator steps** (speed-plan history) in price order, by the speed-plan
    procedure (§3). No authorization needed. The cell cache is built (speed-plan R20:
    meter −15.31%; the walk is 3.62% of the corrected build’s first capture).
