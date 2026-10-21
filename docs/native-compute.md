@@ -1,7 +1,9 @@
 # Native compute contract
 
-Infrastructure only. No guest routine is authorized or replaced. Authorization
-for each routine remains a conversation decision (speed-plan §2.2).
+No guest routine is enabled. User authorization (2026-10-21, native-plan U2):
+`SWOTL.EXE+B54B` transform pilot from `xform20`, retaining generated `B52D`
+and return checks. U3 keeps complete byte-write history. Further routines
+remain deferred and need individual authorization (speed-plan §2.2).
 
 ## Admission
 

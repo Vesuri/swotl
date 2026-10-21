@@ -16,7 +16,9 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   cache, R21 string layout, R22 call layout, R24 REP STOSW fill, R25 BP as data, R26 REPE CMPSW, R27 cold
   branch sides, R28 carry in X, R29 far push, R30 repeated segment loads,
   R31 push/pop runs, R32 conditional-over-jump fusion and R33 packed far returns
-  kept; R34 FM continuity accepted as a quality tradeoff. Item 14b's 240 ms target remains unmet; no native replacement is authorized.
+  kept; R34 FM continuity accepted as a quality tradeoff. Item 14b's 240 ms target
+  remains unmet; only the N1 transform pilot is authorized (native-plan U2);
+  none is enabled.
   Next: [native-plan.md](native-plan.md).
 - **Frames fixture** (A3, `6bf8aef`, 2026-10-21): medians 370, 390 and
   400 ms; run-median span 370–400 ms. Frames 4–11 intervals (fields):
@@ -316,6 +318,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | A4 | executed-back-edge loop classification and recalibration (U1) | cost meter/model | tooling only |
 | B3-cal | separately probed unsigned register long-arithmetic cost | cost meter/model | 0 on saved A4 workload |
 | B3 | native candidate prices under both U3 rules; unpriced rows retain ceilings | rendering map | pricing only |
+| B4 | consolidate 14 candidates; record U0–U4, authorize only the transform pilot | docs | no code change |
 
 No priced translator candidate remains. Unchanged (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
@@ -353,7 +356,7 @@ items left.
 
 A3's frames-fixture medians are 370, 390 and 400 ms: the middle run needs
 150 ms (38.5%) less to reach 240 ms; the run range needs 130–160 ms less.
-No priced translator candidate remains (§7). Next: native candidate decisions (B4), in
+No priced translator candidate remains (§7). Next: the authorized transform pilot (N1), in
 [native-plan.md](native-plan.md).
 
 Current candidate costs, A3 run 2 (`6bf8aef`, 100 fields, 28,420,399 profiler cycle
@@ -384,8 +387,9 @@ Zero here does not prove a routine unreachable. Inclusive rows overlap; do not a
 Across the three captures, sprite share is 2.88–7.98% (9–49 calls), rasterizer
 5.02–6.57% (4–5 calls); generated code 74.78–76.91%. Retain this trajectory
 variation when pricing candidates. Per-run counts and costs: `tmp/native/A3/frames-*/`.
-The rendering map's older candidate table remains historical until B4 adds admission
-and adaptation prices; use this table for current costs.
+The rendering map consolidates these costs with source availability, admission
+and adaptation prices. U0/U2/U3 approve the transform pilot with complete
+byte-write history; U4 defers further routines.
 
 ## 10. Rejected and not built
 

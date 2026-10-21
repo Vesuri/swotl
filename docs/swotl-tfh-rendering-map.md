@@ -2,14 +2,15 @@
 
 Evidence for speeding up SWOTL's rendering with what Their Finest Hour's Amiga
 version (TFH, same engine family) and its WHDLoad slave show. Static research
-2026-10-16, prices 2026-10-17. Open work: [open-work.md](open-work.md) 14b; the plan:
+2026-10-16; candidate consolidation 2026-10-21 (B1–B3). Open work: [open-work.md](open-work.md) 14b; the plan:
 [native-plan.md](native-plan.md). Rules: [speed-plan.md](speed-plan.md) §2. The full
 research notes are kept locally in `tmp/tfh-xref/swotl-tfh-rendering-map.2026-10-16.md`.
 
 ## Rules
 
-- No TFH code or data enters the port ([tfh-cross-reference.md](tfh-cross-reference.md)).
-  TFH and the slave are references for algorithms, register use and test cases.
+- No original TFH game code or data enters the port ([tfh-cross-reference.md](tfh-cross-reference.md)).
+  U0 (2026-10-21) permits adapting the user's improved slave source for individually
+  authorized routines; original TFH code remains reference material only.
 - Translator work first. Native code for a guest routine only after the user
   authorizes that routine (speed-plan §2.2), as an `hle.csv` row with reason and oracle.
 - SWOTL's original x86 is the oracle (Unicorn, DOSBox references); TFH and the slave's
@@ -23,7 +24,7 @@ research notes are kept locally in `tmp/tfh-xref/swotl-tfh-rendering-map.2026-10
 | TFH `bob` v1.1, 254,400 bytes, SHA-256 `4b5931c8…22443877` ([tfh-cross-reference.md](tfh-cross-reference.md)) | `../Their Finest Hour/tmp/game/TheirFinestHour/data/bob`; listing `tmp/tfh-xref/BOB.txt` |
 | TFH addresses | code-hunk offsets; `jsr d16(a4)` enters a data-hunk `jmp` thunk (A4 = data + 7FFE): resolve it first |
 | The slave (the user's): register and 68020 versions of TFH's transform, projection, divide, normalisation and scenery loops; models of the originals | in `../Their Finest Hour/`: `whdload/transform.s`, `whdload/render.s`, `tools/xform_check.py`, `docs/internals.md` |
-| SWOTL costs | `5ecdf79` frames captures, 2026-10-17, three runs of 100 fields, 28,420,397 cycles each (`tmp/item30/frames-{1,2,3}/`): own time per generated call target; inclusive time per call by A7 (`tmp/item30/inclusive.py`: hardware interrupts and guest interrupt deliveries not charged) |
+| SWOTL costs | A3 on `6bf8aef`, 2026-10-21: three 100-field captures (`tmp/native/A3/frames-*/`); run 2 has 28,420,399 cycles and P = 390 ms. Own costs use call-target boundaries; inclusive costs use completed A7 scopes, excluding interrupt delivery. |
 
 ## What the slave measured (68020)
 
@@ -40,57 +41,70 @@ research notes are kept locally in `tmp/tfh-xref/swotl-tfh-rendering-map.2026-10
 
 ## Plan
 
-Order, procedure and user decisions: [native-plan.md](native-plan.md). The walk
-row below predates the R20 cell cache (speed-plan §7); current shares and gap:
-speed-plan §1, §9.
-
-Bounds (first `5ecdf79` capture, against its 400 ms per frame): the
-transform/projection group (`B52D`, `B54B`, `B4E2`, `B017`, `D5A6`) is 14.82% (R17
-19.82%); with all of it gone, 400 ms would have become ~341 ms. 240 ms then needed
-−40%: every row below together is 49.9%, so ~5× faster on average.
+Order, procedure and user decisions: [native-plan.md](native-plan.md).
+B4 consolidates the source inventory (B1), admission (B2) and prices (B3).
+Next: the authorized `B54B` transform pilot (N1), retaining generated `B52D`
+and return checks. U1 remains approved: executed backward branches.
 
 ## Candidates
 
-First `5ecdf79` capture (2026-10-17, before R20; native-plan B4 replaces this table):
-own share, calls per 100 fields, own and inclusive cycles per call. The other two
-captures lie within −25% to +32% of these shares, except `D69C`
-(0.60–1.03%) and `4DAE` (2.44–5.38%, 8–41 calls); walk 12.94–16.46%.
-Poll points from `build/gen/poll-points.csv`, routine start to its first `ret` (a lower
-bound where a routine returns early); `B017..BB6F` has none at all.
+A3 run 2 costs, with B1–B3 source/admission results. Ceilings are **own cost
+removed at zero replacement cost**, in ms/frame; they are not native savings.
+The transform saving assumes all calls pass its guard and applies under either
+U3 write rule. It is analytical, not a measured speedup. Detailed inclusive
+costs, adaptation inventory and eligibility sensitivity: [B3](#b3-candidate-prices).
 
-| SWOTL | Function | Share | Calls | Own | Incl. | Polls | TFH | Slave |
-|---|---|---:|---:|---:|---:|---:|---|---|
-| `B52D`→`B54B` | camera-relative point transform | 1.08 + 6.16% | 1,478 | 208 + 1,185 | 1,393 | 0 | `2F48C`→`2F4AE` | `xform` |
-| `B4E2` | perspective divide, rounded scale | 1.81% | 2,024 | 254 | 254 | 0 | `2F374` | `xdiv20` |
-| `B017` | projection, rotation, viewport reject | 2.98% | 1,012 | 837 | 1,345 | 0 | `2F160`, `2F28A` | `xproj` |
-| `D5A6` | normalise x/y/z to 15 bits, project | 2.79% | 843 | 941 | 2,312 | 1 | `3041C` | `xpnorm` |
-| `B8A1` | face-facing test (no generated call target) | — | — | — | — | 0 | `2F822` | — |
-| `BB70` | polygon bounds, top-vertex classify | 1.35% | 178 | 2,155 | 2,162 | 7 | `2FA12` | — |
-| `109D6` | ground-object faces and vertices | 2.73% | 110 | 7,053 | 25,325 | 6 | `1142C` | `scen_verts` |
-| `4DAE` | scaled packet sprite decoder | 5.05% | 41 | 35,006 | 50,389 | 7 | `2BACE` | — |
-| `D69C` | clipped line | 1.03% | 136 | 2,152 | 2,574 | 9 | `30486` | — |
-| `BD68` | polygon edge submission | 0.68% | 94 | 2,056 | 4,821 | 5 | `2FBB2` (related) | — |
-| `FDE0` | terrain polygon selection, submission | 1.67% | 5 | 94,924 | 531,336 | ≥ 3 | `104B6..10830` | — |
-| `F290` | terrain rings, scenery selection | 1.23% | 5 | 69,914 | 111,149 | 2 | `11138` | `tile_scenery` |
-| `BFD1` | active-edge scan conversion, priority sweep | 4.83% | 5 | 274,541 | 799,860 | ≥ 2 | none | — |
-| `6A4D` walk | shared pixel writer (cells) | 16.46% | 3,055 walks | 1,531 per walk | — | — | `2CD7A`, `2BC80` | — |
+| SWOTL | Function | Own share | Calls/100 fields | Own ceiling (ms) | Improved slave source | Admission / blocker | Priced saving (ms/frame) |
+|---|---|---:|---:|---:|---|---|---|
+| `B52D` | transform wrapper | 1.02% | 1,483 | 3.99 | generated wrapper retained | Admitted | Shared with `B54B`; do not add |
+| `B54B` | point transform | 6.17% | 1,483 | 24.06 | `xform20` | Admitted | 11.48–12.04 |
+| `B4E2` | perspective divide | 1.82% | 2,072 | 7.09 | `xdiv20` | Exceptional-flow contract | Unpriced |
+| `B017` | projection | 2.99% | 1,036 | 11.65 | `xproj20`, long path only | Exceptional flow, multiple returns | Unpriced |
+| `D5A6` | normalise/project | 2.07% | 836 | 8.07 | `xpnorm20` | Poll contract | Unpriced |
+| `B8A1` | face-facing test | 0% | 0 | 0.00 | None | Admitted; no captured calls | 0 in A3; native cost unpriced |
+| `BB70` | polygon bounds/classify | 1.33% | 177 | 5.20 | None | Polls | Unpriced |
+| `109D6` | ground objects | 2.64% | 109 | 10.31 | `scen_verts`, `clr_scenery`, partial | Polls, REP, multiple returns | Unpriced |
+| `4DAE` | sprite decoder | 7.98% | 49 | 31.12 | None | Callee polls | Unpriced |
+| `D69C` | clipped line | 0.99% | 130 | 3.87 | None | Callee polls | Unpriced |
+| `BD68` | edge submission | 0.67% | 94 | 2.60 | None | Polls | Unpriced |
+| `FDE0` | terrain polygons | 1.59% | 5 | 6.21 | None | REP/polls | Unpriced |
+| `F290` | terrain/scenery selection | 1.10% | 5 | 4.30 | `tile_scenery` | Poll contract | Unpriced |
+| `BFD1` | rasterizer | 6.57% | 5 | 25.63 | None | Polls | Unpriced |
 
-Not candidates: RTSVGA `+3B9A` (3.21%, changed-row copy; TFH `283A0` converts 4-bit
-chunky to planar), RTSVGA `+3DCD` packed images (`27D40`; SWOTL's FB/FC tokens), TFH
-image payloads and terrain map, TFH projectile dispatch, TFH's two-chain rasterizer
-in place of `BFD1`.
+Three entries admitted; eleven rejected. Poll-contract work alone does not
+resolve exceptional flow, REP or multiple returns. No source/contract means
+unpriced, as approved for B3. `B8A1`'s zero calls do not prove unreachability.
+TFH counterparts and exact source boundaries remain in the inventory below.
+
+The transform pair is one pilot: keep `B52D` generated, replace only the
+`B54B` body. Its estimate takes 390 ms to 377.96–378.52 ms, leaving
+137.96–138.52 ms to 240 ms. Across A3's three trajectories, estimated savings
+are 10.74–11.27, 11.48–12.04 and 15.12–15.86 ms. No savings are asserted for
+unpriced rows. Current measured baseline and variation: speed-plan §1, §9.
+
+User decisions, 2026-10-21: U0 permits adapting the improved slave source;
+U1 retains executed backward branches; U2 authorizes only the `B54B` transform
+pilot with generated `B52D` and return checks; U3 keeps complete byte-write
+history and all bookkeeping/state checks; U4 defers further routines pending
+viable prices/contracts and individual authorization. `B8A1` has no captured
+A3 work or improved source. No native routine is enabled.
+
+Not candidates: the cell walk (already optimized by R20), RTSVGA `+3B9A`
+(changed-row copy; TFH `283A0` converts 4-bit chunky to planar), RTSVGA `+3DCD`
+packed images (`27D40`; SWOTL's FB/FC tokens), TFH image payloads and terrain
+map, TFH projectile dispatch, TFH's two-chain rasterizer in place of `BFD1`.
 
 ## Native contract
 
 Range, ABI, stores, poll policy (user) and oracle: [native-compute.md](native-compute.md);
-poll points stay (speed-plan §2.9); no routine replacement is authorized. Facts for
+poll points stay (speed-plan §2.9); only the U2 transform pilot is authorized. Facts for
 adapting the slave:
 
 - Layout: a guest word at L is the 68k word at TOP−L−1, a dword the 68k long at
   TOP−L−3; no byte swaps. 16-bit offset wrap keeps its x86 meaning.
 - Scratch: the slave keeps TFH's scratch in registers because it proved every other
   user writes first; the contract keeps every SWOTL store (comparison rule: native-plan U3).
-  `B54B` writes scratch DS:`22C6..22D4` besides its outputs.
+  `B54B` writes scratch DS:`22C6..22D6` besides its outputs.
 
 ## Slave source inventory
 
@@ -188,7 +202,7 @@ terrain caches/visitation/clipping respectively. `BFD1` retains its own merge,
 priority, lifetime and emission semantics. Their detailed addresses and oracle
 cases below remain binding; none inherits a TFH register or dead-store contract.
 These are source facts and adaptation requirements, not equivalence or admission
-proofs. Admission and B3 prices are recorded below. No routine is enabled or authorized.
+proofs. Admission and B3 prices are recorded below. No routine is enabled; authorization is limited to U2.
 
 ## Compute admission inventory
 
@@ -341,7 +355,7 @@ This is not authorization to implement or weaken admission.
 User decision, 2026-10-21: **use ceilings and explicit unpriced rows** for
 missing implementations/contracts. Their measured ceilings are above; unpriced
 is neither zero cost nor zero potential. C's poll contract does not resolve all
-B2 blockers. The relaxed U3 rule is itself pending and concerns poll-free code.
+B2 blockers. U3 retains every-byte write history; the relaxed alternative was not selected.
 
 ### Cumulative projection and limits
 
@@ -370,7 +384,7 @@ Evidence: `tmp/native/B3/{baseline,path-costs,kernel-costs,transform-price,trans
 with local reproduction scripts alongside them. Arithmetic checks, source hash,
 all 14 rows, non-overlapping accounting and current admission/flag/store inventory
 verified. Native fidelity and performance remain S3–S8; no replacement or HLE row
-is installed. B4 remains the decision/table-consolidation step.
+is installed. The consolidated decision table is under Candidates.
 
 ## Facts per candidate
 

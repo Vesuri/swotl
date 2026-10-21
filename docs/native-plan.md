@@ -34,24 +34,22 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 
 | ID | Decision | Blocks |
 |---|---|---|
-| U0 | Adapt the slave's code (the user's) into SWOTL native routines, or use it as algorithm reference only; TFH's own code and data never enter. Recommended: adapt, and update the rendering map's rule | S5 |
+| U0 | Approved 2026-10-21: adapt the user's improved slave source; TFH's original game code/data remain excluded | — |
 | U1 | Approved 2026-10-21: executed backward branches only (taken back edges in the measured workload) | — |
-| U2 | Authorize the pilot: transform `B52D`/`B54B` from `xform20` | N1 |
-| U3 | Write rule for poll-free routines: every byte's write history (now), or final RAM plus the written-address set (nothing else runs inside a poll-free routine; SMC and display bookkeeping kept). B3 prices both | S5, S6 |
-| U4 | Authorize each further poll-free routine from B4 | N2 |
+| U2 | Approved 2026-10-21: transform pilot at `B54B` from `xform20`; retain generated `B52D` wrapper and return checks | — |
+| U3 | Confirmed 2026-10-21: keep every byte's complete write history, SMC/display bookkeeping and all other state checks | — |
+| U4 | Deferred 2026-10-21: further routines need viable prices/contracts and individual authorization | N2 |
 | U5 | Approve the poll contract (C1) | C3, N4 |
 | U6 | Authorize each routine that needs C | N4 |
 | U7 | Direction if Z1 leaves the target unmet (FM quality tradeoff, `BFD1`, revised target) | — |
 
-## B. Candidate table (no authorization)
+## Candidate evidence
 
 Source inventory and adaptation requirements: [rendering map](swotl-tfh-rendering-map.md#slave-source-inventory).
 Admission results: [compute inventory](swotl-tfh-rendering-map.md#compute-admission-inventory).
 Candidate prices: [B3](swotl-tfh-rendering-map.md#b3-candidate-prices).
 User, 2026-10-21: missing implementations/contracts retain measured ceilings and
 explicit unpriced savings; do not invent a native price for them.
-
-- **B4** Replace the rendering map's `5ecdf79` table with B1–B3; ask U0–U4.
 
 ## S. Procedure per native routine (one commit each, as the next speed-plan R step)
 
@@ -74,7 +72,8 @@ explicit unpriced savings; do not invent a native price for them.
 
 ## N. Native routines
 
-- **N1** Pilot (U2): `B52D`/`B54B` from `xform20`, by S1–S9. Then compare its measured
+- **N1** Authorized pilot (U2): `B54B` from `xform20`, retaining the generated
+  `B52D` wrapper and return checks, by S1–S9. Then compare its measured
   saving with B3's price and rescale the remaining prices. Done: kept or reverted, with
   the ratio in the rendering map.
 - **N2** The other admitted routines in B3 price order, each after U4. B2 admits
