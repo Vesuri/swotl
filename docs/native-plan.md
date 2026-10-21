@@ -1,8 +1,7 @@
 # Native routine plan (open-work 14b)
 
-Work after the translator steps, in order: baseline (A), translator follow-up (X),
-candidate table (B), native routines (N, each by procedure S), contract for routines
-with polls (C), close (Z). User decisions (U) gate it. Rules: speed-plan §2; nothing
+Work after the translator steps, in order: candidate table (B), native routines
+(N, each by procedure S), contract for routines with polls (C), close (Z). User decisions (U) gate it. Rules: speed-plan §2; nothing
 here authorizes a routine (§2.2). Interface and oracle: [native-compute.md](native-compute.md);
 facts per candidate: [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md).
 Evidence: `tmp/native/<id>/`.
@@ -22,7 +21,6 @@ order, scratch writes and tables are kept.
 | `D5A6` | normalise, then `B017` | `transform.s` `xpnorm20` | one shift by a `bfffo` count, not one per pass | 1 |
 | `109D6` | ground objects | `render.s` `scen_verts` (vertex loops `11604..11B34`), `clr_scenery` | register loops; long clears | 6 |
 | `F290` | terrain rings, scenery | `render.s` `tile_scenery` | register version of compiled C | 2 |
-| `CE3C` `rep stosb` | background fill | `render.s` `cpu_fill` (blitter fill → long CPU fill) | translator step X1, not native | — |
 | `B8A1` `BB70` `BD68` `D69C` `4DAE` `FDE0` | facing, classify, edges, line, sprites, terrain | none; TFH originals `2F822` `2FA12` `2FBB2` `30486` `2BACE` as reference (`FDE0` not importable) | — | 0–9 |
 | `BFD1` | rasterizer | none (no TFH equivalent) | — | ≥ 2 |
 
@@ -44,13 +42,6 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 | U5 | Approve the poll contract (C1) | C3, N4 |
 | U6 | Authorize each routine that needs C | N4 |
 | U7 | Direction if Z1 leaves the target unmet (FM quality tradeoff, `BFD1`, revised target) | — |
-
-## X. Translator follow-up (no authorization)
-
-- **X1** REP STOSB has no long fast path (`lower.py`: two elements per long for STOSW only).
-  Price `CE3C`'s background fill and every other hot `rep stosb` from A3 (speed-plan §9,
-  `tmp/native/A3/`; `CE3C` has no calls in those windows); if it saves, a
-  speed-plan step (§3 procedure, R24 as template). Done: kept or one line in §10.
 
 ## B. Candidate table (no authorization)
 

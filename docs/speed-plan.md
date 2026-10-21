@@ -349,7 +349,7 @@ items left.
 
 A3's frames-fixture medians are 370, 390 and 400 ms: the middle run needs
 150 ms (38.5%) less to reach 240 ms; the run range needs 130–160 ms less.
-No priced translator candidate remains (§7). Next: REP STOSB pricing (X1), then native candidate pricing/authorization (B), in
+No priced translator candidate remains (§7). Next: native candidate pricing/authorization (B), in
 [native-plan.md](native-plan.md).
 
 Current candidate costs, A3 run 2 (`6bf8aef`, 100 fields, 28,420,399 profiler cycle
@@ -410,3 +410,7 @@ history at `781975e` and §5.)
   +0.0326% (overlapping ranges, five pairs slower). No-slowdown acceptance
   not established; placement reverted. Approved alias-boundary and timing-tool
   fixes plus oracle coverage retained; all seven gates passed. Evidence: `tmp/item31-r23/`.
+- X1 REP STOSB long fill: not built; zero executions at all 17 emitted entries
+  in A3’s three captures and the fresh 49-frame m4 census; zero priced saving
+  in the acceptance window. Startup executes four sites (319,670 bytes); no
+  startup timing or unreachability claim. Evidence: `tmp/native/X1/`.
