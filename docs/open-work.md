@@ -28,7 +28,7 @@ speed work: [speed-plan.md](speed-plan.md).
     §1, §9). The middle run needs 150 ms (38.5%) less; this is a baseline, not a parent comparison. Remaining
     cost is mostly generated guest code; no priced translator candidate remains;
     flag-word packing is rejected (speed-plan §10). The rest, with user decisions
-    U0–U7: [native-plan.md](native-plan.md), next B1–B4 (native candidate pricing). Native replacement
+    U0–U7: [native-plan.md](native-plan.md), next B2–B4 (admission and native candidate pricing). Native replacement
     requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
     [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md); interface and validation:
     [native-compute.md](native-compute.md).

@@ -45,8 +45,8 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 
 ## B. Candidate table (no authorization)
 
-- **B1** For each row of "Improved sources": the slave routine's lines, its preconditions
-  (registers, globals proved dead) and every SWOTL difference from the rendering map.
+Source inventory and adaptation requirements: [rendering map](swotl-tfh-rendering-map.md#slave-source-inventory).
+
 - **B2** Admission: `translator/compute.py` on a trial `kind=compute` row per guest
   candidate, not enabled. Record admitted, or the rejecting rule (poll, cycle, REP,
   unresolved flow, device effect).

@@ -92,6 +92,104 @@ adapting the slave:
   user writes first; the contract keeps every SWOTL store (comparison rule: native-plan U3).
   `B54B` writes scratch DS:`22C6..22D4` besides its outputs.
 
+## Slave source inventory
+
+Source reviewed for B1 at TFH commit `315dbd2c344579ead8edc61bb8c3bec7825ca591`;
+paths below are relative to `../Their Finest Hour/whdload/`. These two files match
+that commit. SHA-256: `transform.s`
+`0aa83493d199ed0ca72cf41bda66258529558ce5079c1670e67e843476492985`;
+`render.s` `7eb06de148240ddfd463685cb3d1b0edfdbc381c33a8cba7a0d3c978cdd9985e`.
+Line ranges include macros: the one-line entry alone is not the implementation.
+
+| SWOTL | Slave entry and implementation lines | Replacement boundary in TFH |
+|---|---|---|
+| `B52D` / `B54B` | `transform.s:143` `xform20`; 77–84, 105–117, 120–138 | `2F4AE` body only; `2F48C` wrapper remains original |
+| `B4E2` | `transform.s:299–323` `xdiv20` | `2F374` through return |
+| `B017` | `transform.s:223` `xproj20`; 161–171, 176–183, 187–218 | only `2F28A..2F372`; entry `2F160`, divides, short path and rejects remain original |
+| `D5A6` | `transform.s:291` `xpnorm20`; 227–257, 281–286; target 294 initialized at 46–54 | `3041C..30484`, calls original `2F160` entry |
+| `109D6` | `render.s:155–166` `clr_scenery`; 320–492 `scen_verts`; exit base initialized at 130–132 | clear `11454..1148E`; vertex loops `11604..11B34`, not all of `1142C` |
+| `F290` | `render.s:175–300` `tile_scenery`; call target 302 initialized at 127–129 | `11138..11338`, calls original `1133A` |
+| `B8A1`, `BB70`, `BD68`, `D69C`, `4DAE`, `FDE0` | no improved slave implementation | original reference only: respectively `2F822`, `2FA12`, `2FBB2`, `30486`, `2BACE`, `104B6..10830` |
+| `BFD1` | none | no TFH equivalent |
+
+### Source preconditions
+
+All slave routines assume TFH's native big-endian globals at A4 = data hunk +
+7FFEh, its native stack, valid TFH tables and caller ABI. `xform20`, `xdiv20`,
+`xproj20`, `xpnorm20` require 68020; the scenery routines have no separate 020
+variant. The patch lists are `transform.s:68–73` and `render.s:146–148`.
+None uses SWOTL's generated ABI. Adaptation must retain x86 registers, flags,
+stack stores, segment wrapping and generated write bookkeeping under
+[native-compute.md](native-compute.md); caller liveness in TFH is not a SWOTL proof.
+
+- **Transform:** D0/D1/D2 are full point longs; camera 4154/4158/4162(A4),
+  matrix magnitudes 4114–4128, signs 4130–4144. Saves D3–D7/A0; trashes D0–D2,
+  writes outputs 4236/4228/4232. Source comments (lines 5–17) claim every other
+  user overwrites scratch 4246–4262 before reading, so differences, signs and
+  partial sums stay in registers. This TFH proof does not permit omitting SWOTL's
+  DS:22C6..22D4 or other writes. Preserve the per-term sign tests and bits 16–47,
+  including 32-bit wrap; do not replace sign/magnitude arithmetic with signed MUL.
+- **Divide:** D0.w is signed numerator; divisor is unsigned word 4244(A4),
+  scale word 4264. D1.w retains the numerator, D0 returns signed result, D2 its
+  magnitude; D3 is saved. Zero divisor skips division, retaining the shifted
+  magnitude. The long-divide bound follows the word numerator/divisor domain,
+  not observed calls. No dead-global proof is supplied here; SWOTL's original
+  two-divide fault/overflow and zero paths still determine fallback.
+- **Projection:** 4282/4286(A4) supply magnitudes, 4316/4318 signs; rotation
+  words 4146/4148 and signs 4150/4152; viewport offsets −7802/−7788 and long
+  correction 4312. Writes 4268/4272; D0 ends with the input X high word and
+  zero low word, D1–D7 are working registers. Source lines 20–27 rely on callers
+  `2F134`, `30246`, `30478` consuming only D0 then restoring D1–A3/A6.
+  Products/partial sums are register-held; no SWOTL scratch-store exemption
+  follows. Carry the rounding add into the high product. This source covers
+  only the long path, so its cost cannot stand for all of `B017`.
+- **Normalise:** three long stack arguments (36(A7) after the save); saves
+  D1–D7/A0, records A5 at −10352(A4), and x/y signs via longs 8860/8856.
+  Shifts x/y magnitudes and raw z; highest-set-bit count is clamped by branching
+  around the shifts when already below 8000h, including zero. Writes words
+  4240/4242/4244 and calls the initialized `xp_2f160`. The smaller save set
+  relies on TFH's callee clobbers; intermediate one-bit-pass state is omitted.
+  SWOTL's D5DA poll visits and their visible state cannot be replaced by one
+  shift under the current contract.
+- **Scenery clear:** A5 is the original frame; three even 20-byte arrays at
+  −498, −478 and −298, first two adjacent. D0/A0 are dead until reloaded at
+  `1148E`; −24 becomes 20. The helper adjusts its native return address past
+  the original byte loop. Long clears omit intermediate counter writes and
+  reorder distinct bytes; U3 and SWOTL's actual frame layout must govern adaptation.
+- **Scenery vertices:** A5 is the original frame; −8 points to six-byte vertices,
+  −26 is the polygon count, 26372(A4) points to byte indices. Frame arrays and
+  origins are specified in source lines 304–319. Saves D3/D6–D7/A2–A3/A6;
+  transform/projection callees must preserve D1–A3/A6. D4/D5 and frame scratch
+  −30..−38, −504/−506 are claimed written before reuse and omitted. Exits are
+  `11C70` (all behind), `11B34` (clip), `11B2A` (draw); all depend on the original
+  surrounding function. Preserve signed midpoint truncation: `(a+b)/2` for
+  world points versus `a/2+b/2` for projected parents, with the latter allowed
+  only when both parents are projected and z > 20000. TFH's checked flights
+  did not exercise all-behind, midpoint or shared-projection paths
+  (`docs/internals.md:134–141`); SWOTL needs explicit oracle cases for them.
+- **Terrain rings:** saves D4–D7/A2–A3, uses a new four-byte A5 frame and
+  register-held loop variables. Inputs: plane 11668/11672(A4), heading 11680,
+  map/offset/object pointers 12132/12136/12140, tables −21726..−21670 and
+  −23016. The original `1133A` callee must preserve the loop registers;
+  receives detail in the high word of a long stack argument and globals
+  26360/26364/26372/26376/26377. Runs at TFH ground detail 0. Replacing the C
+  frame omits local-store histories; no individual dead-local proof is supplied.
+  Preserve byte/word index wrap, signed offsets, detail and bounds ordering.
+
+### SWOTL adaptation boundaries
+
+The following **Facts per candidate** sections are the full mapped differences
+for every row above: transform globals and wrapper; divide zero/overflow;
+projection constants and short path; normalise signs and poll; object header,
+face mask and call graph; terrain dimensions and data. The no-slave rows retain
+48-bit facing sums, classification ties, SWOTL edge records, line source swaps
+and endpoint order, sprite byte packets/selector transparency/scale tables, and
+terrain caches/visitation/clipping respectively. `BFD1` retains its own merge,
+priority, lifetime and emission semantics. Their detailed addresses and oracle
+cases below remain binding; none inherits a TFH register or dead-store contract.
+These are source facts and adaptation requirements, not equivalence or admission
+proofs. Admission and prices remain B2/B3; no routine is enabled or authorized.
+
 ## Facts per candidate
 
 ### Transform `B52D`/`B54B` ↔ `2F48C`/`2F4AE`
