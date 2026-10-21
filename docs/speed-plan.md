@@ -18,19 +18,30 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   R31 push/pop runs, R32 conditional-over-jump fusion and R33 packed far returns
   kept; R34 FM continuity accepted as a quality tradeoff. Item 14b's 240 ms target remains unmet; no native replacement is authorized.
   Next: [native-plan.md](native-plan.md).
-- **Frames fixture** (R30, 2026-10-19): medians 340, 340 and
-  340 ms; same-session parent 370, 350 and 340 ms. R31–R34 not yet measured
-  on it.
-- **Bench** (R34, 2026-10-21): opening frames 4–11 median 68,513 lines (same-session
-  parent R33 68,482). Palette window 38,392–38,405 lines (R17).
+- **Frames fixture** (A3, `6bf8aef`, 2026-10-21): medians 370, 390 and
+  400 ms; run-median span 370–400 ms. Frames 4–11 intervals (fields):
+  `[26,15,21,18,22,18,19,16]`, `[26,15,21,19,22,18,20,16]`,
+  `[25,17,28,20,19,20,23,18]`. Interval spans 15–26, 15–26 and 17–28
+  fields. Baseline only; no same-session parent comparison or speedup claim.
+- **Bench** (A3, `6bf8aef`, 2026-10-21): opening frames 4–11 sums 68,525,
+  68,536 and 68,493 lines; median 68,525, span 43 lines (0.063%). Corresponding
+  profiler cycles: 62,220,700; 62,230,688; 62,191,644 (908/line).
+  All three final guest RAM hashes match the established bench endpoint
+  (`951adbe5…39b6c63`). This spread exceeds the introduction's two-line observation
+  (§4); no build-to-build claim. Palette window 38,392–38,405 lines (R17).
 - **Meter** (m4, R18 weights, R33): generated + walk + runtime 172,620,455
   model cycles (−0.7089% from parent). R32 removes 46,981 JMP executions
   from the label-derived guest count; historical label-derived counts omit those executions.
   Host platform adds 2,171 cycles.
-- **Capture** (R24, first frames run, 100 fields): generated code 81.40%
-  (cell walk 3.87%), runtime/platform 14.44% (three main FM functions 8.12%),
-  no PC 2.19%, Kickstart 1.04%, IRQ transition 0.93%. Profiler guest-entry count:
-  2,238,188; 10.34 cycles each (historical label-derived count).
+- **Capture** (A3, second frames run, 100 fields): generated code 76.18%
+  (cell walk 3.75%), runtime/platform 19.52% (`render`, `fm_field`, `loop_for`
+  12.11%), no PC 2.23%, Kickstart 1.03%, IRQ transition 1.03%.
+  2,183,599 semantic guest instructions (10,765 recovered zero-code entries),
+  5,130,676 generated 68k instructions: 2.35 per guest instruction,
+  9.92 cycles/guest instruction, 6.59 weighted static code bytes/guest instruction.
+  Run 1's semantic count fails loudly on an unknown capture-start predecessor;
+  run 2 is the first complete accounting. Run 3: 2,211,424 guest instructions,
+  9.61 cycles each. All three timing/share reports retained in `tmp/native/A3/`.
 
 ## 2. Hard rules
 
@@ -298,6 +309,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R33 | guarded packed far-return pop and full CS:IP check | `lower.py`, `emit.py`, `rt_entry.s` | −0.7089% (bench −2.318%) |
 | R34 | canonical FM phase, 0.75 dB envelopes, stable four-voice allocation | `fm_paula.c` | meter unchanged; bench +0.0453%, user-approved quality tradeoff |
 | A2 | semantic guest-entry accounting, helper exclusion and zero-code aliases | `lowering_cost.py` | tooling only |
+| A3 | HEAD frame, bench and native-candidate baseline | docs | measurement only |
 
 No priced translator candidate remains. Unchanged (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
@@ -333,9 +345,42 @@ items left.
 
 ## 9. Gap
 
-R30's frames-fixture medians are 340, 340 and 340 ms: 240 ms needs about 29% less.
-No priced translator candidate remains (§7). Where the time goes now, and the work
-after the translator: [native-plan.md](native-plan.md) (A3, B).
+A3's frames-fixture medians are 370, 390 and 400 ms: the middle run needs
+150 ms (38.5%) less to reach 240 ms; the run range needs 130–160 ms less.
+No priced translator candidate remains (§7). Next: meter calibration (A4), REP STOSB
+pricing (X1), then native candidate pricing/authorization (B), in
+[native-plan.md](native-plan.md).
+
+Current candidate costs, A3 run 2 (`6bf8aef`, 100 fields, 28,420,399 profiler cycle
+units). Own cost groups generated instructions by call-target boundary; inclusive
+cost follows completed A7 call scopes, excluding hardware and guest interrupt
+delivery (`tmp/item30/inclusive.py` method). All listed observed calls finish inside
+this window. `B8A1` is an explicit extra boundary; neither it nor `CE3C` executes.
+Zero here does not prove a routine unreachable. Inclusive rows overlap; do not add them.
+
+| SWOTL | Function | Own share | Calls/100 fields | Own cycles/call | Inclusive cycles/call |
+|---|---|---:|---:|---:|---:|
+| `B52D` | transform wrapper | 1.02% | 1,483 | 196 | 1,378 |
+| `B54B` | point transform | 6.17% | 1,483 | 1,182 | 1,182 |
+| `B4E2` | perspective divide | 1.82% | 2,072 | 249 | 249 |
+| `B017` | projection | 2.99% | 1,036 | 819 | 1,318 |
+| `D5A6` | normalise/project | 2.07% | 836 | 703 | 2,048 |
+| `B8A1` | face-facing test | 0% | 0 | — | — |
+| `BB70` | polygon bounds/classify | 1.33% | 177 | 2,140 | 2,140 |
+| `109D6` | ground objects | 2.64% | 109 | 6,893 | 24,164 |
+| `4DAE` | sprite decoder | 7.98% | 49 | 46,282 | 60,771 |
+| `D69C` | clipped line | 0.99% | 130 | 2,171 | 2,781 |
+| `BD68` | edge submission | 0.67% | 94 | 2,013 | 4,988 |
+| `FDE0` | terrain polygons | 1.59% | 5 | 90,482 | 525,717 |
+| `F290` | terrain/scenery selection | 1.10% | 5 | 62,641 | 102,471 |
+| `BFD1` | rasterizer | 6.57% | 5 | 373,600 | 568,646 |
+| `CE3C` | background fill | 0% | 0 | — | — |
+
+Across the three captures, sprite share is 2.88–7.98% (9–49 calls), rasterizer
+5.02–6.57% (4–5 calls); generated code 74.78–76.91%. Retain this trajectory
+variation when pricing candidates. Per-run counts and costs: `tmp/native/A3/frames-*/`.
+The rendering map's older candidate table remains historical until B4 adds admission
+and adaptation prices; use this table for current costs.
 
 ## 10. Rejected and not built
 

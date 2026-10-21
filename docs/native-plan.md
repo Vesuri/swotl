@@ -47,17 +47,14 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 
 ## A. Baseline (no authorization)
 
-- **A3** Re-profile HEAD (speed-plan §4): frames fixture P, three runs; 100-field frames
-  capture; bench, three runs. Per candidate: own share, calls per 100 fields, own and
-  inclusive cycles per call (`tmp/item30/inclusive.py` method). Done: speed-plan §1, §9
-  and the 14b gap updated from these runs.
 - **A4** Open-work 37: both loop definitions' calibration fit and R27 Δ → U1 → `cost_meter.py
   --calibrate CAPTURE ELF --write`, `--plant-check`. Done: 37 closed.
 
 ## X. Translator follow-up (no authorization)
 
 - **X1** REP STOSB has no long fast path (`lower.py`: two elements per long for STOSW only).
-  Price `CE3C`'s background fill and every other hot `rep stosb` from A3; if it saves, a
+  Price `CE3C`'s background fill and every other hot `rep stosb` from A3 (speed-plan §9,
+  `tmp/native/A3/`; `CE3C` has no calls in those windows); if it saves, a
   speed-plan step (§3 procedure, R24 as template). Done: kept or one line in §10.
 
 ## B. Candidate table (no authorization)

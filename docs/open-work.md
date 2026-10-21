@@ -23,12 +23,12 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Translator and validation
 
-14b. Speed target remains unmet: frames-fixture 68020 run medians on R30
-    (2026-10-19) 340, 340 and 340 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
-    §1, §9). Roughly 29% further reduction is needed from 340 ms; parent intervals overlap. Remaining
+14b. Speed target remains unmet: frames-fixture 68020 run medians on `6bf8aef`
+    (A3, 2026-10-21) 370, 390 and 400 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
+    §1, §9). The middle run needs 150 ms (38.5%) less; this is a baseline, not a parent comparison. Remaining
     cost is mostly generated guest code; no priced translator candidate remains;
     flag-word packing is rejected (speed-plan §10). The rest, with user decisions
-    U0–U7: [native-plan.md](native-plan.md), next A3 (re-profile HEAD). Native replacement
+    U0–U7: [native-plan.md](native-plan.md), next A4 (item 37; user decision U1). Native replacement
     requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
     [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md); interface and validation:
     [native-compute.md](native-compute.md).
