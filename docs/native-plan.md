@@ -39,7 +39,7 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 | U2 | Approved 2026-10-21: transform pilot at `B54B` from `xform20`; retain generated `B52D` wrapper and return checks | — |
 | U3 | Confirmed 2026-10-21: keep every byte's complete write history, SMC/display bookkeeping and all other state checks | — |
 | U4 | Deferred 2026-10-21: further routines need viable prices/contracts and individual authorization | N2 |
-| U5 | Approve the poll contract (C1) | C3, N4 |
+| U5 | Pending: approve the C1 poll contract; requested in C2, no decision received | C3, N4 |
 | U6 | Authorize each routine that needs C | N4 |
 | U7 | Direction if Z1 leaves the target unmet (FM quality tradeoff, `BFD1`, revised target) | — |
 
@@ -79,12 +79,9 @@ explicit unpriced savings; do not invent a native price for them.
 
 ## C. Contract for routines with polls and loops
 
-- **C1** Design (docs only; may start after B4): native code keeps every poll visit of the
-  original. At each poll site it checks `G_IRQ`; with one pending it writes the exact guest
-  state of that site (registers, live flags, stores so far) and exits to the generated
-  code at that site, which delivers it. Visit counts are kept where the improved
-  algorithm has fewer passes (`xpnorm20`'s one shift for `D5A6`'s loop). Oracle: x86
-  stopped at the n-th visit of each site; an interrupt forced at every site.
+Design: [C1 poll contract](native-compute.md#proposed-poll-contract-c1-awaiting-u5).
+It is not implemented or approved; existing poll-free admission remains active.
+
 - **C2** U5, recorded in native-compute.md.
 - **C3** Admission, emitter (exit sites as leaders), oracle, tests and plants: stale
   register at an exit, missing store before an exit, skipped visit, wrong exit site,
