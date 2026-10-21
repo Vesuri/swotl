@@ -335,7 +335,9 @@ a profile choice, `tools/outline_sites.py` from `build/gen/outline-sites.csv`),
   handled result; admission proves poll-free reachable flow, including callees.
   It leaves the guest return and check generated. With `polls` (U5) the row's
   body loses its polls in both arms, its return and listed sync sites become
-  polls, and each sync site is a resume and a hook entry. Contract and oracle:
+  polls, and each sync site is a resume and a hook entry. U8: REP off the poll
+  set, the divide-fault edge as a decline edge, every root return a resume
+  (d7 dispatch), `end` for code past the return. Contract and oracle:
   [native-compute.md](native-compute.md). Enabled: the poll-free `B54B` transform.
 - Self-modified code (D16, `translator/smc.py`): the root block
   `+6A4D..+8E2C` is one generated cell walk (the whole template block: the

@@ -59,21 +59,20 @@ costs, adaptation inventory and eligibility sensitivity: [B3](#b3-candidate-pric
 |---|---|---:|---:|---:|---|---|---|
 | `B52D` | transform wrapper | 1.02% | 1,483 | 3.99 | generated wrapper retained | Admitted | Shared with `B54B`; do not add |
 | `B54B` | point transform | 6.17% | 1,483 | 24.06 | `xform20` | Enabled (N1) | 11.48–12.04 priced; measured per-call ratio below |
-| `B4E2` | perspective divide | 1.82% | 2,072 | 7.09 | `xdiv20` | Exceptional-flow contract | Unpriced |
-| `B017` | projection | 2.99% | 1,036 | 11.65 | `xproj20`, long path only | Exceptional flow, multiple returns | Unpriced |
-| `D5A6` | normalise/project | 2.07% | 836 | 8.07 | `xpnorm20` | Poll contract | Unpriced |
+| `B4E2` | perspective divide | 1.82% | 2,072 | 7.09 | `xdiv20` | Admitted (U8) | Unpriced |
+| `B017` | projection | 2.99% | 1,036 | 11.65 | `xproj20`, long path only | Admitted (U8, four returns) | Unpriced |
+| `D5A6` | normalise/project | 2.07% | 836 | 8.07 | `xpnorm20` | Admitted (U5) | Unpriced |
 | `B8A1` | face-facing test | 0% | 0 | 0.00 | None | Admitted; no captured calls | 0 in A3; native cost unpriced |
-| `BB70` | polygon bounds/classify | 1.33% | 177 | 5.20 | None | Polls | Unpriced |
-| `109D6` | ground objects | 2.64% | 109 | 10.31 | `scen_verts`, `clr_scenery`, partial | Polls, REP, multiple returns | Unpriced |
-| `4DAE` | sprite decoder | 7.98% | 49 | 31.12 | None | Callee polls | Unpriced |
-| `D69C` | clipped line | 0.99% | 130 | 3.87 | None | Callee polls | Unpriced |
-| `BD68` | edge submission | 0.67% | 94 | 2.60 | None | Polls | Unpriced |
-| `FDE0` | terrain polygons | 1.59% | 5 | 6.21 | None | REP/polls | Unpriced |
-| `F290` | terrain/scenery selection | 1.10% | 5 | 4.30 | `tile_scenery` | Poll contract | Unpriced |
-| `BFD1` | rasterizer | 6.57% | 5 | 25.63 | None | Polls | Unpriced |
+| `BB70` | polygon bounds/classify | 1.33% | 177 | 5.20 | None | Admitted (U5) | Unpriced |
+| `109D6` | ground objects | 2.64% | 109 | 10.31 | `scen_verts`, `clr_scenery`, partial | DOS call in callee | Unpriced |
+| `4DAE` | sprite decoder | 7.98% | 49 | 31.12 | None | `call dx` | Unpriced |
+| `D69C` | clipped line | 0.99% | 130 | 3.87 | None | Shared callee poll | Unpriced |
+| `BD68` | edge submission | 0.67% | 94 | 2.60 | None | Overlay call | Unpriced |
+| `FDE0` | terrain polygons | 1.59% | 5 | 6.21 | None | Overlay call | Unpriced |
+| `F290` | terrain/scenery selection | 1.10% | 5 | 4.30 | `tile_scenery` | Overlay call | Unpriced |
+| `BFD1` | rasterizer | 6.57% | 5 | 25.63 | None | Unresolved callee flow | Unpriced |
 
-Three entries admitted; eleven rejected. Poll-contract work alone does not
-resolve exceptional flow, REP or multiple returns. No source/contract means
+Admission after C4: see the [inventory](#compute-admission-inventory). No source/contract means
 unpriced, as approved for B3. `B8A1`'s zero calls do not prove unreachability.
 TFH counterparts and exact source boundaries remain in the inventory below.
 
@@ -232,13 +231,19 @@ Local reproduction and results: `tmp/native/B2/admission.py`, `admission.json`.
 | `F290` | `F318 → F319` | Rejected: poll `F2BD`. |
 | `BFD1` | `C049 → C04A` | Rejected: poll `C000`. |
 
-Three entries admitted, eleven rejected (18 trial rows). Rejections are the
+C4 rerun (U5 + U8, `tmp/c4/admit.py`, `admit2.py`): admitted `B4E2`, `B017`
+(four returns), `B8A1` poll-free; `D5A6` (`D5DA` removed) and `BB70` (7 polls
+removed) under U5. With `end` past the epilogue, `F290` (`F5E4`), `BD68`
+(`BF95`) and `FDE0` (`1022E`) reach PLINK manager calls (another overlay);
+`109D6` reaches `int 21h` at `144B7`; `4DAE` has `call dx` (`4F7B`, `4FF7`,
+`50A5`, `5139`); `BFD1` reaches unresolved flow in a callee; `D69C`'s callee
+poll `D4FA` is reachable from outside.
+
+B2 result (initial contract): three entries admitted, eleven rejected (18 trial rows). Rejections are the
 checker's first failure, not an exhaustive list of blockers. In particular,
 zero polls in a routine's own body does not prove transitive admission:
-`B4E2`/`B017` retain their divide-error edges. C's poll contract alone does not
-settle exceptional edges, multiple returns or REP; the approved U8 extensions
-(native-compute.md) do, once C4 implements them. Until then these blockers stay
-explicit in B3/B4. `B8A1` has no calls in A3, so admission alone gives no
+`B4E2`/`B017` retain their divide-error edges; U8 (C4) admits them as decline
+edges. `B8A1` has no calls in A3, so admission alone gives no
 priced saving. Admission is not native correctness or replacement authorization;
 S3–S6 still apply. Existing admission controls: 19 pass; removing the effect/poll
 guard is caught (`poll admitted`).
@@ -339,18 +344,18 @@ This is not authorization to implement or weaken admission.
 |---|---|---:|---:|
 | `B52D` | Admitted; same body saving as `B54B`, wrapper unchanged | 11.48–12.04 shared | 11.48–12.04 shared |
 | `B54B` | Admitted; priced adapter above | 11.48–12.04 | 11.48–12.04 |
-| `B4E2` | Exceptional-flow contract missing | Unpriced | Unpriced |
-| `B017` | Exceptional flow, multiple returns; only long path has improved source | Unpriced | Unpriced |
-| `D5A6` | Poll contract missing | Unpriced | Unpriced |
+| `B4E2` | Admitted (U8); native cost unpriced | Unpriced | Unpriced |
+| `B017` | Admitted (U8); only long path has improved source | Unpriced | Unpriced |
+| `D5A6` | Admitted (U5); native cost unpriced | Unpriced | Unpriced |
 | `B8A1` | Admitted; no improved source, no A3 calls | 0 in A3; native cost unpriced | 0 in A3; native cost unpriced |
-| `BB70` | No improved source; polls | Unpriced | Unpriced |
-| `109D6` | Poll/REP/multiple-return contract missing; partial source only | Unpriced | Unpriced |
-| `4DAE` | No improved source; callee polls | Unpriced | Unpriced |
-| `D69C` | No improved source; callee polls | Unpriced | Unpriced |
-| `BD68` | No improved source; polls | Unpriced | Unpriced |
-| `FDE0` | No improved source; REP/polls | Unpriced | Unpriced |
-| `F290` | Poll contract missing | Unpriced | Unpriced |
-| `BFD1` | No improved source; polls | Unpriced | Unpriced |
+| `BB70` | No improved source; admitted (U5) | Unpriced | Unpriced |
+| `109D6` | DOS call in callee; partial source only | Unpriced | Unpriced |
+| `4DAE` | No improved source; `call dx` | Unpriced | Unpriced |
+| `D69C` | No improved source; shared callee poll | Unpriced | Unpriced |
+| `BD68` | No improved source; overlay call | Unpriced | Unpriced |
+| `FDE0` | No improved source; overlay call | Unpriced | Unpriced |
+| `F290` | Overlay call | Unpriced | Unpriced |
+| `BFD1` | No improved source; unresolved callee flow | Unpriced | Unpriced |
 
 User decision, 2026-10-21: **use ceilings and explicit unpriced rows** for
 missing implementations/contracts. Their measured ceilings are above; unpriced

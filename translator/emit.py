@@ -286,7 +286,8 @@ def cs_expr(cs: int) -> str:
 class Program:
     hle: dict = {}   # (mod, first) -> ((mod, resume), service); set from hle.csv
     sync_poll_first = True  # U5: a sync site's visit precedes its hook (sabotage turns it off)
-    polled_resumes: dict = {}  # U5 hook -> its resumes (return, sync sites); set in __init__
+    polled_resumes: dict = {}  # U5/U8 hook -> its resumes (returns, sync sites); set in __init__
+    polled_entry: dict = {}    # U5/U8 hook -> its d7 entry index (0 first, k sync site k)
 
     def __init__(self, units: dict[str, cfg.Unit] | None = None, components: bool = True,
                  diagnostic_hooks: dict[tuple[str, int], int] | None = None,
@@ -328,6 +329,7 @@ class Program:
         self.hle_args: dict[tuple[str, int], list[str]] = {}
         self.compute_rows: set[tuple[str, int]] = set()
         self.sync_sites: dict[tuple[str, int], tuple] = {}  # U5 rows: first -> sync sites
+        self.compute_end: dict[tuple[str, int], int] = {}   # U8: range end past the return
         for r in image.rows("hle.csv"):
             mod, first, last = r["module"], int(r["first"], 16), int(r["last"], 16)
             u = self.units[mod]
@@ -346,6 +348,8 @@ class Program:
                 if args or not r.get('reason') or not r.get('oracle'):
                     raise LowerError('hle.csv: compute needs reason/oracle and no args')
                 self.compute_rows.add((mod, first))
+                if r.get('end'):    # U8: the routine's code continues past the return
+                    self.compute_end[(mod, first)] = int(r['end'], 16)
                 polls = (r.get('polls') or '').split()
                 if polls:   # U5: 'return' and the sync sites' offsets
                     if polls[0] != 'return':
@@ -354,8 +358,8 @@ class Program:
                     if any(o not in u.insns for _, o in sites):
                         raise LowerError(f"hle.csv: {mod}+{first:05X} sync site is no instruction")
                     self.sync_sites[(mod, first)] = sites
-            elif r.get('polls'):
-                raise LowerError(f"hle.csv: {mod}+{first:05X} polls need kind compute")
+            elif r.get('polls') or r.get('end'):
+                raise LowerError(f"hle.csv: {mod}+{first:05X} polls/end need kind compute")
         int0 = [r for r in image.rows("runtime.csv") if r["name"] == "__cintDIV"]
         self.int0 = (int0[0]["module"], int(int0[0]["offset"], 16)) if int0 else None
         # D16: self-modified regions, each lowered as one cell walk
@@ -379,21 +383,30 @@ class Program:
         self.ccr_only: dict = {}    # label -> live flags only the CCR holds there (R14d)
         self.ret_of: dict = {}
         self.returns()
-        self.compute_bodies = {n: compute.validate_polled(self, n, self.hle[n][0], self.sync_sites[n])
-                               if n in self.sync_sites else compute.validate(self, n, self.hle[n][0])
+        self.compute_bodies = {n: compute.validate_polled(self, n, self.hle[n][0], self.sync_sites[n],
+                                                          self.compute_end.get(n))
+                               if n in self.sync_sites else
+                               compute.validate(self, n, self.hle[n][0], self.compute_end.get(n))
                                for n in self.compute_rows}
         # U5: each row's chosen polls replace the polls reachable only through it
-        # (both arms); its return and sync sites are polls. Sync sites are hook
-        # entries too, and every hook may resume at the return or a sync site.
+        # (both arms); its returns and sync sites are polls. Sync sites are hook
+        # entries too, and every hook may resume at a return or a sync site.
+        # U8: every root return is a resume; a poll-free row with several returns
+        # dispatches on d7 like a U5 row, without polls.
         self.polled_resumes: dict[tuple[str, int], list] = {}
-        for n, sites in self.sync_sites.items():
-            row = self.compute_bodies[n]
-            self.loop_heads = (self.loop_heads - row.removed) | set(sites) | {row.resume}
+        self.polled_entry: dict[tuple[str, int], int] = {}
+        for n, row in self.compute_bodies.items():
+            sites = self.sync_sites.get(n)
+            if sites is None:
+                if len(row.returns) > 1:
+                    self.polled_resumes[n], self.polled_entry[n] = list(row.returns), 0
+                continue
+            self.loop_heads = (self.loop_heads - row.removed) | set(sites) | set(row.returns)
             for s in sites:
                 self.hle[s] = self.hle[n]
                 self.hle_args[s] = []
-            for h in (n, *sites):
-                self.polled_resumes[h] = [row.resume, *sites]
+            for k, h in enumerate((n, *sites)):
+                self.polled_resumes[h], self.polled_entry[h] = [*row.returns, *sites], k
             self.compute_rows |= set(sites)
         self.liveness()
         self.leaders = self.find_leaders()
@@ -407,6 +420,9 @@ class Program:
         for n, (resume, _) in self.hle.items():
             self.leaders |= {n, resume}
         self.hle_resumes = {resume for resume, _ in self.hle.values()}
+        for resumes in self.polled_resumes.values():
+            self.leaders |= set(resumes)
+            self.hle_resumes |= set(resumes)
         self.components(components)
 
     # -- graph ----------------------------------------------------------------
@@ -883,7 +899,7 @@ class Program:
                 visit(o)
             if polled:
                 _, service = self.hle[(mod, o)]
-                entry = 0 if (mod, o) not in polled else polled.index((mod, o))
+                entry = self.polled_entry[(mod, o)]
                 lines += compute.polled_hook(service, entry, f"{lab(mod, o)}_cx", cs_expr(u.cs[o]))
                 stubs += compute.polled_dispatch(f"{lab(mod, o)}_cx", [label(*x) for x in polled],
                                                  hx(u.ip_of(o)))

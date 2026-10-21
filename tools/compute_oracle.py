@@ -63,11 +63,24 @@ def check_code_writes(written, fetched):
         raise ValueError('oracle self-modifying code entry')
 
 
-def run(ram, registers, resume, limit=100000, stops=()):
+class DivideFault(ValueError):
+    """The original raised INT 00h (U8): the native must decline before any
+mutation in its segment. `state` is the original's at the faulting instruction
+(registers with its IP, FLAGS, undefined flags, RAM, write history), where the
+declined generated code enters rt_fault."""
+
+    def __init__(self, message, state):
+        super().__init__(message)
+        self.state = state
+
+
+def run(ram, registers, resume, limit=100000, stops=(), returns=()):
     """Execute original bytes, stopping *before* the guest return.
 
 `stops` (U5 sync sites, CS:IP): also stop before one of them once at least one
 instruction ran, so a chain of runs visits each arrival; `at` names the stop.
+`returns` (U8): the row's other root returns, CS:IP, stopped before like
+`resume`. A divide error raises DivideFault.
 
 IR supplies only the undefined-flag mask. Unicorn supplies all expected values,
 flow and writes. Faults and external effects fail closed; their guard/fallback
@@ -100,13 +113,15 @@ cases belong in the block differential before a compute row can be enabled.
     written, fetched, count = set(), set(), 0
     # The original return remains generated: modifying it is outside the
     # contract even though this oracle stops immediately before executing it.
-    return_at = resume[0] * 16 + resume[1]
-    if memory_known(return_at, 1, captured_bytes) and ram[return_at] in (0xc2, 0xc3, 0xca, 0xcb):
-        return_size = 3 if ram[return_at] in (0xc2, 0xca) else 1
-        fetched.update(range(return_at, min(return_at + return_size, captured_bytes)))
+    ends = {tuple(resume), *(tuple(r) for r in returns)}
+    for cs, ip in ends:
+        return_at = cs * 16 + ip
+        if memory_known(return_at, 1, captured_bytes) and ram[return_at] in (0xc2, 0xc3, 0xca, 0xcb):
+            return_size = 3 if ram[return_at] in (0xc2, 0xca) else 1
+            fetched.update(range(return_at, min(return_at + return_size, captured_bytes)))
     stops = {tuple(s) for s in stops}
     try:
-        while (regs['cs'], regs['ip']) != tuple(resume) and \
+        while (regs['cs'], regs['ip']) not in ends and \
                 not (count and (regs['cs'], regs['ip']) in stops):
             if count >= limit:
                 raise ValueError('oracle instruction limit before resume')
@@ -122,6 +137,13 @@ cases belong in the block differential before a compute row can be enabled.
             err, regs, word, mem, ints, outs, writes = x.run(case, 1)
             if outside:
                 raise ValueError(f'oracle access outside captured memory: {outside}')
+            if ints[:1] == [0] and insn.op in ('div', 'idiv', 'aam') and not outs:
+                before = bytearray(ram[:X.RAM])
+                for addr, values in history.items():
+                    before[addr] = values[-1]
+                raise DivideFault(f'oracle divide error at {at:05x}', dict(
+                    registers=dict(case[0]), flags=word, undefined=sorted(state.undef), ram=bytes(before),
+                    history={a: list(v) for a, v in history.items()}))
             if err or ints or outs or 'trap' in regs or insn.op == 'in':
                 raise ValueError(f'oracle external effect/fault at {at:05x}: {err, ints, outs}')
             written.update(writes)
@@ -239,7 +261,7 @@ class PollGaps:
         return max(self.gaps + [self.open])
 
 
-def generated(path, module, first, cache):
+def generated(path, module, first, cache, end=None):
     """Exercise the recorder/oracle against current generated code, no HLE row.
 
     This establishes the harness on original game entries. Future authorized
@@ -251,24 +273,26 @@ def generated(path, module, first, cache):
     p = emit.Program()
     node = (module, first)
     rets, escapes = p.reach(node, {})
-    if escapes or len(rets) != 1:
-        raise ValueError('routine needs one proved return')
-    resume = next(iter(rets))
-    compute.validate(p, node, resume)
+    if escapes or not rets:
+        raise ValueError('routine needs proved returns')
+    region = compute.validate(p, node, max(rets), end)
     u = p.units[module]
     ram, regs = load_entry(path)
     cs = u.cs[first] + B.LOADSEG
     if (regs['cs'], regs['ip']) != (cs, u.ip_of(first)):
         raise ValueError('snapshot is not at the requested entry')
-    end = (u.cs[resume[1]] + B.LOADSEG, u.ip_of(resume[1]))
-    expected = run(ram, regs, end)
+    ends = {(u.cs[r[1]] + B.LOADSEG, u.ip_of(r[1])): r for r in region.returns}
+    expected = run(ram, regs, next(iter(ends)), returns=ends)
+    resume = ends[expected['at']]
+    end = expected['at']
     cache.mkdir(parents=True, exist_ok=True)
     binary, addresses = B.program_image(p, cache)
     m = B.D.M68k(ram, B.STUB_AT, {p.hle[n][1] for n in p.compute_rows})
     try:
         m.load(binary)
         history = watch_native(m)
-        m.extra_stops = {addresses[emit.label(*resume)]: 'compute_resume'}
+        m.extra_stops = {addresses[emit.label(*r)]: 'compute_resume' if r == resume
+                         else 'compute_other_return' for r in region.returns}
         flags = {f: regs['flags'] >> FLAG_BIT[f] & 1 for f in FLAGS}
         got, fl, fx, mem, outs, writes, info = m.run(addresses[emit.label(*node)],
             (regs, flags, regs['flags'] & 0xf000, regs['ip'], []), random.Random(33), irq=False)
@@ -290,10 +314,12 @@ def main():
     ap.add_argument('entry', type=Path)
     ap.add_argument('--resume', help='hex CS:IP, before original return')
     ap.add_argument('--generated', help='compare generated MODULE+hex-offset (no native row)')
+    ap.add_argument('--end', help='hex range end past the return (hle.csv end, U8)')
     args = ap.parse_args()
     if args.generated:
         module, first = args.generated.split('+')
-        result = generated(args.entry, module, int(first, 16), ROOT / 'tmp/compute-oracle')
+        result = generated(args.entry, module, int(first, 16), ROOT / 'tmp/compute-oracle',
+                           int(args.end, 16) if args.end else None)
     else:
         if not args.resume:
             ap.error('--resume or --generated is required')

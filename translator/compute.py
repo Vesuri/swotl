@@ -15,33 +15,55 @@ def forbidden(p, n):
 
 
 def effect(p, n):
-    """Runtime, device, interrupt-control and REP effects: outside every contract."""
+    """Runtime, device and interrupt-control effects: outside every contract.
+U8: a REP is no effect; the reference interrupts one only at a poll."""
     i = p.node_insn(n)
-    return (i.rep is not None or n[1] in p.units[n[0]].manager_calls or
+    return (n[1] in p.units[n[0]].manager_calls or
             i.op in {'in', 'out', 'int', 'int3', 'into', 'iret', 'hlt',
                      'cli', 'sti', 'popf'} or
             (i.op in {'mov', 'pop'} and i.operands and
              getattr(i.operands[0], 'name', None) == 'ss'))
 
 
-def validate(p, first, resume):
-    """Prove a single-return, acyclic, poll-free compute region, transitively.
+DIVIDES = {'div', 'idiv', 'aam'}
 
-Unknown transfers and exceptional edges cannot silently disappear. The initial
-contract rejects control/device effects; a later contract needs approval for
-those. Interior entries still execute generated code normally.
+
+def successors(p, n):
+    """p.succ without the U8 divide-fault edge: the native declines before it."""
+    int0 = getattr(p, 'int0', None)
+    if int0 is not None and p.node_insn(n).op in DIVIDES:
+        return [t for t in p.succ[n] if t != int0]
+    return p.succ[n]
+
+
+class Region(NamedTuple):
+    body: frozenset     # nodes the callback covers, callees included
+    returns: tuple      # root returns (U8: each a resume), ascending offset
+
+
+def validate(p, first, resume, end=None):
+    """Prove an acyclic, poll-free compute region, transitively.
+
+Unknown transfers and exceptional edges cannot silently disappear, except the
+U8 divide-fault edge (the native declines first). Every root return in the
+range [first, end) is a resume (U8; end defaults to resume: compiled C may
+place loop bodies after the return). Control/device effects are rejected.
+Interior entries still execute generated code normally.
     """
-    end = p.node_insn(resume)
-    if first == resume or end is None or end.op not in {'ret', 'retf'}:
+    tail = p.node_insn(resume)
+    if first == resume or tail is None or tail.op not in {'ret', 'retf'}:
         raise LowerError('compute: resume must be the original RET/RETF')
-    seen, active, body = set(), set(), set()
+    limit = resume[1] if end is None else end
+    if limit < resume[1]:
+        raise LowerError('compute: range end before the resume')
+    seen, active, body, rets = set(), set(), set(), {resume}
 
     def walk(n, callee=False):
         if not callee and n == resume:
             return
         if not isinstance(n, tuple) or n not in p.succ or p.node_insn(n) is None:
             raise LowerError(f'compute: unresolved flow {n}')
-        if not callee and (n[0] != first[0] or not first[1] <= n[1] < resume[1]):
+        if not callee and (n[0] != first[0] or not first[1] <= n[1] < limit):
             raise LowerError(f'compute: flow outside the declared range at {n}')
         key = (n, callee)
         if key in active:
@@ -52,13 +74,14 @@ those. Interior entries still execute generated code normally.
             raise LowerError(f'compute: poll, hook or external effect at {n}')
         i = p.node_insn(n)
         if i.op in {'ret', 'retf'}:
-            if not callee:
-                raise LowerError(f'compute: return bypasses resume at {n}')
-            body.add(n)
+            if callee:
+                body.add(n)
+            else:
+                rets.add(n)
             return
         active.add(key)
         body.add(n)
-        succ = p.succ[n]
+        succ = successors(p, n)
         if not succ:
             raise LowerError(f'compute: no proved continuation at {n}')
         if i.op in {'call', 'callf'}:
@@ -72,7 +95,7 @@ those. Interior entries still execute generated code normally.
         seen.add(key)
 
     walk(first)
-    return body
+    return Region(frozenset(body), tuple(sorted(rets)))
 
 
 def polled_hook(service, entry, dispatch, cs):
@@ -103,7 +126,8 @@ class Polled(NamedTuple):
     body: frozenset     # nodes the callback may cover, callees included
     removed: frozenset  # polls dropped from the poll set, in both arms
     sync: tuple         # kept polls in the root: extra hook entries and resumes
-    resume: tuple       # the original return: gets a poll
+    resume: tuple       # the row's declared return
+    returns: tuple      # every root return, ascending (U8): each a resume and a poll
 
 
 HALF = {'al': 'ax', 'ah': 'ax', 'bl': 'bx', 'bh': 'bx',
@@ -112,8 +136,8 @@ CALLS = {'call', 'callf'}
 RETURNS = {'ret', 'retf'}
 
 
-def validate_polled(p, first, resume, sync=()):
-    """Prove a U5 row: one root return, resolved flow, no effects, chosen polls.
+def validate_polled(p, first, resume, sync=(), end=None):
+    """Prove a U5 row: root returns (U8), resolved flow, no effects, chosen polls.
 
 Polls reachable only through the row are removed in both arms; the return gets
 one. A sync site is a root-body poll the callback resumes at and is re-entered
@@ -121,13 +145,17 @@ from, so every visit stays in generated code. A poll that flow from outside
 reaches without passing a hook entry must be a sync site; sync sites in callees
 and recursion are rejected. Each removed loop must not be a pure wait (wait()).
     """
-    end = p.node_insn(resume)
-    if first == resume or end is None or end.op not in RETURNS:
+    tail = p.node_insn(resume)
+    if first == resume or tail is None or tail.op not in RETURNS:
         raise LowerError('compute: resume must be the original RET/RETF')
+    limit = resume[1] if end is None else end
+    if limit < resume[1]:
+        raise LowerError('compute: range end before the resume')
     sync = tuple(sync)
     if len(set(sync)) != len(sync) or resume in sync:
         raise LowerError('compute: sync sites must be distinct and not the resume')
     callees: dict = {}
+    rets = {resume}
 
     def function(entry, root, stack):
         nodes, work = set(), [entry]
@@ -137,7 +165,7 @@ and recursion are rejected. Each removed loop must not be a pure wait (wait()).
                 continue
             if not isinstance(n, tuple) or n not in p.succ or p.node_insn(n) is None:
                 raise LowerError(f'compute: unresolved flow {n}')
-            if root and (n[0] != first[0] or not first[1] <= n[1] < resume[1]):
+            if root and (n[0] != first[0] or not first[1] <= n[1] < limit):
                 raise LowerError(f'compute: flow outside the declared range at {n}')
             if effect(p, n) or n in p.hle and n != first:
                 raise LowerError(f'compute: hook or external effect at {n}')
@@ -146,10 +174,11 @@ and recursion are rejected. Each removed loop must not be a pure wait (wait()).
             nodes.add(n)
             i = p.node_insn(n)
             if i.op in RETURNS:
-                if root:
-                    raise LowerError(f'compute: return bypasses resume at {n}')
+                if root:    # U8: another resume, outside the body like the declared one
+                    nodes.discard(n)
+                    rets.add(n)
                 continue
-            succ = p.succ[n]
+            succ = successors(p, n)
             if not succ:
                 raise LowerError(f'compute: no proved continuation at {n}')
             if i.op in CALLS:
@@ -169,14 +198,18 @@ and recursion are rejected. Each removed loop must not be a pure wait (wait()).
     for s in sync:
         if s not in root:
             raise LowerError(f'compute: sync site {s} is not in the root body')
+        if p.node_insn(s).rep is not None:   # U8: a REP at a kept poll stays out
+            raise LowerError(f'compute: REP at sync site {s}')
     graph = edges(p, body)
     polls = body & set(p.loop_heads)
     for n in sorted(polls & shared(p, body, graph, {first, *sync}) - set(sync)):
         raise LowerError(f'compute: poll {n} is reachable from outside the row')
     removed = frozenset(polls - set(sync))
+    for h in sorted(removed & set(getattr(p, 'diagnostic_reps', {}))):
+        raise LowerError(f'compute: diagnostic REP hook at removed poll {h}')
     for h in sorted(removed):
         wait(p, graph, body, h)
-    return Polled(frozenset(body), removed, sync, resume)
+    return Polled(frozenset(body), removed, sync, resume, tuple(sorted(rets)))
 
 
 def shared(p, body, graph, hooks):
@@ -213,7 +246,7 @@ def edges(p, body):
         elif i.op in CALLS:
             out[n] = [p.call_site.get(n)]
         else:
-            out[n] = [t for t in p.succ[n] if isinstance(t, tuple)]
+            out[n] = [t for t in successors(p, n) if isinstance(t, tuple)]
     return out
 
 

@@ -73,29 +73,28 @@ explicit unpriced savings; do not invent a native price for them.
 
 ## N. Native routines
 
-- **N2** The other admitted routines in B3 price order, each after U4. B2 admits
-  `B8A1` (no A3 calls); `B4E2`/`B017` are blocked by exceptional flow, and
-  `B017` also has multiple returns: both enter N2 after C4 (U8).
+- **N2** The other admitted poll-free routines in B3 price order, each after U4:
+  `B017` (`xproj20`, four returns), `B4E2` (`xdiv20`, divide decline), `B8A1`
+  (no A3 calls).
 
 ## C. Contract for routines with polls and loops
 
-Contract: [U5 poll contract](native-compute.md#poll-contract-u5), implemented
-(`hle.csv` `polls`; tests `t-compute-polls`). C3's admission run on the
-candidates admits none yet: other blockers remain outside U5 (REP: `D5A6`,
-`D69C` via a `repne scasb` callee, `FDE0`, `BFD1`; divide-error edge: `F290`,
-`B4E2`; flow out of range: `BD68`; unresolved: `4DAE`; multiple returns:
-`109D6`, `B017`). `BB70` admits with `BBAC` (an internally entered loop head) as
-its sync site; its other 6 polls are removed.
-
-- **C4** Implement [U8](native-compute.md#contract-extensions-u8) in
-  `compute.py`/`emit.py` with admission, emission and handoff controls and
-  plants; rerun admission on every candidate. Range/unresolved annotations come
-  with the routine that needs them.
+Contracts: [U5](native-compute.md#poll-contract-u5) (`hle.csv` `polls`;
+`t-compute-polls`) and [U8](native-compute.md#contract-extensions-u8) (`end`;
+`t-compute-u8`), implemented. Admission on the candidates (C4,
+[inventory](swotl-tfh-rendering-map.md#compute-admission-inventory)): `D5A6`
+(its poll removed) and `BB70` (7 polls removed, no sync site needed) admit
+under U5. Outside every contract: `F290`, `BD68`, `FDE0` (with `end`) call
+another overlay through the PLINK manager; `109D6` reaches DOS (`int 21h` in
+the callee at `144B7`); `4DAE` has `call dx`; `BFD1` reaches unresolved flow in
+a callee; `D69C`'s callee poll `D4FA` is shared. Each needs a narrower row (end
+the replacement before the call) or annotations, with its routine.
 
 - **N4** Routines that need C, each after U6, by S1–S9 plus C's cases, in B3 price
   order; S8 includes re-recording the references its poll set affects. Price each
-  with its return/sync polls and exits. Expected: `D5A6` (`xpnorm20`), `109D6`
-  (`scen_verts`, `clr_scenery`), `F290` (`tile_scenery`), then `4DAE`, `BB70`, `BD68`, `D69C`, `FDE0`, `BFD1`.
+  with its return/sync polls and exits. Admitted: `D5A6` (`xpnorm20`), `BB70`;
+  the others after narrower rows: `109D6` (`scen_verts`, `clr_scenery`), `F290`
+  (`tile_scenery`), `4DAE`, `BD68`, `D69C`, `FDE0`, `BFD1`.
 
 ## Z. Close
 

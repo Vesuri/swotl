@@ -65,11 +65,23 @@ def admission():
     p, n, insns = graph()
     p.dispatch.add(n['a1'])     # an internal entry: kept as a sync site
     assert compute.validate_polled(p, n['a0'], n['a6'], (n['a1'],)).removed == {n['a4']}
-    count = 4
+    # U8: an early return is another resume (and a poll); a REP at a removed
+    # poll is removed with it; the divide-fault edge is a decline edge
+    p, n, insns = graph()
+    p.succ[n['a2']] = [n['a1'], n['a7']]
+    assert compute.validate_polled(p, n['a0'], n['a6']).returns == (n['a7'], n['a6'])
+    p, n, insns = graph()
+    insns[n['a4']] = decode(bytes.fromhex('f2ae'), 20)   # repne scasb sets the exit's ZF
+    assert n['a4'] in compute.validate_polled(p, n['a0'], n['a6']).removed
+    p, n, insns = graph()
+    insns[n['a4']] = decode(bytes.fromhex('f7f1'), 20)   # div cx; x1 is outside the row
+    p.succ[n['a4']], p.int0 = [n['a5'], n['x1']], n['x1']
+    assert n['x1'] not in compute.validate_polled(p, n['a0'], n['a6']).body
+    count = 7
     for defect in ('pure-wait', 'shared-root-poll', 'shared-callee-poll', 'callee-sync',
-                   'recursion', 'unresolved', 'outside-range', 'early-return', 'io',
-                   'rep', 'nested-hook', 'diagnostic-body', 'resume-not-return',
-                   'sync-resume', 'sync-duplicate', 'sync-outside'):
+                   'recursion', 'unresolved', 'outside-range', 'io', 'rep-sync',
+                   'rep-diagnostic', 'fault-edge-not-int0', 'nested-hook', 'diagnostic-body',
+                   'resume-not-return', 'sync-resume', 'sync-duplicate', 'sync-outside'):
         p, n, insns = graph()
         sync = ()
         if defect == 'pure-wait':   # cmp word [10h],0 / jne: nothing changes it but an interrupt
@@ -85,9 +97,16 @@ def admission():
             p.call_site[n['c0']] = n['c1']
         elif defect == 'unresolved': p.succ[n['a2']] = [n['a1'], 'unknown']
         elif defect == 'outside-range': p.succ[n['a2']] = [n['a1'], n['x1']]
-        elif defect == 'early-return': p.succ[n['a2']] = [n['a1'], n['a7']]
         elif defect == 'io': insns[n['a4']] = decode(b'\xee', 20)
-        elif defect == 'rep': insns[n['a4']] = decode(bytes.fromhex('f3aa'), 20)
+        elif defect == 'rep-sync':
+            insns[n['a4']] = decode(bytes.fromhex('f3aa'), 20)
+            sync = (n['a4'],)
+        elif defect == 'rep-diagnostic':
+            insns[n['a4']] = decode(bytes.fromhex('f3aa'), 20)
+            p.diagnostic_reps = {n['a4']: 1}
+        elif defect == 'fault-edge-not-int0':
+            insns[n['a4']] = decode(bytes.fromhex('f7f1'), 20)
+            p.succ[n['a4']] = [n['a5'], n['x1']]
         elif defect == 'nested-hook': p.hle[n['a4']] = (n['a6'], 'nested')
         elif defect == 'diagnostic-body': p.diagnostic_hooks[n['a2']] = 1
         elif defect == 'resume-not-return':

@@ -374,9 +374,9 @@ N3's frames-fixture medians are 370, 350 and 340 ms: the middle run needs
 110 ms (31.4%) less to reach 240 ms; the run range needs 100–130 ms less.
 No priced translator candidate remains (§7). N1 is kept; N2 has no currently
 priced, authorized next routine. The U5 poll contract is implemented
-([native-compute.md](native-compute.md#poll-contract-u5)); the U8 extensions
-(REP, divide-fault decline, multiple returns) are approved for C4. Each N4
-routine needs U6, each N2 routine U4. See [native-plan.md](native-plan.md).
+([native-compute.md](native-compute.md#poll-contract-u5)), and the U8
+extensions (C4). Admitted: `B017`, `B4E2`, `B8A1` (N2, U4 each), `D5A6`, `BB70`
+(N4, U6 each). See [native-plan.md](native-plan.md).
 
 Current candidate costs, A3 run 2 (`6bf8aef`, 100 fields, 28,420,399 profiler cycle
 units). Own cost groups generated instructions by call-target boundary; inclusive

@@ -1,4 +1,4 @@
-module,first,last,service,args,reason,oracle,kind,polls
+module,first,last,service,args,reason,oracle,kind,polls,end
 SPAZ.OVL,0x44E,0x472,music_skip,,"play of a music record (byte 6 = 80h): the song start is skipped, music out of scope for now (user 2026-10-14; diagnostic argument MUSIC runs it)","tests/host_run.py --music-skip m2-choose-side: both anthem plays skipped, the song start never runs, services, interrupts and RAM outside SPAZ's state equal to the reference",,
 SPAZ.OVL,0x54D,0x54D,sfx_start,bx di,"observe only (EQ, the guest code runs): an effect taking a slot, BX = slot·6, DI = id·4; TFH mode routes the slot's Paula voice to a TFH sample or the FM re-hoster (user 2026-10-15)",tests/host_run.py: every report equals SPAZ's slot state after the start; sabotage sfx_start,,
 SWOTL.EXE,0xB54B,0xB704,point_transform,,"User 2026-10-21 U2: ""Authorize this transform pilot""; U0 adapt my slave source xform20; retain generated B52D wrapper and return checks; U3 complete byte-write history",python3 tests/test_point_transform.py --predecessors --sabotage; original m4/c13/c27 entry snapshots: tmp/native/N1,compute,

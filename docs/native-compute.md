@@ -195,7 +195,8 @@ reference change: no PIT rate, interrupt order, fixture or tolerance changes.
 
 ## Contract extensions (U8)
 
-Approved by the user 2026-10-21 (native-plan U8); implemented by C4. They apply
+Approved by the user 2026-10-21 (native-plan U8); implemented by C4
+(`compute.successors`, `Region`/`Polled.returns`, `hle.csv` `end`). They apply
 to poll-free and U5 rows alike; everything else in the contract is unchanged.
 
 - **REP:** a REP string instruction in the body is admitted when its address is
@@ -208,10 +209,25 @@ to poll-free and U5 rows alike; everything else in the contract is unchanged.
   decline edge, not body. The native checks the fault condition (divisor 0,
   quotient out of range) and declines before any mutation in its current segment
   (at entry or at the sync site that began it), so the generated code takes the
-  exact fault. A plant that faults natively or mutates before declining is caught.
-- **Multiple returns:** every root return is a resume. d7.l out = 1..R selects
-  return r (ascending offset), R + k sync site k; U5 rows poll at each return.
-  Poll-free rows with one return keep `tst.l d7; bne resume`.
-- **Flow out of range, unresolved flow:** no contract change. Widen the row's
-  declared range to cover the shared code, or resolve the targets in
+  exact fault. `compute_oracle.run` raises `DivideFault` with the original's
+  state at the faulting instruction, where the declined arm enters `rt_fault`;
+  flags compare as live at the INT 00h handler (open-work 24).
+- **Multiple returns:** every root return in the range is a resume. d7.l out =
+  1..R selects return r (ascending offset), R + k sync site k; U5 rows poll at
+  each return. Poll-free rows with several returns use the U5 hook and dispatch
+  (d7 in = 0) without polls; with one return they keep `tst.l d7; bne resume`.
+  `compute_oracle.run(returns=...)` stops before any of them.
+- **Flow out of range, unresolved flow:** no contract change. `hle.csv` `end`
+  (hex, exclusive) widens the root range past the declared return, for compiled
+  C's loop bodies after the epilogue; resolve unresolved targets in
   `annotations/` as for any translated code; otherwise the row is rejected.
+
+`make t-compute-u8 t-sab-compute-u8` (`tests/test_compute_u8.py`): emission on
+in-memory rows at `SWOTL.EXE` `DCE9` (poll-free, two returns), `DB9D` (U5,
+three returns, removed loop, `div bx` fault), `1446A` (U5, REPNE SCASB in the
+removed loop) and `15416` (U5, `end`); a handoff differential with an x86-driven
+double on each, both arms, every return and the fault reached, an interrupt at
+every return poll. Plants caught: REP as effect, fault edge as flow, returns
+dropped (poll-free, U5), early return without poll, mutate then decline, no
+decline at a fault, wrong return. Admission controls: `t-compute-contract`,
+`t-compute-polls`.

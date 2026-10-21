@@ -129,20 +129,38 @@ def graph():
 
 def check(validate):
     p, n, insns = graph()
-    assert validate(p, n[0], n[2]) == {n[0], n[1]}
-    assert validate(p, n[3], n[2]) == {n[3], n[4], n[5], n[1]}
+    assert validate(p, n[0], n[2]) == ({n[0], n[1]}, (n[2],))
+    assert validate(p, n[3], n[2]) == ({n[3], n[4], n[5], n[1]}, (n[2],))
     count = 2
-    for defect in ('poll', 'callee-poll', 'unknown', 'cycle', 'early-return',
+    # U8: an early return in the range is another resume; a REP off the poll
+    # set is compute; the divide-fault edge is a decline edge; `end` widens
+    # the range past the return (compiled C's out-of-line loop bodies)
+    p, n, insns = graph()
+    p.succ[n[1]] = [n[7]]
+    assert validate(p, n[3], n[2]).returns == (n[7], n[2])
+    p, n, insns = graph()
+    insns[n[4]] = decode(bytes.fromhex('f3aa'), 0)
+    assert n[4] in validate(p, n[3], n[2]).body
+    p, n, insns = graph()
+    insns[n[1]] = decode(bytes.fromhex('f7f1'), 0)   # div cx; n[8] is past the range
+    p.succ[n[1]], p.int0 = [n[2], n[8]], n[8]
+    assert n[8] not in validate(p, n[3], n[2]).body
+    p, n, insns = graph()
+    p.succ[n[1]] = [n[8]]
+    assert n[8] in validate(p, n[3], n[2], 26).body
+    count += 4
+    for defect in ('poll', 'callee-poll', 'unknown', 'cycle', 'early-return-outside',
                    'wrong-resume', 'io', 'interrupt', 'flags-control',
                    'nested-hook', 'manager', 'empty-successors', 'outside-range',
-                   'empty-body', 'rep', 'diagnostic', 'ss-write'):
+                   'empty-body', 'rep-poll', 'diagnostic', 'ss-write',
+                   'fault-edge-not-divide', 'fault-edge-not-int0', 'end-before-resume'):
         p, n, insns = graph()
-        first, resume = n[3], n[2]
+        first, resume, end = n[3], n[2], None
         if defect == 'poll': p.loop_heads.add(n[1])
         elif defect == 'callee-poll': p.loop_heads.add(n[4])
         elif defect == 'unknown': p.succ[n[4]] = ['unknown']
         elif defect == 'cycle': p.succ[n[4]] = [n[3]]
-        elif defect == 'early-return': p.succ[n[1]] = [n[7]]
+        elif defect == 'early-return-outside': resume = n[7]   # n[2] lies past it
         elif defect == 'wrong-resume': resume = n[1]
         elif defect == 'io': insns[n[4]] = decode(b'\xee', 0)
         elif defect == 'interrupt': insns[n[4]] = decode(b'\xcd\x21', 0)
@@ -152,11 +170,18 @@ def check(validate):
         elif defect == 'empty-successors': p.succ[n[4]] = []
         elif defect == 'outside-range': p.succ[n[1]] = [n[8]]
         elif defect == 'empty-body': first = resume
-        elif defect == 'rep': insns[n[4]] = decode(bytes.fromhex('f3aa'), 0)
+        elif defect == 'rep-poll':
+            insns[n[4]] = decode(bytes.fromhex('f3aa'), 0)
+            p.loop_heads.add(n[4])
+        elif defect == 'fault-edge-not-divide': p.succ[n[1]], p.int0 = [n[2], n[8]], n[8]
+        elif defect == 'fault-edge-not-int0':
+            insns[n[1]] = decode(bytes.fromhex('f7f1'), 0)
+            p.succ[n[1]] = [n[2], n[8]]
+        elif defect == 'end-before-resume': end = 19
         elif defect == 'diagnostic': p.diagnostic_hooks[n[4]] = 1
         elif defect == 'ss-write': insns[n[4]] = decode(bytes.fromhex('8ed0'), 0)
         try:
-            validate(p, first, resume)
+            validate(p, first, resume, end)
         except LowerError:
             count += 1
         else:
@@ -190,6 +215,7 @@ def emission():
     assert candidate.compute_rows == {first}
     assert first in candidate.leaders and resume in candidate.leaders
     assert candidate.compute_bodies[first] == compute.validate(p, first, resume)
+    assert first not in candidate.polled_resumes, 'one return keeps the legacy hook'
     hook = compute.hook('rt_hle_contract_test_only', emit.label(*resume), emit.cs_expr(u.cs[first[1]]))
     start = lines.index('\tjsr rt_hle_contract_test_only') - 1
     assert lines[start:start + len(hook)] == hook

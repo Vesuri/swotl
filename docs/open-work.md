@@ -28,9 +28,11 @@ speed work: [speed-plan.md](speed-plan.md).
     §1, §9). The middle run needs 110 ms (31.4%) less; no controlled frame-rate
     gain claimed against saved A3. No priced translator candidate remains;
     flag-word packing is rejected (speed-plan §10). The U5
-    [poll contract](native-compute.md#poll-contract-u5) is implemented (C3); the
-    U8 extensions (REP, divide-fault decline, multiple returns) are approved and
-    C4 implements them (native-plan C); each N4 routine also needs U6. N2 still
+    [poll contract](native-compute.md#poll-contract-u5) (C3) and the
+    [U8 extensions](native-compute.md#contract-extensions-u8) (C4) are
+    implemented. Admitted: N2 `B017`, `B4E2`, `B8A1` (each needs U4); N4 `D5A6`,
+    `BB70` (each needs U6). The other N4 candidates call other overlays, DOS or
+    unresolved/shared code (native-plan C). N2 still
     needs viable prices/contracts and individual authorization (U4).
     Current meter/target costs: speed-plan §1; candidate facts: the rendering map.
     Native replacement
