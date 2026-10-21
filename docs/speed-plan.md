@@ -320,11 +320,51 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R31 | push (pop) runs step SP once; SP wrap out of line | `reuse.py` | −0.0821% |
 | R32 | invert conditional over a lone jump; preserve jump entry aliases | `emit.py` | −0.1766% |
 | R33 | guarded packed far-return pop and full CS:IP check | `lower.py`, `emit.py`, `rt_entry.s` | −0.7089% (bench −2.318%) |
+| R34 | canonical FM phase, 0.75 dB envelopes, stable four-voice allocation | `fm_paula.c` | meter unchanged; bench +0.0453%, user-approved quality tradeoff |
 
 No priced translator candidate remains. Unchanged (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
 `__set_flags` (POPF/IRET) and `__flags_word` are the largest runtime-side
 items left.
+
+### R34 FM timbre and voice continuity (2026-10-21; accepted quality tradeoff)
+
+Parent `2e8f69d`; fresh 68020 capture: 28,420,400 cycle units / 100 fields,
+`loop_for` 3.64%, `fm_field` 3.38%, `eg_advance` 0.91%; 99 FM services,
+77 cache lookups. m4 census: 1,127 OPL-port calls / 49 drawn frames.
+Pricing: Chip render/rotation sites 0.584% of the window (upper bound);
+operator synthesis 1.79%; rotation in the four-voice trial 2.84%.
+
+Final design: 0.75 dB modulator steps, no timbre hysteresis, four renders
+per field, canonical synthesis phase, stable allocation across all four
+available voices. Preserve TFH reservations, key-ons, pitch, noise and rates.
+Exact exponential/carrier tables add 24 KiB ordinary RAM; direct Chip stores
+avoid scratch copies. Guest execution and interrupt delivery are unchanged.
+
+User accepted the sound, canonical-phase test contract, maximum 0.375 dB
+rounding error, and the measured performance/RAM tradeoff (2026-10-21).
+Production title WAV matches the accepted preview byte for byte. c6/c12/c13
+Nuked level checks: 98.1 / 98.3 / 98.3%; pitch 100% each. New render,
+phase, envelope and allocation tests include caught plants; existing sound
+checks remain except for the explicitly approved phase-contract replacement.
+
+Three-run 68020 opening bench, frames 4–11 (raster lines):
+
+| Arm | Run 1 | Run 2 | Run 3 | Median | Span |
+|---|---:|---:|---:|---:|---:|
+| Parent | 68,507 | 68,482 | 68,460 | 68,482 | 47 |
+| R34 | 68,513 | 68,512 | 68,520 | 68,513 | 8 |
+
++0.0453%; identical final guest RAM in every run. Meter unchanged at
+172,620,455 cycles, with identical instructions, executed bytes and memory
+accesses. Payload 1,361,296 bytes (−16), ordinary BSS +24,576; no extra Chip.
+No frame-rate gain claimed. `make gates-audio JOBS=4` passed all 16 sound
+checks/plants. Same-source Amiga gate, smoke and restoration passed; initial
+`make test` also passed. The remaining full-suite checks were stopped at the
+user’s request; they are unrelated to this audio-only change. Validation
+selection now follows AGENTS.md.
+Evidence: `tmp/item34/accepted-075-*`; trial pricing journal and rejected
+variants retained locally for the commit record.
 
 ### R31 push and pop runs step SP once (2026-10-19; kept)
 

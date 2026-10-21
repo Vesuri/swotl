@@ -2,7 +2,7 @@
 
 Music stays enabled through the FM re-hoster in both effect modes.
 
-## Facts (2026-10-15)
+## Facts (2026-10-21)
 
 - Audio is AdLib OPL2 FM only (SPAZ + `ADLIB.SFX`); no sampled sound. SPAZ
   runs translated; its OPL writes reach `rt_opl` (`src/runtime/ports.c`),
@@ -46,20 +46,25 @@ Music stays enabled through the FM re-hoster in both effect modes.
   (fast decays) and slides F-numbers (engines, sweeps).
 - FM re-hoster: `src/platform/amiga/fm_paula.c` (per field: OPL registers +
   key-on counts → 4 voice commands). Period loops ≤ 4096 bytes rendered on
-  demand (3 dB modulator steps with hysteresis, one render a field beyond
-  restarts, per-voice memo: a pitch change is a new period only) in a
+  demand (0.75 dB modulator steps without hysteresis, up to four renders a
+  field, per-voice memo: a pitch change is a new period only) in a
   64 KB Chip pool of 256-byte pages. Feedback 6-7 is chaotic only with a
   strong modulator (fb 7 < 10.5 dB, fb 6 < 4.5 dB down): two 4 KB noise
   tables built at `fm_init`, played at the modulator's pitch. An odd synthesis
   F-number avoids short feedback cycles; the moving average retains one
-  byte per OPL sample. Tonal loops rotate to their quietest boundary.
+  byte per OPL sample. Tonal loops retain canonical synthesis phase across
+  timbre changes. All four free voices can play music; continuing selected
+  notes keep their physical voice. Exact lookup tables use 24 KiB ordinary
+  RAM. Software mixing remains deferred.
 - Check `make t-fm` (`tools/fm_check.cpp`, vs Nuked per channel): level
   within 3 dB (±1 field, above −30 dB, Paula's 6-bit volume) on ≥ 95% of
   fields, pitch within 10 cents on ≥ 99% of measurable fields; effect runs
-  98.2-98.7% and 100% (worst 8.3 cents), 95-114 renders per reference; title
-  music 94.1%, not gated (reprogramming within a field). `t-fm-quality` and
+  98.1–98.3% and 100% (worst 8.3 cents), 410–476 renders per reference; title
+  music 93.8%, not gated (reprogramming within a field). `t-fm-quality` and
   its sabotage check low-note/noise playback rates, short noise repetition,
-  quiet loop joins and pitch-change overflow.
+  canonical loop phase and pitch-change overflow. Additional render, phase,
+  envelope and allocation tests check exact operator samples, bounds,
+  ≤ 0.375 dB rounding error, voice continuity and TFH reservations.
 - Paula backend: `src/platform/amiga/Audio.cpp`. `fm_field` in
   `plat_service` (main program, once a vertical blank); the vertical blank
   stages the commands: DMA on, silence volume 0, loop changes latched at
@@ -104,6 +109,9 @@ records posted IRQ0 counts: `tick,o,reg,value`, `tick,s,slot,id`,
   `rt_music_skip` stays 0; `MUSIC` also selects music enabled.
 - Quality budget: the user accepts the longer-loop audio at about +3.5 CPU
   percentage points in the sampled window and +48 KB Chip (2026-10-15).
+- R34 quality tradeoff (user 2026-10-21): accepted canonical phase and
+  0.75 dB steps, +0.0453% opening-bench median and +24 KiB ordinary RAM;
+  no additional Chip. Relevant sound gates, sabotage and target checks pass.
 - Effects, two modes behind one toggle, one Paula backend:
   - **FM**: OPL register re-hoster (default; user's SWOTL files only).
   - **TFH** (hybrid, user 2026-10-15): TFH samples where SWOTL's effect has

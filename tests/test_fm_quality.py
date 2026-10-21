@@ -9,6 +9,8 @@ import subprocess
 import sys
 import tempfile
 
+from test_fm_render import reference
+
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / 'src/platform/amiga'
 
@@ -64,7 +66,8 @@ def checks(lib):
         a, b = x[:-lag], x[lag:]
         corr = sum(u*w for u,w in zip(a,b)) / (sum(u*u for u in a)*sum(w*w for w in b))**0.5
         assert corr < .3, f'pitched noise: lag {lag}, correlation {corr:.3f}'
-    # Tonal feedback loops should join near zero even as timbre changes.
+    # Retain these timbre cases, checking every sample and wrap endpoint
+    # against canonical synthesis phase instead of an arbitrary quiet crossing.
     opl[0xc0] = 10
     opl[0xa0], opl[0xb0] = 512 & 255, 0x32
     lib.fm_init(pool, len(pool))
@@ -72,17 +75,23 @@ def checks(lib):
         opl[0x40] = level
         lib.fm_field(opl, keyon, 0, voices)
         x = list(v.loop[:v.bytes])
-        best = min(abs(x[i])+abs(x[i-1]) for i in range(len(x)))
-        assert abs(x[0])+abs(x[-1]) == best, 'loop join misses quietest boundary'
+        key = lib.quality_key()
+        expected = reference(key & 3, (key >> 2) & 3, (key >> 4) & 15,
+                             (key >> 8) & 15, (key >> 12) & 7,
+                             (key >> 15) & 1, (key >> 16) & 511,
+                             (key >> 25) & 15, step=1)
+        assert x == expected, 'loop phase differs from operator oracle'
 
 
 def run(source):
     with tempfile.TemporaryDirectory(prefix='swotl-fm-quality-') as tmp:
         p = Path(tmp)
-        (p/'fm.c').write_text(source)
+        (p/'fm.c').write_text(source + '\nuint32_t quality_key(void) { return memo[0].key; }\n')
         subprocess.run(['cc', '-shared', '-fPIC', '-O2', '-std=c99', '-Wall', '-Wextra',
                         '-Werror', '-I'+str(SRC), str(p/'fm.c'), '-o', str(p/'fm.so')], check=True)
-        checks(C.CDLL(str(p/'fm.so')))
+        lib = C.CDLL(str(p/'fm.so'))
+        lib.quality_key.restype = C.c_uint32
+        checks(lib)
 
 
 def main():
@@ -95,7 +104,7 @@ def main():
         'rate': ('#define LOOP_LOG 12', '#define LOOP_LOG 6'),
         'noise': ('(0x1fbu << 4)', '(0x200u << 4)'),
         'noise-rate': ('#define NOISE_PERIOD 18264u', '#define NOISE_PERIOD 36528u'),
-        'join': ('uint16_t lo = j == 1 ? best : 0;', 'uint16_t lo = bytes; (void)best;'),
+        'phase': ('uint32_t pc = 0, pm = 0;', 'uint32_t pc = 64, pm = 64;'),
     }
     for name, (old, new) in plants.items():
         assert old in source, f'missing plant {name}'

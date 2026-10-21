@@ -6,9 +6,9 @@
  * modulation) from the patch registers and the modulator level, cached in
  * the pool: one fundamental period. Feedback 6-7 with a strong modulator is
  * chaotic: two noise tables built at fm_init, played at the modulator's
- * pitch. The period plays a loop at the channel's pitch. Voices 0-2 take the
- * loudest channel of channel groups 0-2, 3-5, 6-8 (SPAZ's slots), voice 3
- * the loudest of the rest. */
+ * pitch. The period plays a loop at the channel's pitch. Give each SPAZ
+ * group a voice, fill spare voices from the rest, and keep continuing notes
+ * on their physical voices. TFH sample-owned voices remain reserved. */
 #include "fm_paula.h"
 
 /* OPL2 ROM tables: -log2(sin) quarter wave and 2^-x, x 1/256 steps (the
@@ -89,9 +89,9 @@ static const uint8_t op_off[9] = {0, 1, 2, 8, 9, 10, 16, 17, 18};
 #define PERIOD_MIN 124
 #define ATT_SILENT 224              /* voltab ends */
 #define STICKY 16                   /* 3 dB before a voice changes channel */
-#define MOD_STEP 16                 /* modulator level steps in the render key, 3 dB */
-#define MOD_SILENT 24               /* steps: 72 dB down, no modulation */
-#define MOD_HOLD 12                 /* a voice keeps its step within this of it */
+#define MOD_STEP 4                  /* 0.75 dB quantization; keys retain 0.1875 dB units */
+#define MOD_SILENT 384               /* steps: 72 dB down, no modulation */
+#define MOD_HOLD 0                  /* do not hold a stale timbre */
 #define NOISE_FB 6
 #define NOISE_BYTES 4096            /* per table; feedback 6 and 7 */
 #define NOISE_SETTLE 512
@@ -101,7 +101,7 @@ static const uint8_t op_off[9] = {0, 1, 2, 8, 9, 10, 16, 17, 18};
 #define NOISE_MOD7 56               /* and feedback 7 (10.5 dB) */
 #define CACHE 64
 #define LOOP_LOG 12                  /* longest period loop, 4096 bytes */
-#define RENDER_BUDGET 1             /* loop renders a field, restarts aside */
+#define RENDER_BUDGET FM_VOICES     /* every selected voice can follow its envelope */
 #define NOISE_KEY 0x80000000u
 #define FB_SETTLE 32                /* samples before a feedback loop's period */
 
@@ -263,28 +263,42 @@ static uint16_t op_att(const struct op *o, const uint8_t *opl, uint8_t off, uint
 /* Log-sine of waveforms 0-3 over the 10-bit phase, bit 15 the sign
  * (Nuked's logsin_wf; fm_init). */
 static uint16_t wave[4][1024];
+/* R34: exact OPL exponential results and unattenuated carrier samples.
+ * These ordinary-memory tables replace work inside every rendered sample. */
+static uint16_t linear_exp[8192];
+static int16_t carrier_wave[4][1024];
 
 static void build_wave(void)
 {
-    uint16_t p, c2;
+    uint16_t p, c2, wf;
+    for (p = 0; p < 8192; ++p) {
+        linear_exp[p] = (uint16_t)(exptab[p & 255] >> (p >> 8));
+    }
     for (p = 0; p < 1024; ++p) {
         c2 = (p & 0x100) ? logsin[(p & 0xff) ^ 0xff] : logsin[p & 0xff];
         wave[0][p] = (uint16_t)((p & 0x200 ? 0x8000 : 0) | c2);
         wave[1][p] = (p & 0x200) ? 0x1000 : c2;
         wave[2][p] = c2;
         wave[3][p] = (p & 0x100) ? 0x1000 : logsin[p & 0xff];
+        for (wf = 0; wf < 4; ++wf) {
+            uint16_t w = wave[wf][p], l = linear_exp[w & 0x7fff];
+            carrier_wave[wf][p] = (int16_t)((w & 0x8000) ? ~l : l);
+        }
     }
 }
 
 /* One operator sample: Nuked's OPL3_SlotGenerate. */
 static int16_t op_out(uint8_t wf, uint16_t p, uint16_t att)
 {
+    if (!att) {
+        return carrier_wave[wf][p & 0x3ff];
+    }
     uint16_t w = wave[wf][p & 0x3ff], l;
     uint32_t level = (w & 0x7fffu) + ((uint32_t)att << 3);
     if (level > 0x1fff) {
         level = 0x1fff;
     }
-    l = (uint16_t)(exptab[level & 0xff] >> (level >> 8));
+    l = linear_exp[level];
     return (int16_t)((w & 0x8000) ? ~l : l);
 }
 
@@ -306,19 +320,21 @@ static uint8_t repeats(uint8_t wfc, uint8_t wfm, uint8_t mc, uint8_t mm, uint8_t
 }
 
 /* Render key fields: wf_c 0-1, wf_m 2-3, mult_c 4-7, mult_m 8-11, fb 12-14,
- * cnt 15, modulator level 16-22 (MOD_STEP), log2 samples per period 23-26.
+ * cnt 15, modulator level 16-24 (0.1875 dB units), log2 samples per period 25-28.
  * The phase steps by the loop's fraction of a period. */
-static void render(int8_t *dst, uint32_t key, uint16_t bytes)
+static __attribute__((noinline)) void render(int8_t *dst, uint32_t key, uint16_t bytes)
 {
     uint8_t wfc = key & 3, wfm = (key >> 2) & 3, fb = (key >> 12) & 7, cnt = (key >> 15) & 1;
-    uint8_t mc = (key >> 4) & 15, mm = (key >> 8) & 15, mq = (key >> 16) & 127;
+    uint8_t mc = (key >> 4) & 15, mm = (key >> 8) & 15;
+    uint16_t mq = (key >> 16) & 511;
     uint8_t g = repeats(wfc, wfm, mc, mm, mq >= MOD_SILENT);
-    uint16_t matt = (uint16_t)(mq * MOD_STEP), spp = (uint16_t)(1u << ((key >> 23) & 15));
+    uint16_t matt = mq, spp = (uint16_t)(1u << ((key >> 25) & 15));
     /* phase in cycles, 16.16; >> 6 the chip's 10 bits */
     uint32_t ic = ((uint32_t)mt[mc] << 16) / g / spp, im = ((uint32_t)mt[mm] << 16) / g / spp;
     uint32_t pc = 0, pm = 0;
     int16_t prev1 = 0, prev2 = 0, fbmod = 0, m, c;
     uint16_t i, settle = fb ? FB_SETTLE : 0;
+    /* Keep synthesis phase across timbre changes; do not rotate each loop. */
     ++fm_renders;
     for (i = 0; i < settle + bytes; ++i) {
         if (fb) {
@@ -334,28 +350,9 @@ static void render(int8_t *dst, uint32_t key, uint16_t bytes)
         pc += ic;
         pm += im;
         if (i >= settle) {
-            dst[i - settle] = (int8_t)(c >> 5);
+            *dst++ = (int8_t)(c >> 5);
         }
     }
-    /* Rotate to the quietest boundary: consecutive loops and timbre
-     * changes meet near zero without an amplitude discontinuity. */
-    {
-        uint16_t best = 0, cost = 0xffff, j;
-        for (j = 0; j < bytes; ++j) {
-            int a = dst[j], b = dst[(j + bytes - 1) & (bytes - 1)];
-            uint16_t q = (uint16_t)((a < 0 ? -a : a) + (b < 0 ? -b : b));
-            if (q < cost) { cost = q; best = j; }
-        }
-        /* Three reversals rotate in place, without scratch Chip storage. */
-        for (j = 0; j < 3; ++j) {
-            uint16_t lo = j == 1 ? best : 0;
-            uint16_t hi = (j == 0 ? best : bytes);
-            while (lo + 1 < hi) {
-                int8_t t = dst[lo]; dst[lo++] = dst[--hi]; dst[hi] = t;
-            }
-        }
-    }
-
 }
 
 /* Feedback noise table (fm_init): the chip at its own rate and step, sine
@@ -481,16 +478,17 @@ static int16_t loop_for(uint32_t key, uint16_t bytes, int render_ok)
 static void voice_cmd(struct fm_voice *v, uint8_t i, const uint8_t *opl, int8_t ch, uint16_t att)
 {
     uint8_t c = (uint8_t)ch, mo = op_off[c], co = (uint8_t)(mo + 3), b0 = opl[0xb0 + c], c0 = opl[0xc0 + c];
-    uint16_t fnum = (uint16_t)(opl[0xa0 + c] | (b0 & 3) << 8), bytes, raw, matt; /* matt: MOD_STEP units */
+    uint16_t fnum = (uint16_t)(opl[0xa0 + c] | (b0 & 3) << 8), bytes, raw, matt; /* matt: 0.1875 dB units */
     uint8_t block = (b0 >> 2) & 7, ws = (opl[1] & 0x20) != 0, fb = (c0 >> 1) & 7, lg, g;
     uint8_t wfc = ws ? opl[0xe0 + co] & 3 : 0, wfm = ws ? opl[0xe0 + mo] & 3 : 0;
     uint32_t key, d, x = (uint32_t)fnum << block, period = 0, renders = fm_renders;
     struct memo *m = &memo[i];
     int16_t slot;
     raw = op_att(&ops[2 * c], opl, mo, fnum, block);
-    matt = (uint16_t)((raw + MOD_STEP / 2) / MOD_STEP);
+    matt = raw >= MOD_SILENT ? MOD_SILENT :
+           (uint16_t)(((raw + MOD_STEP / 2) / MOD_STEP) * MOD_STEP);
     /* hysteresis: a level drifting about a step boundary keeps its loop */
-    if (m->key && (uint16_t)(raw - m->mq * MOD_STEP + MOD_HOLD) <= 2 * MOD_HOLD) {
+    if (m->key && (uint16_t)(raw - m->mq + MOD_HOLD) <= 2 * MOD_HOLD) {
         matt = m->mq;
     }
     if (matt > MOD_SILENT) {
@@ -513,7 +511,7 @@ static void voice_cmd(struct fm_voice *v, uint8_t i, const uint8_t *opl, int8_t 
                 uint32_t xm = x * mt[opl[0x20 + mo] & 15] >> 1;
                 period = xm ? (NOISE_X * NOISE_PERIOD / 256 + xm / 2) / xm : 0xffff;
             } else {
-                lg = (uint8_t)((m->key >> 23) & 15);
+                lg = (uint8_t)((m->key >> 25) & 15);
                 d = x * m->g;
                 /* Check before shifting: high pitches can overflow 32 bits. */
                 if (d > (PERIOD_NUM / PERIOD_MIN >> lg)) {
@@ -522,7 +520,7 @@ static void voice_cmd(struct fm_voice *v, uint8_t i, const uint8_t *opl, int8_t 
                     d <<= lg;
                     period = (PERIOD_NUM + d / 2) / d;
                 }
-                if (period < PERIOD_MIN || (period >= 2 * PERIOD_MIN && ((m->key >> 23) & 15) < LOOP_LOG)) {
+                if (period < PERIOD_MIN || (period >= 2 * PERIOD_MIN && ((m->key >> 25) & 15) < LOOP_LOG)) {
                     period = 0;
                 }
             }
@@ -583,10 +581,10 @@ static void voice_cmd(struct fm_voice *v, uint8_t i, const uint8_t *opl, int8_t 
     if (period > 0xffff) {
         period = 0xffff;
     }
-    key |= (uint32_t)lg << 23;
+    key |= (uint32_t)lg << 25;
     bytes = (uint16_t)(1u << lg);
     slot = loop_for(key, bytes, v->restart || budget);
-    if (slot < 0 && m->key && !(m->key & NOISE_KEY) && ((key ^ m->key) & ~(127u << 16)) == 0) {
+    if (slot < 0 && m->key && !(m->key & NOISE_KEY) && ((key ^ m->key) & ~(511u << 16)) == 0) {
         slot = loop_for(m->key, bytes, 0);
         if (slot >= 0) {
             key = m->key;
@@ -606,11 +604,27 @@ static void voice_cmd(struct fm_voice *v, uint8_t i, const uint8_t *opl, int8_t 
     v->volume = v->loop ? voltab[att] : 0;
 }
 
+/* Prefer a continuing note within 3 dB, independently of its physical voice. */
+static int8_t choose_channel(int16_t *score, uint8_t first, uint8_t last)
+{
+    int8_t best = -1;
+    int16_t best_score = 0x7fff;
+    uint8_t c;
+    for (c = first; c <= last; ++c) {
+        if (score[c] < best_score) { best = (int8_t)c; best_score = score[c]; }
+    }
+    if (best >= 0) score[(uint8_t)best] = 0x7fff;
+    return best;
+}
+
 void fm_field(const uint8_t *opl, const uint8_t *keyon, uint16_t mute_mask, struct fm_voice *voice)
 {
     uint16_t att[9];
-    uint8_t c, i, newkey[9];
+    int16_t score[9];
+    uint8_t c, i, j, newkey[9], reserved = 0;
+    int8_t choice[FM_VOICES], assigned[FM_VOICES];
     uint16_t taken = mute_mask;
+    uint16_t available = 0, held = 0;
     ++stamp;
     budget = RENDER_BUDGET;
     for (c = 0; c < 9; ++c) {
@@ -664,18 +678,72 @@ void fm_field(const uint8_t *opl, const uint8_t *keyon, uint16_t mute_mask, stru
             }
         }
     }
+    for (c = 0; c < 9; ++c) {
+        score[c] = (taken >> c & 1) || att[c] >= ATT_SILENT ? 0x7fff : (int16_t)att[c];
+        if (score[c] != 0x7fff) available |= (uint16_t)(1u << c);
+    }
     for (i = 0; i < FM_VOICES; ++i) {
-        int8_t best = -1, cur = voice_ch[i];
-        uint8_t first = i < 3 ? (uint8_t)(3 * i) : 0, last = i < 3 ? (uint8_t)(3 * i + 2) : 8;
-        for (c = first; c <= last; ++c) {
-            if (!(taken >> c & 1) && att[c] < ATT_SILENT && (best < 0 || att[c] < att[best])) {
-                best = (int8_t)c;
+        int8_t ch = voice_ch[i];
+        if (i < 3 && (mute_mask & (7u << (3 * i)))) reserved |= (uint8_t)(1u << i);
+        assigned[i] = -1;
+        if (ch >= 0 && score[(uint8_t)ch] != 0x7fff && !(reserved >> i & 1)) {
+            assigned[i] = ch;
+            held |= (uint16_t)(1u << ch);
+        }
+    }
+    /* All audible channels already fit: selection cannot add or displace a
+     * note. Still publish new key-ons, envelopes and changed loops below. */
+    if (available == held) {
+        goto publish_voices;
+    }
+    for (i = 0; i < FM_VOICES; ++i) {
+        int8_t ch = voice_ch[i];
+        if (ch >= 0 && score[(uint8_t)ch] != 0x7fff) score[(uint8_t)ch] -= STICKY;
+    }
+    /* Choose the set before assigning voices: an extra note must not steal
+     * another group's only representative. A sample owns its physical slot. */
+    for (i = 0; i < FM_VOICES; ++i) {
+        choice[i] = assigned[i] = -1;
+        if (i < 3) {
+            if (mute_mask & (7u << (3 * i))) {
+                reserved |= (uint8_t)(1u << i);
+            } else {
+                choice[i] = choose_channel(score, (uint8_t)(3 * i), (uint8_t)(3 * i + 2));
             }
         }
-        if (cur >= 0 && best >= 0 && cur != best && !(taken >> cur & 1) && cur >= first && cur <= last &&
-            att[cur] < ATT_SILENT && att[cur] < att[best] + STICKY) {
-            best = cur;
+    }
+    for (i = 0; i < FM_VOICES; ++i) {
+        if (choice[i] < 0 && !(reserved >> i & 1)) {
+            choice[i] = choose_channel(score, 0, 8);
         }
+    }
+    /* Keep a continuing selected note on its DMA voice, avoiding a restart
+     * merely because it changed rank within its group. */
+    for (i = 0; i < FM_VOICES; ++i) {
+        if (voice_ch[i] >= 0 && !(reserved >> i & 1)) {
+            for (j = 0; j < FM_VOICES; ++j) {
+                if (choice[j] == voice_ch[i]) {
+                    assigned[i] = choice[j];
+                    choice[j] = -1;
+                    break;
+                }
+            }
+        }
+    }
+    for (i = 0; i < FM_VOICES; ++i) {
+        if (assigned[i] < 0 && !(reserved >> i & 1)) {
+            for (j = 0; j < FM_VOICES; ++j) {
+                if (choice[j] >= 0) {
+                    assigned[i] = choice[j];
+                    choice[j] = -1;
+                    break;
+                }
+            }
+        }
+    }
+publish_voices:
+    for (i = 0; i < FM_VOICES; ++i) {
+        int8_t best = assigned[i], cur = voice_ch[i];
         voice[i].restart = best >= 0 && (best != cur || newkey[best]);
         voice[i].channel = best;
         voice_ch[i] = best;
@@ -684,7 +752,6 @@ void fm_field(const uint8_t *opl, const uint8_t *keyon, uint16_t mute_mask, stru
             voice[i].volume = 0;
             continue;
         }
-        taken = (uint16_t)(taken | 1 << best);
         voice_cmd(&voice[i], i, opl, best, att[best]);
     }
 }

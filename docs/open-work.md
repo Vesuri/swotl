@@ -52,10 +52,6 @@ speed work: [speed-plan.md](speed-plan.md).
     `bra` back to its target that never closes a loop, so R27's meter Δ is
     −0.6278%, −0.7903% counting only taken back edges (FS-UAE agreed in sign).
     Decide the definition (and recalibrate) at the next re-profile.
-34. FM synthesis is 8.15–9.71% of the three `5ecdf79` frames captures and 8.11% of
-    R20's first (`loop_for`, `fm_field`, `eg_advance`); R17's whole runtime/platform
-    share was 5.96%. Platform layer, outside the host meter: price and plan under D5
-    with the sound gates.
 16. Lookup-table policy with no Fast RAM (tables are Chip reads).
 24. Lockstep RAM compare (phase 6): undefined flags and FLAGS words pushed
     below SP (PUSHF, interrupt frames) differ from DOSBox by design. The host
