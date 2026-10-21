@@ -47,9 +47,6 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 
 ## A. Baseline (no authorization)
 
-- **A2** Open-work 36: `tools/lowering_cost.py` counts guest entries only at unsuffixed and
-  `_bp` labels and recovers zero-code alias entries. Test and plant. Done: R22's first
-  capture gives 2,290,967; rejected R23's count recovers its 68,070.
 - **A3** Re-profile HEAD (speed-plan §4): frames fixture P, three runs; 100-field frames
   capture; bench, three runs. Per candidate: own share, calls per 100 fields, own and
   inclusive cycles per call (`tmp/item30/inclusive.py` method). Done: speed-plan §1, §9

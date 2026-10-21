@@ -28,7 +28,7 @@ speed work: [speed-plan.md](speed-plan.md).
     §1, §9). Roughly 29% further reduction is needed from 340 ms; parent intervals overlap. Remaining
     cost is mostly generated guest code; no priced translator candidate remains;
     flag-word packing is rejected (speed-plan §10). The rest, with user decisions
-    U0–U7: [native-plan.md](native-plan.md). Native replacement
+    U0–U7: [native-plan.md](native-plan.md), next A3 (re-profile HEAD). Native replacement
     requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
     [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md); interface and validation:
     [native-compute.md](native-compute.md).
@@ -40,14 +40,6 @@ speed work: [speed-plan.md](speed-plan.md).
     `Harness`: each byte drew from a fresh generator with the same seed).
     A random background is stronger but changes every corpus case; needs
     user approval.
-36. `tools/lowering_cost.py` sums helper entries into `guest_exec` (walk,
-    IRQ and other suffixed labels). Keep their cycles/instructions, but count
-    guest entries only at unsuffixed/`_bp` instruction labels, as
-    `profile_report.py` does. R22's first capture: 2,317,066 reported versus
-    2,290,967 guest entries. Zero-code jump aliases also hide executed guest
-    instructions: rejected R23's m4 count drops by exactly the four removed jumps' 68,070
-    entries. Recover semantic counts before comparing per-guest ratios across
-    such layouts. Meter totals and alias-aware fixed-instruction A/B are unaffected.
 37. `tools/cost_meter.py` flags a range as a cached loop when any backward branch
     within `LOOP` bytes closes it, executed or not: an R27 outlined range ends in a
     `bra` back to its target that never closes a loop, so R27's meter Δ is

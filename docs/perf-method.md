@@ -15,9 +15,16 @@ its binding rules: [speed-plan.md](speed-plan.md).
   ROM (today the Kalms c2p in hunk `code`).
   Module instruction counts include ordinary entries and R6 `_bp` copies;
   guard, poll and other helper entries add cycles but not guest instructions.
+  These are label-derived counts; use lowering cost for semantic counts across aliases.
 - **Lowering cost**: `tools/lowering_cost.py CAPTURE ELF` groups the
   same capture by x86 form (executions, cycles and 68k instructions per
-  execution) and the generated code by 68k mnemonic and role.
+  execution) and the generated code by 68k mnemonic and role. Use the matching
+  ELF and generated `.s`/`.ir` (`--gen`). Ordinary and `_bp` entries count;
+  helpers retain costs only. Shared-address entries follow the original IR
+  successors and observed incoming guest edges, across host interrupt work;
+  direct destination entry does not count an aliased jump. Reports distinguish
+  entry-PC hits from recovered zero-code entries. Missing/ambiguous predecessors
+  or unresolved indirect transfers fail loudly instead of inventing a ratio.
 - **Counts**: `tools/host_census.py MILESTONE [--labels L…] [--strops]
   [--vram]` (host run between milestone snapshots: label executions, string-op
   elements, A0000h writers and rows per frame); `amiga/perf_frames.gdb` (frame

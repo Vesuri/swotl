@@ -85,6 +85,146 @@ class ProfileTools(unittest.TestCase):
         self.assertEqual(mn[8][0], "bra.l")
 
 
+class SemanticEntries(unittest.TestCase):
+    def fixture(self, root):
+        # A removed loop-tail jump shares its target, which also has direct entry.
+        Path(root, "sample.s").write_text(
+            "R_00010:\t; 0000:0010 mov ax, bx\n\tmove.w d3,d0\n"
+            "R_00012:\t; 0000:0012 jmp 0x20\n"
+            "R_00020:\t; 0000:0020 inc ax\n\taddq.w #1,d0\n"
+            "R_00021_bp:\t; 0000:0021 inc bx\n\taddq.w #1,d3\n"
+            "R_00030:\t; 0000:0030 jmp 0x20\n\tbra R_00020\n")
+        Path(root, "sample.ir").write_text(
+            "SWOTL.EXE+00010 0000:0010 89d8 mov ax, bx\n"
+            "SWOTL.EXE+00012 0000:0012 eb0c jmp 0x20\n"
+            "SWOTL.EXE+00020 0000:0020 40 inc ax\n"
+            "SWOTL.EXE+00021 0000:0021 43 inc bx\n"
+            "SWOTL.EXE+00030 0000:0030 ebee jmp 0x20\n")
+        syms = [(100, "R_00010"), (102, "R_00012"), (102, "R_00020"),
+                (104, "R_00021_bp"), (110, "R_00030"),
+                (120, "R_00020_irq"), (130, "R_00020_walk")]
+        return L.EntryMap(syms, Path(root))
+
+    def test_alias_paths_and_helpers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model = self.fixture(tmp)
+            counts = {100: 3, 102: 8, 104: 8, 110: 5, 120: 7, 130: 9}
+            entries = model.count(counts, {(100, 102): 3, (110, 102): 5})
+        self.assertEqual(entries, {"R_00010": 3, "R_00012": 3,
+                                  "R_00020": 8, "R_00021_bp": 8, "R_00030": 5})
+
+    def test_missing_edge_is_not_guessed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model = self.fixture(tmp)
+            with self.assertRaisesRegex(ValueError, "incoming"):
+                model.count({102: 8}, {(100, 102): 3})
+            with self.assertRaisesRegex(ValueError, "ambiguous|unknown"):
+                model.count({102: 1}, {(-1, 102): 1})
+
+    def test_fused_conditional(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model = self.fixture(tmp)
+            p = Path(tmp, "sample.s")
+            p.write_text(p.read_text().replace("mov ax, bx", "jne 0x30"))
+            p = Path(tmp, "sample.ir")
+            p.write_text(p.read_text().replace("89d8 mov ax, bx", "751e jne 0x30"))
+            model = L.EntryMap(model.syms, Path(tmp))
+            entries = model.count({102: 3}, {(100, 102): 3})
+            self.assertEqual(entries["R_00012"], 3)
+            self.assertEqual(entries["R_00020"], 3)
+
+    def test_lowering_report_keeps_helper_costs_not_entries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model = self.fixture(tmp)
+            pcs = P.np.array([100, 102, 104, 110, 102, 120, 130])
+            profile = dict(fields=[(14, 0, pcs, P.np.array([2] * 7))])
+            output = io.StringIO()
+            with patch.object(sys, "argv", ["lowering_cost", "unused", "unused", "--gen", tmp]), \
+                    patch.object(P, "decode", return_value=profile), \
+                    patch.object(P, "symbols", return_value=model.syms), \
+                    patch.object(L, "mnemonics", return_value=(
+                        {int(pc): ("move.w", "d0,d1") for pc in pcs},
+                        {int(pc): 2 for pc in pcs})), patch("sys.stdout", output):
+                L.main()
+            report = output.getvalue()
+            self.assertIn("14 cycles; generated code 100.00%", report)
+            self.assertIn("6 guest instructions (5 distinct entry-PC hits, 1 recovered", report)
+            self.assertIn("7 68k instructions", report)
+
+    def test_indirect_dispatch_requires_observed_direct_host_transfer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model = self.fixture(tmp)
+            for filename in ("sample.s", "sample.ir"):
+                p = Path(tmp, filename)
+                # Only the source at 0030 becomes an indirect guest jump.
+                p.write_text(p.read_text().replace("0030 jmp 0x20", "0030 jmp ax")
+                             .replace("ebee jmp 0x20", "ffe0 jmp ax"))
+            model = L.EntryMap(model.syms, Path(tmp), {110: ("bra.w", "66 <R_00020>")})
+            self.assertEqual(model.count({102: 5}, {(110, 102): 5}), {"R_00020": 5})
+            model.mn[110] = ("jmp", "(a0)")
+            with self.assertRaisesRegex(ValueError, "unknown indirect"):
+                model.count({102: 5}, {(110, 102): 5})
+
+    def test_fallthrough_wraps_guest_ip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "wrap.ir").write_text(
+                "SWOTL.EXE+1FFFF 1000:FFFF 89d8 mov ax, bx\n"
+                "SWOTL.EXE+10001 1000:0001 40 inc ax\n")
+            model = L.EntryMap([(100, "R_1FFFF"), (102, "R_10001")], Path(tmp))
+            self.assertEqual(model.next["R_1FFFF"], ["R_10001"])
+
+    def test_bp_exit_to_normal_alias(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model = self.fixture(tmp)
+            syms = [(a, n + "_bp" if n == "R_00010" else n) for a, n in model.syms]
+            p = Path(tmp, "sample.s")
+            p.write_text(p.read_text().replace("R_00010:", "R_00010_bp:"))
+            model = L.EntryMap(syms, Path(tmp))
+            self.assertEqual(model.count({102: 2}, {(100, 102): 2}),
+                             {"R_00012": 2, "R_00020": 2})
+
+    def test_field_boundaries_and_unknown_start(self):
+        fields = [(0, 0, P.np.array([100]), None),
+                  (0, 0, P.np.array([P.IRQ_MARKER, 102, 110, P.IRQ_MARKER, 102]), None)]
+        self.assertEqual(L.incoming_edges(fields, {102}), {(100, 102): 1, (110, 102): 1})
+        self.assertEqual(L.incoming_edges([(0, 0, P.np.array([102]), None)], {102}),
+                         {(-1, 102): 1})
+
+    def test_host_interrupt_does_not_replace_guest_predecessor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model = self.fixture(tmp)
+            model.syms.append((140, "runtime"))
+            model.addrs.append(140)
+            model.names.append("runtime")
+            fields = [(0, 0, P.np.array([100, P.IRQ_MARKER, 0xf80010,
+                                        140, P.NO_PC, 0xf80020, 102]), None)]
+            self.assertEqual(L.incoming_edges(fields, {102}, model), {(100, 102): 1})
+            self.assertEqual(model.count({102: 1}, L.incoming_edges(fields, {102}, model)),
+                             {"R_00012": 1, "R_00020": 1})
+
+    def test_two_semantic_paths_to_one_host_address_are_ambiguous(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model = self.fixture(tmp)
+            model.next["R_00010"] = ["R_00012", "R_00020"]
+            with self.assertRaisesRegex(ValueError, "ambiguous"):
+                model.count({102: 1}, {(100, 102): 1})
+
+    def test_far_jump_and_zero_code_chain(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model = self.fixture(tmp)
+            p = Path(tmp, "sample.ir")
+            p.write_text(p.read_text().replace("eb0c jmp 0x20", "ea20000000 jmpf 0x0:0x20"))
+            model = L.EntryMap(model.syms, Path(tmp))
+            entries = model.count({102: 3}, {(100, 102): 3})
+            self.assertEqual(entries, {"R_00012": 3, "R_00020": 3})
+            # A second no-code instruction on the path must count once too.
+            model.groups[102].insert(1, "R_00017")
+            model.next["R_00012"] = ["R_00017"]
+            model.next["R_00017"] = ["R_00020"]
+            entries = model.count({102: 3}, {(100, 102): 3})
+            self.assertEqual(entries, {"R_00012": 3, "R_00017": 3, "R_00020": 3})
+
+
 class CurrentRoles(unittest.TestCase):
     def test_current_poll_state_and_return_forms(self):
         dis = """00000000 <R_00100>:
@@ -185,6 +325,24 @@ class ModuleCounts(unittest.TestCase):
 
 if __name__ == "__main__":
     if "--sabotage" in sys.argv:
+        for name, fn, old, new in (
+                ("lowering helpers counted", L.is_entry, 'g[3] in ("", "_bp")', 'True'),
+                ("zero-code entries omitted", L.EntryMap.count,
+                 'for name in paths.pop():', 'for name in paths.pop()[-1:]:'),
+                ("missing edges accepted", L.EntryMap.count,
+                 '!= n:', '< 0:')):
+            import textwrap
+            source = textwrap.dedent(inspect.getsource(fn))
+            broken = source.replace(old, new)
+            assert source != broken
+            scope = dict(L.__dict__)
+            exec(broken, scope)
+            target = L if fn == L.is_entry else L.EntryMap
+            with patch.object(target, fn.__name__, scope[fn.__name__]):
+                result = unittest.TextTestRunner(stream=io.StringIO()).run(
+                    unittest.defaultTestLoader.loadTestsFromTestCase(SemanticEntries))
+            assert result.failures and not result.errors, name + " plant escaped"
+            print("lowering entries: " + name + " plant caught")
         source = inspect.getsource(P.roles)
         broken = source.replace('arg in ("9(a6)", "(9,a6)")', 'arg in ("-8(a6)", "(-8,a6)")')
         assert broken != source

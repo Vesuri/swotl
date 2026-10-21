@@ -25,12 +25,12 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   parent R33 68,482). Palette window 38,392–38,405 lines (R17).
 - **Meter** (m4, R18 weights, R33): generated + walk + runtime 172,620,455
   model cycles (−0.7089% from parent). R32 removes 46,981 JMP executions
-  from the label-derived guest count; no new per-guest ratio (open-work 36).
+  from the label-derived guest count; historical label-derived counts omit those executions.
   Host platform adds 2,171 cycles.
 - **Capture** (R24, first frames run, 100 fields): generated code 81.40%
   (cell walk 3.87%), runtime/platform 14.44% (three main FM functions 8.12%),
   no PC 2.19%, Kickstart 1.04%, IRQ transition 0.93%. Profiler guest-entry count:
-  2,238,188; 10.34 cycles each (see open-work 36).
+  2,238,188; 10.34 cycles each (historical label-derived count).
 
 ## 2. Hard rules
 
@@ -155,9 +155,12 @@ lines.
   `tools/profile_report.py tmp/prof/frames.bin amiga/out/Swotl.elf
   --objdump m68k-amiga-elf-objdump --count rt_irq --count deliver --count
   plat_present`; per x86 form `tools/lowering_cost.py`. A capture is
-  1.1 GB: delete it after the report. Until open-work 36 is fixed, use
-  `profile_report.py` guest-entry counts for ratios: `lowering_cost.py`
-  includes helper entries. Historical ratios from that tool share this limitation.
+  1.1 GB: delete it after the report. Use `lowering_cost.py` semantic guest
+  counts for ratios: it excludes helpers
+  and recovers zero-code entries using incoming guest control flow. Supply the
+  exact generated assembly/IR with `--gen`. Unknown or ambiguous edges fail
+  loudly. Older ratios include helper hits and omit zero-code entries;
+  `profile_report.py` still reports label-derived counts.
 - **Counts.** `tools/host_census.py MILESTONE --strops --vram --labels …`
   (host run, exact, free; never timing) before pricing a loop. Per drawn
   frame (m4): `repe cmpsw` `VGA_03BE9` 19,290 words (the whole view vs the
@@ -294,6 +297,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R32 | invert conditional over a lone jump; preserve jump entry aliases | `emit.py` | −0.1766% |
 | R33 | guarded packed far-return pop and full CS:IP check | `lower.py`, `emit.py`, `rt_entry.s` | −0.7089% (bench −2.318%) |
 | R34 | canonical FM phase, 0.75 dB envelopes, stable four-voice allocation | `fm_paula.c` | meter unchanged; bench +0.0453%, user-approved quality tradeoff |
+| A2 | semantic guest-entry accounting, helper exclusion and zero-code aliases | `lowering_cost.py` | tooling only |
 
 No priced translator candidate remains. Unchanged (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
