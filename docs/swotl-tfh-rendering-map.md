@@ -44,7 +44,8 @@ research notes are kept locally in `tmp/tfh-xref/swotl-tfh-rendering-map.2026-10
 Order, procedure and user decisions: [native-plan.md](native-plan.md).
 B4 consolidates the source inventory (B1), admission (B2) and prices (B3).
 N1 enables `B54B`, retaining generated `B52D` and return checks. Next: N2
-authorization/contracts and N3 checkpoint. U1 retains executed backward branches.
+authorization/contracts and C1 poll-contract design. Current N3 checkpoint and
+remaining gap: speed-plan §1/§9. U1 retains executed backward branches.
 
 ## Candidates
 

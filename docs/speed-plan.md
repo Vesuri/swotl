@@ -20,11 +20,16 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   remains unmet. R35 enables the authorized N1 transform pilot; further native
   routines remain deferred (native-plan U4).
   Next: [native-plan.md](native-plan.md).
-- **Frames fixture** (A3, `6bf8aef`, 2026-10-21): medians 370, 390 and
-  400 ms; run-median span 370–400 ms. Frames 4–11 intervals (fields):
-  `[26,15,21,18,22,18,19,16]`, `[26,15,21,19,22,18,20,16]`,
-  `[25,17,28,20,19,20,23,18]`. Interval spans 15–26, 15–26 and 17–28
-  fields. Baseline only; no same-session parent comparison or speedup claim.
+- **Frames fixture** (N3, `7a5087a`, 2026-10-21): medians 370, 350 and
+  340 ms; run-median span 340–370 ms. Frames 4–11 intervals (fields):
+  `[22,19,18,18,18,27,20,17]`, `[22,19,17,17,17,26,16,18]`,
+  `[21,20,16,17,17,25,17,17]`. Interval spans 17–27, 16–26 and 16–25
+  fields. Three unchanged 68020/8 MB Fast runs, each followed by a 100-field
+  capture; executable hash matches the validated N1 build. Evidence:
+  `tmp/native/N3/summary.json`, per-run logs and profile reports; raw captures deleted.
+  Saved A3 (`6bf8aef`) medians: 370, 390, 400 ms (370–400 ms span).
+  The ranges touch; historical comparison only, not a same-session control
+  or a demonstrated frame-rate gain.
 - **Bench** (A3, `6bf8aef`, 2026-10-21): opening frames 4–11 sums 68,525,
   68,536 and 68,493 lines; median 68,525, span 43 lines (0.063%). Corresponding
   profiler cycles: 62,220,700; 62,230,688; 62,191,644 (908/line).
@@ -41,7 +46,7 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   final RAM hashes match. Single frames captures: `[25,16,21,19,21,19,19,16]`
   → `[21,19,16,17,18,26,17,17]`, medians 380 → 350 ms, spans 16–25 →
   16–26 fields. These per-call captures do not establish a frame-rate gain;
-  N3 retains the three-run checkpoint. Payload +446 bytes; full gates green.
+  N3 reports the current three-run checkpoint above. Payload +446 bytes; full gates green.
 - **Capture** (A3, second frames run, 100 fields): generated code 76.18%
   (cell walk 3.75%), runtime/platform 19.52% (`render`, `fm_field`, `loop_for`
   12.11%), no PC 2.23%, Kickstart 1.03%, IRQ transition 1.03%.
@@ -326,6 +331,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | B3 | native candidate prices under both U3 rules; unpriced rows retain ceilings | rendering map | pricing only |
 | B4 | consolidate 14 candidates; record U0–U4, authorize only the transform pilot | docs | no code change |
 | R35 / N1 | guarded native point transform from authorized xform20; complete byte-write history | runtime, compute oracle | −4.6800% (bench +0.0204%, user-approved tradeoff) |
+| N3 | post-transform frames checkpoint: 370, 350, 340 ms; target unmet | docs | measurement only |
 
 No priced translator candidate remains. Unchanged (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
@@ -361,10 +367,13 @@ items left.
 
 ## 9. Gap
 
-A3's frames-fixture medians are 370, 390 and 400 ms: the middle run needs
-150 ms (38.5%) less to reach 240 ms; the run range needs 130–160 ms less.
-No priced translator candidate remains (§7). N1 is kept; further routines need U4 authorization and viable prices/contracts.
-Next: N2 decisions and N3 checkpoint in [native-plan.md](native-plan.md).
+N3's frames-fixture medians are 370, 350 and 340 ms: the middle run needs
+110 ms (31.4%) less to reach 240 ms; the run range needs 100–130 ms less.
+No priced translator candidate remains (§7). N1 is kept; N2 has no currently
+priced, authorized next routine. Next is C1 poll-contract design, then U5 approval
+before implementation and individual U6 authorization.
+N2's exceptional-flow/multiple-return extensions need separate approved contracts
+and U4 authorization. See [native-plan.md](native-plan.md).
 
 Current candidate costs, A3 run 2 (`6bf8aef`, 100 fields, 28,420,399 profiler cycle
 units). Own cost groups generated instructions by call-target boundary; inclusive

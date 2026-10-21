@@ -23,15 +23,15 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Translator and validation
 
-14b. Speed target remains unmet: frames-fixture 68020 run medians on `6bf8aef`
-    (A3, 2026-10-21) 370, 390 and 400 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
-    §1, §9). The middle run needs 150 ms (38.5%) less; this is a baseline, not a parent comparison. Remaining
-    cost is mostly generated guest code; no priced translator candidate remains;
-    flag-word packing is rejected (speed-plan §10). The rest, with user decisions
-    U0–U7: [native-plan.md](native-plan.md). Next N2: further routines need
-    viable prices/contracts and individual authorization (U4); N3 must measure
-    the post-native frame-rate gap with three runs. Current meter/target costs:
-    speed-plan §1; candidate facts: the rendering map.
+14b. Speed target remains unmet: frames-fixture 68020 run medians on `7a5087a`
+    (N3, 2026-10-21) 370, 350 and 340 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
+    §1, §9). The middle run needs 110 ms (31.4%) less; no controlled frame-rate
+    gain claimed against saved A3. No priced translator candidate remains;
+    flag-word packing is rejected (speed-plan §10). Next: C1 poll-contract design
+    in [native-plan.md](native-plan.md), then U5 approval before implementation;
+    each N4 routine needs U6. N2 still needs viable prices/contracts and individual
+    authorization (U4).
+    Current meter/target costs: speed-plan §1; candidate facts: the rendering map.
     Native replacement
     requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
     [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md); interface and validation:

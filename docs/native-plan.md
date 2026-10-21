@@ -76,8 +76,6 @@ explicit unpriced savings; do not invent a native price for them.
   `B8A1` (no A3 calls); `B4E2`/`B017` are blocked by exceptional flow, and
   `B017` also has multiple returns. Any admission extension needs a separate
   approved contract before those candidates can enter N2.
-- **N3** Checkpoint: frames fixture P, three runs against A3; report the remaining gap.
-  Decides whether C starts.
 
 ## C. Contract for routines with polls and loops
 
