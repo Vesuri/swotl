@@ -61,14 +61,16 @@ Breaking any of these voids the step, whatever it measures.
 4. **D16:** every cell is matched against the writer forms from the guest RAM
    bytes when a walk first reaches it and after every change its cache sees
    (R20, D3); a dropped cache walks exactly.
-5. **Gates stay green and unchanged** at every commit: `make test`,
-   `make test-sabotage`, `make test-host-all`, `make test-amiga`, `make
-   smoke` (`make gates` runs all five). Never edit, skip, mask, loosen or re-record a test, reference or
-   tolerance to make a step pass. R1's representation change (D1) may
-   change how the harness maps memory and registers, never what is
-   compared; every corpus case, reference and comparison stays. A plant is
-   retired only with the template it targets, after an equivalent plant on
-   the new template is in place and caught.
+5. **Relevant gates stay green and unchanged** at every commit. Select checks
+   by the change's dependencies and affected contracts under AGENTS.md's
+   validation-scope rules; state the selection before running. Isolated audio
+   synthesis does not require translator, DOS/input, whole-game host or replay
+   suites. `make gates` remains the full-suite option for cross-cutting changes
+   or explicit user requests, not a per-step requirement. Never skip a relevant
+   failing check, mask, loosen or re-record a test, reference or tolerance to
+   make a step pass. R1's representation change (D1) may change how the harness
+   maps memory and registers, never what is compared. A plant is retired only
+   with its template, after an equivalent plant on the new template is caught.
 6. **New lowerings get differential coverage first.** Add the new form to
    the x86 corpora (`make test-m68k`, Unicorn x86-16 vs Unicorn 68020)
    with its guard edges (CX 0, 1, 0xFFFF; SI/DI near 0xFFFF; DF 1;
@@ -105,7 +107,7 @@ Breaking any of these voids the step, whatever it measures.
   (|Δ| < 0.001%) with a smaller code payload. Report Δ model cycles,
   Δ executed code bytes, Δ data reads/writes, Δ code payload. No minimum gain.
 - **Layout and Amiga platform work outside the host meter (D5):** accept
-  lower fixed-work 68020 bench cycles, with identical final guest RAM, all
+  lower fixed-work 68020 bench cycles, with identical final guest RAM, all relevant
   fidelity gates green and no slowdown. Report the unchanged meter and
   actual code payload; do not infer a frames-fixture gain from the bench.
 - **Code growth** only with lower model cycles (D2), or lower bench cycles
@@ -131,7 +133,8 @@ are rejected by the meter; meter and FS-UAE disagree on represented work; a step
 write the price in §7 before coding;
 coverage first (§2.6; cases appended at the end of corpora, `m68k_blocks`
 cases for multi-block changes); implement in `translator/` or
-`src/runtime/` or `src/platform/amiga/`, `make gen`; gates; meter (D5: bench); keep or revert (revert keeps the
+`src/runtime/` or `src/platform/amiga/`; `make gen` if translation inputs changed;
+selected gates; meter (D5: bench); keep or revert (revert keeps the
 passing new tests; one line in §10); one commit (§2.10); report in a few
 lines.
 

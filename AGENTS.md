@@ -32,6 +32,24 @@ audio the game has; RTSEGA, RTSTANDY and SFXA (PC speaker) are out.
 - Reuse what the sibling ports learned (Slicks, Revs, Vette, Pokeri, Rescue on
   Fractalus): it is merged in AmigaXDev's docs (below); do not re-derive.
 
+## Validation scope
+
+- Run only gates relevant to changed code and its affected callers, consumers
+  and shared contracts. State the selected checks and why before running them.
+- Audio-only changes: FM waveform/quality/envelope/allocation checks, TFH and
+  backend integration where affected, and their sabotage; build and smoke the
+  Amiga image for platform changes. Do not rerun translator, DOS/file/input,
+  whole-game host or diagnostic replay suites for isolated audio synthesis.
+- Translator or shared runtime changes: affected differential/guard/sabotage
+  tests and relevant original-game host/replay fixtures; broaden when shared
+  memory, flags, control flow, interrupts or other cross-cutting contracts change.
+- Docs-only changes: consistency and diff checks. Build/release changes: affected
+  builds, image audits and launch/package checks.
+- Preserve every selected check, oracle and tolerance. Scope by dependencies,
+  never by whether a test passes. Existing reference/test-change approval rules
+  remain. Use `make gates` only when the impact spans its suites or the user asks;
+  it is not a per-commit requirement. Retain green results for unchanged inputs.
+
 ## Shared environment and knowledge
 
 The Amiga toolchain, emulators, Kickstarts, WHDLoad and Unicorn come from AmigaXDev
@@ -71,5 +89,5 @@ to SWOTL.
   reference`, `make coverage`; map `make map`, `make ghidra`;
   translator `make gen`, `make test` (G2 lint, decoder, x86 and 68020
   differentials, block differential, G1, host run), `make test-sabotage`;
-  runtime on host / A1200 model `make test-host` (`test-host-all`: m1–m7, c6–c10, c12, c13), `make test-amiga`; all step gates `make gates`; `SetPatch` from
+  runtime on host / A1200 model `make test-host` (`test-host-all`: m1–m7, c6–c10, c12, c13), `make test-amiga`; full suite `make gates` (select relevant gates as above); `SetPatch` from
   `$SETPATCH`. Facts: `docs/source-inventory.md`.
