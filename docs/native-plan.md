@@ -46,15 +46,14 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 ## B. Candidate table (no authorization)
 
 Source inventory and adaptation requirements: [rendering map](swotl-tfh-rendering-map.md#slave-source-inventory).
+Admission results: [compute inventory](swotl-tfh-rendering-map.md#compute-admission-inventory).
 
-- **B2** Admission: `translator/compute.py` on a trial `kind=compute` row per guest
-  candidate, not enabled. Record admitted, or the rejecting rule (poll, cycle, REP,
-  unresolved flow, device effect).
 - **B3** Price per candidate: A3's generated cycles per call × calls against the adapted
   improved source costed with `tools/cost_model.json` (`mulu.l`/`divu.l` at the 68020
   model's cost), under both U3 rules; the slave's measured gains as a check (projection
   1,360 → 1,082 cycles per call, scenery 17,481 → 14,863). Output: ms per frame each,
-  cumulative against 240 ms, admitted now vs needs C.
+  cumulative against 240 ms, admitted now vs blocked (polls, REP, multiple returns,
+  exceptional edges; C alone does not resolve all blockers).
 - **B4** Replace the rendering map's `5ecdf79` table with B1–B3; ask U0–U4.
 
 ## S. Procedure per native routine (one commit each, as the next speed-plan R step)
@@ -81,8 +80,10 @@ Source inventory and adaptation requirements: [rendering map](swotl-tfh-renderin
 - **N1** Pilot (U2): `B52D`/`B54B` from `xform20`, by S1–S9. Then compare its measured
   saving with B3's price and rescale the remaining prices. Done: kept or reverted, with
   the ratio in the rendering map.
-- **N2** The other admitted routines in B3 price order, each after U4 (expected `B4E2` from
-  `xdiv20`, `B017` from `xproj20`).
+- **N2** The other admitted routines in B3 price order, each after U4. B2 admits
+  `B8A1` (no A3 calls); `B4E2`/`B017` are blocked by exceptional flow, and
+  `B017` also has multiple returns. Any admission extension needs a separate
+  approved contract before those candidates can enter N2.
 - **N3** Checkpoint: frames fixture P, three runs against A3; report the remaining gap.
   Decides whether C starts.
 

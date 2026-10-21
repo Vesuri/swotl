@@ -188,7 +188,46 @@ terrain caches/visitation/clipping respectively. `BFD1` retains its own merge,
 priority, lifetime and emission semantics. Their detailed addresses and oracle
 cases below remain binding; none inherits a TFH register or dead-store contract.
 These are source facts and adaptation requirements, not equivalence or admission
-proofs. Admission and prices remain B2/B3; no routine is enabled or authorized.
+proofs. Admission is recorded below; prices remain B3. No routine is enabled or authorized.
+
+## Compute admission inventory
+
+B2 on `d4f2b75` (2026-10-21), unchanged translator and annotations. All offsets
+below are in `SWOTL.EXE`. Each trial adds one in-memory `kind=compute` row to
+`image.rows`, then constructs `emit.Program` through its normal
+`compute.validate` path; no row is installed and no assembly is emitted.
+`Program.reach` supplies the root returns; every return choice is tried.
+The row's `last` is the decoded instruction immediately before that return.
+Local reproduction and results: `tmp/native/B2/admission.py`, `admission.json`.
+
+| Entry | Trial last → resume | Admission / first rejecting rule |
+|---|---|---|
+| `B52D` | `B549 → B54A` | Admitted: 168 reachable instructions, including `B54B`. |
+| `B54B` | `B704 → B708` | Admitted: 153 reachable instructions. |
+| `B4E2` | `B529 → B52C` | Rejected: divide-error edge to `13735` leaves the declared range (INT 0 handler; also a poll). |
+| `B017` | `B15D → B15F`, `B160 → B163`, `B38F → B392`, `B4DF → B4E1` | Rejected for every return choice: callee reaches poll `13735` (divide-error handler). Four root returns also violate the single-return contract. |
+| `D5A6` | `D61D → D61E` | Rejected: poll `D5DA`. |
+| `B8A1` | `BA2C → BA2D` | Admitted: 147 reachable instructions; no improved slave source. |
+| `BB70` | `BD66 → BD67` | Rejected: poll `BBAC`. |
+| `109D6` | `10A27 → 10A28`, `1121E → 1121F` | Rejected: with `10A28`, flow at `10A29` leaves the range; with `1121F`, REP STOS at `10A3D`. Two root returns. |
+| `4DAE` | `51A1 → 51A4` | Rejected: callee poll `9174`. |
+| `D69C` | `DAD1 → DAD2` | Rejected: callee poll `D4FA`. |
+| `BD68` | `BF07 → BF08` | Rejected: poll `BDA5`. |
+| `FDE0` | `FEAA → FEAB` | Rejected: REP STOS at `FE0F`. |
+| `F290` | `F318 → F319` | Rejected: poll `F2BD`. |
+| `BFD1` | `C049 → C04A` | Rejected: poll `C000`. |
+
+Three entries admitted, eleven rejected (18 trial rows). Rejections are the
+checker's first failure, not an exhaustive list of blockers. In particular,
+zero polls in a routine's own body does not prove transitive admission:
+`B4E2`/`B017` retain their divide-error edges. Supporting these needs an approved
+contract for exact fault fallback; projection also needs multiple exits.
+C's poll contract alone does not settle exceptional edges, multiple returns
+or REP. Keep these blockers explicit in B3/B4, without assuming authorization
+to change admission. `B8A1` has no calls in A3, so admission alone gives no
+priced saving. Admission is not native correctness or replacement authorization;
+S3–S6 still apply. Existing admission controls: 19 pass; removing the effect/poll
+guard is caught (`poll admitted`).
 
 ## Facts per candidate
 
