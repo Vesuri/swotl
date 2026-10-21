@@ -7,7 +7,8 @@
   "writes": 3.21877590924948,
   "taken": 5.112580175789487,
   "loop_taken": 1.7116219338347338,
-  "muldiv": 23.317347620156617
+  "muldiv": 23.317347620156617,
+  "long_arith": 4.125024772233841
  },
  "r2": 0.9224,
  "capture": {
@@ -15,5 +16,16 @@
   "pcs": 17107,
   "measured": 26293162,
   "model": 25702247
+ },
+ "long_arithmetic_probe": {
+  "date": "2026-10-21",
+  "forms": "unsigned register mulu.l/divu.l/divul.l; successful arithmetic only",
+  "runs": 3,
+  "executions": 1806458,
+  "cycles": 7451684,
+  "min_case_mean": 4.109375,
+  "max_case_mean": 4.143229166666667,
+  "evidence": "tmp/cost-probe.N8MwOn",
+  "plant": "tmp/cost-probe.99sWV7: PROBE_ARITHMETIC_FAILURE"
  }
 }

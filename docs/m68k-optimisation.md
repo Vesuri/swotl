@@ -56,8 +56,8 @@ instruction latency or physical 68020 timings.
 Long arithmetic covers zero, sparse and dense operands, reset before every
 operation; division has nonzero divisors and representable quotients. The
 model charges long arithmetic far less than the word controls: these are
-**emulator costs, not hardware costs**. The translator's cost-model weights
-are unchanged. Per-PC costs depend on loop shape (even register controls
+**emulator costs, not hardware costs**. The word-arithmetic weights remain unchanged; unsigned register long
+arithmetic now uses the separately calibrated total below. Per-PC costs depend on loop shape (even register controls
 are cheaper in the oversized arm); this is not a cache-off test.
 
 Fast RAM `move.w/l (a0),d0` and `move.w/l d0,(a0)`; ranges span all three runs:
@@ -77,3 +77,28 @@ Crossing a four-byte boundary adds approximately three model cycles. An odd
 word address with residue 1 does not cross it and has no measured penalty.
 These are direct Fast RAM accesses, not indexed guest-memory lowerings,
 Chip RAM accesses or whole-game speed measurements.
+
+### Long-arithmetic pricing calibration
+
+User requested resolving the long/word model mismatch before native-plan B3
+(2026-10-21). Fresh unchanged standalone probes: `tmp/cost-probe.N8MwOn`,
+three boots, all 68 cases pass per boot; at least 2,304 executions per case.
+The 90 unsigned long-arithmetic case/run combinations give 1,806,458 executions,
+7,451,684 profiler cycles: **4.125024772 cycles per instruction**, weighted by
+executions. Individual means 4.109375–4.143229167; this coefficient differs from
+those means by −0.4394% to +0.3808%. The existing arithmetic-oracle plant stops
+with `PROBE_ARITHMETIC_FAILURE` (`tmp/cost-probe.99sWV7`).
+
+`tools/cost_model.json` prices register `mulu.l`, `divu.l` and `divul.l` with
+this total, replacing their generic fetch and mul/div charges. Raw bytes and
+access counts remain intact. Signed, immediate and memory forms retain the
+general model: they were not probed. Successful arithmetic only; exceptional
+paths must still be priced separately. This is FS-UAE pricing, not physical
+68020 latency. Calibration retains this coefficient when its workload contains
+no such instructions. A4's saved workload contains none: recomputed total
+including host platform stays 173,909,965.192 (delta zero).
+
+Validation: `make t-cost-tools t-sab-cost-tools`; long forms, disassembler operand
+spellings, unmeasured controls, fetch accounting, fit consistency and absent-class
+retention. The added double-charge plant is caught. Local reproduction and
+cross-check: `tmp/native/B3/check_calibration.py`, `calibration-check.json`.

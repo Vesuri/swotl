@@ -296,5 +296,59 @@ class ExecutedLoops(unittest.TestCase):
         self.assertEqual(nf, 2)
 
 
+class LongArithmetic(unittest.TestCase):
+    """Unsigned register long arithmetic has its own measured total cost."""
+
+    def test_fit_uses_same_features_and_preserves_absent_class(self):
+        from unittest.mock import patch
+        from contextlib import redirect_stdout
+        import io
+        for present in (False, True):
+            p = Program().prog()
+            if present:
+                p.feat[0x1000][-1] = 1
+            cnt = np.ones(len(p.addrs))
+            tak = np.zeros(len(p.addrs))
+            expected = M.load_model()
+            with patch.object(M, "Program", return_value=p), \
+                 patch.object(M, "capture_counts", return_value=(np.arange(len(cnt)) + 1, cnt, tak, 2)), \
+                 patch.object(M, "fit", wraps=M.fit) as fit, \
+                 patch.object(M, "model_cycles", wraps=M.model_cycles) as evaluate, \
+                 redirect_stdout(io.StringIO()):
+                M.calibrate(Path("unused"), Path("unused"), "unused", False)
+            if present:
+                self.assertEqual(fit.call_args.args[0][0, :3].sum(), 0)
+                self.assertEqual(fit.call_args.args[0][0, 7], 0)
+                self.assertEqual(fit.call_args.args[0][0, 8], 1)
+            else:
+                self.assertEqual(evaluate.call_args.args[-1]["long_arith"], expected["long_arith"])
+
+    def test_priced_forms_and_unmeasured_controls(self):
+        coef = M.load_model() | {"long_arith": 4.125}
+        for op, args, measured in (
+            ("mulu.l", "d1,d0", True), ("mulu.l", "d1,d2:d0", True),
+            ("divu.l", "d1,d0", True), ("divu.l", "d1,d2:d0", True),
+            ("divul.l", "d1,d2:d0", True),
+            ("mulu.l", "d1,d2,d0", True), ("divu.l", "d1,d2,d0", True),
+            ("divul.l", "d1,d0,d0", True),
+            ("muls.l", "d1,d0", False), ("divs.l", "d1,d0", False),
+            ("mulu.w", "d1,d0", False), ("divu.w", "d1,d0", False),
+            ("mulu.l", "(a0),d0", False), ("mulu.l", "#17,d0", False),
+        ):
+            p = M.Program.__new__(M.Program)
+            p.init(f"00001000 <R_00100>:\n    1000:\t4c01 0000\t{op} {args}\n",
+                   [(0x1000, "R_00100")], set())
+            for cached in (False, True):
+                f = list(p.feat[0x1000])
+                if cached:
+                    f[2], f[1] = f[1], 0
+                with self.subTest(op=op, args=args, cached=cached):
+                    want = 4.125 if measured else (
+                        4 * coef["loop_bytes" if cached else "bytes"] +
+                        M.accesses(op, args)[0] * coef["reads"] + coef["muldiv"])
+                    self.assertAlmostEqual(M.model_cycles(f, 3, 0, coef), 3 * want)
+                    self.assertEqual(f[1] + f[2], 4)  # raw byte accounting survives
+
+
 if __name__ == "__main__":
     unittest.main()

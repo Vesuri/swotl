@@ -185,7 +185,9 @@ lines.
   fit at A4 on the `e891ace` bench capture: per code byte 1.038 (0.912 inside
   a loop of ≤ 256 bytes whose back branch was taken in the workload), read
   1.795, write 3.219, taken transfer 5.113 outside such a loop and 1.712 inside,
-  mul/div 23.317. R² 0.9224, model −2.25% of measured. U1 selects executed
+  word/general mul/div 23.317. Unsigned register long arithmetic uses a separately
+  probed total of 4.125025 cycles (no additional fetch/muldiv charge;
+  `m68k-optimisation.md`, B3 calibration). R² 0.9224, model −2.25% of measured. U1 selects executed
   back edges; this remains a workload-level cache approximation. The doubling
   plant is caught (419,726 extra instructions, 839,452 extra bytes). The
   per-instruction weight still fits to 0. Recalibrate (`--calibrate CAPTURE
@@ -312,6 +314,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | A2 | semantic guest-entry accounting, helper exclusion and zero-code aliases | `lowering_cost.py` | tooling only |
 | A3 | HEAD frame, bench and native-candidate baseline | docs | measurement only |
 | A4 | executed-back-edge loop classification and recalibration (U1) | cost meter/model | tooling only |
+| B3-cal | separately probed unsigned register long-arithmetic cost | cost meter/model | 0 on saved A4 workload |
 
 No priced translator candidate remains. Unchanged (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers

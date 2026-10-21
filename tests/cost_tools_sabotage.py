@@ -89,3 +89,8 @@ for old, new, name in (
     with patch.object(T.M, 'capture_counts', scope['capture_counts']):
         check(T.ExecutedLoops, True)
     print(f'cost meter: {name} plant caught')
+
+check(T.LongArithmetic, False)
+with patch.object(T.M, 'cost_features', lambda feat: list(feat)):
+    check(T.LongArithmetic, True)
+print('cost meter: double-charged long arithmetic fetch/multiply plant caught')

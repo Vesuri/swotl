@@ -14,7 +14,8 @@ for R8's alignment); blocks expand to executed
 68k instructions over the disassembly of the image that ran. Features per
 instruction: encoded bytes and taken transfers, each split by whether the
 instruction lies in a loop of <= 256 bytes whose closing branch is taken
-in this workload (the 68020 i-cache); data reads; data writes; mul/div. Model cycles =
+in this workload (the 68020 i-cache); data reads; data writes; mul/div.
+Unsigned register long arithmetic has a separately probed total cost. Model cycles =
 the features weighted by tools/cost_model.json. Exact and layout-blind: the
 same build gives the same numbers, and moving code changes nothing.
 
@@ -53,7 +54,7 @@ MODEL = TOOLS / "cost_model.json"
 CROSS = str(Path(os.environ.get("AMIGA_TOOLCHAIN") or Path.home() / ".local/opt") / "bin/m68k-amiga-elf-")
 VASM = os.environ.get("VASM") or str(Path.home() / ".local/vasmm68k_mot")
 OBJDUMP = CROSS + "objdump"
-FEATURES = ("insns", "bytes", "loop_bytes", "reads", "writes", "taken", "loop_taken", "muldiv")
+FEATURES = ("insns", "bytes", "loop_bytes", "reads", "writes", "taken", "loop_taken", "muldiv", "long_arith")
 LOOP = 256      # 68020 instruction cache
 
 # --- static features ---------------------------------------------------------
@@ -182,7 +183,11 @@ class Program:
         feats = {}
         for a, (op, arg) in mn.items():
             r, w, m = accesses(op, arg)
-            feats[a] = [1, sizes[a], 0, r, w, 0, 0, m]
+            # Only the unsigned register forms covered by the standalone probe.
+            # Signed, immediate and memory forms retain the general model.
+            long_arith = int(op in ("mulu.l", "divu.l", "divul.l") and
+                             bool(re.fullmatch(r"d[0-7],d[0-7](?:[:,]d[0-7])?", arg)))
+            feats[a] = [1, sizes[a], 0, r, w, 0, 0, m, long_arith]
         self.feat = feats
         self.cls = {}
         for a in mn:
@@ -228,10 +233,21 @@ class Program:
         return "runtime"
 
 
+def cost_features(feat):
+    """Pricing features, separate from raw instruction/byte/access counters.
+
+    The probe fits the whole unsigned register long-arithmetic instruction,
+    including its fetch cost; do not also charge generic bytes or mul/div.
+    """
+    priced = list(feat)
+    if priced[8]:
+        priced[0] = priced[1] = priced[2] = priced[7] = 0
+    return priced
+
+
 def model_cycles(feat, n, taken, coef) -> float:
-    """feat: per-execution features (taken and loop_taken unused: they come
-    from the taken count, charged as loop_taken inside a cached loop)."""
-    return n * sum(coef[k] * feat[i] for i, k in enumerate(FEATURES) if "taken" not in k) + \
+    priced = cost_features(feat)
+    return n * sum(coef[k] * priced[i] for i, k in enumerate(FEATURES) if "taken" not in k) + \
         coef["loop_taken" if feat[2] else "taken"] * taken
 
 
@@ -534,12 +550,16 @@ def calibrate(capture: Path, elf: Path, objdump: str, write: bool) -> None:
     for i, a in enumerate(prog.addrs.tolist()):
         if cnt[i] and prog.cls[a] in ("generated", "walk"):
             f = prog.feat[a]
-            rows.append([cnt[i] * f[0], cnt[i] * f[1], cnt[i] * f[2], cnt[i] * f[3],
-                         cnt[i] * f[4], 0 if f[2] else tak[i], tak[i] if f[2] else 0,
-                         cnt[i] * f[7]])
+            row = [cnt[i] * value for value in cost_features(f)]
+            row[5], row[6] = (0, tak[i]) if f[2] else (tak[i], 0)
+            rows.append(row)
             y.append(cyc[i])
     X, y = np.array(rows), np.array(y)
     coef = fit(X, y, list(FEATURES))
+    # An absent instruction class supplies no calibration evidence. Preserve
+    # its standalone coefficient instead of replacing it with a fitted zero.
+    if not X[:, FEATURES.index("long_arith")].any():
+        coef["long_arith"] = load_model()["long_arith"]
     w = np.array([coef[k] for k in FEATURES])
     pred = X @ w
     r2 = 1 - ((y - pred) ** 2).sum() / ((y - y.mean()) ** 2).sum()
@@ -555,7 +575,10 @@ def calibrate(capture: Path, elf: Path, objdump: str, write: bool) -> None:
         t = sum(cyc[i] for i, a in enumerate(prog.addrs.tolist()) if cnt[i] and prog.cls[a] == cls)
         print(f"{cls} (not fitted): measured {t:,.0f}, model {m:,.0f}")
     if write:
-        MODEL.write_text(json.dumps({"coef": coef, "r2": round(float(r2), 4),
+        metadata = json.loads(MODEL.read_text())
+        if X[:, FEATURES.index("long_arith")].any():
+            metadata.pop("long_arithmetic_probe", None)
+        MODEL.write_text(json.dumps({**metadata, "coef": coef, "r2": round(float(r2), 4),
                                      "capture": {"fields": fields, "pcs": len(y),
                                                  "measured": int(total), "model": int(model)}},
                                     indent=1) + "\n")
