@@ -315,6 +315,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | A3 | HEAD frame, bench and native-candidate baseline | docs | measurement only |
 | A4 | executed-back-edge loop classification and recalibration (U1) | cost meter/model | tooling only |
 | B3-cal | separately probed unsigned register long-arithmetic cost | cost meter/model | 0 on saved A4 workload |
+| B3 | native candidate prices under both U3 rules; unpriced rows retain ceilings | rendering map | pricing only |
 
 No priced translator candidate remains. Unchanged (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
@@ -352,7 +353,7 @@ items left.
 
 A3's frames-fixture medians are 370, 390 and 400 ms: the middle run needs
 150 ms (38.5%) less to reach 240 ms; the run range needs 130–160 ms less.
-No priced translator candidate remains (§7). Next: native candidate pricing/authorization (B), in
+No priced translator candidate remains (§7). Next: native candidate decisions (B4), in
 [native-plan.md](native-plan.md).
 
 Current candidate costs, A3 run 2 (`6bf8aef`, 100 fields, 28,420,399 profiler cycle

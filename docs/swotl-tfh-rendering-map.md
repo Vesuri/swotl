@@ -188,7 +188,7 @@ terrain caches/visitation/clipping respectively. `BFD1` retains its own merge,
 priority, lifetime and emission semantics. Their detailed addresses and oracle
 cases below remain binding; none inherits a TFH register or dead-store contract.
 These are source facts and adaptation requirements, not equivalence or admission
-proofs. Admission is recorded below; prices remain B3. No routine is enabled or authorized.
+proofs. Admission and B3 prices are recorded below. No routine is enabled or authorized.
 
 ## Compute admission inventory
 
@@ -228,6 +228,149 @@ to change admission. `B8A1` has no calls in A3, so admission alone gives no
 priced saving. Admission is not native correctness or replacement authorization;
 S3–S6 still apply. Existing admission controls: 19 pass; removing the effect/poll
 guard is caught (`poll admitted`).
+
+## B3 candidate prices
+
+Recomputed 2026-10-21 from retained A3 run 2, not new frame measurements.
+Conversion: `390 ms × cycles / 28,420,399`; this assumes the captured work mix
+scales with frame time. Values below are **zero-cost removal ceilings**, not
+native saving estimates. Own costs are disjoint; inclusive costs overlap and
+must not be added. B2's admission blockers remain binding.
+
+| Entry | Own ceiling (ms/frame) | Inclusive ceiling (ms/frame) |
+|---|---:|---:|
+| `B52D` | 3.99 | 28.05 |
+| `B54B` | 24.06 | 24.06 |
+| `B4E2` | 7.09 | 7.09 |
+| `B017` | 11.65 | 18.74 |
+| `D5A6` | 8.07 | 23.50 |
+| `B8A1` | 0.00 | 0.00 |
+| `BB70` | 5.20 | 5.20 |
+| `109D6` | 10.31 | 36.14 |
+| `4DAE` | 31.12 | 40.86 |
+| `D69C` | 3.87 | 4.96 |
+| `BD68` | 2.60 | 6.43 |
+| `FDE0` | 6.21 | 36.07 |
+| `F290` | 4.30 | 7.03 |
+| `BFD1` | 25.63 | 39.02 |
+
+The admitted transform wrapper/body together have a 28.05 ms ceiling;
+`B54B` is already inside `B52D`. `B8A1` has zero captured calls. Even removing
+the entire admitted group at zero cost would leave about 361.95 ms under this
+scaling assumption, before considering blocked candidates.
+
+The pinned slave's unchanged transform source was assembled locally and all
+acyclic branch paths costed with the corrected model (B3-cal). These are raw
+source-kernel bounds, **excluding SWOTL adaptation**, not replacement prices.
+Native call/return costs are included; `xpnorm20` excludes its called projection.
+
+| Kernel | Model cycles/call, min–max |
+|---|---:|
+| `xform20` | 376.20–403.83 |
+| `xdiv20` | 83.98–94.08 |
+| `xproj20` (long path only) | 287.23–320.63 |
+| `xpnorm20` (own body) | 179.84–193.10 |
+
+Scope checks against A3:
+
+- `B393` (the long projection path) executes 235/235/189 times across runs
+  1/2/3, costing 190,244/190,246/153,619 cycles. Run 2's source-covered path
+  has only a **2.61 ms** removal ceiling; charging its improvement to all
+  1,036 projection calls would overprice it.
+- `D5DA` has 6,801/6,888/9,161 poll visits across 827/836/1,101 normalise
+  entries. The single-shift source price omits required visits and cannot be
+  used as an adapted normalise price.
+- `B4E2` returns intermediate BP as well as AX/DX, BX/CX and SI. The source's
+  one-product result does not by itself reproduce BP; its adaptation needs
+  additional work even with final-RAM/write-set U3.
+- Transform has no live flags at entry or return in the current CFG.
+  Its raw source still needs input packing, exact scratch stores, guest result
+  reconstruction, the compute hook and the retained generated return.
+
+### Adapted transform price (both U3 rules)
+
+Analytical fast-path budget from the pinned `xform20`, not replacement code.
+Keep the `B52D` wrapper and its guest call/check generated; install at most one
+future callback at `B54B`. The source's two-register native save preserves guest
+SP/BP; other guest result registers are reconstructed before restoring them.
+The source's sign branches must test bit 15 as x86 does, without assuming the
+matrix sign words contain only zero or 8000h.
+
+| Adapter component relative to raw kernel | Executed bytes Δ | Reads Δ | Writes Δ | Taken Δ |
+|---|---:|---:|---:|---:|
+| Pack AX:BX, DX:CX, SI:DI into three longs | 16 | 0 | 0 | 0 |
+| Store signed high words and magnitude halves | 60 | 0 | 9 | 0 |
+| Replace three output long stores with original word stores | 24 | 0 | 3 | 0 |
+| Reconstruct AX/DX, BX/CX, SI sign XOR and DI magnitude low | 24 | 2 | 0 | 0 |
+| Save/restore SP/BP instead of the source's six registers | 0 | −4 | −4 | 0 |
+| Compute hook and handled result | 20 | 0 | 1 | 2 |
+| Retained generated return | 8 | 2 | 0 | 1 |
+| Successful pre-mutation DS guard | 10 | 1 | 0 | 0 |
+
+Added cost **214.2971 cycles**; total **590.4923–618.1316 cycles/call**.
+The scratch inventory is nine words `22C6..22D6`; output is six words
+`C38C..C396`. Each address is written once, so retaining all fifteen original
+word stores satisfies either U3 rule at the same price. No dead-store exemption
+or wide-store assumption is priced. Input packing uses eight register moves/swaps;
+result reconstruction uses seven register operations, two word loads/ALU reads
+and the SI move. No live entry/return flags in the current CFG.
+
+Guard budget: compare guest DS with F000h, decline before mutation above it;
+otherwise the constant-offset long reads stay within the 1 MiB RAM extent.
+Original generated word-store paths remain. S3–S6 must establish equivalence,
+actual guard eligibility, bookkeeping and the implemented instruction inventory.
+This is not authorization to implement or weaken admission.
+
+| Entry | Status | Every-byte history saving, ms/frame | Final RAM + written set saving, ms/frame |
+|---|---|---:|---:|
+| `B52D` | Admitted; same body saving as `B54B`, wrapper unchanged | 11.48–12.04 shared | 11.48–12.04 shared |
+| `B54B` | Admitted; priced adapter above | 11.48–12.04 | 11.48–12.04 |
+| `B4E2` | Exceptional-flow contract missing | Unpriced | Unpriced |
+| `B017` | Exceptional flow, multiple returns; only long path has improved source | Unpriced | Unpriced |
+| `D5A6` | Poll contract missing | Unpriced | Unpriced |
+| `B8A1` | Admitted; no improved source, no A3 calls | 0 in A3; native cost unpriced | 0 in A3; native cost unpriced |
+| `BB70` | No improved source; polls | Unpriced | Unpriced |
+| `109D6` | Poll/REP/multiple-return contract missing; partial source only | Unpriced | Unpriced |
+| `4DAE` | No improved source; callee polls | Unpriced | Unpriced |
+| `D69C` | No improved source; callee polls | Unpriced | Unpriced |
+| `BD68` | No improved source; polls | Unpriced | Unpriced |
+| `FDE0` | No improved source; REP/polls | Unpriced | Unpriced |
+| `F290` | Poll contract missing | Unpriced | Unpriced |
+| `BFD1` | No improved source; polls | Unpriced | Unpriced |
+
+User decision, 2026-10-21: **use ceilings and explicit unpriced rows** for
+missing implementations/contracts. Their measured ceilings are above; unpriced
+is neither zero cost nor zero potential. C's poll contract does not resolve all
+B2 blockers. The relaxed U3 rule is itself pending and concerns poll-free code.
+
+### Cumulative projection and limits
+
+Run 2: 390 ms → **377.96–378.52 ms** after the transform pair, counted once;
+`B8A1` adds zero observed work. Remaining gap to 240 ms: **137.96–138.52 ms**.
+Unpriced rows add no asserted saving. The pair's generated inclusive cost is
+1,378.1450 cycles/call; retaining its 196.0364-cycle wrapper gives an adapted
+inclusive estimate of 786.5287–814.1681 cycles/call.
+
+Across A3 runs 1/2/3, projected transform savings are 10.74–11.27,
+11.48–12.04 and 15.12–15.86 ms/frame respectively, under either U3 rule.
+These assume every call is eligible and the A3 work mix scales with P. A declined
+call adds about 55.3706 model cycles to its unchanged generated body. For eligible
+fraction q, use `calls × [q × (old − fast) − (1−q) × 55.3706]` as saved cycles;
+convert with the same P/total factor. Do not treat the all-eligible projection
+as a guaranteed speedup. N1 must measure and rescale it under S3–S7.
+
+TFH cross-check: its projection-entry saving was 278/1,360 = 20.44%, and
+scenery 2,618/17,481 = 14.98%. Those original 68000 routines, callers and dropped
+scratch writes differ from SWOTL's translated code. Applying either percentage
+to SWOTL's entire projection/scenery row would invent a price. The transform's
+47.71–50.05% body reduction is an analytical hypothesis to validate in N1;
+there is no corresponding measured TFH per-call transform ratio in the inputs.
+
+Evidence: `tmp/native/B3/{baseline,path-costs,kernel-costs,transform-price,transform-contract-check}.json`,
+with local reproduction scripts alongside them. Arithmetic checks, source hash,
+all 14 rows, non-overlapping accounting and current admission/flag/store inventory
+verified. Native fidelity and performance remain S3–S8; no replacement or HLE row
+is installed. B4 remains the decision/table-consolidation step.
 
 ## Facts per candidate
 

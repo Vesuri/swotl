@@ -47,13 +47,10 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 
 Source inventory and adaptation requirements: [rendering map](swotl-tfh-rendering-map.md#slave-source-inventory).
 Admission results: [compute inventory](swotl-tfh-rendering-map.md#compute-admission-inventory).
+Candidate prices: [B3](swotl-tfh-rendering-map.md#b3-candidate-prices).
+User, 2026-10-21: missing implementations/contracts retain measured ceilings and
+explicit unpriced savings; do not invent a native price for them.
 
-- **B3** Price per candidate: A3's generated cycles per call × calls against the adapted
-  improved source costed with `tools/cost_model.json` (`mulu.l`/`divu.l` at the separately calibrated 68020-model cost:
-  [calibration](m68k-optimisation.md#long-arithmetic-pricing-calibration)), under both U3 rules; the slave's measured gains as a check (projection
-  1,360 → 1,082 cycles per call, scenery 17,481 → 14,863). Output: ms per frame each,
-  cumulative against 240 ms, admitted now vs blocked (polls, REP, multiple returns,
-  exceptional edges; C alone does not resolve all blockers).
 - **B4** Replace the rendering map's `5ecdf79` table with B1–B3; ask U0–U4.
 
 ## S. Procedure per native routine (one commit each, as the next speed-plan R step)
