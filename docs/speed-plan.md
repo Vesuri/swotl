@@ -373,9 +373,9 @@ items left.
 N3's frames-fixture medians are 370, 350 and 340 ms: the middle run needs
 110 ms (31.4%) less to reach 240 ms; the run range needs 100–130 ms less.
 No priced translator candidate remains (§7). N1 is kept; N2 has no currently
-priced, authorized next routine. The U5 poll contract (approved 2026-10-21) is in
-[native-compute.md](native-compute.md#poll-contract-u5); next is C3
-implementation, then individual U6 authorization.
+priced, authorized next routine. The U5 poll contract is implemented
+([native-compute.md](native-compute.md#poll-contract-u5)); the N4 candidates
+still fail other admission rules (native-plan C), and each needs U6.
 N2's exceptional-flow/multiple-return extensions need separate approved contracts
 and U4 authorization. See [native-plan.md](native-plan.md).
 

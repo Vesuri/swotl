@@ -285,6 +285,8 @@ def cs_expr(cs: int) -> str:
 
 class Program:
     hle: dict = {}   # (mod, first) -> ((mod, resume), service); set from hle.csv
+    sync_poll_first = True  # U5: a sync site's visit precedes its hook (sabotage turns it off)
+    polled_resumes: dict = {}  # U5 hook -> its resumes (return, sync sites); set in __init__
 
     def __init__(self, units: dict[str, cfg.Unit] | None = None, components: bool = True,
                  diagnostic_hooks: dict[tuple[str, int], int] | None = None,
@@ -325,6 +327,7 @@ class Program:
         self.hle: dict[tuple[str, int], tuple[tuple[str, int], str]] = {}
         self.hle_args: dict[tuple[str, int], list[str]] = {}
         self.compute_rows: set[tuple[str, int]] = set()
+        self.sync_sites: dict[tuple[str, int], tuple] = {}  # U5 rows: first -> sync sites
         for r in image.rows("hle.csv"):
             mod, first, last = r["module"], int(r["first"], 16), int(r["last"], 16)
             u = self.units[mod]
@@ -343,6 +346,16 @@ class Program:
                 if args or not r.get('reason') or not r.get('oracle'):
                     raise LowerError('hle.csv: compute needs reason/oracle and no args')
                 self.compute_rows.add((mod, first))
+                polls = (r.get('polls') or '').split()
+                if polls:   # U5: 'return' and the sync sites' offsets
+                    if polls[0] != 'return':
+                        raise LowerError(f"hle.csv: {mod}+{first:05X} polls must start with 'return'")
+                    sites = tuple((mod, int(x, 16)) for x in polls[1:])
+                    if any(o not in u.insns for _, o in sites):
+                        raise LowerError(f"hle.csv: {mod}+{first:05X} sync site is no instruction")
+                    self.sync_sites[(mod, first)] = sites
+            elif r.get('polls'):
+                raise LowerError(f"hle.csv: {mod}+{first:05X} polls need kind compute")
         int0 = [r for r in image.rows("runtime.csv") if r["name"] == "__cintDIV"]
         self.int0 = (int0[0]["module"], int(int0[0]["offset"], 16)) if int0 else None
         # D16: self-modified regions, each lowered as one cell walk
@@ -366,8 +379,22 @@ class Program:
         self.ccr_only: dict = {}    # label -> live flags only the CCR holds there (R14d)
         self.ret_of: dict = {}
         self.returns()
-        self.compute_bodies = {n: compute.validate(self, n, self.hle[n][0])
+        self.compute_bodies = {n: compute.validate_polled(self, n, self.hle[n][0], self.sync_sites[n])
+                               if n in self.sync_sites else compute.validate(self, n, self.hle[n][0])
                                for n in self.compute_rows}
+        # U5: each row's chosen polls replace the polls reachable only through it
+        # (both arms); its return and sync sites are polls. Sync sites are hook
+        # entries too, and every hook may resume at the return or a sync site.
+        self.polled_resumes: dict[tuple[str, int], list] = {}
+        for n, sites in self.sync_sites.items():
+            row = self.compute_bodies[n]
+            self.loop_heads = (self.loop_heads - row.removed) | set(sites) | {row.resume}
+            for s in sites:
+                self.hle[s] = self.hle[n]
+                self.hle_args[s] = []
+            for h in (n, *sites):
+                self.polled_resumes[h] = [row.resume, *sites]
+            self.compute_rows |= set(sites)
         self.liveness()
         self.leaders = self.find_leaders()
         for mod, off in self.diagnostic_hooks:
@@ -574,6 +601,8 @@ class Program:
                     new = (new - ALL) | out | self.live_out.get(self.saves[n], set())
                 if n in self.hle:   # the hook may skip to the resume instruction
                     new |= self.live_in[self.hle[n][0]]
+                for r in self.polled_resumes.get(n, ()):
+                    new |= self.live_in[r]
                 self.live_out[n] = out
                 if new != self.live_in[n]:
                     self.live_in[n] = new
@@ -820,6 +849,16 @@ class Program:
         lab = label if comp is None else copy_label
         lines: list[str] = []
         starts: list[int] = []      # each instruction's first line
+
+        def visit(o):   # D8 poll point
+            assert (mod, o) in self.leaders, (mod, o)
+            lines.extend(poll(lab(mod, o)))
+            stub = poll_stub(lab(mod, o), u.ip_of(o), cs_expr(u.cs[o]))
+            if comp is not None:    # a handler may change BP: on in the exact code
+                stub[-1] = f"\tbra {label(mod, o)}_np"
+            stubs.extend(stub)
+            stats["interrupt poll"] += 1
+
         at = len(stubs)             # this run's stubs start here
         for o, lw in zip(run, lws):
             n = u.insns[o]
@@ -837,7 +876,19 @@ class Program:
                     lines += ["\ttst.l (sp)+", f"\tbne {label(mod, o)}_np"]
                 else:
                     lines.append("\tlea 4(sp),sp")
-            if (mod, o) in self.hle:
+            polled = self.polled_resumes.get((mod, o))
+            # U5 sync site: the visit (poll) precedes re-entering the callback
+            early = polled and (mod, o) in self.loop_heads and self.sync_poll_first
+            if early:
+                visit(o)
+            if polled:
+                _, service = self.hle[(mod, o)]
+                entry = 0 if (mod, o) not in polled else polled.index((mod, o))
+                lines += compute.polled_hook(service, entry, f"{lab(mod, o)}_cx", cs_expr(u.cs[o]))
+                stubs += compute.polled_dispatch(f"{lab(mod, o)}_cx", [label(*x) for x in polled],
+                                                 hx(u.ip_of(o)))
+                stats["HLE hook"] += 1
+            elif (mod, o) in self.hle:
                 resume, service = self.hle[(mod, o)]
                 if (mod, o) in self.compute_rows:
                     lines += compute.hook(service, label(*resume), cs_expr(u.cs[o]))
@@ -847,14 +898,8 @@ class Program:
                 stats["HLE hook"] += 1
             if ((mod, o) in self.hle or (mod, o) in self.hle_resumes) and lw.ccr_only:
                 raise LowerError(f"{mod}+{o:05X}: HLE hook where the CCR holds live flags")
-            if (mod, o) in self.loop_heads:
-                assert (mod, o) in self.leaders, (mod, o)
-                lines.extend(poll(lab(mod, o)))
-                stub = poll_stub(lab(mod, o), u.ip_of(o), cs_expr(u.cs[o]))
-                if comp is not None:    # a handler may change BP: on in the exact code
-                    stub[-1] = f"\tbra {label(mod, o)}_np"
-                stubs += stub
-                stats["interrupt poll"] += 1
+            if (mod, o) in self.loop_heads and not early:
+                visit(o)
             lines.extend(lw.out)
             stubs += lw.cold
             if lw.ccr_only:

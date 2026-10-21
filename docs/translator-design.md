@@ -333,8 +333,10 @@ a profile choice, `tools/outline_sites.py` from `build/gen/outline-sites.csv`),
   (its data segment, its effect counts at DS:6564, dead stack below SP).
   Optional `kind=compute` uses the complete generated register ABI and a d7.l
   handled result; admission proves poll-free reachable flow, including callees.
-  It leaves the guest return and check generated. Contract and oracle:
-  [native-compute.md](native-compute.md). No production compute row is enabled.
+  It leaves the guest return and check generated. With `polls` (U5) the row's
+  body loses its polls in both arms, its return and listed sync sites become
+  polls, and each sync site is a resume and a hook entry. Contract and oracle:
+  [native-compute.md](native-compute.md). Enabled: the poll-free `B54B` transform.
 - Self-modified code (D16, `translator/smc.py`): the root block
   `+6A4D..+8E2C` is one generated cell walk (the whole template block: the
   [2581]=0 variant fills it at 190 cells per run). The setup (+E50E) writes opcodes

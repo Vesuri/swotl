@@ -50,8 +50,9 @@ TRANSFER = {"jmp", "jmpf", "jcc", "call", "callf", "ret", "retf", "iret", "int",
             "loop", "loope", "loopne", "jcxz", "hlt"}
 
 
-def program_image(p: emit.Program, cache: Path) -> tuple[bytes, dict]:
-    """Assemble every module into one binary; returns it and label -> address."""
+def program_image(p: emit.Program, cache: Path, extra: tuple = ()) -> tuple[bytes, dict]:
+    """Assemble every module into one binary; returns it and label -> address
+    (`extra`: further labels to resolve)."""
     order, body = [], []
     for mod in p.units:
         if not p.units[mod].insns:
@@ -67,7 +68,7 @@ def program_image(p: emit.Program, cache: Path) -> tuple[bytes, dict]:
                 order += [f"{emit.label(*p.fall[n])}_bpr" for n in sorted(nodes)
                           if p.node_insn(n).op in region.REGUARD and p.fall.get(n) in nodes]
     smc_code, smc_data = p.smc_text()
-    order += aux_labels(p)
+    order += aux_labels(p) + list(extra)
     src = [equates()] + [f"{n}\tequ\t${a:x}" for n, a in STUB_AT.items()]
     src += [f"\torg\t${D.CODE:x}", "labels:"] + [f"\tdc.l\t{x}" for x in order]
     src += body + [HELPERS] + smc_code + smc_data

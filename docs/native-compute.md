@@ -110,51 +110,60 @@ existing reference without approval.
 ## Poll contract (U5)
 
 Approved by the user 2026-10-21 (native-plan U5); replaces the C1 exact-handoff
-design (`f4a7c68`). Not implemented: C3 builds it; each routine still needs U6
-and S1–S9. Exceptional flow, multiple root returns, REP, device or
+design (`f4a7c68`). Implemented by C3; no row uses it yet: each routine needs
+U6 and S1–S9. Exceptional flow, multiple root returns, REP, device or
 interrupt-control effects and nested HLE remain outside this contract.
 
 The native routine is written by us, so its polls are chosen, not copied. Each
-chosen poll stands for an original x86 point (address, visit) at which the native
-state equals the original's. The reference takes interrupts only at poll points
+chosen poll stands for an original x86 point at which the native state equals
+the original's. The reference takes interrupts only at poll points
 (`build/gen/poll-points.csv`, pc-reference-loop.md `--polls`), so the poll set is
 a translator decision that the reference follows.
 
-### Poll set of a row
+### Row and poll set
 
-- **Removed:** every poll reachable only through the row's body. Both arms
-  (native and the declined generated body) omit them.
-- **Kept:** a poll also reachable from outside the row (shared callee, internal
-  entry) stays in the set; the native routine treats each of its visits as a
-  sync poll, or the row is rejected.
-- **Return poll:** a poll at the retained original return instruction, emitted in
-  generated code before it, so both arms visit it once per call.
-- **Sync polls (optional):** x86 sites inside the body, listed in the row. At each
-  visit the native state equals the original's at that site and visit: all
-  registers, segments, live/control flags, RAM and each byte's write history (U3);
-  no store moves across it. Visit order and counts at sync sites match the
-  original. With G_IRQ set the callback returns POLL_EXIT (translator-assigned
-  exit ID) to a generated trampoline that restores the site's ABI and enters its
-  existing IRQ stub; generated code completes the routine and its return checks.
-  The native loop is never resumed. Choose sites where this state is cheap
-  (outer-loop heads after a pass).
-- Every poll reads G_IRQ fresh and does not test IF (G_IRQ also carries bench and
-  presentation requests); the runtime owns IF and the pending queue.
+`hle.csv` `polls` on a `compute` row: empty keeps the poll-free contract;
+`return` [sync offsets...] selects U5. `translator/compute.py` `validate_polled`:
+
+- **Removed:** every poll in the body (callees included). Both arms omit them:
+  the declined generated body has no poll there either.
+- **Kept:** a poll that flow from outside reaches without passing a hook entry
+  (internal entry, shared callee) must be a sync site, or the row is rejected.
+  Sync sites in callees and recursion are rejected.
+- **Return poll:** at the retained original return, in generated code, so every
+  call visits it once.
+- **Sync sites:** root-body instructions listed in the row; each becomes a poll,
+  a resume and a hook entry. Its generated code polls first (the visit), then
+  calls the callback again. The callback never reads G_IRQ: it runs one segment
+  and resumes at the return or at the next sync site with exact state there (all
+  registers, segments, live/control flags, RAM and each byte's write history,
+  U3; no store moves across a site). Every visit, interrupt delivery, diagnostic
+  replay hook and bench service stays in generated code; nothing is delivered
+  inside a callback and no native loop is resumed.
+
+ABI on U5 rows (`compute.polled_hook`): d7 in = entry (0 the row's first
+instruction, k sync site k); d7.l out = 0 declines (generated code continues
+at that entry), 1 resumes at the return, 1 + k at sync site k; any other value
+stops loudly (`rt_stop_unknown` with the hook's IP). Each hook may resume at any
+of them, so its liveness includes theirs.
 
 ### Admission
 
-- **No waiting:** every loop whose poll is removed must terminate without
-  interrupt or device effects (proved bound or entry-derived trip count). A loop
-  that can wait on timer, key, mouse or other interrupt-written state keeps its
-  poll as a sync poll, or the row is rejected.
+- **No pure wait:** a removed poll's loop needs an exit whose branch condition
+  or target can change inside the loop (`compute.wait`). Proved invariant:
+  registers and flags the loop never writes or writes only with invariant
+  values, and loads from invariant addresses when the loop stores nothing. This
+  rejects loops only an interrupt can end; it is not a termination proof, so
+  termination on every S3 input and the latency bound are its evidence.
+  A backward jump that closes no cycle is not a loop.
 - **Latency (user, 2026-10-21):** a posted guest interrupt may wait up to one PIT
-  period inside a native routine. The longest stretch without a poll visit
-  (entry to first sync, between syncs, last sync to the return poll), in A1200
-  cycles on all S3 inputs and boundary cases, is at most one period at the
-  game's rate (236.7 Hz: about 59,900 cycles at 14.19 MHz). Over the bound: add
-  sync polls or reject. Ticks queue in the 32-entry `rt_irq_ring` and are
-  delivered in order at the next poll; the bound keeps a routine from delaying
-  more than one tick.
+  period inside a native routine: the longest stretch between poll visits
+  (entry, sync sites, return), on all S3 inputs and boundary cases, is at most
+  `compute_oracle.PIT_PERIOD_CYCLES` = 59,900 model cycles (236.7 Hz at
+  14.19 MHz, rounded down). `compute_oracle.PollGaps` measures it on the host
+  68k core: cost-model weights without the i-cache discount, gaps between G_IRQ
+  reads. Over the bound: add sync sites or reject. Ticks queue in the 32-entry
+  `rt_irq_ring` and are delivered in order at the next poll.
 - Poll-free rows (the `B54B` transform) are unchanged: no return poll is added.
 
 ### References (user, 2026-10-21)
@@ -167,20 +176,21 @@ reference change: no PIT rate, interrupt order, fixture or tolerance changes.
 
 ### Validation and plants
 
-- Rows without sync polls: the existing compute oracle, entry to retained return.
-- Sync polls: the x86 oracle stops before the n-th arrival at each sync site and
-  records the original state/write-history prefix; the native exit is compared
-  against it, then the generated continuation through the return. Native tests
-  get the same inputs and forced-pending schedule, never the x86 results.
-- Diagnostic replay and bench observe the same visits in both arms, with native
-  execution enabled in diagnostic builds. No event is delivered inside a callback.
-- Coverage: zero/one/many passes; first, middle and terminating sync visits;
-  G_IRQ clear, pending on entry and between visits; IF clear/set; queued ticks
-  across a long routine; decline and complete arms.
-- Plants, each caught: a removed poll still emitted in one arm, a missing return
-  poll, a removed poll on a waiting loop, stale register/flag or missing store at
-  a sync exit, a store before its sync poll, skipped/duplicate sync visit, wrong
-  exit site, cached G_IRQ or IF gating, resumed native loop, latency over bound.
-
-C3 is complete when admission, emitter (poll removal, return poll, exit
-trampolines), oracle, controls and plants pass, followed by full gates.
+- The x86 oracle (`compute_oracle.run` with `stops`) stops before each arrival at
+  a sync site, so a chain of runs gives the original state and write-history
+  prefix at every visit; interrupts' writes are applied at their visits.
+  Natives are compared at every visit and at the return, against those prefixes,
+  with the same inputs and interrupt schedule and without the x86 results (S6).
+- `make t-compute-polls t-sab-compute-polls` (`tests/test_compute_polls.py`):
+  admission controls on synthetic graphs; emission on an in-memory row at
+  `SWOTL.EXE+135E0` (removed polls absent in both arms, return poll, poll
+  before hook at sync sites, dispatch); and a generated-handoff differential on
+  the assembled program, with a test double driven by the x86 standing in for
+  the callback (protocol only, not native evidence). It covers decline, handle and
+  alternating arms, zero/one/many passes, interrupts between visits that change
+  the loop bound, the return-poll interrupt and the latency monitor.
+- Plants, each caught: pure-wait and shared-poll admission, a kept removed
+  poll, a missing return poll, hook before the sync poll, stale register,
+  missing store, store before its sync site, skipped and duplicate visits,
+  wrong resume site, stale native continuation, latency over the bound; an
+  invalid resume id stops loudly.

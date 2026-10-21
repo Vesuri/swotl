@@ -63,8 +63,11 @@ def check_code_writes(written, fetched):
         raise ValueError('oracle self-modifying code entry')
 
 
-def run(ram, registers, resume, limit=100000):
+def run(ram, registers, resume, limit=100000, stops=()):
     """Execute original bytes, stopping *before* the guest return.
+
+`stops` (U5 sync sites, CS:IP): also stop before one of them once at least one
+instruction ran, so a chain of runs visits each arrival; `at` names the stop.
 
 IR supplies only the undefined-flag mask. Unicorn supplies all expected values,
 flow and writes. Faults and external effects fail closed; their guard/fallback
@@ -101,8 +104,10 @@ cases belong in the block differential before a compute row can be enabled.
     if memory_known(return_at, 1, captured_bytes) and ram[return_at] in (0xc2, 0xc3, 0xca, 0xcb):
         return_size = 3 if ram[return_at] in (0xc2, 0xca) else 1
         fetched.update(range(return_at, min(return_at + return_size, captured_bytes)))
+    stops = {tuple(s) for s in stops}
     try:
-        while (regs['cs'], regs['ip']) != tuple(resume):
+        while (regs['cs'], regs['ip']) != tuple(resume) and \
+                not (count and (regs['cs'], regs['ip']) in stops):
             if count >= limit:
                 raise ValueError('oracle instruction limit before resume')
             at = regs['cs'] * 16 + regs['ip']
@@ -130,7 +135,8 @@ cases belong in the block differential before a compute row can be enabled.
         if not count:
             raise ValueError('zero-instruction oracle is not coverage')
         return dict(registers=regs, flags=word, undefined=sorted(state.undef),
-                    writes=written, history=history, ram=x.e.read(0, X.RAM), instructions=count)
+                    writes=written, history=history, ram=x.e.read(0, X.RAM), instructions=count,
+                    at=(regs['cs'], regs['ip']))
     finally:
         U.uc.uc_close(x.e.h)
 
@@ -181,6 +187,56 @@ def watch_native(m):
     m.e.hook(U.HOOK_MEM_WRITE, write)
     m.e.hook(U.HOOK_MEM_READ | U.HOOK_MEM_WRITE, access)
     return history
+
+
+# U5 latency bound (native-compute.md): one PIT period at the game's 236.7 Hz
+# in 14.19 MHz model cycles, rounded down.
+PIT_PERIOD_CYCLES = 59_900
+
+
+class PollGaps:
+    """Model cycles between poll visits (reads of G_IRQ) on the host 68k core.
+
+    Weights are tools/cost_model.json's, without the i-cache loop discount
+    (an upper estimate); every mul/div in `image` (loaded at CODE) is charged
+    as one. `gaps` holds each
+    stretch from the start or a visit to the next visit; `open` the last one.
+    """
+    def __init__(self, m, image=b''):
+        import m68k_diff as D
+        coef = json.loads((ROOT / 'tools/cost_model.json').read_text())['coef']
+        self.gaps, self.open = [], 0.0
+        self.irq = D.TOP + 9   # G_IRQ(a6)
+        last = {'end': None}
+
+        @U.CODE_CB
+        def code(h, addr, size, user):
+            at = addr - D.CODE  # opcodes from the loaded image (no reads inside the hook)
+            op = int.from_bytes(image[at:at + 2], 'big') if 0 <= at < len(image) - 1 else 0
+            cost = size * coef['bytes']
+            if last['end'] is not None and addr != last['end']:
+                cost += coef['taken']
+            if op & 0xf1c0 in (0xc0c0, 0xc1c0, 0x80c0, 0x81c0) or op & 0xffc0 in (0x4c00, 0x4c40):
+                cost += coef['muldiv']
+            self.open += cost
+            last['end'] = addr + size
+
+        @U.MEM_CB
+        def access(h, kind, addr, size, value, user):
+            if kind == 17:  # UC_MEM_WRITE
+                self.open += coef['writes']
+                return True
+            self.open += coef['reads']
+            if addr <= self.irq < addr + size:
+                self.gaps.append(self.open)
+                self.open = 0.0
+            return True
+
+        m.e.hook(U.HOOK_CODE, code)
+        m.e.hook(U.HOOK_MEM_READ | U.HOOK_MEM_WRITE, access)
+
+    def longest(self):
+        return max(self.gaps + [self.open])
 
 
 def generated(path, module, first, cache):
