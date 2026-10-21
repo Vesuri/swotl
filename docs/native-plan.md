@@ -37,18 +37,13 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 | ID | Decision | Blocks |
 |---|---|---|
 | U0 | Adapt the slave's code (the user's) into SWOTL native routines, or use it as algorithm reference only; TFH's own code and data never enter. Recommended: adapt, and update the rendering map's rule | S5 |
-| U1 | Meter loop definition (open-work 37): any backward branch, or executed back edges only | A4 |
+| U1 | Approved 2026-10-21: executed backward branches only (taken back edges in the measured workload) | — |
 | U2 | Authorize the pilot: transform `B52D`/`B54B` from `xform20` | N1 |
 | U3 | Write rule for poll-free routines: every byte's write history (now), or final RAM plus the written-address set (nothing else runs inside a poll-free routine; SMC and display bookkeeping kept). B3 prices both | S5, S6 |
 | U4 | Authorize each further poll-free routine from B4 | N2 |
 | U5 | Approve the poll contract (C1) | C3, N4 |
 | U6 | Authorize each routine that needs C | N4 |
 | U7 | Direction if Z1 leaves the target unmet (FM quality tradeoff, `BFD1`, revised target) | — |
-
-## A. Baseline (no authorization)
-
-- **A4** Open-work 37: both loop definitions' calibration fit and R27 Δ → U1 → `cost_meter.py
-  --calibrate CAPTURE ELF --write`, `--plant-check`. Done: 37 closed.
 
 ## X. Translator follow-up (no authorization)
 

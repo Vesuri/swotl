@@ -13,8 +13,8 @@ generated with an empty annotations/outline.csv, its meter's exact counts
 and the cost model, per site: the taken branches saved, less F's new taken
 branches and return, F's bytes leaving a cached loop, and two bytes per
 execution where the branch can no longer be short. Loops are the window's:
-a backward branch it takes, within cost_meter.LOOP of its target (the meter's
-static flag also counts stub returns that never run). Not chosen: a site
+a backward branch it takes, within cost_meter.LOOP of its target, matching
+the meter's executed-loop rule. Not chosen: a site
 whose F would land inside a loop (it grows) or carries a back edge out of
 reach. Sites saving at least --min model cycles are
 written to annotations/outline.csv. The choice never affects correctness.

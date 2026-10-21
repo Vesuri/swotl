@@ -59,6 +59,7 @@ class Program(unittest.TestCase):
     def prog(self):
         p = M.Program.__new__(M.Program)
         p.init(DIS, [(0x1000, "R_00100"), (0x1006, "R_00102"), (0x2000, "rt_irq")], set())
+        p.set_loops(Counter({0x1008: 2}))
         return p
 
     def test_loop_and_classes(self):
@@ -233,6 +234,66 @@ class LayoutAliases(unittest.TestCase):
         samples = {0x1000: (5, 30), 0x1006: (10, 20)}
         only = A.expand_aliases({"R_00102"}, [(42, "R_00100"), (42, "R_00102")])
         self.assertEqual(sum(A.instruction_cycles(samples, p, rows, only).values()), 260)
+
+
+class ExecutedLoops(unittest.TestCase):
+    def test_report_requires_taken_back_edge_and_resets(self):
+        from unittest.mock import patch
+        p = Program().prog()
+        n = Counter({0x1006: 3, 0x1008: 3, 0x100a: 1})
+        coef = {k: 1.0 for k in M.FEATURES}
+        with patch.object(M.L, "static_counts", return_value=({}, {})):
+            for taken, loop_bytes in ((Counter(), 0), (Counter({0x100a: 1}), 0),
+                                      (Counter({0x1008: 2}), 12), (Counter(), 0)):
+                r = M.report(p, n, taken, coef, Path("unused"))
+                c = r["classes"]["generated"]
+                self.assertEqual(c["loop_bytes"], loop_bytes)
+                self.assertEqual(c["bytes"] + c["loop_bytes"], 18)
+                self.assertEqual(c["loop_taken"], taken[0x1008])
+
+    def test_back_edge_size_and_direction(self):
+        for op, target, size, taken, cached in (
+                ("bne.s", 0x1000, 254, 1, True),   # exactly 256 bytes
+                ("bra.w", 0x1000, 256, 1, False),  # beyond cache
+                ("dbf", 0x1000, 4, 1, True),
+                ("bne.s", 0x1000, 4, 0, False),
+                ("bra.s", 0x1008, 4, 1, False),    # forward
+                ("bsr.s", 0x1000, 4, 1, False),    # call, not a loop
+                ("bra.s", 0x1004, 4, 1, True)):    # self-loop
+            pc = 0x1000 + size
+            operand = ("d0," if op == "dbf" else "") + f"{target:x} <x>"
+            dis = f"    1000: 4e71\tnop\n    {pc:x}: 6600\t{op} {operand}\n"
+            p = M.Program.__new__(M.Program)
+            p.init(dis, [(0x1000, "R_00000")], set())
+            p.set_loops(Counter({pc: taken}))
+            self.assertEqual(bool(p.feat[pc][2]), cached, (op, size, taken))
+
+    def test_calibration_selects_loops_from_its_capture(self):
+        from unittest.mock import patch
+        from contextlib import redirect_stdout
+        import io
+        p = Program().prog()
+        cnt = np.ones(len(p.addrs))
+        tak = np.zeros(len(p.addrs))
+        with patch.object(M, "Program", return_value=p), \
+             patch.object(M, "capture_counts", return_value=(cnt * 4, cnt, tak, 2)), \
+             patch.object(M, "fit", wraps=M.fit) as fit, redirect_stdout(io.StringIO()):
+            M.calibrate(Path("unused"), Path("unused"), "unused", False)
+        self.assertEqual(fit.call_args.args[0][:, 2].sum(), 0)
+        self.assertEqual(p.feat[0x1008][1:3], [2, 0])
+
+    def test_capture_back_edge_across_fields_not_interrupt(self):
+        from unittest.mock import patch
+        p = Program().prog()
+        fields = [(1, 0, np.array([0x1006, 0x1008]), np.array([2, 3])),
+                  (2, 0, np.array([0x1006, 0x1008, 0x2000, 0x100a]), np.array([2, 3, 7, 5]))]
+        with patch.object(M.P, "decode", return_value={"fields": fields}):
+            cyc, cnt, tak, nf = M.capture_counts(p, Path("unused"))
+        i = p.addrs.tolist().index(0x1008)
+        self.assertEqual(tak[i], 1)   # actual target only, not interrupt entry
+        self.assertEqual(cnt[i], 2)
+        self.assertEqual(cyc.sum(), 22)
+        self.assertEqual(nf, 2)
 
 
 if __name__ == "__main__":

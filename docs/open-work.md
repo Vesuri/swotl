@@ -28,7 +28,7 @@ speed work: [speed-plan.md](speed-plan.md).
     §1, §9). The middle run needs 150 ms (38.5%) less; this is a baseline, not a parent comparison. Remaining
     cost is mostly generated guest code; no priced translator candidate remains;
     flag-word packing is rejected (speed-plan §10). The rest, with user decisions
-    U0–U7: [native-plan.md](native-plan.md), next A4 (item 37; user decision U1). Native replacement
+    U0–U7: [native-plan.md](native-plan.md), next X1 (REP STOSB pricing). Native replacement
     requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
     [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md); interface and validation:
     [native-compute.md](native-compute.md).
@@ -40,11 +40,6 @@ speed work: [speed-plan.md](speed-plan.md).
     `Harness`: each byte drew from a fresh generator with the same seed).
     A random background is stronger but changes every corpus case; needs
     user approval.
-37. `tools/cost_meter.py` flags a range as a cached loop when any backward branch
-    within `LOOP` bytes closes it, executed or not: an R27 outlined range ends in a
-    `bra` back to its target that never closes a loop, so R27's meter Δ is
-    −0.6278%, −0.7903% counting only taken back edges (FS-UAE agreed in sign).
-    Decide the definition (and recalibrate) at the next re-profile.
 24. Lockstep RAM compare (phase 6): undefined flags and FLAGS words pushed
     below SP (PUSHF, interrupt frames) differ from DOSBox by design. The host
     run masks dead stack (below SS:SP at a service or hardware interrupt,

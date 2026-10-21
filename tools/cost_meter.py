@@ -12,9 +12,9 @@ drawn frames of the demo flight). A Unicorn block hook counts executions of
 every translated block and every taken transfer (and its target: `targets`,
 for R8's alignment); blocks expand to executed
 68k instructions over the disassembly of the image that ran. Features per
-instruction, all static except taken: encoded bytes and taken transfers,
-each split by whether the instruction lies in an innermost loop of <= 256
-bytes (the 68020 i-cache); data reads; data writes; mul/div. Model cycles =
+instruction: encoded bytes and taken transfers, each split by whether the
+instruction lies in a loop of <= 256 bytes whose closing branch is taken
+in this workload (the 68020 i-cache); data reads; data writes; mul/div. Model cycles =
 the features weighted by tools/cost_model.json. Exact and layout-blind: the
 same build gives the same numbers, and moving code changes nothing.
 
@@ -183,24 +183,35 @@ class Program:
         for a, (op, arg) in mn.items():
             r, w, m = accesses(op, arg)
             feats[a] = [1, sizes[a], 0, r, w, 0, 0, m]
-        # innermost loops of <= LOOP bytes: a backward branch and its target
-        for a, (op, arg) in mn.items():
-            if not (BRANCH.match(op)):
-                continue
-            t = re.match(r"^(?:d[0-7],)?([0-9a-f]+) <", arg)
-            if not t:
-                continue
-            target = int(t.group(1), 16)
-            if target <= a and a + sizes[a] - target <= LOOP:
-                i = bisect.bisect_left(self.addrs, target)
-                while i < len(self.addrs) and self.addrs[i] <= a:
-                    f = feats[int(self.addrs[i])]
-                    f[2], f[1] = f[1] + f[2], 0
-                    i += 1
         self.feat = feats
         self.cls = {}
         for a in mn:
             self.cls[a] = self.classify(a, platform)
+
+    def set_loops(self, taken):
+        """Reclassify bytes for this workload; cold back branches give no discount.
+
+        This is a workload-level cache approximation, not a cache simulator.
+        Recompute from neutral features so reusing a Program cannot retain loops
+        observed in a different workload.
+        """
+        for f in self.feat.values():
+            f[1], f[2] = f[1] + f[2], 0
+        for a, (op, arg) in self.mn.items():
+            if not BRANCH.match(op) or taken.get(a, 0) <= 0:
+                continue
+            target = self.branch_target(a)
+            if target is not None and target <= a and a + self.size[a] - target <= LOOP:
+                i = bisect.bisect_left(self.addrs, target)
+                while i < len(self.addrs) and self.addrs[i] <= a:
+                    f = self.feat[int(self.addrs[i])]
+                    f[2], f[1] = f[1] + f[2], 0
+                    i += 1
+
+    def branch_target(self, pc):
+        op, arg = self.mn[pc]
+        t = re.match(r"^(?:d[0-7],)?([0-9a-f]+) <", arg)
+        return int(t.group(1), 16) if BRANCH.match(op) and t else None
 
     def symbol(self, pc: int) -> str:
         i = bisect.bisect_right(self.sym_addr, pc) - 1
@@ -325,6 +336,7 @@ def taken_counts(prog: Program, taken: Counter) -> list:
 
 
 def report(prog: Program, n: Counter, taken: Counter, coef: dict, gen: Path) -> dict:
+    prog.set_loops(taken)
     text, _ = L.static_counts(gen)
     classes = defaultdict(lambda: Counter())
     labels = defaultdict(lambda: Counter())
@@ -476,15 +488,27 @@ def capture_counts(prog: Program, capture: Path):
     addrs = prog.addrs
     sizes = np.array([prog.size[int(a)] for a in addrs], dtype=np.int64)
     cyc, cnt, tak = (np.zeros(len(addrs)) for _ in range(3))
+    branch_targets = np.array([t if (t := prog.branch_target(int(a))) is not None else -1
+                               for a in addrs], dtype=np.int64)
+    previous = None
     for _, _, pcs, cost in prof["fields"]:
         idx = np.searchsorted(addrs, pcs)
         idx = np.clip(idx, 0, len(addrs) - 1)
         ok = addrs[idx] == pcs
         np.add.at(cyc, idx[ok], cost[ok])
         np.add.at(cnt, idx[ok], 1)
-        fall = pcs[:-1] + sizes[idx[:-1]]
-        t = ok[:-1] & ok[1:] & (pcs[1:] != fall)
-        np.add.at(tak, idx[:-1][t], 1)
+        # Fields split a continuous PC stream. A direct branch is taken only
+        # when its decoded target follows it, not when an interrupt intervenes.
+        seq = np.concatenate(([previous], pcs)) if previous is not None else pcs
+        ix = np.clip(np.searchsorted(addrs, seq), 0, len(addrs) - 1)
+        valid = addrs[ix] == seq
+        src, dst = ix[:-1], seq[1:]
+        fall = seq[:-1] + sizes[src]
+        bt = branch_targets[src]
+        t = valid[:-1] & valid[1:] & (dst != fall) & ((bt < 0) | (dst == bt))
+        np.add.at(tak, src[t], 1)
+        if len(pcs):
+            previous = pcs[-1]
     return cyc, cnt, tak, len(prof["fields"])
 
 
@@ -505,6 +529,7 @@ def fit(X: np.ndarray, y: np.ndarray, names: list[str]) -> dict:
 def calibrate(capture: Path, elf: Path, objdump: str, write: bool) -> None:
     prog = Program(elf, objdump)
     cyc, cnt, tak, fields = capture_counts(prog, capture)
+    prog.set_loops(dict(zip(prog.addrs.tolist(), tak)))
     rows, y = [], []
     for i, a in enumerate(prog.addrs.tolist()):
         if cnt[i] and prog.cls[a] in ("generated", "walk"):

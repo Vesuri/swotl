@@ -64,3 +64,28 @@ check(T.LayoutAliases, False)
 with patch.object(T.A, 'expand_aliases', lambda changed, *tables: set(changed)):
     check(T.LayoutAliases, True)
 print('instruction A/B: omitted alias-neighbor work plant caught')
+
+check(T.ExecutedLoops, False)
+source = inspect.getsource(T.M.Program.set_loops)
+import textwrap
+source = textwrap.dedent(source)
+bad = source.replace(' or taken.get(a, 0) <= 0', '')
+assert bad != source
+scope = dict(T.M.__dict__)
+exec(bad, scope)
+with patch.object(T.M.Program, 'set_loops', scope['set_loops']):
+    check(T.ExecutedLoops, True)
+print('cost meter: untaken backward branch discounts code plant caught')
+
+source = inspect.getsource(T.M.capture_counts)
+for old, new, name in (
+        ('seq = np.concatenate(([previous], pcs)) if previous is not None else pcs',
+         'seq = pcs', 'lost cross-field taken branch'),
+        (' & ((bt < 0) | (dst == bt))', '', 'interrupt counted as direct branch')):
+    bad = source.replace(old, new)
+    assert bad != source
+    scope = dict(T.M.__dict__)
+    exec(bad, scope)
+    with patch.object(T.M, 'capture_counts', scope['capture_counts']):
+        check(T.ExecutedLoops, True)
+    print(f'cost meter: {name} plant caught')

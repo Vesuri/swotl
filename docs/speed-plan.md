@@ -29,10 +29,11 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   All three final guest RAM hashes match the established bench endpoint
   (`951adbe5…39b6c63`). This spread exceeds the introduction's two-line observation
   (§4); no build-to-build claim. Palette window 38,392–38,405 lines (R17).
-- **Meter** (m4, R18 weights, R33): generated + walk + runtime 172,620,455
-  model cycles (−0.7089% from parent). R32 removes 46,981 JMP executions
-  from the label-derived guest count; historical label-derived counts omit those executions.
-  Host platform adds 2,171 cycles.
+- **Meter** (m4, A4 weights/rule, unchanged `e891ace`): generated + walk +
+  runtime 173,907,930 model cycles; host platform adds 2,035. Recalibration of
+  the same work changes the old 172,620,455 estimate by +0.7458%; no game speed
+  change. R32 removes 46,981 JMP executions from the label-derived guest count;
+  historical label-derived counts omit those executions.
 - **Capture** (A3, second frames run, 100 fields): generated code 76.18%
   (cell walk 3.75%), runtime/platform 19.52% (`render`, `fm_field`, `loop_for`
   12.11%), no PC 2.23%, Kickstart 1.03%, IRQ transition 1.03%.
@@ -179,17 +180,17 @@ lines.
   `VGA_03C2D` 151 words to A0000h (median 6 rows).
 - **Reference cadence** (DOSBox-X `cycles=fixed 12000`, m4): a drawn frame
   every 9 PIT ticks ≈ 36 ms, ≈ 408K x86 instructions per frame.
-- **Meter** (`tools/cost_meter.py`, ≈ 40 s, deterministic): `--out
-  tmp/meter/ARM.json` per arm, `--compare A B` for the §3 deltas. Weights
-  `tools/cost_model.json`, fit at R18 on the parent bench capture:
-  per code byte 0.989 (0.914 inside a loop of ≤ 256 bytes), read 2.029,
-  write 3.174, taken transfer 5.813 outside such a loop and 2.476 inside,
-  mul/div 23.012 (R² 0.930, model −2.65% of measured). The doubling
-  plant is caught (367,456 extra instructions, 734,912 extra bytes). It
-  underrates removed instructions (bench vs meter: R1b −8.4% vs −1.9%,
-  R1d −2.1% vs −1.2%; the per-instruction weight fits to 0). Recalibrate
-  (`--calibrate CAPTURE ELF --write`, then `--plant-check`) at the next
-  re-profile or when the FS-UAE check disagrees. `tools/ab_labels.py` serves the FS-UAE check.
+- **Meter** (`tools/cost_meter.py`, deterministic): `--out tmp/meter/ARM.json`
+  per arm, `--compare A B` for the §3 deltas. Weights `tools/cost_model.json`,
+  fit at A4 on the `e891ace` bench capture: per code byte 1.038 (0.912 inside
+  a loop of ≤ 256 bytes whose back branch was taken in the workload), read
+  1.795, write 3.219, taken transfer 5.113 outside such a loop and 1.712 inside,
+  mul/div 23.317. R² 0.9224, model −2.25% of measured. U1 selects executed
+  back edges; this remains a workload-level cache approximation. The doubling
+  plant is caught (419,726 extra instructions, 839,452 extra bytes). The
+  per-instruction weight still fits to 0. Recalibrate (`--calibrate CAPTURE
+  ELF --write`, then `--plant-check`) at the next re-profile or when the FS-UAE
+  check disagrees. `tools/ab_labels.py` serves the FS-UAE check.
 - **Bench** (`SWOTL_ARGS=BENCH ./debug.sh "" bench_frames.gdb`, same model;
   runtime.h `rt_bench`): no CIA timer; 9 PIT ticks per 4 runtime services
   (the flight makes 4 per frame, m4 draws a frame every 9 ticks), plus one
@@ -310,6 +311,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R34 | canonical FM phase, 0.75 dB envelopes, stable four-voice allocation | `fm_paula.c` | meter unchanged; bench +0.0453%, user-approved quality tradeoff |
 | A2 | semantic guest-entry accounting, helper exclusion and zero-code aliases | `lowering_cost.py` | tooling only |
 | A3 | HEAD frame, bench and native-candidate baseline | docs | measurement only |
+| A4 | executed-back-edge loop classification and recalibration (U1) | cost meter/model | tooling only |
 
 No priced translator candidate remains. Unchanged (§2): poll points
 (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
@@ -347,8 +349,7 @@ items left.
 
 A3's frames-fixture medians are 370, 390 and 400 ms: the middle run needs
 150 ms (38.5%) less to reach 240 ms; the run range needs 130–160 ms less.
-No priced translator candidate remains (§7). Next: meter calibration (A4), REP STOSB
-pricing (X1), then native candidate pricing/authorization (B), in
+No priced translator candidate remains (§7). Next: REP STOSB pricing (X1), then native candidate pricing/authorization (B), in
 [native-plan.md](native-plan.md).
 
 Current candidate costs, A3 run 2 (`6bf8aef`, 100 fields, 28,420,399 profiler cycle
