@@ -2,7 +2,7 @@
 
 Converged sibling pipeline plus SWOTL's planned use. `[PLAN]` = SWOTL intent,
 not built. Provenance: `Sl` Slicks, `Ve` Vette, `Rv` Revs, `Po` Pokeri (newest:
-commit a0d16a2), `RoF` Rescue on Fractalus, `SDK` `~/.local/share/amiga/WHDLoad`
+0.91, commit 60cf93f), `RoF` Rescue on Fractalus, `SDK` `~/.local/share/amiga/WHDLoad`
 (`Install Template/Xxx Install`). Slave design: [whdload.md](whdload.md).
 
 ## Hard rule: no copyrighted bytes
@@ -13,7 +13,7 @@ commit a0d16a2), `RoF` Rescue on Fractalus, `SDK` `~/.local/share/amiga/WHDLoad`
 - Rv: scans every member for any 256-byte block of the original engine → refuse. Stronger than whole-file hash; use for any exe that could embed original tables (Rv).
 - Checker also rejects extension patterns of user/original files (`.cfg`, `.dat`, saves, keys) (Po).
 - Private keys/saves read only at test runtime; never in source, generated headers, logs, package (Sl registration-support).
-- **[PLAN]** SWOTL: hash table of the v2.2 DOS install files (`ref/`) kept local-only (hashes, not bytes, may be committed as Sl/Ve do); add block-scan if any original table is compiled into the exe.
+- **[PLAN]** SWOTL: hash table of the v2.2 DOS install files (`ref/`) kept local-only (hashes, not bytes, may be committed as Sl/Ve do); add block-scan if any original table is compiled into the exe (open-work 21).
 
 ## Version
 
@@ -43,9 +43,8 @@ an executable only; packaging below remains planned.
 
 ## LHA packaging
 
-- Encoder: LHa for UNIX (`github.com/jca02266/lha` @ `16619b06`), `LHA` env override, default the shared `~/.local/share/amiga/lha-compressor/src/lha`. Homebrew `lhasa` extracts only (Ve, RoF §3, Sl).
+- Archive with AmigaXDev `amigaxdev.release`: LHa for UNIX (`LHA` override, else the shared build; Homebrew `lhasa` extracts only), level-0 headers it owns, sorted members after the drawer icon, fixed DOS stamp, refusal of originals and of an existing archive; `tools/package_release.py` keeps only the file map (Po).
 - LH5 only, fail rather than fall back to LH0 (Ve).
-- Deterministic: sorted members, fixed date headers, packager owns every header field (level-0 in Sl/Ve/Po; RoF level-1) (Sl, Po).
 - Checker decodes each member independently with Lhasa, verifies header+payload CRC, exact member set, HUNK magic `000003f3`, icon magic, slave `WHDLOADS` header and memory/flag/quit-key bytes, byte identity with build outputs (Sl, Po).
 - Record per release: archive size + SHA-256 of archive, exe, slave, helper (Sl).
 
@@ -69,7 +68,7 @@ Credits live in ReadMe, no separate CREDITS file (Sl).
 ## Icons
 
 - Icons kept as base64 text (`release/icons/*.b64`) + `README.md` provenance: drawer from WHDLoad template, Install/game/ReadMe icons from released RoF archive (Sl, Po, Ve).
-- Packager edits only the length-prefixed `APPNAME` field — fix the 4-byte BE length too (Sl, RoF §4).
+- Packager edits only the length-prefixed `APPNAME` field — fix the 4-byte BE length too (`amigaxdev.release.installer_icon`; Sl, RoF §4).
 - Install icon: default tool Installer, `MINUSER` (Sl keeps `AVERAGE`; Po requires Intermediate; RoF used `NOVICE`), `LOG=FALSE`, `PRETEND=FALSE`; no stale `SCRIPT` (Sl, Po, RoF).
 - Installer sets game icon: `setdefaulttool "WHDLoad"`, `Slave=<Name>.slave`, `PreLoad`, `setstack` (Sl 16384, Po 10240), `noposition` (Sl, Po).
 
@@ -80,7 +79,7 @@ Credits live in ReadMe, no separate CREDITS file (Sl).
 - Checker asserts section headings, History entry and project URL (Sl).
 - Copied into installed drawer with icon (`copyfiles … (infos)`) (Sl, Po).
 
-## Installer script (Pokeri a0d16a2 = newest)
+## Installer script (Pokeri 0.91 = newest)
 
 | Rule | Prov |
 |---|---|
@@ -92,7 +91,7 @@ Credits live in ReadMe, no separate CREDITS file (Sl).
 | Default destination from `getenv WHDLInstPath`; after `askdir`, `setenv WHDLInstPath` + `copy ENV:WHDLInstPath ENVARC:` | Po, SDK template |
 | `openwbobject #dest` only if `@installer-version >= 44*65536+10`; Installer 43 skips it | Po, SDK template |
 | Existing drawer: Remove/Keep, default Keep; Keep updates program files, preserves saves | Po, Ve |
-| Originals present → Reinstall / Use existing, default Use existing, skips source questions | Sl, Po, Ve, Rv |
+| Originals present → Use existing / Replace (older: Reinstall / Use existing), default Use existing, skips source questions | Sl, Po, Ve, Rv |
 | Extract/validate into unique staging drawer; copy to `data/` only on success; failure leaves install untouched | Sl, Ve |
 | Never recursively delete user drawers holding saves/keys; retire obsolete launch files explicitly | Sl |
 | Pre-create fixed-size save slots; refuse wrong-sized existing saves | Po |
@@ -122,13 +121,14 @@ Sibling patterns:
 
 Common: helper writes to staging, removes own partial outputs, rejects existing different files; exe validates originals and returns 20 with a DOS error before display takeover (Ve, Sl, RoF §1).
 
-**[PLAN] SWOTL**
+**[PLAN] SWOTL** (open-work 22)
 
 - Originals are a DOS **installed** directory (reference: v2.2, `ref/`), so the Pokeri pattern (source-drawer copy, no helper) is the default candidate.
 - User supplies their own copy: an existing PC/DOSBox install copied to the Amiga, original disks installed on a PC, or a digital re-release (GOG/Steam). Re-release layouts, versions and whether they match v2.2 are **unverified**.
 - Installer asks for the drawer, checks an allowlist of required files by size and (helper or exe) SHA-256 against known versions; unsupported version → clear refusal.
 - Exe re-validates at startup and fails with DOS error 20 before takeover.
 - Whether files need conversion (e.g. disk images or archives from re-releases) decides whether a helper is needed; avoid one if plain copy suffices.
+- TFH mode: the installer also copies the user's Their Finest Hour `sfx.rsc` ([sound-plan.md](sound-plan.md)).
 
 ## Credits (ReadMe)
 

@@ -62,19 +62,20 @@ Music stays enabled through the FM re-hoster in both effect modes.
   98.1–98.3% and 100% (worst 8.3 cents), 410–476 renders per reference; title
   music 93.8%, not gated (reprogramming within a field). `t-fm-quality` and
   its sabotage check low-note/noise playback rates, short noise repetition,
-  canonical loop phase and pitch-change overflow. Additional render, phase,
-  envelope and allocation tests check exact operator samples, bounds,
-  ≤ 0.375 dB rounding error, voice continuity and TFH reservations.
+  canonical loop phase and pitch-change overflow. `t-fm-render`, `t-fm-phase`,
+  `t-fm-envelope` and `t-fm-allocation` (each with a plant) check exact operator
+  samples, bounds, ≤ 0.375 dB rounding error, voice continuity and TFH
+  reservations. `make gates-audio` runs every sound check and plant.
 - Paula backend: `src/platform/amiga/Audio.cpp`. `fm_field` in
   `plat_service` (main program, once a vertical blank); the vertical blank
   stages the commands: DMA on, silence volume 0, loop changes latched at
   the loop's end, a key-on restarts its channel (DMA off, the outgoing
   period's countdown waited out, ≤ 16 lines; Revs, Rescue on Fractalus);
   volume 0 in I/O windows. Voices 0, 3 left, 1, 2 right. Alt-S, Alt-E and
-  pause are SPAZ's own key-offs. Cost (68020 A1200 model, demo flight, 100
-  fields, one capture per build): about 5.0% on the parent and 8.5% with
-  longer loops and quiet joins (including `loop_for`); +48 KB Chip. This
-  samples audio cost, not a fixed-work frame-rate comparison.
+  pause are SPAZ's own key-offs. Cost before R34 (68020 A1200 model, demo
+  flight, 100 fields, one capture per build): about 5.0% with short loops and
+  8.5% with the longer loops (+48 KB Chip). This samples audio cost, not a
+  fixed-work frame-rate comparison.
 - Key-on edges: `rt_opl_keyon` (`rt_out8`). Oracle in every host run
   (`check_opl`): AdLib writes per port and value = the reference's
   `ports.csv`; `rt_opl`, `rt_opl_keyon` = a recount of the host's writes;
@@ -92,8 +93,6 @@ Music stays enabled through the FM re-hoster in both effect modes.
 - TFH A1200/68020, 8 MiB Fast soak (2026-10-15): 1,500 fields, 199 audio
   restarts, 86 FM renders; 107,298 sample Chip bytes, 1,722,072 free Chip
   (largest block 1,721,968). `amiga/milestone.gdb.in` reports free Chip.
-  m4 meter against `tmp/fm/meter-sfx.json`: unchanged model cycles,
-  instructions, executed bytes and memory accesses; runtime code +24 bytes.
 
 References: `make sound-reference` ([pc-reference-loop.md](pc-reference-loop.md)):
 `opl.csv`, `probe.csv`, Nuked OPL WAVs in `tmp/sound/`; `make sound-fm`: the
@@ -111,7 +110,7 @@ records posted IRQ0 counts: `tick,o,reg,value`, `tick,s,slot,id`,
   percentage points in the sampled window and +48 KB Chip (2026-10-15).
 - R34 quality tradeoff (user 2026-10-21): accepted canonical phase and
   0.75 dB steps, +0.0453% opening-bench median and +24 KiB ordinary RAM;
-  no additional Chip. Relevant sound gates, sabotage and target checks pass.
+  no additional Chip.
 - Effects, two modes behind one toggle, one Paula backend:
   - **FM**: OPL register re-hoster (default; user's SWOTL files only).
   - **TFH** (hybrid, user 2026-10-15): TFH samples where SWOTL's effect has

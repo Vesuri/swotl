@@ -73,21 +73,25 @@ to SWOTL.
 
 - Method: `docs/architecture.md`, `docs/phases.md`,
   `docs/translator-design.md`,
-  `docs/translation-lessons.md`, `docs/x86-notes.md`
+  `docs/translation-lessons.md`, `docs/x86-notes.md`, `docs/method-lessons.md`
 - Process: `docs/perf-method.md`, `docs/speed-plan.md` (speed work: its rules
-  bind every agent), `docs/native-plan.md` (work after the translator steps)
+  bind every agent), `docs/native-plan.md` (work after the translator steps),
+  `docs/native-compute.md` (native routine contract),
+  `docs/swotl-tfh-rendering-map.md`, `docs/tfh-cross-reference.md`
 - Sound: `docs/sound-plan.md`
 - Amiga: `docs/amiga-arch.md`, `docs/amiga-lessons.md`,
   `docs/m68k-optimisation.md`, `src/platform/amiga/framework/README.md`
 - Tools: `docs/toolchain.md`, `docs/headless-fsuae.md`,
   `docs/pc-reference-loop.md`
 - Guest map: `docs/plink.md`, `docs/external-surface.md`,
-  `docs/source-inventory.md`, `annotations/`
+  `docs/source-inventory.md`, `docs/indirect-coverage.md`, `annotations/`
 - Release: `docs/whdload.md`, `docs/release.md`
 - Build: `make amiga`, `make smoke`; original: `make reference-staging`;
   ref facts: `make inspect`, `make hash`/`check-ref`; milestones `make
   reference`, `make coverage`; map `make map`, `make ghidra`;
   translator `make gen`, `make test` (G2 lint, decoder, x86 and 68020
   differentials, block differential, G1, host run), `make test-sabotage`;
-  runtime on host / A1200 model `make test-host` (`test-host-all`: m1–m7, c6–c10, c12, c13), `make test-amiga`; full suite `make gates` (select relevant gates as above); `SetPatch` from
+  runtime on host / A1200 model `make test-host` (`test-host-all`: m1–m7, the
+  coverage scenarios, music skip), `make test-amiga`; audio `make gates-audio`; full
+  suite `make gates` (select relevant gates as above); `SetPatch` from
   `$SETPATCH`. Facts: `docs/source-inventory.md`.

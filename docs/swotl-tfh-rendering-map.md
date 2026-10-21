@@ -1,10 +1,10 @@
 # Their Finest Hour: what to adapt and how
 
-Plan and evidence for speeding up SWOTL's rendering with what Their Finest Hour's
-Amiga version (TFH, same engine family) and its WHDLoad slave show. Static research
-2026-10-16, plan and prices 2026-10-17. Open work: [open-work.md](open-work.md) 14b.
-Rules: [speed-plan.md](speed-plan.md) §2. The full research notes are kept locally in
-`tmp/tfh-xref/swotl-tfh-rendering-map.2026-10-16.md`.
+Evidence for speeding up SWOTL's rendering with what Their Finest Hour's Amiga
+version (TFH, same engine family) and its WHDLoad slave show. Static research
+2026-10-16, prices 2026-10-17. Open work: [open-work.md](open-work.md) 14b; the plan:
+[native-plan.md](native-plan.md). Rules: [speed-plan.md](speed-plan.md) §2. The full
+research notes are kept locally in `tmp/tfh-xref/swotl-tfh-rendering-map.2026-10-16.md`.
 
 ## Rules
 
@@ -20,9 +20,9 @@ Rules: [speed-plan.md](speed-plan.md) §2. The full research notes are kept loca
 
 | Input | Where |
 |---|---|
-| TFH `bob` v1.1, 254,400 bytes, SHA-256 `4b5931c8…22443877` (tfh-cross-reference.md says 1.0; same file) | `../Their Finest Hour/tmp/game/TheirFinestHour/data/bob`; listing `tmp/tfh-xref/BOB.txt` |
+| TFH `bob` v1.1, 254,400 bytes, SHA-256 `4b5931c8…22443877` ([tfh-cross-reference.md](tfh-cross-reference.md)) | `../Their Finest Hour/tmp/game/TheirFinestHour/data/bob`; listing `tmp/tfh-xref/BOB.txt` |
 | TFH addresses | code-hunk offsets; `jsr d16(a4)` enters a data-hunk `jmp` thunk (A4 = data + 7FFE): resolve it first |
-| The slave (the user's): register and 68020 versions of TFH's transform, projection, divide, normalisation and scenery loops; models of the originals | `../Their Finest Hour/whdload/transform.s`, `render.s`, `tools/xform_check.py`, `docs/internals.md` |
+| The slave (the user's): register and 68020 versions of TFH's transform, projection, divide, normalisation and scenery loops; models of the originals | in `../Their Finest Hour/`: `whdload/transform.s`, `whdload/render.s`, `tools/xform_check.py`, `docs/internals.md` |
 | SWOTL costs | `5ecdf79` frames captures, 2026-10-17, three runs of 100 fields, 28,420,397 cycles each (`tmp/item30/frames-{1,2,3}/`): own time per generated call target; inclusive time per call by A7 (`tmp/item30/inclusive.py`: hardware interrupts and guest interrupt deliveries not charged) |
 
 ## What the slave measured (68020)
@@ -40,25 +40,20 @@ Rules: [speed-plan.md](speed-plan.md) §2. The full research notes are kept loca
 
 ## Plan
 
-Ordered, with identifiers and user decisions: [native-plan.md](native-plan.md).
+Order, procedure and user decisions: [native-plan.md](native-plan.md). The walk
+row below predates the R20 cell cache (speed-plan §7); current shares and gap:
+speed-plan §1, §9.
 
-1. **Translator steps** (speed-plan history) in price order, by the speed-plan
-   procedure (§3). No authorization needed. The cell cache is built (speed-plan R20:
-   meter −15.31%; the walk is 3.62% of the corrected build’s first capture).
-2. **Native contract**: [interface, rules and oracle](native-compute.md).
-3. **User decision per routine** from the priced table.
-4. **Native routines**, each only after its authorization; poll-free leaves first.
-
-Bounds (first `5ecdf79` capture): the transform/projection group (`B52D`, `B54B`,
-`B4E2`, `B017`, `D5A6`) is 14.82% (R17 19.82%); with all of it gone, 400 ms would
-become ~341 ms. The 240 ms target needs −40%: every row below together is 49.9%, so
-~5× faster on average. R20's medians are 370–390 ms; the rows below are the
-`5ecdf79` capture's, before R20.
+Bounds (first `5ecdf79` capture, against its 400 ms per frame): the
+transform/projection group (`B52D`, `B54B`, `B4E2`, `B017`, `D5A6`) is 14.82% (R17
+19.82%); with all of it gone, 400 ms would have become ~341 ms. 240 ms then needed
+−40%: every row below together is 49.9%, so ~5× faster on average.
 
 ## Candidates
 
-First `5ecdf79` capture: own share, calls per 100 fields, own and inclusive cycles per
-call. The other two captures lie within −25% to +32% of these shares, except `D69C`
+First `5ecdf79` capture (2026-10-17, before R20; native-plan B4 replaces this table):
+own share, calls per 100 fields, own and inclusive cycles per call. The other two
+captures lie within −25% to +32% of these shares, except `D69C`
 (0.60–1.03%) and `4DAE` (2.44–5.38%, 8–41 calls); walk 12.94–16.46%.
 Poll points from `build/gen/poll-points.csv`, routine start to its first `ret` (a lower
 bound where a routine returns early); `B017..BB6F` has none at all.
@@ -87,30 +82,15 @@ in place of `BFD1`.
 
 ## Native contract
 
-Interface and validation: [native-compute.md](native-compute.md).
-User-approved initial scope: poll-free reachable bodies and callees only;
-generation rejects other compute rows. No routine replacement is authorized.
+Range, ABI, stores, poll policy (user) and oracle: [native-compute.md](native-compute.md);
+poll points stay (speed-plan §2.9); no routine replacement is authorized. Facts for
+adapting the slave:
 
-- Range: the routine's first instruction to the one before its `ret`/`retf`; the guest
-  return and its return check still run.
-- Registers: every guest register matches the original at the resume. The initial
-  contract omits no register comparisons. Flags are exact where live at the resume.
-- Memory: every store the original makes, same value. The slave keeps TFH's scratch
-  in registers because it proved every other user writes first; SWOTL's host run
-  compares RAM with DOSBox. `B54B` writes scratch DS:`22C6..22D4` besides its outputs.
 - Layout: a guest word at L is the 68k word at TOP−L−1, a dword the 68k long at
   TOP−L−3; no byte swaps. 16-bit offset wrap keeps its x86 meaning.
-- Interrupts: poll-free routines leave delivery unchanged. Reachable poll points,
-  including in callees, reject a compute row. Supporting them needs a separately
-  approved contract; §2.9 forbids removing or thinning them.
-- Interface: ordinary `hle.csv` hooks pass at most two guest word registers
-  (d7/d6); `kind=compute` uses the complete generated register ABI and d7.l
-  as handled/declined result, with original RET/RETF retained.
-- Oracle: the original x86 under Unicorn on recorded entry states (as
-  `tools/sfx_levels.py` runs SPAZ): registers, live flags and every write compared,
-  with the cases below; `make test-host-all` with the row on and references unchanged;
-  one sabotage plant per row.
-- Price `mulu.l`/`divu.l` on the 68020 model (speed-plan §4), not from the slave's shares.
+- Scratch: the slave keeps TFH's scratch in registers because it proved every other
+  user writes first; the contract keeps every SWOTL store (comparison rule: native-plan U3).
+  `B54B` writes scratch DS:`22C6..22D4` besides its outputs.
 
 ## Facts per candidate
 
@@ -176,7 +156,7 @@ generation rejects other compute rows. No routine replacement is authorized.
 - Transparency is decided on the selector, before colour mapping. Palette setup `4D1D`
   has no cache guard.
 
-### Rasterizer `BFD1` (no TFH equivalent; translator work only)
+### Rasterizer `BFD1` (no TFH equivalent, no improved source)
 
 - Edge records, 16 bytes (arena DS:`2360`, ≤ 500; buckets `1F40 + 16·y`, active list
   `4060/4062`): +0 lifetime, +2 priority (DS:`252F`), +4 colour, +5 event and slope

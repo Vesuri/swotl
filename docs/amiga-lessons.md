@@ -38,7 +38,7 @@ them here. Structure for this port: [amiga-arch.md](amiga-arch.md). Elsewhere:
    git:56032f5 VT `docs/amiga-arch.md`*
 5. **Prove the return with readable state** (ActiView, vector triple, DMACONR, INTENAR;
    COP1LC is write-only). — catches partial restores cheaply. — *SL
-   `slicks_amiga_platform_restore_status`, `make amiga-restore-check`*
+   `slicks_amiga_platform_restore_status`; this repo `make test-amiga-restore`*
 6. **`Forbid` for the whole run; nothing inside may `Wait`.** Library opens/closes and
    `WaitTOF` pairs stay outside. — no scheduler is needed; a `Wait` under `Forbid` breaks
    it. — *RV `docs/amiga-arch.md`*
@@ -344,8 +344,8 @@ them here. Structure for this port: [amiga-arch.md](amiga-arch.md). Elsewhere:
     *PK `framework/GCC-PORT.md` §3*
 99. **No function-local statics.** — they need `__cxa_guard_*`, which the freestanding CRT
     lacks. — *VT `src/main.cpp`*
-100. **`-fcheck-new`** so `operator new` failure returns null. — *SL `amiga/Makefile`; PK
-     `docs/memory-audit.md`*
+100. **`-fcheck-new`** so `operator new` failure returns null. — *SL `amiga/Makefile`;
+     git:77fb8ce PK `docs/memory-audit.md`*
 101. **Replace the support library's byte-loop `memset`/`memcpy`** (SL `memory.s`; RV
      `-Wl,--wrap`), keeping asm referenced from C in `.text`. — *SL
      `src/platform/amiga/memory.s`; RV `src/platform/amiga/fastmem.c`; see

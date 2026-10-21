@@ -3,7 +3,8 @@
 Rules, measurement and work order for all speed work on the A1200 build.
 An implementing agent follows it literally, one step at a time. Step
 details (prices, coverage, plants, FS-UAE checks) are in the step's commit
-message (`git log --grep '^R[0-9]'`); round 1 (T1–T15) at `781975e`.
+message (`git log --grep '^R[0-9]'`); round 1 (T1–T15) at `781975e`, the
+sections of R16–R34 in this file at `e2cedc6`.
 Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
 
 ## 1. Target and state
@@ -15,17 +16,13 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   cache, R21 string layout, R22 call layout, R24 REP STOSW fill, R25 BP as data, R26 REPE CMPSW, R27 cold
   branch sides, R28 carry in X, R29 far push, R30 repeated segment loads,
   R31 push/pop runs, R32 conditional-over-jump fusion and R33 packed far returns
-  kept. Item 14b's 240 ms target remains unmet; no native replacement is authorized.
+  kept; R34 FM continuity accepted as a quality tradeoff. Item 14b's 240 ms target remains unmet; no native replacement is authorized.
   Next: [native-plan.md](native-plan.md).
 - **Frames fixture** (R30, 2026-10-19): medians 340, 340 and
-  340 ms; same-session parent 370, 350 and 340 ms. Intervals for R27 in §7.
-- **Bench:** R33 opening 70,150 → 68,524 lines (−2.318%), identical guest RAM.
-  R32 opening 70,486 → 70,124 lines (−0.514%), identical guest RAM.
-  R30 opening 71,542 (R29, median of three) → 70,243 lines (−1.816%), identical guest
-  RAM; R29 71,720 → 71,495 (−0.314%).
-  R20 opening 71,523 → 72,197 lines (+0.9424%), identical guest
-  RAM; approved tradeoff. Palette window 38,392–38,405 lines (R17),
-  2.81–3.61% below its same-session parent.
+  340 ms; same-session parent 370, 350 and 340 ms. R31–R34 not yet measured
+  on it.
+- **Bench** (R34, 2026-10-21): opening frames 4–11 median 68,513 lines (same-session
+  parent R33 68,482). Palette window 38,392–38,405 lines (R17).
 - **Meter** (m4, R18 weights, R33): generated + walk + runtime 172,620,455
   model cycles (−0.7089% from parent). R32 removes 46,981 JMP executions
   from the label-derived guest count; no new per-guest ratio (open-work 36).
@@ -93,7 +90,7 @@ Breaking any of these voids the step, whatever it measures.
    changes, or skipping published frames; changing the PIT or timer rate
    or the order of interrupt delivery; removing or thinning poll points or
    return checks; shortening the guest's own delay loops (SPAZ OPL waits
-   are guest semantics); a double buffer or copper display (open-work 14a);
+   are guest semantics); a double buffer or copper display;
    Chip-only memory (19). Exception: the deterministic frame bench (§4,
    user 2026-10-08) posts PIT ticks on a fixed schedule in its own runtime
    mode, as an instrument only.
@@ -131,7 +128,8 @@ need re-recording or an interrupt delivery moves; two consecutive steps
 are rejected by the meter; meter and FS-UAE disagree on represented work; a step is ambiguous.
 
 **Per step:** price from meter counts (D5: fresh target capture and census);
-write the price in §7 before coding;
+write the price in a §7 step section before coding (at the commit its
+details move to the commit message; the §7 row stays);
 coverage first (§2.6; cases appended at the end of corpora, `m68k_blocks`
 cases for multi-block changes); implement in `translator/` or
 `src/runtime/` or `src/platform/amiga/`; `make gen` if translation inputs changed;
@@ -190,8 +188,8 @@ lines.
   instructions each. Output: field and beam line at frames 0–12, the guest
   RAM at frame 12 (`shasum tmp/bench/ram.bin`; equal to the host run's at
   that frame), a 100-field capture. Two runs: equal RAM hash, frames 4–11
-  sum within 2 of 94,498 lines (single frames within 16), window guest
-  instructions within 0.02%, start fields 1523 and 1508. Not comparable to P
+  sums within 2 lines (single frames within 16), window guest
+  instructions within 0.02% (measured at its introduction). Not comparable to P
   (different frames and tick rate); compare arms by the frames 4–11 sum.
   Its window (the static opening view) runs no cell walk: the FS-UAE check
   of a walk change uses a frames-fixture capture per arm (cycles per mov
@@ -233,7 +231,7 @@ lines.
 5. **Wrong cost unit.** Steps were priced in 68k instructions; on this
    model the cost is code bytes and data accesses (§6).
 
-## 6. Cost model and where the cycles are
+## 6. Cost model
 
 Per-PC fit on the replan capture (13,608 non-branch PCs, 5.5M executions):
 **cycles ≈ 1.09 × code bytes + 2.27 × data reads + 3.07 × data writes**
@@ -241,37 +239,11 @@ Per-PC fit on the replan capture (13,608 non-branch PCs, 5.5M executions):
 cycles, 4 bytes ≈ 4, `and.l #$ffff` (6 bytes) ≈ 6. Inside cached loops
 bytes are nearly free. Price and accept in executed bytes, data accesses
 and taken branches, never in instruction counts. FS-UAE is the user's
-instrument; a real 68020 may weigh these differently.
-
-Share of the meter's model cycles at `84d262d` (m4, R11 weights) by the 68k
-instruction's role (`tmp/` census over the meter's per-PC counts;
-`profile_report.py`'s role column still matches the old poll and state
-block forms):
-
-| Cost | R14 meter | Executions (m4, R11) |
-|---|---:|---:|
-| Cell walk (D16), run-time matching | 21.84% | — |
-| Other code inside cached loops (loop bodies) | 24.98% | — |
-| Other memory ops / register ops / branches outside cached loops | 12.02% / 7.38% / 3.67% | — |
-| mul/div | 4.99% | 399K `mulu.w`, 45K `divu.w` |
-| Index formation in d7 (`move.w #7FFFh−d,d7` + `sub.w Rn,d7`; mirrored + disp) | 4.10% | 1.96M `move.w #N,d7` |
-| Poll points (`tst.b G_IRQ(a6)`, `bne`) | 3.73% | 980K |
-| `repe cmpsw` / `rep stosw`; their loop bodies | 3.74% / 2.51%; 3.28% / 2.30% | 7,840 / 6,225 runs |
-| Stack accesses `(d,a2,d4.w)` + SP steps `addq/subq.w #2,d4` | 3.09% + 0.92% | 2.0M steps |
-| Flag image (CCR to and from G_FL, state block flags) | 2.42% | 583K spills |
-| `jsr`/`bsr`/`rts`/`jmp` | 1.37% | — |
-| Runtime (capture: 6.13%) | 1.08% | — |
-| Segment fields (DS/SS/ES in the state block) | 0.90% | — |
-| Return checks (`cmp.w #ip,d7`, `bne` to the trampoline) | 0.76% | — |
-| SP/BP mirror conversions `eori.w #$7fff` | 0.54% | — |
-| Byte swaps `ror/rol.w #8` (+ store copies) | 0.49% | 609K |
+instrument; a real 68020 may weigh these differently. The meter's current
+weights: §4.
 
 The meter's runtime is the host run's (the reference's interrupts
 replayed); the frames capture adds the CIA timer at its own rate.
-
-Guest register use (executions per 100 fields): SP 243K (92% implicit
-push/pop/call/ret), BP 236K (65% base+disp), BX 242K (33% ALU destination,
-32% base), SI 216K and DI 131K (34–41% base, 30–36% ALU).
 
 ## 7. Step index
 
@@ -308,7 +280,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R16 | alignment convergence, fresh targets and profiler/meter repair | translator, tools | 0 (bench −1.18%, D5) |
 | R17 | palette validity per physical back buffer | Amiga platform | outside meter (later bench −2.81–3.61%, D5/D6) |
 | R18 | TF/IF/DF extraction with register bitfields; meter operand and A/B selection fixes | `support.py`, tools | −0.0126% |
-| R20 | cell cache: cells matched once, runs of destinations stored by longs, exact invalidation (D3) | `smc.py`, `lower.py`, runtime | −15.3114% |
+| R20 | cell cache: cells matched once, runs of destinations stored by longs, exact invalidation (D3) | `smc.py`, `lower.py`, runtime | −15.3114% (bench +0.9424%, user-approved tradeoff) |
 | R21 | backward string bodies outlined; forward path falls through | `lower.py` | −0.1080% |
 | R22 | first matched walk call returns into its check; fallback outlined | `lower.py` | −0.0246% |
 | R24 | REP STOSW: eight longs per pass, long-aligned stores, odd word last | `lower.py` | −1.1239% |
@@ -328,695 +300,7 @@ No priced translator candidate remains. Unchanged (§2): poll points
 `__set_flags` (POPF/IRET) and `__flags_word` are the largest runtime-side
 items left.
 
-### R34 FM timbre and voice continuity (2026-10-21; accepted quality tradeoff)
-
-Parent `2e8f69d`; fresh 68020 capture: 28,420,400 cycle units / 100 fields,
-`loop_for` 3.64%, `fm_field` 3.38%, `eg_advance` 0.91%; 99 FM services,
-77 cache lookups. m4 census: 1,127 OPL-port calls / 49 drawn frames.
-Pricing: Chip render/rotation sites 0.584% of the window (upper bound);
-operator synthesis 1.79%; rotation in the four-voice trial 2.84%.
-
-Final design: 0.75 dB modulator steps, no timbre hysteresis, four renders
-per field, canonical synthesis phase, stable allocation across all four
-available voices. Preserve TFH reservations, key-ons, pitch, noise and rates.
-Exact exponential/carrier tables add 24 KiB ordinary RAM; direct Chip stores
-avoid scratch copies. Guest execution and interrupt delivery are unchanged.
-
-User accepted the sound, canonical-phase test contract, maximum 0.375 dB
-rounding error, and the measured performance/RAM tradeoff (2026-10-21).
-Production title WAV matches the accepted preview byte for byte. c6/c12/c13
-Nuked level checks: 98.1 / 98.3 / 98.3%; pitch 100% each. New render,
-phase, envelope and allocation tests include caught plants; existing sound
-checks remain except for the explicitly approved phase-contract replacement.
-
-Three-run 68020 opening bench, frames 4–11 (raster lines):
-
-| Arm | Run 1 | Run 2 | Run 3 | Median | Span |
-|---|---:|---:|---:|---:|---:|
-| Parent | 68,507 | 68,482 | 68,460 | 68,482 | 47 |
-| R34 | 68,513 | 68,512 | 68,520 | 68,513 | 8 |
-
-+0.0453%; identical final guest RAM in every run. Meter unchanged at
-172,620,455 cycles, with identical instructions, executed bytes and memory
-accesses. Payload 1,361,296 bytes (−16), ordinary BSS +24,576; no extra Chip.
-No frame-rate gain claimed. `make gates-audio JOBS=4` passed all 16 sound
-checks/plants. Same-source Amiga gate, smoke and restoration passed; initial
-`make test` also passed. The remaining full-suite checks were stopped at the
-user’s request; they are unrelated to this audio-only change. Validation
-selection now follows AGENTS.md.
-Evidence: `tmp/item34/accepted-075-*`; trial pricing journal and rejected
-variants retained locally for the commit record.
-
-### R31 push and pop runs step SP once (2026-10-19; kept)
-
-Parent `cd79526`; meter 174,303,609 cycles. Price before coding (R30 meter and
-build, `tmp/item31b/r31/price_pushpop.py`): consecutive one-word PUSHes (POPs)
-with no label between them, one SP step per run (`addq` to 8, else `add.w`)
-and a `bvs` guard instead of a step each; runs of four or more: pushes 27,986
-executions, −128,296 model cycles, pops 7,795, −27,002; together −155,298
-(−0.089%). Shorter runs gain nothing (three even, two +2 bytes).
-
-Built: `reuse.stack_runs` (after `bp_native`): instructions with no leader or
-fence between, each a one-word push (pop) whose other lines neither use SP
-nor transfer control. The first steps SP by the whole run and `bvs
-<label>_kx0` (only that step can overflow d4.w: the run wraps SS:0); the
-stores (loads) address from the final SP; out of line the exact lines,
-rejoining at `<last>_kr0` (`profile_report.INSIDE`). 265 push runs (1,218
-pushes) and 8 pop runs (40 pops), 32 of them in R6 copies.
-The first build stopped m1's host run at a return check: a guarded copy falls
-into the exact code at POP BP inside a pop run, which was no leader (the block
-differential starts blocks at leaders only); the parent makes copy exits and
-divide-error retries leaders.
-
-Meter: 174,303,609 → 174,160,495 cycles (−143,113, −0.0821%); instructions
-−143,380, executed bytes −47,792 (loop −106,886), taken +558 (loop
-classification; no label's taken count changed); counting only taken back
-edges −147,593 (−0.0848%). Static generated +11,880 bytes (the exact lines out
-of line); Amiga code 1,350,084 (R30) → 1,362,104 (the parent's leaders
-included), allocated hunks 1,680,440.
-Coverage first: 1,184 boundary cases: runs of 2–9 PUSHes (registers, BP,
-segment registers, memory through DS, SS and ES) and 2–7 POPs (registers, BP,
-SI/DI, memory, ES last), SP at every start that wraps SS:0 (0 to 2k+1),
-7FFEh–8001h, 8000h+2k, FFF0h, FFFEh, FFFFh and 1234h, distinct stack bytes,
-alone or after a flag setter with PUSHF; 2,272 with the bp-region and
-seg-repeat variants; zero mismatches on the parent. Plants (boundary corpus,
-81,389 cases): wrap ignored (520), push slots a step off (440), pops in
-reverse order (644), exact path keeps the step (600); a run across a leader
-(program corpus, 7 of 45,912). Block differential: 13,925 blocks (the parent's
-leaders), 72,191 cases including 16,351 guest entries, zero mismatches. No
-FS-UAE check (first kept step after R30's).
-Gates: test 640 s, Amiga 97 s, smoke 406 s, restoration 530 s, five replays
-2,777 s, sabotage 4,255 s; host-all 3,690 s with c52 past its 2,400 s
-wall-clock limit, alone 758 s and exact (23,539 interrupts, 3,895,576
-services); sources unchanged. Evidence: `tmp/item31b/r31/`.
-
-### R30 repeated segment loads compare first (2026-10-19; kept)
-
-Parent `13e2586`; meter 175,342,341 cycles. Price before coding (census on the
-R29 host run, `tmp/item31b/r30/seg_census.txt`): of 109,713 ES and DS loads (no
-SS) in the window, 34,501 load the value the segment holds (ES 30,666 of
-37,911, DS 3,835 of 71,802). A repeat needs no store, cell-cache check or
-base: one `cmp.w G_xS(a6)` and an untaken `bne`; a change adds two taken
-branches. Sites saving ≥ 1,000 model cycles: 24, −482K (−0.275%). That census
-missed R6's `_bp` copies (FLT_163A9_bp runs 9,729 times, FLT_163A9 953); with
-them (`tools/seg_repeat.py`: 159,810 executions, 68,834 repeats) and word
-branches priced: 36 sites (34 ES, 2 DS), −818,542 (−0.467%).
-
-Built: `Lowering.putseg_repeat` for `mov sreg`, `les`/`lds` and `pop sreg` at
-the labels in `annotations/seg-repeat.csv`: `cmp.w G_xS(a6),<new>`, `bne
-<label>_gx<k>`, rejoin `<label>_gr<k>` (inside the instruction,
-`profile_report.INSIDE`); out of line the zero-extension (a data-register
-source is copied to d7 there), `putseg` (store, cell-cache check, base) and
-`bra` back. Exact: the bases and the cell caches follow the segment's value
-(D3; the runtime rebuilds a1–a3 from `G_xS`).
-
-Meter: 175,342,341 → 174,303,221 cycles (−1,039,119, −0.5926%); writes
-−65,523, reads +67,042, instructions −328,363, executed bytes −945,152 (loop
-+64,016), taken −29,439. The out-of-line `bra` back widens the static loop flag
-(open-work 37): counting only taken back edges, −860,079 (−0.4919%). The first
-census's 24 sites: −934,884. Static generated +708 bytes (59 compares: 36
-sites, 23 R6 copies); Amiga code 1,349,360 → 1,350,084, allocated hunks
-1,668,420.
-Coverage first: 288 boundary cases: MOV from a data register, BP or memory,
-POP, LES and LDS into ES, DS and SS, the new value the segment's own, one bit
-off, 0 or another segment's, then an access through the segment, alone or
-after a flag setter with PUSHF; every corpus case that loads a segment also
-runs with the compare (`m68k_diff` seg-repeat variant); zero mismatches on the
-parent lowering. Plants (boundary corpus, 79,117 cases): changed load treated
-as a repeat (952), compare of another segment's slot (62), changed segment
-keeps the upper word (592). Block differential: 13,663 blocks, 55,190 cases,
-zero mismatches.
-FS-UAE check (third kept step since R27's; R29 arm against R30): opening bench
-71,542, 71,524, 71,542 → 70,243, 70,231, 70,246 lines (median −1,299,
-−1.816%; ranges disjoint), identical guest RAM. Changed labels measured in
-both captures (78–79 of 82), exact host counts: −31.62%, −31.74%, −31.61%;
-the meter over the same labels −32.45%, −32.60%, −32.45%: signs agree (§3).
-Frames medians R29 370, 350, 340 ms; R30 340, 340, 340 ms (overlapping).
-Gates: test 568 s, Amiga 93 s, smoke 373 s, restoration 499 s, five replays
-2,583 s, host-all 3,461 s, sabotage 3,795 s; sources unchanged. Evidence:
-`tmp/item31b/r30/`.
-
-### R29 far call pushes one long (2026-10-19; kept)
-
-Parent `d63a393`; meter 176,163,287 cycles. Price before coding (R28 meter
-forms): CALLF pushes CS and IP with one `addq.w #4,d4` and one `move.l`
-(CS at the lower host address), the two-word push out of line when d4.w
-overflows (SP 0–3, the stack wrapping SS:0): −2 bytes and −1 write for each of
-94,996 executions, −489K cycles (−0.278%); the 68020 splits a long write at
-an address ≡ 2 mod 4 (44% of sampled `callf`, 5ecdf79), which the meter does
-not model. The return check and RETF stay; R33 packs the return protocol.
-
-Built: `Lowering.push_far`: `addq.w #4,d4`, `bvs <label>_pf<k>`, `move.l
-#((CS)<<16)|IP,-3(a2,d4.w)`, rejoin `<label>_pr<k>` (inside the instruction,
-`profile_report.INSIDE`); the out-of-line path stores the words as before.
-
-Meter: 176,163,287 → 175,342,341 cycles (−820,947, −0.4660%); writes and
-instructions −94,996, executed bytes −2,028,224 (loop bytes +1,803,224), taken
-−48,328. The out-of-line paths' `bra` back makes the static loop flag cover
-more code (open-work 37): counting only taken back edges, −595,317. Static
-generated +90,816 bytes (5,229 sites); Amiga code 1,258,568 → 1,349,360,
-allocated hunks 1,667,696.
-Coverage first: 104 boundary cases: CALLF direct and through m32 (DS, ES),
-SP 0–7, 7FFCh–8004h, FFF8h–FFFFh and one middle value, the stack bytes either
-side; zero mismatches on the parent. Plants (boundary corpus, 77,787 cases):
-wrap ignored (16; SP 0 and 1 stay contiguous), CS and IP swapped (128), exact
-path's CS a word low (40). Block differential: 13,663 blocks, 55,190 cases,
-zero mismatches.
-FS-UAE check (not due; the meter's misaligned-write blind spot and loop
-artifact; R28 arm against R29): opening bench 71,700, 71,722, 71,720 → 71,495,
-71,530, 71,492 lines (median −225, −0.314%; ranges disjoint), identical guest
-RAM. Changed labels measured in both captures (253–260 of 267), exact host
-counts: −6.51%, −6.34%, −6.35%; the meter over the same labels −12.70%,
-−12.66%, −12.71%: signs agree (§3), FS-UAE about half the meter. The final RAM
-of both arms differs from R27's in one byte, SS:F6B0 just below the reference
-SP: dead CF and SF in a popped FLAGS image (R28 drops their `G_FL` store;
-open-work 24). Frames medians R28 370, 360, 350 ms; R29 380, 350, 350 ms
-(overlapping). Gates: test 540 s, Amiga 669 s, smoke 365 s, restoration 475 s,
-five replays 1,999 s, host-all 3,358 s (c52 within its limit), sabotage 3,654 s;
-sources unchanged. Evidence: `tmp/item31b/r29/`.
-
-### R28 carry in X across the operand setup (2026-10-19; kept)
-
-Parent `118bb1c`; meter 177,012,300 cycles. Price before coding (exact counts
-of the R27 meter, `tmp/item31b/r28/price_carry.py`): an add or sub whose X is
-CF, then (not at a leader) adc/sbb whose index formation in d7 changes X
-before its `G_FL` load: keep X in d6 across the setup, which also lets the
-setter drop its `G_FL` store. 445 sites, 66,169 executions, −736,988 cycles
-(−0.416%); 22,785 executions have no adjacent store-ending setter.
-
-Built: `Lowering.keep_x` (from `carry_op`): when X held CF at the
-instruction's start and the setup changed it, `subx.b d6,d6` (0 or FFh, X
-unchanged) before the setup and `add.b d6,d6` (X from bit 7) before its first
-use of d6, provided that use writes d6 without reading it, nothing earlier in
-the instruction uses d6 and every line from there keeps X (`keeps_x`, the
-whitelist `e` uses). The carry-pair proof in `flags.plan` then holds. R13/R14f
-drop or guard formations only; the slow copies keep both lines.
-
-Meter: 177,012,300 → 176,163,287 cycles (−849,013, −0.4796%); reads and
-writes −68,211 each, executed bytes −587,106 (loop +109,054), instructions
-−79,081, taken −3,930 (loop classification; no label's taken count changed),
-runtime +81. Static generated −566 bytes; Amiga code 1,259,124 → 1,258,568,
-allocated hunks 1,576,904.
-Coverage first: 3,024 boundary cases (+432 BP-region variants): ADC/SBB after
-ADD/SUB of a register or of `[di+2]` (a folded or reused index), the
-consumer's index formed in d7 (`[di]`, `[si+d]`, `[di+d]`, `[bp+d]`,
-`[bx+si+d]`), memory destinations, immediate sources, ES and CS overrides, low
-and high bytes, indexes plain and wrapping past FFFFh, carry and sign edges,
-the consumer's flags or all (PUSHF); zero mismatches on the parent lowering.
-Plants (boundary corpus, 77,683 cases): restore dropped (1,956 mismatches),
-restore after the load into d6 (1,635). Block differential: 13,663 blocks,
-55,190 cases, zero mismatches. No FS-UAE check (first kept step after R27's).
-Gates: test 959 s, Amiga 649 s, smoke 338 s, restoration 462 s, five replays
-3,764 s, sabotage 5,441 s; host-all 4,067 s with c52 past its 2,400 s
-wall-clock limit again (load average 57), alone 853 s and exact (open-work 38);
-sources unchanged.
-
-### R27 cold sides of hot forward branches (2026-10-19; kept)
-
-Parent `93cca1c`; meter 178,130,612 cycles. Price before coding (per-PC counts
-of the parent meter, `tmp/item31b/r27/price_outline.txt`): a forward guest jcc
-taken more often than not branches, inverted, to its fall-through range, which
-moves after the run's closing transfer and returns with `bra` unless it ends
-in a transfer; the branch grows to `.w` where the moved range leaves it out of
-reach. 236 profitable sites, −928,173 cycles (−0.521%); the 85 sites worth at
-least 1,000 cycles each −905,258 (`R_0B4F1` −78,507, `R_0B611` −55,425).
-Profile-chosen like R8 (`annotations/outline.csv`, from the meter); layout,
-so an FS-UAE check with opening benches per arm (§3, R23).
-
-Built: `emit.outline_cold` lists every eligible site (target later in the run,
-or the next run's first instruction after a closing transfer; no guard in the
-range) in `build/gen/outline-sites.csv` with the instruction whose run end
-receives the range; `tools/outline_sites.py` prices them from a meter of a
-build with an empty `outline.csv` (exact per-PC and taken counts, new in
-`cost_meter.py`): taken branches saved, less the range's new taken branches and
-return, cached-loop bytes moved out, `.w` growth. Not chosen: a range landing
-inside an executed loop (96), a back edge moved out of reach (12), the smaller
-of nested sites (1). 96 sites (74 SWOTL.EXE, 13 FLIGHT.OVL, 9 SPAZ.OVL; 56 ranges
-end in a transfer), model −852,473. `drop_next_branches` runs backwards, so a
-chain of jumps to the next line goes (vasm ran out of passes on one).
-A first selection of 112 sites by price alone gave −0.4388%: ranges landed in
-loops, and stub returns counted as loops.
-
-Meter: 178,130,612 → 177,012,300 cycles (−1,118,312, −0.6278%); executed
-bytes −2,462,394 with loop bytes +2,684,544, taken −209,496, instructions
-+3,190, reads and writes unchanged. The meter flags any backward branch within
-256 bytes as a loop, executed or not: an outlined range's `bra` back to its
-target makes the code between "cached". Counting only taken back edges,
-−1,404,120 (−0.7903%). Static generated +254 bytes; Amiga code 1,258,900 →
-1,259,124, allocated hunks 1,577,460.
-Coverage first: the block differential runs each outlined jcc from the leader
-that falls into it, and its range as paths from there (random registers; the
-words a path loads at edge values or its immediates, up to 512 tries for four
-cases a path); 236 paths, 2,513 cases. Full run: 13,663 executed blocks,
-55,190 cases, zero mismatches (4,664 path cases taking a jump on the way
-skipped). Plants (program corpus): outlined jcc keeps its condition (2,078
-mismatches), range falls through instead of returning (358).
-`tests/test_next_branch.py` gains chain cases; the first gate run failed
-there (the forward drop's expectation).
-Gates: test 612 s, Amiga 739 s, smoke 463 s, restoration 481 s, five replays
-2,328 s, sabotage 4,188 s; host-all 3,933 s with c52 past its 2,400 s
-wall-clock limit (FS-UAE runs beside the gates), alone 783 s and exact
-(23,539 interrupts, 3,895,576 services); sources unchanged after them.
-FS-UAE check (layout; R26 arm against R27): opening bench 72,117, 72,077,
-72,087 → 71,750, 71,726, 71,740 lines (median −347, −0.481%; ranges disjoint),
-identical guest RAM. Changed labels measured in both captures of a run pair
-(259–265 of 276), exact host counts: −10.42%, −11.50%, −11.49%; the meter
-over the same labels −10.66%, −10.15%, −10.35%; signs agree (§3).
-Evidence: `tmp/item31b/r27/`.
-
-| Arm/run | Frames 4–11 intervals (fields) | Median | Span |
-|---|---|---:|---:|
-| R26 1 | 22,22,18,20,17,25,19,19 | 390 ms | 17–25 |
-| R26 2 | 22,21,17,21,17,20,16,16 | 370 ms | 16–22 |
-| R26 3 | 22,21,17,17,17,24,16,16 | 340 ms | 16–24 |
-| R27 1 | 22,20,17,22,16,20,16,15 | 370 ms | 15–22 |
-| R27 2 | 22,19,18,17,17,24,16,16 | 350 ms | 16–24 |
-| R27 3 | 22,20,17,22,16,20,16,15 | 370 ms | 15–22 |
-
-Intervals overlap: no frame-rate gain claimed.
-
-### R26 REPE CMPSW 16 words per pass (2026-10-19; kept)
-
-Parent `18c27d1`; meter 179,572,751 cycles. Price before coding (the loop's code
-and counts unchanged since `a1df937`; `tmp/item31b/price_strings.txt`):
-−1,514,510 cycles (−0.843%) for eight pairs per pass (`bne.s` per pair, one
-`dbne` per eight, 12 bytes and a taken jump per run); four pairs −1,152,096.
-`VGA_03BE9`: 472,828 pair compares in 7,839 runs, 98% long aligned.
-
-Built: the remainder pairs (`dbne`) first, then eight long compares per pass
-(`bne.s` each, `dbne` on the eighth); a mismatching long rechecks its first
-word; an odd last word after the pairs. The end of `[ES:DI]` in d7 gives CX
-(the fast path's range ends below 10000h); the passes wait in d1's upper word,
-since a0 may hold a CS source base.
-
-Meter: 179,572,751 → 178,130,612 cycles (−1,442,139, −0.8031%); executed
-bytes +286,386 (loop −822,410), instructions +120,941, taken +7,195, reads and
-writes unchanged. Static generated +240 bytes; Amiga code 1,258,660 →
-1,258,900, allocated hunks 1,577,236.
-Coverage first: 520 boundary cases (CMPSW CX 1–40, 47–49, 63–65, 255–257; a
-mismatch at the first, second, middle, second last and last element, at every
-element for CX 15–18 and 31–34, or none; low or high byte, above or below;
-SI/DI at every offset mod 4; ranges ending two bytes below 10000h up to one
-past it; REP STOSW at the same ends). Plants: pair count keeps the even part
-(280 mismatches), remainder pairs skipped (350), early mismatch in a pass
-ignored (190); the odd-word plant moved to the new template (356).
-The first gate run failed the boundary shard: `rep cs: cmpsw` holds its
-source base in a0, which the first draft used for the end pointer.
-Block differential: 13,663 executed blocks, 52,677 cases, zero mismatches.
-Gates: test 401 s, Amiga 552 s, smoke 187 s, restoration 322 s, five replays
-2,137 s, host-all 3,285 s, sabotage 3,376 s; sources unchanged after them.
-FS-UAE check (third kept step since R22's; R25 arm against R26): opening bench
-72,238 → 72,090 lines (−0.205%), identical guest RAM; the window runs no
-changed label. Changed label `VGA_03BE9`, exact host counts (three run pairs):
-−4.10%, −6.00%, −6.52% (meter −18.8%); signs agree (§3).
-Evidence: `tmp/item31b/` (`r26/`: meters, arms, captures' reports).
-
-| Arm/run | Frames 4–11 intervals (fields) | Median | Span |
-|---|---|---:|---:|
-| R25 1 | 22,20,17,19,16,24,16,16 | 360 ms | 16–24 |
-| R25 2 | 22,21,17,21,16,20,16,16 | 370 ms | 16–22 |
-| R25 3 | 22,21,17,17,17,24,16,16 | 340 ms | 16–24 |
-| R26 1 | 23,22,19,19,18,25,18,19 | 380 ms | 18–25 |
-| R26 2 | 21,21,17,21,17,20,16,16 | 370 ms | 16–21 |
-| R26 3 | 21,21,16,22,16,20,16,16 | 360 ms | 16–22 |
-
-Intervals overlap: no frame-rate gain claimed.
-
-### R25 BP as data (2026-10-19; kept)
-
-Parent `5662ea4`. Fresh m4 meter: 181,635,072 cycles. Price before coding (the
-pass simulated on the parent's generated text, label executions of the meter):
-−2,065,133 cycles at the flat byte weight, about −1.91M at the loop weight its
-hot labels have (`R_0D5DA`..`R_0D5E6`, 62,708 and 15,214 runs; `R_04ED5`/`R_04ED7`
-24,484).
-
-Built (`reuse.bp_native`, after R13/R14f): within a run, a mirror store leaves
-native BP in its source; until that register is written, a native load copies
-it (`move.w`; `tst.w` when it is the destination, nothing before a word ALU op
-into it); a mirror store goes when the next one follows before any d5 reader,
-label, branch, call or transfer.
-
-Meter: 181,635,072 → 179,572,751 cycles (−2,062,320, −1.1354%); executed bytes
-−2,255,532 (loop −2,246,996), instructions −710,216, reads, writes and taken
-unchanged (taken −12). Static generated −226 bytes. The meter's guest count
-drops by 45,439: labels such as `R_0D5E2` (`mov bp,bx`) now emit no code and
-alias the next one (open-work 36); the host run's work is the same.
-Amiga code 1,258,888 → 1,258,660 bytes, allocated hunks 1,576,996.
-Coverage first: 224 block cases (BP-write chains, the source written, a `[bp+d]`
-read, PUSH/MOV/XCHG readers, INC BP, MOV BP,SP between, a jump after; edge
-values); every pass rewrite counted in them (240 loads, 176 stores). Plants:
-native BP kept after its source changes (7 mismatches in the gate), store dropped
-before a d5 read (30), store dropped across an exit (program corpus, 21 of 26,946).
-Block differential: 13,663 executed blocks, 52,677 cases, zero mismatches.
-Gates: test 516 s, Amiga 559 s, smoke 187 s, restoration 334 s, five replays
-2,259 s, host-all 3,384 s, sabotage 3,495 s; sources unchanged after them.
-No FS-UAE check (second kept step since R22's; due at the next).
-Evidence: `tmp/item31b/` (`price_bp.txt`, `r25/`).
-
-### R24 REP STOSW fill (2026-10-19; kept)
-
-Parent `826b383` (code of `a1df937`). Fresh m4 meter: 183,699,737 cycles.
-Price before coding: −2,147,183 cycles (−1.169%) for 16 words per pass
-(dbf once per 8 longs, remainder by computed entry, 12 bytes and a taken jump
-per run); 8 words −1,824,717. `R_0C1CA`: 392,303 long stores in 3,089 runs,
-every one at a host address ≡ 2 mod 4 (its odd first word shifts them);
-`R_10A3D_bp`/`R_10A47_bp`/`R_10A51_bp` 8,232 each, `R_0FE0F_bp` 6,223.
-
-Built: the fast path stores AX only and has no read or poll, so the order is
-free: a first word where the pointer is not long aligned, eight longs per pass
-(remainder by computed entry), an odd last word after them. Every long store
-is aligned; the meter does not price misalignment.
-
-Meter: 183,699,737 → 181,635,072 cycles (−2,064,665, −1.1239%); executed
-bytes −1,342,860 (loop −1,473,534), writes +1,029, taken +10,392, instructions
-−309,786, reads unchanged. Static generated +656 bytes; Amiga code 1,258,240 →
-1,258,888, allocated hunks 1,577,224.
-FS-UAE changed labels, exact host counts (three run pairs): −27.99%, −28.00%,
-−27.96%; `R_0C1CA` −34.5%. The three 8-pair fills `R_10A3D/47/51_bp` run
-11–17% slower (meter −3 to −9%): the meter underrates the per-run computed
-entry. Signs agree over the changed labels (§3).
-Coverage first: 228 fill cases (CX 1–40 and remainders around 48–257 at
-every DI mod 4, 7FFFh words, range ends at FFFFh). Plants: the odd-word plant
-moved to the new template (288 mismatches); remainder skipped 400, aligning
-word not counted 244, passes of 16 longs 151; half store 399.
-Gates: test 480 s, Amiga 708 s, smoke 246 s, restoration 431 s, five replays
-8,742 s, sabotage 10,242 s under heavy machine load; host-all timed out
-18 coverage runs at 2,400 s there, passed alone on the same sources in 1,780 s.
-Evidence: `tmp/item31b/` (prices, census, `r24/` meters, arms, captures' reports).
-
-| Arm/run | Frames 4–11 intervals (fields) | Median | Span |
-|---|---|---:|---:|
-| Parent 1 | 22,21,18,21,17,19,17,17 | 370 ms | 17–22 |
-| Parent 2 | 22,21,17,22,17,20,16,16 | 370 ms | 16–22 |
-| Parent 3 | 22,22,17,21,18,19,17,16 | 370 ms | 16–22 |
-| R24 1 | 22,21,17,21,17,20,16,17 | 370 ms | 16–22 |
-| R24 2 | 22,22,17,22,17,19,17,16 | 360 ms | 16–22 |
-| R24 3 | 22,21,18,21,17,20,16,17 | 380 ms | 16–22 |
-
-Intervals overlap: no frame-rate gain claimed.
-
-### R22 near-call fallback layout (2026-10-18; kept)
-
-Parent `a9c2e69`. Fresh m4 meter: 183,744,876 cycles. First matched
-cell-walk call falls through to the existing return check; remaining
-range tests/targets and runtime fallback go out of line. Keep both bounds,
-zero-extension, stack effects and return validation unchanged.
-Price: −30,299 cycles (−0.0165%), conservatively allowing two extra bytes
-on each range branch and a four-byte return branch on every fallback.
-Three exercised sites, 32,799 walk calls, zero observed fallbacks; absence
-is not a correctness assumption. Test both bounds and all fallback paths.
-Evidence: `tmp/item31-r22/{meter.json,meter_raw.pkl,census.log,price.log}`.
-
-Candidate: 183,699,737 model cycles (−45,139, −0.0246%); instructions
-−32,799, executed bytes +113,194, data reads/writes unchanged. Amiga code
-+52 bytes to 1,258,240; allocated hunks 1,576,576. Target comparison:
-3,974,716 → 3,774,795 weighted cycles (−5.0298%) across four changed labels;
-all required PCs mapped and sampled. Bench 72,205 → 72,089 lines, identical
-RAM SHA-256 `bb1607f7815ef1c79c754b1eabbb4a134cf625a76eeb2f7efe046061ff8aafd3`.
-Coverage before implementation: 144 operand cases and 24,052 block cases
-pass; deliberately rejecting the lower endpoint gives 13 failures.
-Candidate targeted cases pass; its endpoint plant again catches 13 failures.
-Full test passed in 499 s: 13,663 executed blocks, 52,587 cases, zero
-mismatches. All gates passed: test 499 s, sabotage 3,186 s, host-all 3,316 s,
-Amiga 70 s, smoke 191 s, restoration 352 s, five replays 2,503 s.
-Source hashes and measured ELF match after validation. Evidence: `tmp/item31-r22/`.
-First captures: 10.36 → 9.95 cycles/guest, 2.424 → 2.329
-68k instructions/guest, using the profiler guest-entry counts (open-work 36);
-guest mixes differ. No frame-rate gain is claimed.
-
-| Arm/run | Frames 4–11 intervals (fields) | Median | Span |
-|---|---|---:|---:|
-| Parent 1 | 23,22,17,21,18,20,16,17 | 380 ms | 16–23 |
-| Parent 2 | 22,22,19,20,18,25,19,19 | 390 ms | 18–25 |
-| Parent 3 | 22,22,18,21,17,20,17,16 | 380 ms | 16–22 |
-| R22 1 | 23,21,19,20,18,26,19,19 | 390 ms | 18–26 |
-| R22 2 | 22,22,17,22,17,20,16,17 | 370 ms | 16–22 |
-| R22 3 | 22,21,18,21,17,20,16,17 | 380 ms | 16–22 |
-
-### R21 string direction layout (2026-10-18; kept)
-
-Parent `5619afe`. Fresh m4 price before coding: −233,585 cycles (−0.127%)
-for outlining the backward string bodies; free-placement layout ceiling
-−5,983,232 cycles. Direction tests, both bodies, wraps, flags and diagnostic
-REP checkpoints are retained; the forward path falls through.
-
-Meter: 183,943,624 → 183,744,876 cycles (−198,749, −0.1080%);
-executed instructions −50,360, bytes +45,300, data reads/writes unchanged.
-Amiga code 1,257,444 → 1,258,188 bytes (+744); allocated hunks
-1,575,780 → 1,576,524. Opening bench: parent 72,238 / 72,178 lines,
-candidate 72,204; identical RAM, candidate within unchanged-parent spread.
-The bench capture executes no changed labels; normal captures cover them.
-
-Entry-weighted target A/B initially disagreed (+0.947%); the approved
-investigation found varying REP lengths (40.44 → 45.75 pairs per call).
-Exact host-instruction weighting fixes that confound: changed-label target
-cycles −4.563%, repeated −4.579%, all required PCs mapped and sampled.
-`ab_labels.py --meter-b` fails on missing samples or mismatched code;
-controls and sabotage retain actual slowdowns and removed work.
-No model weights, fixtures or references changed.
-
-| Arm/run | Frames 4–11 intervals (fields) | Median | Span |
-|---|---|---:|---:|
-| Parent 1 | 22,23,19,19,18,26,19,19 | 380 ms | 18–26 |
-| Parent 2 | 23,22,20,19,18,25,19,20 | 400 ms | 18–25 |
-| Parent 3 | 24,21,20,19,18,25,19,19 | 390 ms | 18–25 |
-| R21 1 | 22,22,17,22,17,20,16,17 | 370 ms | 16–22 |
-| R21 2 | 23,22,17,21,17,20,17,16 | 370 ms | 16–23 |
-| R21 3 | 22,22,17,22,17,20,16,17 | 370 ms | 16–22 |
-
-Intervals overlap: no frame-rate gain claimed. First paired captures:
-9.88 → 10.20 cycles/guest and 2.307 → 2.385 68k instructions/guest;
-these reflect different guest mixes, not fixed-work cost.
-Coverage first: 310 string cases; DF plant caught before implementation.
-The new full-corpus plant catches 2,314 cases. The approved diagnostic
-wrapper correction places cold code after its terminating jump: all 168
-oracle cases / 120 resumptions pass, unchanged SI-corruption plant caught.
-All gates passed: test 424 s, sabotage 3,351 s, host-all 3,299 s,
-Amiga 61 s, smoke 193 s, restoration 345 s, five replays 2,565 s.
-Source inputs and measured ELF match after validation.
-Evidence: `tmp/item31/` (frozen arms, reports, `gate-logs-2`).
-
-### R16 audit and alignment repair (2026-10-14; kept under D5)
-
-Parent `858d8ab`. Fresh m4 census: 1,261,759 uncached taken transfers;
-496 candidate chunks, preferred-vs-other residue difference 833,704
-transfers (416,852 expected switches from a random layout). Padding runs
-zero instructions; branch relaxation can change encoded sizes. This price
-was recorded before implementation; no frame-rate saving was assumed.
-
-The old 0/2-byte solver oscillates across a short-branch boundary. Monotone
-two-byte growth converges and verifies its final object; nonconvergence
-fails generation. Fresh candidates satisfy 496/496 residues in host and
-Amiga ELFs (parent 234/510). Regression fails on the old solver; the
-oscillation and stale profiler poll-offset plants are caught.
-
-Profiler repair is tooling only: current state offsets, disassembler
-syntax, out-of-line IRQ stubs and return-check trampolines. No guest
-instruction, guard, return check, poll point or interrupt order changes.
-
-| Arm/run | Frames 4–11 intervals (fields) | Median | Min–max |
-|---|---|---:|---:|
-| Parent 1 | 28,24,20,23,20,24,21,24 | 23.5 / 470 ms | 20–28 |
-| Parent 2 | 28,24,20,23,20,24,20,24 | 23.5 / 470 ms | 20–28 |
-| Parent 3 | 28,23,20,24,19,25,20,24 | 23.5 / 470 ms | 19–28 |
-| Candidate 1 | 27,24,20,23,19,25,20,24 | 23.5 / 470 ms | 19–27 |
-| Candidate 2 | 28,23,20,23,20,24,20,24 | 23 / 460 ms | 20–28 |
-| Candidate 3 | 27,24,20,23,20,24,20,24 | 23.5 / 470 ms | 20–27 |
-
-Arms overlap: no frame-rate gain claimed. Fixed-work bench: 69,631 →
-68,806 lines (−1.18%; 63,224,948 → 62,475,848 profiler cycles at 908/line);
-final guest RAM SHA-256 identical. Mix-adjusted all-label cost −1.047%
-(19.9% of weight covered). The older "changed labels" subset included
-unchanged guarded copies; R18 corrects that selection. R16 acceptance rests
-on the fixed-work bench, not that subset.
-
-Meter: identical executed instructions/bytes, reads/writes and modeled
-cycles. Static decoded generated bytes +10, runtime +2; actual HUNK code
-payload unchanged at 1,198,668 bytes, executable unchanged at 4,298,924
-bytes (3,043,796 are symbols). First frames capture: 11.38 → 11.33 cycles
-and 2.849 → 2.849 68k instructions per guest instruction; the instruction
-mix differs, so these ratios do not establish a gain.
-
-Accepted under D5: the layout-blind meter is unchanged and the bench
-improves without payload growth. `make gates` passed,
-including sabotage and all three diagnostic replays.
-Evidence: `tmp/item14b-agent/` (local logs, frozen binaries and reports).
-
-### R17 palette validity (2026-10-14; kept under D5/D6)
-
-Parent `dbb6e43`, executable hash unchanged from accepted R16. Fresh normal
-capture: five `buildPalette` / `finishDisplayUpdate` calls, zero
-`plat_palette` calls; palette construction 0.70%, copper setup 0.75%,
-`Palette24Bit::update` 0.39% (1.84% removable ceiling in this window).
-Fresh m4 census: 49 frames, 43 presentations, zero palette calls.
-Proposed replacement: one validity check per publication and two buffer
-invalidations per palette update; palette changes still perform the full
-conversion for each physical buffer before its next publication. Guest
-rendering, c2p, queue publication and VBI order are untouched.
-
-Fresh parent frame intervals 4–11: [27,23,19,22,18,22,18,22],
-[27,22,19,22,18,22,19,22], [27,22,19,22,17,23,18,22]; all medians
-22 fields / 440 ms, spans 18–27, 18–27, 17–27. The executable is identical
-to R16: these are trajectory variation, not an optimization gain.
-Bench: 68,826 lines; final RAM hash matches R16. Its profile records zero
-palette rebuilds and zero display publications: it cannot establish a
-palette saving. D6 approves a separate frames-60–67 BENCH window,
-with matching final guest RAM, exercised palette calls and no slowdown;
-the existing bench and frames fixture remain mandatory and unchanged.
-The new later bench profile exercises palette construction (0.70%), copper
-setup (0.75%) and palette update (0.39%): 1.84% removable ceiling before
-validity-check overhead. Coverage first: production methods pass 6,000
-queue/palette histories against independently expanded DAC colours; a
-plant retaining stale colours fails.
-Candidate: both buffers invalidated on each DAC update; only a rebuilt
-buffer is marked valid. Additional omission plants for either invalidation
-are caught. Code payload 1,198,668 → 1,198,752 bytes (+84); executable
-4,298,924 → 4,299,020 (+96). Host meter does not represent this platform work.
-
-| Bench | Parent lines | Candidate lines | Parent cycles | Candidate cycles |
-|---|---:|---:|---:|---:|
-| Opening, intervals 4–11 | 68,826 | 68,774 | 62,494,008 | 62,446,792 |
-| Palette, intervals 60–67 | 39,829 | 38,392 | 36,164,732 | 34,859,936 |
-
-Cycle-unit correction: the fresh 100-field profile accounts for 28,420,397
-cycles over 31,300 PAL lines (908/line, within three boundary cycles).
-The inherited 454/line conversion was wrong; R16's absolute totals above
-are corrected, with its percentage and line measurements unchanged.
-
-Repeated later bench: 39,514 → 38,405 lines (2.81% saving), zero I/O fields
-inside either measured window, nine → seven display handoffs under the
-unchanged publication rules. Across both runs, parent 39,514–39,829 and
-candidate 38,392–38,405 do not overlap. All four final guest RAM hashes match.
-
-Both final guest RAM hashes match their parent. Palette-window saving
-3.61%; opening window −0.076%. Later profile: five palette rebuilds → zero,
-with five display publications in both arms and zero palette changes.
-
-| Candidate run | Frames 4–11 intervals (fields) | Median | Min–max |
-|---|---|---:|---:|
-| 1 | 27,19,27,20,19,20,23,20 | 20 / 400 ms | 19–27 |
-| 2 | 26,18,26,18,18,18,21,19 | 18.5 / 370 ms | 18–26 |
-| 3 | 24,23,19,24,19,23,20,20 | 21.5 / 430 ms | 19–24 |
-
-Frame interval ranges overlap the parent; the fixed-work bench establishes
-the saving, not the differing normal-flight trajectory. First capture:
-11.80 → 11.26 cycles/guest, 2.988 → 2.823 68k instructions/guest; these
-ratios reflect different guest mixes, not a lowering change.
-All `make gates` checks passed, including all three DOSBox diagnostic
-replays. Display audits passed 40 captures each on 68020 and 68040. The
-first 68040 audit was invalidated by a debugger-port collision; its unchanged
-rerun used a dedicated strict port. No reference, tolerance or IRQ order changed.
-Evidence: `tmp/item14b-agent/palette-{parent,candidate}/`,
-`palette-census.txt`, `palette-measurements.json`.
-
-### R18 flag extraction (2026-10-14; kept)
-
-Parent `75a4a5e`. Fresh m4 census: `__set_flags` 2,300 calls,
-`__flags_word` 1,893; meter 222,109,822 cycles. Replacing each TF/IF/DF
-`btst; sne; neg.b` with register `bfextu` removes four encoded bytes and
-two instructions per flag: 27,600 executed bytes, 13,800 instructions,
-about 27,008 model cycles (0.0122%) and 12 static bytes. Reads, writes,
-IF re-arm condition, guest polls and delivery order must remain identical.
-Pre-implementation coverage requirement: POPF flag combinations and
-subsequent carry consumers. Generic helper costs also require explicit
-coverage in the label A/B report, which previously selected guest labels only.
-The original meter misread BFEXTU/BFEXTS/BFFFO's offset as a memory
-operand. New tests fail on that bug; the corrected parser and explicit
-runtime-helper A/B attribution have sabotage plants. The A/B report also
-incorrectly included every guarded copy in its changed-label subset; that
-selection is fixed and its plant caught. Comparing actual instruction
-bodies now identifies exactly one changed label: `__set_flags`. Both host arms were
-rebuilt with identical corrected weights, fitted on the frozen parent.
-Fit: R² 0.9302; generated measured 27,804,962, modeled 27,068,987 (−2.65%).
-The doubling plant detects 367,456 extra instructions and 734,912 bytes
-(+711,919 modeled cycles, within its 671,736–727,003 bounds).
-
-Measured m4: 217,138,886 → 217,111,583 cycles excluding host platform
-(−27,303, −0.0126%); executed bytes −27,600, instructions −13,800,
-reads/writes/taken transfers unchanged. Code payload and executable −12
-bytes (1,198,740 / 4,299,008 bytes). Target helper: 349 calls per arm,
-152.092 → 139.421 cycles/call (−8.331%, −29,142 census-weighted cycles).
-Opening bench 68,778 → 68,787 lines, identical final guest RAM; nine lines
-are below observed bench phase variation, so no whole-frame gain is claimed.
-
-Coverage first: 144 added POPF cases, independent TF/IF/DF/CF and following
-carry consumers; the old-helper wrong-bit plant fails 72. Candidate passes
-all 144, and its focused wrong-bit plant also fails 72. The full sabotage
-corpus catches 759 mismatches from that plant. Block differential adds 32
-POPF/IRET entries, covering both IF-dependent predecessors. No flags, polls,
-IRQ re-arm condition or interrupt order changed.
-All gates passed: test 346 s, Amiga 395 s, host-all 511 s, smoke 129 s,
-restoration 213 s, sabotage 1,093 s, diagnostic replays 713 s. Final
-measurement-tool checks pass all ten tests and three plants. The rebuilt
-loadable payload matches the measured candidate.
-Evidence: `tmp/item14b-agent/flags-*` (frozen arms, count/cost reports).
-
-
-### R20 cell cache (measured 2026-10-17; kept 2026-10-18)
-
-Parent `96e5ac2` (the `5ecdf79` code). Price before coding (open-work 32, D3):
-−37.4M model cycles (−17.2%), the walk −79%. Census (host run, whole c8/m5 runs):
-segment loads reaching the region only at start-up and in the setup (two
-invalidations per run), at most one RET planted at a time, 63 operand-patch walks in
-c8.
-
-Built (translator-design D16): cells matched once, when a walk first reaches them;
-a mov cell's record holds its operand and its run's end; runs of 8 or more
-destinations stored by aligned longs, shorter ones and 16-bit wraps byte by byte.
-CS stores that may reach the region (40 sites, all in its segment) call its hook
-after storing; byte movs plant or restore the RET inline. DS/ES/SS loads reaching it
-(segment limit 1106h), the runtime's register reload and runtime stores drop the
-cache; a dropped cache is cleared at the next walk with no segment reaching the
-region and walks exactly until then. The R7 walk remains as the exact walk.
-
-Coverage: exact and cached random walks, RET plants/restores, operand patches,
-segment exposure, entries inside cells, run bounds and 16-bit wrap. Runtime
-stores and segment reloads have separate coverage. Immediate post-restore x86
-comparisons catch both inherited RET-restore plants. A new boundary case exposed
-an invalid-cache revival: a zero byte stored immediately before the region had
-index zero, equal to the invalid tag. The inline restore now rejects that index;
-four outside-region controls pass, and removing its guard fails the x86 comparison.
-All fourteen cache/lowering plants and two runtime plants are caught. The final
-block differential covers all 13,663 executed blocks, 51,653 cases including
-6,004 walks, with zero mismatches.
-
-Meter m4 (generated + walk + runtime): 217,200,040 → 183,943,624 cycles
-(−33.26M, −15.3114%); walk 47.32M → 9.90M. Generated code +4.10M,
-runtime +0.055M. Executed code bytes −26,514,112; data reads −1,842,821,
-writes −1,322,456; 68k instructions −11,931,146. Static decoded bytes:
-generated +28,914, runtime +6,236, walk +810. Code hunk 1,221,568 →
-1,257,444 bytes; allocated payload 1,489,316 → 1,575,780 (cache data 50,586).
-
-FS-UAE: 68020, 8 MB Fast, same session, unchanged frames fixture:
-
-| Arm/run | Frames 4–11 intervals (fields) | Median | Span |
-|---|---|---:|---:|
-| Parent 1 | 28,22,25,21,25,21,25,21 | 470 ms | 21–28 |
-| Parent 2 | 24,25,20,23,19,23,19,19 | 430 ms | 19–25 |
-| Parent 3 | 29,21,29,20,20,19,24,20 | 410 ms | 19–29 |
-| R20 1 | 22,22,17,22,17,20,16,17 | 370 ms | 16–22 |
-| R20 2 | 22,22,17,21,19,20,16,16 | 390 ms | 16–22 |
-| R20 3 | 22,22,18,21,17,20,17,16 | 380 ms | 16–22 |
-
-Individual interval ranges overlap, so no frame-rate gain is claimed (§4).
-First captures: 11.37 → 10.26 cycles/guest, 2.851 → 2.394 68k instructions/guest;
-the guest mixes differ. Mix-adjusted all labels −23.065%; changed nonwalk
-labels +62.492%, consistent with the meter's nonwalk overhead. The changed walk
-spans different labels, so its label-pair ratio is not a per-cell comparison.
-Opening bench: 71,523 → 72,197 lines, 64,942,884 → 65,554,876 cycle
-units (+0.9424%); final guest RAM SHA-256 identical. Separate unchanged-fixture
-captures measure walk cost 22.29 → 4.72 cycles per executed MOV cell (−78.84%),
-agreeing with the meter. Byte stores count one cell, long stores four; register
-replication instructions do not count as cells.
-The user accepted the measured ~1.1% opening-bench regression for ~15.36%
-model-cycle savings, conditional on correctness gates. The corrected build is kept under that approval. All gates passed: test 525 s,
-Amiga 65 s, smoke 207 s, restoration 355 s, diagnostic replay 2,572 s (five
-scenarios), host-all 3,329 s, sabotage 3,338 s. Frozen source hashes and the
-measured executable match after validation; no reference or comparison changed.
-Evidence: `tmp/item32/` (pricing), `tmp/item32-review/` (review, regression,
-frozen arms, meters, captures' reports and gates).
-
-## 8. User decisions (D0–D4 approved 2026-10-08)
+## 8. User decisions (D0–D4 2026-10-08)
 
 - **D0.** Per-step acceptance by the meter (§3), instead of FS-UAE frame A/B.
 - **D1.** R1's memory model, with the harness converting memory and
@@ -1040,19 +324,14 @@ frozen arms, meters, captures' reports and gates).
 - **D7 (2026-10-14).** R19 flag-word packing rejected (§10). Trap flag:
   TF = 1 stops loudly at POPF/IRET, no single-step delivery
   (translator-design.md).
-- Native replacement is not part of this plan (§2.2).
+- Native replacement: [native-plan.md](native-plan.md); each routine needs the user's
+  authorization (§2.2).
 
 ## 9. Gap
 
-R30's run medians are 340, 340 and 340 ms. Reaching 240 ms requires about
-29% less frame time from their 340 ms median; parent and candidate intervals overlap.
-Normal trajectories vary; acceptance uses the fixed-work meter and §3 checks.
-Top guest routines (first R22 capture, self time): SWOTL.EXE+0B54B 8.30%,
-+0BFD1 7.67%, +109D6 4.46%, +0D5A6 3.98%, +0B017 3.92%,
-RTSVGA.OVL+03B9A 3.81%, SWOTL.EXE+06A4D 2.72% (walk), +0B4E2 2.44%.
-Generated guest code is 80.18%; three main FM functions are 7.89%.
-Flag-word packing is rejected (§10); native replacement needs per-routine
-authorization (§2.2).
+R30's frames-fixture medians are 340, 340 and 340 ms: 240 ms needs about 29% less.
+No priced translator candidate remains (§7). Where the time goes now, and the work
+after the translator: [native-plan.md](native-plan.md) (A3, B).
 
 ## 10. Rejected and not built
 
@@ -1076,7 +355,6 @@ history at `781975e` and §5.)
   still runs per delivery); reverted.
 - R19 flag-word packing: priced at 18,726–29,266 model cycles
   (0.0086–0.0135%) and ten code bytes on `25dd32c`; too small (D7).
-
 - R23 loop-tail placement: model −0.1361%, changed-code target −11.3304%,
   code +12 bytes; six opening benches per arm give median +0.0042%, mean
   +0.0326% (overlapping ranges, five pairs slower). No-slowdown acceptance

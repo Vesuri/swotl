@@ -3,10 +3,12 @@
 Ground truth is the original v2.2 game running unattended under a PC emulator,
 never a host approximation and never the Amiga build compared with itself
 ([../AGENTS.md](../AGENTS.md)). This doc distils how Slicks built its loop, plus the
-general lessons of the BBC (Revs) and Mac (Vette) loops. **[PLAN]** marks SWOTL
-adaptations that do not exist yet. Tool versions are in [toolchain.md](toolchain.md).
+general lessons of the BBC (Revs) and Mac (Vette) loops. Tool versions are in
+[toolchain.md](toolchain.md).
 
 ## Slicks: what was built
+
+Paths, patches and make targets in this section are Slicks' (`../Slicks/`).
 
 | Piece | How | Source |
 |---|---|---|
@@ -39,9 +41,10 @@ adaptations that do not exist yet. Tool versions are in [toolchain.md](toolchain
 
 ### Contract rules
 
-- Every milestone has a **positive completion signal** from guest state. A time limit is never a success. The harness stops with a distinct reason: success, limit, unsupported event, or guest failure. [`reference-contract.md`]
-- A negative observation needs a positive control proving that the surrounding path ran. [`validation-harness.md`]
-- Gate on stable crops, not full frames, once the simulation runs. AI and timer state drift across runs, so full race frames only prove advancement (they differ within a run) and are not a cross-run gate. [`reference-contract.md`]
+Positive completion signal and distinct stop reasons, a positive control for every
+negative observation, stable crops once the simulation runs (Slicks
+`docs/reference-contract.md`): AmigaXDev `docs/playbooks/new-port-playbook.md` §4,
+`docs/reference/validation-harness.md` §9.
 
 ## What went wrong (Slicks)
 
@@ -52,17 +55,18 @@ adaptations that do not exist yet. Tool versions are in [toolchain.md](toolchain
 | A single Enter on `GO !!!` starts a race | the defaults are three CPU opponents and no human. Enter only ran setup and returned to the menu | script: `PLAYERS` → add player → `GO !!!` |
 | A one-key reference was a sustained race | disproved later. The refreshed trace changed the coverage | re-verify the reference whenever the script changes |
 | Random track | removed by a single-track disposable root | constrain inputs at the filesystem level |
-| Wall/video-time `autotype` is deterministic | still open in Slicks: replace it with a guest-state-triggered key | trigger input on guest state |
+| Wall/video-time `autotype` is deterministic | unproven; Slicks' `reference-race` still types on wall/video time | trigger input on guest state |
 
 ## General lessons (Revs BBC, Vette Mac)
 
-- **Build the loop first**, before the port needs it. A composed or loaded image is a reconstruction until it is diffed against a live dump. [Revs `bbc-reference-loop.md`]
+Build the loop first, the entry-dump diff and headless hygiene: AmigaXDev
+`docs/playbooks/new-port-playbook.md` §4, `docs/reference/validation-harness.md`.
+
 - **Acknowledge every stimulus on guest state.** Press the key the code is polling, and hold until the state variable changes. Timed taps and "buffer already holds the byte" checks failed silently. [Revs]
 - Prove injection where success is visible (e.g. a prompt) before blaming it inside a blind game state. [Revs]
 - **Check that the scene changes**. A parked or static scene gives byte-identical, confident, useless samples. Provoke the state before you record a cell as dead. [Revs]
 - Snapshot at a **named guest PC**, not at a frame boundary, and use the same PC on both sides. Use write-watch with the writer PC, and tuple peeks per frame. [Revs `make viewdiff`]
 - Match **game state, not ordinal frame numbers**. Use absolute frame/event anchors, never guessed waits. Fix RNG seeds on both sides. [Vette `mac-reference-loop.md`, Revs]
-- Headless hygiene: `SDL_VIDEODRIVER=dummy` (MAME `-video none` alone still opened a window), explicit cfg/nvram/output dirs so state does not leak into the repo, `timeout -k`, and kill only your own PID. [Vette]
 - Code identity is (live segment, offset), not a raw address. Attribute callers live. [Vette]
 - The pointer cursor can be **in the pixels**. Park it outside the crop before a capture. [Vette]
 - Emulator speed flags (`-nothrottle`, cycles) change host speed, not emulated-time quantities. [Vette]
@@ -109,6 +113,8 @@ Trace outputs (`tmp/pc-runs/<name>/trace/`, written at exit):
 | `code-writes.csv` | CPU writes into paragraphs that have executed since their last load |
 | `opl.csv` | `--opl` (`SWOTL_OPL`): every AdLib register write (index 388h, data 389h) with DOSBox's emulated ms; written as it runs |
 | `probe.csv` | `--probes MODULE+HEX:N=name,...` (`SWOTL_PROBES`): emulated ms and the N stack words above a far return address at each entry; written as it runs |
+| `residency.csv` | paragraph ranges → module at exit |
+| `plink.csv` | calls of the PLINK load routine: caller, overlay id, via thunk, resident before, loaded, caller intact, count ([plink.md](plink.md)) |
 
 Sound references: `make sound-reference` (`tools/sound_reference.py`): title
 (150 s) and c6/c12/c13 (400 s) with the OPL log and SPAZ entry probes,
@@ -116,8 +122,6 @@ rendered by `build/tools/opl_render` (Nuked OPL from the DOSBox-X tree, 49716 Hz
 to `tmp/sound/NAME-fm.wav`. These runs end at the time limit: the outputs are
 written there, while guest memory is mapped (`dosbox-x-swotl-time-limit.patch`;
 at exit it is gone and `plink.csv` faulted, leaving the logs unflushed).
-| `residency.csv` | paragraph ranges → module at exit |
-| `plink.csv` | calls of the PLINK load routine: caller, overlay id, via thunk, resident before, loaded, caller intact, count ([plink.md](plink.md)) |
 
 Milestones: `reference/milestones.csv`, run by `make reference`
 (`tools/reference.py`): every snapshot reached, modules resident, BIOS
@@ -134,6 +138,7 @@ runs once per frame in flight, every ~645 instructions in menus.
 |---|---|---|
 | m0-entry | none | `SWOTL.EXE+164F2` (MZ entry) |
 | m1-mode13h | none | `RTSVGA.OVL+390D`, after INT 10h AX=0013h |
+| m1b-logo | none | `RTSVGA.OVL+39AD`: DAC restored over the drawn Lucasfilm logo |
 | m2-choose-side | K2 | "CHOOSE A SIDE" (FRONTEND + NOTCAMP), `+44E2` #600 |
 | m3-demo-flight | none | `REPLAY.OVL+31E6` #1: `DEMO1.DEM` attract flight |
 | m4-demo-frames | none | `+44E2` #150 and 50 frames later; scene advances |
@@ -166,7 +171,7 @@ service-only release format.
 | c3-custom | U, C, 1, 1, S | custom missions menus |
 | c4-tour | U, T, 1, 1, S | tour of duty menus |
 | c5-records | U, R | combat records (CAMPAIGN) |
-| c6-flight-keys | m5 path, then 47 keys at 30-frame intervals in flight | in-flight controls, gun camera film room (REPLAY, `RP*.TMP` written) |
+| c6-flight-keys | m5 path, then 48 keys at 30-frame intervals in flight | in-flight controls, gun camera film room (REPLAY, `RP*.TMP` written) |
 | c7-demo-dispatch | no keys | attract-demo call through the eight-word table at +EC62, return at +EC60 |
 | c8-steep-bank | m5 path, then 61 left presses | bank angle above the alternate renderer threshold; +EC17 calls the modified walk at +758E |
 | c9-mouse-menu | signed motion on both axes, each button and all buttons, releases | INT 33h motion consumption and buttons in the menu; DOS mouse IRQ12 at recorded poll points |
@@ -180,7 +185,10 @@ service-only release format.
 | c17-p38-gunnery | U, F, 5, 1, S; c6's flight keys | P-38 flight |
 | c18-p80-gunnery | U, F, 6, 1, S; c6's flight keys | P-80 flight |
 | c19-fw190-gunnery | G, F, 2, 1, S; c6's flight keys | FW 190 flight |
+| c20-me163-gunnery | G, F, 4, 1, S; c6's flight keys | Me 163 flight |
 | c21-go229-gunnery | G, F, 5, 1, S; c6's flight keys | GO 229 flight |
+| c22-he162-gunnery | G, F, 6, 1, S; c6's flight keys | He 162 flight |
+| c23-do335-gunnery | G, F, 7, 1, S; c6's flight keys | Do 335 flight |
 | c24-custom-create | U, C, C; select Leiston, create a P-47 group, assign the player, exit and save | custom mission `UNNAMEDA.MIS` |
 | c25-film-load | save A.RPY, end mission, select and load A from the main-menu viewer | REPLAY + FLIGHT resident; image proof and host comparison pass |
 | c26-exit-usage | launch `swotl` without arguments | root +138DE after C exit callbacks; host needs exact EMS release and backing aliases (open-work 9b; implementation deferred) |
@@ -195,6 +203,8 @@ service-only release format.
 | c35-custom-options | custom flight group, mission/aircraft choices, weapons | FRONTEND+D21B/+D23C; host comparison passes |
 | c36-custom-flight | c24, exit editor, Fly Custom Mission, select saved mission, Start | NOTCAMP+832C/+835F; flight; host comparison passes |
 | c37-custom-roster | custom mission, Briefing, Weapons, Roster | FRONTEND+CAB6/+CB06/+DDF2/+DE1E/+DE3F; host comparison passes |
+
+Rows c38–c85: `reference/coverage.csv`.
 
 Amiga regression: `AMIGA_CPU=68030 bash amiga/play_walk.sh` (then `68040`).
 The bounded `KEYS=` script enters flight and banks with mouse motion;
@@ -232,9 +242,10 @@ Facts from these runs:
 
 ## A1200 replay validation
 
-`make test-amiga-replay` uses the existing m2, m5 and c9 traces without
-re-recording. `tests/amiga_replay.py` builds isolated diagnostic images under
-`tmp/amiga-replay/`, checks service-event state and replays recorded input/IRQs.
+`make test-amiga-replay` uses the existing traces of `AMIGA_REPLAY_MILESTONES`
+(Makefile: m2, m5, c9, c66, c85) without re-recording. `tests/amiga_replay.py`
+builds isolated diagnostic images under `tmp/amiga-replay/`, checks service-event
+state and replays recorded input/IRQs.
 The final guest snapshot and displayed bitplanes use the existing host/original
 comparison and display-handoff checks. The ordinary wall-clock A1200 gate stays
 mandatory; replay is additional validation, not a performance fixture.

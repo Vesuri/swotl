@@ -9,11 +9,9 @@ measurement and validation method in AmigaXDev `docs/reference/measurement-metho
 
 ## Guardrails
 
-Slicks planned this pipeline and shipped without it: its rules banned the emulation failure
-mode but not hand-porting, its end-to-end gate could be ticked from hand-written code, and each
-hand routine passed its oracle. The account and the generic translator rules are in AmigaXDev
-`docs/playbooks/new-port-playbook.md` §7; the numbered rules below are SWOTL's own, cited by
-number from code, tests and [x86-notes.md](x86-notes.md).
+Why (Slicks planned this pipeline and shipped without it) and the generic translator rules:
+AmigaXDev `docs/playbooks/new-port-playbook.md` §7. The numbered rules below are SWOTL's own,
+cited by number from code, tests and [x86-notes.md](x86-notes.md).
 
 Guardrails for SWOTL (feed into `architecture.md`/`phases.md`):
 
@@ -30,7 +28,7 @@ Guardrails for SWOTL (feed into `architecture.md`/`phases.md`):
 
 ## Process and scope
 
-1. **Standing rules must name the failure modes you expect, both of them** — SL's rules blocked emulation but not hand-porting, and it hand-ported. *SL AGENTS.md, history above*
+1. **Standing rules must name the failure modes you expect, both of them** — SL's rules blocked emulation but not hand-porting, and it hand-ported. *SL AGENTS.md; AmigaXDev playbook §7*
 2. **Build discovery and validation infrastructure exhaustively up front, not reactively** — every reactive addition on RoF was a scar. *RoF postmortem (one-sentence version)*
 3. **Translator output quality is a prerequisite milestone before mass generation** — one generator fix upgrades the whole corpus; late fixes left every intermediate regen worse. *RoF postmortem 2.1; RV transpiler.md*
 4. **Generation fails rather than emitting a plausible stub** (unknown ROM/OS call, annotation address not an instruction start, unresolvable target) — a silent stub reads like a routine that runs and does nothing. *RV transpiler.md §What make gen reports*

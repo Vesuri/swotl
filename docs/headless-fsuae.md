@@ -9,16 +9,16 @@ AmigaXDev `docs/reference/headless-fsuae.md`. This page holds what is specific t
 | Script | Role |
 |---|---|
 | `amiga/run.sh` | audible interactive boot through the shared `fsuae_options`/`fsuae_exec`; `DEBUG=1` adds the gdb stub |
-| `amiga/debug.sh [ROM] [fixture.gdb]` | boot under the gdb stub; with a fixture, run it and exit with gdb's status (`make test-amiga` fills `amiga/milestone.gdb.in`) |
+| `amiga/debug.sh [ROM] [fixture.gdb] [exe]` | boot under the gdb stub (startup line `Swotl MUSIC`); with a fixture, run it and exit with gdb's status (`make test-amiga` fills `amiga/milestone.gdb.in`) |
 
 Boot volume: `dh0/s/startup-sequence` runs `C:SetPatch QUIET`, `cd dh1:` and the program; the
 user's own `SetPatch` comes from `SETPATCH` and is never committed. Kickstart: the shared
 `$KICKSTART` (3.1); `$KICKSTART_A1200` is beside it.
 
 `make test-amiga` captures guest state at the original milestone label, then
-waits for that exact queued frame's handoff before capturing visible pixels.
-A replacement publication or missing success marker fails; the DOSBox-X
-reference, state masks and pixel/palette comparisons are unchanged.
+waits for that exact queued frame's handoff before capturing visible pixels,
+and compares both with the DOSBox-X reference (`tests/host_run.py --amiga`).
+A replacement publication or missing success marker fails.
 
 `make test-amiga-restore` exits through the game menu (E), then checks
 ActiView, the VERTB vector triple, DMACONR and INTENAR against their saved
@@ -59,5 +59,6 @@ private `tmp/display-audit.*` directory.
 | `AMIGA_CPU=68030` (the Makefile's default for `make test-amiga`) | development model, about 3× the 68020; `A1200/1230` needs the Blizzard 1230-IV ROM, which is absent, and there is no A4000 ROM |
 | 68020 (`AMIGA_CPU` unset), 8 MiB Fast | the speed-plan measurement model ([speed-plan.md](speed-plan.md) §4) |
 
-The chip/fast budget of the release is not chosen yet. Decide it before the first timing run
-that matters for the release, and never time with diagnostic Fast RAM as if it were the target.
+Fast RAM is required (D15, [translator-design.md](translator-design.md)); the release's
+Chip/Fast budget is open-work 19. Decide it before the first timing run that matters for the
+release, and never time with diagnostic Fast RAM as if it were the target.

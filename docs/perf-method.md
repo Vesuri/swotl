@@ -31,4 +31,4 @@ its binding rules: [speed-plan.md](speed-plan.md).
   reflects the capture's taken mix. Keep both reports; neither proves fidelity.
 - Profile captures run with no breakpoint inside the window; the matching ELF is kept with the
   capture. Per-step speed decisions use the deterministic fixed-workload meter and the
-  layout-blind lowering meter of [speed-plan.md](speed-plan.md) §4–5, not frame medians.
+  layout-blind lowering meter of [speed-plan.md](speed-plan.md) §3–4, not frame medians.

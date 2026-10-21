@@ -24,7 +24,7 @@ root EXE + .OVL images (proved against DOSBox captures)
 | Path | Content | Git |
 |---|---|---|
 | `translator/` | decoder, IR, analyses, backend, coverage report | tracked |
-| `annotations/` | entries, indirect-target tables, data ranges, HLE table, names (with evidence class) | tracked |
+| `annotations/` | entries, indirect targets, switch tables, runtime names (with evidence), self-modified regions, HLE table, profile choices | tracked |
 | `build/gen/` | generated `.s`, hash header (translator + annotations + input image) | ignored: derived from game bytes |
 | `src/runtime/` | DOS/BIOS services, port/device models, overlay loader, interrupt delivery | tracked |
 | `src/platform/amiga/` | framework-based display/audio/input/file layer | tracked |
@@ -37,14 +37,15 @@ root EXE + .OVL images (proved against DOSBox captures)
    (`int21_3Dh`, `port_3C9`), never by guest address. A lint enforces it.
 3. Native replacement of a guest routine (HLE) needs an `annotations/` entry:
    guest range, reason (device-bound or measured hot), oracle. User-authorized
-   per routine (translator-design.md, HLE).
+   per routine ([speed-plan.md](speed-plan.md) §2.2).
    Callers of a replaced routine stay generated.
 4. Wrong output is fixed in IR semantics, lowering or annotations, then
    regenerated.
 5. Phase gates are hard ([phases.md](phases.md)); a target milestone counts
    only if its pixels come from generated code.
-6. `make gen` reports executed guest bytes as translated / HLE /
-   unclassified against the DOSBox trace; unclassified executed bytes fail.
+6. `make gen` reports executed instruction starts as translated /
+   self-modified / HLE / unclassified against the DOSBox traces;
+   unclassified ones fail.
 7. Unresolved indirect control flow, writes to translated code and unknown
    ports/interrupts stop with a report. No interpreter fallback in release.
 
@@ -74,7 +75,8 @@ root EXE + .OVL images (proved against DOSBox captures)
   `platform.h`; one implementation for the host harness and the A1200.
 - Drivers: RTSVGA and SPAZ run translated. RTSVGA's video-memory stores
   are marked and its published frames' changed rows presented (D9); SPAZ's
-  OPL2 writes reach the runtime's register file (D10: Amiga output open).
+  OPL2 writes reach the runtime's register file, which the FM re-hoster
+  plays on Paula (D10, [sound-plan.md](sound-plan.md)).
 
 ## Oracles
 

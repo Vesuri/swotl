@@ -18,7 +18,7 @@ Lessons and provenance: [translation-lessons.md](translation-lessons.md).
 
 | Item | Value | Method |
 |---|---|---|
-| `SWOTL.EXE` | 100,112 bytes, SHA-256 `0223a4e3…5444915` | SL `tools/mz_info.py` |
+| `SWOTL.EXE` | 100,112 bytes, SHA-256 `0223a4e3…5444915` | `make inspect` (AmigaXDev `amigaxdev.dos.mz_info`) |
 | MZ header | 4,096 bytes; 1,006 relocations; overlay number 0; no Compack | same |
 | Load image | 96,000 bytes = `1770h` paragraphs; 16 zero bytes after the declared size | same, `xxd` |
 | Entry | CS:IP `1617:0382` (image offset `164F2h`, last ~4.6 KiB of image) | same |
@@ -52,7 +52,7 @@ FLAGS bits: CF0, 1, PF2, AF4, ZF6, SF7, TF8, IF9, DF10, OF11. On a 286 in
 real mode `PUSHF` stores bits 12–15 as 0 (8086: 1; 386 can set 12–14) — the
 classic CPU probe. [SL] found a CPU probe selecting an optional 386 path
 (operand-size prefixes, `PUSHAD`, `PUSHFD`, FS/GS) in Borland's runtime
-(`docs/source-inventory.md`).
+(Slicks `docs/source-inventory.md`).
 
 | Topic | x86 | 68k | Lowering consequence |
 |---|---|---|---|
@@ -90,7 +90,7 @@ classic CPU probe. [SL] found a CPU probe selecting an optional 386 path
 - `RCL/RCR`: through CF; 16-bit count is 5-bit masked then mod 17. 68k
   `ROXL/ROXR` rotate through X, not C: set X from CF first.
 - Signedness [SL]: coordinates include `FFFFh`; keep unsigned 16-bit
-  arithmetic and logical shifts (`docs/external-surface.md`).
+  arithmetic and logical shifts (Slicks `docs/external-surface.md`).
 
 ## Segments, addresses, endianness
 
@@ -98,20 +98,21 @@ classic CPU probe. [SL] found a CPU probe selecting an optional 386 path
   (`[bx+si+disp]`, `SI/DI` in string ops, `SP`). Above 1 MiB: wraps or HMA
   depending on A20 — UNKNOWN whether SWOTL ever forms such addresses.
 - [K] A word access at offset `FFFFh`: 8086 wraps to offset 0; 286+ real mode
-  faults (INT 0Dh). Emulator behaviour UNKNOWN; fail loudly.
+  faults (INT 0Dh). DOSBox and the port: [T] below.
 - [K] Default segments: `BP`-based → SS, others → DS, string destination
   ES:DI (not overridable), stack SS:SP. Prefixes `26 2E 36 3E` (ES CS SS DS).
   `MOV SS` / `POP SS` inhibit interrupts for one instruction.
 - [K] Far pointer in memory = offset word, then segment word. `LES`/`LDS`.
 - [SL] 16-bit address wrap is real in game code: VGA plane offsets and a
   screen-transition source wrap at 64 KiB; plot offset is the low 16 bits of
-  `base + y×stride + x/4` (`docs/native-graphics-abi.md`, `external-surface.md`).
+  `base + y×stride + x/4` (Slicks `docs/native-graphics-abi.md`,
+  `external-surface.md`).
 - [SL] Guest RAM stays byte-exact little-endian; every native word/long access
   states its endian rule. Never alias guest RAM as a wide native pointer (RV
   learned the same; see translation-lessons #43).
 - [SL] Callers pass bytes as words; callees use only the low byte (far fill
   value, readback height). Do not assume a zero high byte
-  (`external-surface.md`).
+  (Slicks `external-surface.md`).
 
 ## String instructions [K]
 
@@ -124,8 +125,8 @@ classic CPU probe. [SL] found a CPU probe selecting an optional 386 path
 - SI/DI wrap at 64 KiB independently mid-string.
 - DF: assume nothing. Treat DF as a live guest flag; a translated block may
   specialise on DF=0 only where analysis proves it.
-- [SL] An instrumented trace shows `REP` iterations as self-edges
-  (`tools/analyze_execution_trace.py` classifies `destination == source` as
+- [SL] An instrumented trace shows `REP` iterations as self-edges (Slicks
+  `tools/analyze_execution_trace.py` classifies `destination == source` as
   "repeat").
 
 ## Calls, returns, stack [K]
@@ -136,7 +137,7 @@ classic CPU probe. [SL] found a CPU probe selecting an optional 386 path
 - Code can pop or rewrite its return address (inline parameters, dispatch).
   Guest stack bytes must stay guest CS:IP values to keep RAM byte-exact, so a
   `RET` is a mapping from guest IP to native code unless call/return pairing is
-  proved. Design decision for `architecture.md`.
+  proved. Decided: [translator-design.md](translator-design.md) Calls (D1).
 - [SL] Borland far cdecl: caller cleans arguments; a far pointer argument is
   two words; static callers' `add sp,n` confirms arity.
 
@@ -201,7 +202,7 @@ probed on this host):
   (XMS); INT 33h `0000 0003 0008 0009`. Trace kept AX..BP, SP, FLAGS per event
   (Slicks `docs/external-surface.md`). SWOTL's set: [external-surface.md](external-surface.md).
 - [SL] Timer handler entered from game code and while a DOS service was
-  active: asynchronous state, not a call (`external-surface.md`).
+  active: asynchronous state, not a call (Slicks `external-surface.md`).
 - Delivery in the port: at safe guest boundaries, never as game code inside an
   Amiga interrupt (PK; translation-lessons #31).
 
@@ -233,7 +234,7 @@ not ports one by one (translation-lessons #25).
 - [SL] Slicks set mode 13h through BIOS, then went unchained: 100-byte stride,
   page separation 32,700, sequencer/GC programming in the inner loops. "Treating
   mode 13h as only a flat 320×200 framebuffer would be insufficient"
-  (`external-surface.md`).
+  (Slicks `external-surface.md`).
 - SWOTL: RTSVGA stays chained (no VGA port access, no page flip;
   [external-surface.md](external-surface.md)).
 
@@ -245,7 +246,7 @@ not ports one by one (translation-lessons #25).
 - Image loads at PSP+10h; each relocation `(offset, segment)` adds the load
   segment to the word at `load+segment : offset`. Entry DS = ES = PSP.
 - [SL] Normalise by subtracting the load segment (4,192 relocations reversed
-  for Slicks; `tools/rebuild_runtime_mz.py`) and compare traces against that.
+  by Slicks `tools/rebuild_runtime_mz.py`) and compare traces against that.
 - The relocation table marks segment-valued words: a free data/code
   classifier for far pointers and segment immediates. Not every segment value
   is relocated (computed segments, overlay segments, PSP-relative values).
@@ -260,10 +261,10 @@ not ports one by one (translation-lessons #25).
   only the low byte; also used on `A000h` and `B800h`, so library helpers can
   be device code.
 - Palette nearest-colour helper: asymmetric signed/unsigned component handling
-  exposed only by high input bytes (`docs/validation-harness.md`).
+  exposed only by high input bytes (Slicks `docs/validation-harness.md`).
 - Sub-rectangle blit: source x truncated to a byte offset yet added to the
   destination origin — an original quirk the oracle had to confirm.
 - Borland RNG reproduced; RNG call order is checked by an oracle
-  (`docs/toolchain.md` verify-surface-effects, `docs/performance.md`).
+  (Slicks `docs/toolchain.md` verify-surface-effects, `docs/performance.md`).
 - No writes into executed instruction bytes on the measured path; other paths
-  unproven (`external-surface.md`).
+  unproven (Slicks `external-surface.md`).

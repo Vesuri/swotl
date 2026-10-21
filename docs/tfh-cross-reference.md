@@ -6,15 +6,16 @@ SWOTL/DOSBox remains the correctness oracle.
 
 ## Inputs and addresses
 
-- TFH 1.0 `data/BOB`, SHA-256
-  `4b5931c8500e60b5f4cdbfa7f8e37930c731c14443bd1f88757090fb22443877`.
+- TFH `data/BOB` v1.1 (254,400 bytes; `../Their Finest Hour/docs/development.md`),
+  SHA-256 `4b5931c8500e60b5f4cdbfa7f8e37930c731c14443bd1f88757090fb22443877`;
+  local copy `tmp/tfh/TheirFinestHour&Missions/data/BOB` (`tools/tfh_xref.py` default).
 - HUNK code: 204,352 bytes; initialized data: 43,888 bytes in a 64,020-byte
   allocation; separate BSS: 4 bytes. No symbol/debug hunks.
 - Research load bases: code `10000`, data `41E40`, BSS `51854` (hex).
   1,511 RELOC32 entries applied. Startup at `40BBC` establishes A4=`49E3E`;
   A4-relative calls enter absolute-long jump thunks in the data hunk.
 - TFH offsets below are relative to the code hunk; add `10000` for Ghidra.
-  SWOTL offsets follow `swotl_model.py`: root load-image or overlay-file offsets.
+  SWOTL offsets follow `tools/swotl_model.py`: root load-image or overlay-file offsets.
 - Ghidra's generic 68000 decompiler assumes the wrong C integer/argument layout
   for Aztec's mixed word/long stack arguments. Disassembly settles sizes and
   offsets. Scanned `LINK A5` prologues are candidates, not proof of code coverage.

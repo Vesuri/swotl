@@ -103,25 +103,32 @@ provenance is in brackets.
 
 - Slicks rule: every instruction semantic and every lowering is differentially tested against an independent x86 oracle (Unicorn x86-16 vs Unicorn 68020 on assembled bytes). [Slicks `AGENTS.md`, `docs/validation-harness.md`]. Details are in [translation-lessons.md](translation-lessons.md).
 - Slicks: no LLVM and no generated-C backend until there is a measured need. [Slicks `docs/toolchain.md`]
-- SWOTL translator and tests (Python 3.12, stdlib + capstone; numpy for `tools/profile_report.py`): `make gen` (build/gen: `.ir`, `.s`,
-  audit; runs vasm to size the alignment pads), `make gen-check` (G1), `make lint` (G2), `make test` (lint, decoder vs Capstone, x86
-  differential vs Unicorn, 68020 instruction differential, generated-program block differential,
-  guard plants, gen-check, host run m1–m3; ~9 min), `make test-sabotage` (x86, 68020 and runtime plants, one plant per
-  worker process, stopping after its first caught case/batch (uncaught plants exhaust
-  their corpus and fail); step-specific catch counts still come from that step’s cases.
-  The 68020 plants reuse the x86 side `make test`'s boundary run records in
-  `tmp/test/x86-side-boundary.pkl`, matched per case), `make test-host-all` (m1–m7 and all coverage scenarios listed in the Makefile), `make gates` (all step gates: test, then the others at once, at nice
-  `GATES_NICE`, default 10; logs in `tmp/gates/`). The longest host scenarios start first
-  with 4,800 s wall limits (others 2,400 s). After one Amiga build, hardware, smoke and
-  restoration run together in isolated directories with strictly claimed debugger ports;
-  replays follow. All endpoints and comparisons are unchanged. A loaded-machine
-  run took 66.5 min, all green without a c52 rerun.
-  Sabotage took 57.1 min, host-all 54.4 min and replays 51.9 min; these overlap. Checks run in parallel (`JOBS`, default all cores;
-  the differentials in `--shard K/N` pieces), each logging to `tmp/test/<name>.log`. Unicorn x86
-  quirks the harness works around: [x86-notes.md](x86-notes.md#unicorn-x86-16-as-oracle).
-  Multi-instruction RETF wrap checks and `tests/test_dosbox_retf.py` also need
-  the existing heavy-debug DOSBox-X binary (`make reference-emulator`).
-  They single-step through its debugger; no saved reference is generated.
+- SWOTL translator and tests (Python 3.12, stdlib + capstone; numpy for `tools/profile_report.py`).
+  Which to run for a change: AGENTS.md "Validation scope". Checks run in parallel (`JOBS`,
+  default all cores; the differentials in `--shard K/N` pieces), each logging to
+  `tmp/test/<name>.log`.
+  - `make gen` (build/gen: `.ir`, `.s`, audit; runs vasm to size the alignment pads),
+    `make gen-check` (G1), `make lint` (G2).
+  - `make test`: lint, decoder vs Capstone, x86 differential vs Unicorn, 68020 instruction
+    differential, generated-program block differential, guard plants, gen-check, host run
+    m1–m3; ~9 min.
+  - `make test-sabotage`: x86, 68020 and runtime plants, one per worker process, each
+    stopping after its first caught case or batch (an uncaught plant exhausts its corpus and
+    fails); a step's catch counts come from its own cases. The 68020 plants reuse `make
+    test`'s x86-side boundary records (`tmp/test/x86-side-boundary.pkl`), matched per case.
+  - `make test-host-all`: m1–m7, every coverage scenario in the Makefile's `HOST_COVERAGE`
+    and the music-skip check; the longest scenarios start first with 4,800 s wall limits
+    (others 2,400 s).
+  - `make gates-audio`: the FM, TFH and audio checks and their plants (isolated audio work).
+  - `make gates`: the full suite at nice `GATES_NICE` (default 10; logs in `tmp/gates/`):
+    test, then sabotage, host-all and the FS-UAE lane at once (one Amiga build; hardware,
+    smoke and restoration together in isolated directories with claimed debugger ports;
+    then the replays). One loaded-machine run: 66.5 min (sabotage 57.1, host-all 54.4,
+    replays 51.9, overlapping).
+  - Unicorn x86 quirks the harness works around:
+    [x86-notes.md](x86-notes.md#unicorn-x86-16-as-oracle). Multi-instruction RETF wrap
+    checks and `tests/test_dosbox_retf.py` also need the heavy-debug DOSBox-X binary (`make
+    reference-emulator`); they single-step through its debugger, no saved reference.
 - Phase 5 link: `make host` assembles `build/gen/program.s` (one unit, `vasm -m68020 -Felf -x`,
   default optimisations; external branches are emitted `.l`), compiles `src/runtime/*.c` with
   `-ffreestanding` (the Amiga sys-include has no hosted `stdint.h`; the framework's `Util.h`

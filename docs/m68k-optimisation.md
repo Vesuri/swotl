@@ -8,8 +8,9 @@ lessons there. Measuring: [perf-method.md](perf-method.md); x86 lowering:
 
 ## This target
 
-- A1200, 68020, AGA, 2 MiB Chip, no Fast RAM: all code and data are Chip accesses, the 256-byte
-  instruction cache is the only cache, so executed code volume is the main cost.
+- A1200, 68020, AGA, 2 MiB Chip; Fast RAM required for code and guest RAM (D15,
+  [translator-design.md](translator-design.md)). The 256-byte instruction cache is the only
+  cache, so executed code volume is the main cost.
 - Measured on FS-UAE's 68020 with 8 MiB Fast:
 
 | Fact | Source |
@@ -21,6 +22,7 @@ lessons there. Measuring: [perf-method.md](perf-method.md); x86 lowering:
 - Guest memory is byte-reversed (speed-plan R1: guest byte at linear L at host TOP − L), so a
   little-endian guest word is a native big-endian word one byte below
   ([translator-design.md](translator-design.md)).
+
 ## Standalone instruction probes
 
 Run `bash amiga/cost_probe.sh` (no game build). It generates a separate

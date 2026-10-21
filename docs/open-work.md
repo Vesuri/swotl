@@ -53,7 +53,6 @@ speed work: [speed-plan.md](speed-plan.md).
     `bra` back to its target that never closes a loop, so R27's meter Δ is
     −0.6278%, −0.7903% counting only taken back edges (FS-UAE agreed in sign).
     Decide the definition (and recalibrate) at the next re-profile.
-16. Lookup-table policy with no Fast RAM (tables are Chip reads).
 24. Lockstep RAM compare (phase 6): undefined flags and FLAGS words pushed
     below SP (PUSHF, interrupt frames) differ from DOSBox by design. The host
     run masks dead stack (below SS:SP at a service or hardware interrupt,
@@ -65,8 +64,9 @@ speed work: [speed-plan.md](speed-plan.md).
 
 18. Framework copy declares `getVBR`, `isLongFrame`, `isBlitterBusy`,
     `blitterWait` without bodies; supply C++ bodies before the first blit.
-19. Memory budget (Chip-only vs WHDLoad expansion memory) after first
-    measurements; sound takes 64 KB Chip (FM loops) plus 107,298 bytes in TFH
+19. WHDLoad memory budget: Chip-only is impossible (D15: code and guest RAM
+    exceed 2 MiB), so the slave needs expansion memory; size it from
+    measurements. Sound takes 64 KB Chip (FM loops) plus 107,298 bytes in TFH
     mode. A1200/68020, 8 MiB Fast: TFH free Chip 1,722,072 bytes, largest
     block 1,721,968 (1,500-field soak, 2026-10-15).
 20. Check whether the game uses F10; choose the WHDLoad quit key.

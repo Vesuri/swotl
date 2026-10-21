@@ -3,8 +3,8 @@
 The translator, runtime and test contract as built. Decisions D1–D16 are
 settled where this file states them (D1 memory and calls, D2 overlays and BP
 regions, D4 registers, D6 flags, D7 indirect transfers, D8 interrupts, D9
-display, D11 strings, D15 memory, D16 self-modified code); the one still open
-is listed at the end. Speed forms are indexed in
+display, D11 strings, D15 memory, D16 self-modified code, D10 sound at the
+end). Speed forms are indexed in
 [speed-plan.md](speed-plan.md) §7. Overview and guardrails:
 [architecture.md](architecture.md).
 
@@ -24,6 +24,9 @@ is listed at the end. Speed forms are indexed in
 | `translator/lower.py` | one decoded instruction -> 68020 text under the register contract (templates per op family; the IR stays the semantic reference) |
 | `translator/flags.py` | flag demand: per-instruction store set and CCR fusion with the next reader, or one past plain instructions |
 | `translator/region.py` | BP-stable components, their direct-access range and guards (speed-plan R6) |
+| `translator/reuse.py`, `compact.py`, `reglive.py` | run-local rewrites: repeated index/base formations (R13), folded displacements (R14f), native BP (R25), push/pop runs (R31); word-mask compaction within an instruction (R4); DX liveness within a block (word MUL/DIV store DX only where live) |
+| `translator/smc.py` | self-modified region as a run-time cell walk with cell cache (D16, below) |
+| `translator/compute.py` | admission and emission of `kind=compute` HLE rows ([native-compute.md](native-compute.md)) |
 | `translator/emit.py` | program mode: global flag liveness, per-function return sets, leaders, labels, transfers, `build/gen/<module>.s`, `program.s` (assembly root, dispatch table) |
 | `translator/support.py` | state-block equates, flag/BCD helpers (`build/gen/support.s`) |
 | `src/runtime/` | runtime (C + `rt_entry.s`): machine model of the reference (PSP, environment, MCBs, IVT values), EXEC of `SWOTL.EXE`, INT 21h/10h/67h services, `rt_*` entries, dispatch lookup with PLINK residency; platform interface `platform.h` |
@@ -122,16 +125,17 @@ diffs directly); relocated words in instructions are emitted as
   -(a5),d6` or `cmp -(a5),d` with `db<cc>`, the last pair's flags
   recomputed. REP STOSW and REPE CMPSW move or compare two words per
   `move.l`/`cmp.l` (speed-plan R12: an odd element alone, a mismatching
-  long's guest-first word first). Checked by the boundary corpus (guard and
+  long's guest-first word first), eight longs per pass (R24: STOSW stores
+  a first word to long-align; R26). Checked by the boundary corpus (guard and
   stop edges, overlap) and sabotage plants.
 - Calls (D1): the guest stack stays byte-exact; a guest call is `jsr` and
   returns with `rts`. Near returns carry IP in d7.w; RETF and IRET carry
   CS:IP in d7.l (R33). RETF pops one long after a word SP step guarded by
-  overflow; wrapping uses the original two word reads and wraps SP between
-  them. IRET retains its word reads and flag handling, then packs the pair.
+  overflow; a wrap pops the two words out of line, wrapping SP between
+  them. IRET pops flags and words separately, then packs the pair.
   Return sites compare the near word or far long and branch to a module-local
   `<tag>_rm<n>` trampoline after a run that cannot fall through. Far failure
-  normalizes CS into d6 before the existing fail-loud diagnostic. A PLINK
+  normalizes CS into d6 before the fail-loud diagnostic. A PLINK
   manager call's return site is 2 bytes later (the manager advances the IP).
 - Indirect transfers (D7): compare chain over the known targets
   (`annotations/indirect.csv`); a proved switch table falls back to
@@ -180,12 +184,14 @@ diffs directly); relocated words in instructions are emitted as
 
 `entries.csv`, `indirect.csv` (site -> targets; written by `make map`),
 `tables.csv` (cs: word tables sized by evidence other than an MS C bounds
-check, read by the sweep), `data.csv` (ranges),
-`hle.csv` (guest range, service, reason, oracle; below), `names.csv`
-(name, evidence class), `bp-regions.csv` (BP writes whose component gets a
-guarded copy; a profile choice, `tools/bp_regions.py`), `outline.csv`
-(forward jcc whose fall-through range goes out of line, R27; a profile
-choice, `tools/outline_sites.py` from `build/gen/outline-sites.csv`),
+check, read by the sweep), `runtime.csv` (MS C runtime entries: name,
+class, evidence), `self-modifying.csv` (D16 regions and cell forms),
+`flags.csv` (PUSHF/POPF pairs that only save and restore FLAGS),
+`hle.csv` (guest range, service, reason, oracle; below), `align.csv`
+(R8 pads; `tools/align_targets.py`), `bp-regions.csv` (BP writes whose
+component gets a guarded copy; a profile choice, `tools/bp_regions.py`),
+`outline.csv` (forward jcc whose fall-through range goes out of line, R27;
+a profile choice, `tools/outline_sites.py` from `build/gen/outline-sites.csv`),
 `seg-repeat.csv` (segment loads that compare first, R30; a profile choice,
 `tools/seg_repeat.py`).
 
@@ -221,9 +227,9 @@ choice, `tools/outline_sites.py` from `build/gen/outline-sites.csv`),
   over synthetic files verifies Amiga DateStamp conversion and runtime
   DTA time/date, including leap centuries, pre-1980 wrapping and odd seconds.
 - Host run (`make test-host`, gate 5): `build/host/swotl.elf` on Unicorn
-  68020 from the MZ entry to milestones m1–m3 (`make test-host-all`: m1–m7
-  and c6-flight-keys, whose film recorder writes files, kept in memory;
-  ~6 min); every software
+  68020 from the MZ entry to milestones m1–m3 (`make test-host-all`: m1–m7,
+  the Makefile's `HOST_COVERAGE` scenarios and `t-hle-music-skip`; files the
+  guest writes are kept in memory); every software
   INT's registers at entry and return vs the tracer's service log; registers
   and RAM (environment MCB to A0000h) vs the snapshot, dead stack masked
   (below SS:SP at a service, and the FLAGS image of an `annotations/flags.csv`
@@ -233,7 +239,8 @@ choice, `tools/outline_sites.py` from `build/gen/outline-sites.csv`),
   `amiga/milestone.gdb.in`), plus the shown screen (bitplanes, colour
   table) decoded against the reference framebuffer and DAC.
 - Amiga replay (`make test-amiga-replay`, also in `make gates`): separate
-  diagnostic images for m2-choose-side, m5-player-flight and c9-mouse-menu.
+  diagnostic images for m2-choose-side, m5-player-flight, c9-mouse-menu,
+  c66-flight-calibration and c85-joystick-calibration.
   Translator hooks preserve native registers/CCR and split diagnostic
   entries at block boundaries; the normal generated bodies are unchanged.
   `tests/amiga_replay.*` replays DOSBox input and interrupt groups at their
@@ -338,7 +345,7 @@ choice, `tools/outline_sites.py` from `build/gen/outline-sites.csv`),
   operand words read from guest RAM; anything else stops. Mov cells run
   counted (R7): the cells that fit before the bound are counted once, each
   still matched when it runs (one long read: opcode and operand). That
-  exact walk (`_walk_x`) serves a cell cache (D3, speed-plan R20): a cell is
+  exact walk (`_walk_x`) serves a cell cache (speed-plan D3, R20): a cell is
   matched once, when a walk first reaches it, and its bytes are covered; a
   mov cell records its operand and the end of its run of consecutive
   destinations, which the walk stores AL to a long at a time (under 8 bytes

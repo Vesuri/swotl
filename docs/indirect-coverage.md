@@ -28,14 +28,11 @@ These are not excluded merely because current fixtures miss them.
 | PANEL+33B2 | Cockpit damage display through `[AABC]`: pilot station `[6210]=0`, an active D4A0 slot and DD74 coordinate bit 15. Existing wing captures activate slots 0/2; engine slots 4/6 require a low engine-status nibble of 1..4, absent from those captures. |
 | FRONTEND+A4D1, +A629 | Special formatting branches. Inspected direct callers pass ordinary parameters; the required sentinel and complete incoming-flow proof remain open. |
 
-The c26 usage-exit reference separately requires exact EMS release support on
-the host. DOSBox evidence includes retained mappings, reused handles and
-backing-page aliases; clearing a handle alone is not an exact implementation.
-Implementation is deferred by the user; see open-work 9b for resume approvals.
+The c26 usage-exit reference needs exact EMS release on the host (DOSBox:
+retained mappings, reused handles, backing-page aliases); deferred by the
+user. It and the pending recorder/formatting-test approvals: open-work 9b.
 
 Damage investigation: the B-17 runs consumed all 40 shifted function-key
 codes, including a run with Shift visible at keyboard-status queries, but
 engine state did not change. Do not repeat those inputs as if delivery were
-unverified. Adding normal `equals`/`minus` throttle keys to the recorder awaits
-approval. Isolated formatting tests also await approval and would establish
-original-code behavior, not a gameplay route to the two sites.
+unverified.

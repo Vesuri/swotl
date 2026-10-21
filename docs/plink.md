@@ -22,7 +22,7 @@ absolute at run time):
 
 | Offset | Field | Note |
 |---|---|---|
-| `+0` | flags | bit 15 resident (run time), bit 14 preload at startup, bit 13 set on DATA only (open), bits 0–12 parent id |
+| `+0` | flags | bit 15 resident (run time), bit 14 preload at startup, bit 13 set on DATA only (meaning open: open-work 9c), bits 0–12 parent id |
 | `+2` | nfix | fixup count; file code starts at `(nfix·4 + 15) & ~15` |
 | `+4` | seg | load segment of the code |
 | `+6` | end | first segment after the overlay's area |

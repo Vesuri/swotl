@@ -14,7 +14,7 @@ Pokeri, `RoF` Rescue on Fractalus (each project's `docs/whdload*.md` and
 | Native port is an AmigaDOS exe (AllocMem, graphics, DOS, CIA resources) → kickemu: boot real Kickstart in WHDLoad space, run the **same** exe as a CLI process | RoF §0, Ve, Sl, Po |
 | Rejected alternatives: game-side OS shim (forks startup, unvalidatable), fake exec in slave (struct fragility in asm) | RoF §0 |
 | `kick31.s` + `kickfs.s` for 3.x/AGA targets; `kick13.s` only if exe is 1.3-clean (saves 256 KiB ROM image) | Sl, Ve, Po / RoF, Rv |
-| Vendor SDK `kick31.s`/`kickfs.s`/`segtracker.s` into `whdload/whdload/`; never ship SDK binaries | Rv, Sl |
+| Assemble SDK `kick31.s`/`kickfs.s`/`segtracker.s` from `$(WHDLOAD)/Src/sources` (vendor only patched copies; AmigaXDev `docs/projects.md`); never ship SDK binaries | Rv, Sl |
 | **[PLAN]** SWOTL: `kick31.s` kickemu, Kickstart 3.1 + RTB user-supplied (kick40068.A1200 / kick40068.A4000 / kick40063.A600) | Sl, Po |
 
 ## Header symbols and flags (newest = Slicks/Pokeri)
@@ -36,7 +36,7 @@ Pokeri, `RoF` Rescue on Fractalus (each project's `docs/whdload*.md` and
 | `slv_keyexit = $59` (F10) | default quit; pick another key if game uses F10 (Rv: keypad `*`; Po: Help `$5f`) | Sl, Rv, Po |
 | `slv_info` | "Amiga port by Vesuri", version line, quit-key line | Sl |
 | `$VER: <Name>.slave x.yy (dd.mm.yyyy)` | literal, bumped by hand → byte-identical rebuilds | RoF §5, Sl |
-| **[PLAN]** SWOTL: Slicks set verbatim; check whether game uses F10 before choosing `slv_keyexit` | — |
+| **[PLAN]** SWOTL: Slicks set verbatim; check whether game uses F10 before choosing `slv_keyexit` (open-work 20) | — |
 
 ## `_bootdos` sequence (Slicks, newest)
 
@@ -69,7 +69,7 @@ Pokeri, `RoF` Rescue on Fractalus (each project's `docs/whdload*.md` and
 | Size from measurement: `MEMFREE = $200` tune slave (largest free chunk at `$200` chip / `$204` fast, sampled only at AllocMem) or gdb free-list walk | RoF §2, Rv, Po |
 | Enhanced/optional paths need their own measurement (RoF: 52 KiB chip left → silent bitmap alloc failure) | RoF §1 |
 | Checker asserts exact slave chip/exp sizes so drift is caught | Po |
-| **[PLAN]** SWOTL: measure under kickemu before choosing sizes; decide Chip-only (Slicks) vs ExpMem from measurement, noting BaseMem is uncached by default (Caches) | — |
+| **[PLAN]** SWOTL: Fast RAM is required (D15: code + guest RAM exceed 2 MiB Chip), so the slave needs ExpMem; size it from measurement under kickemu (open-work 19), noting BaseMem is uncached by default (Caches) | — |
 
 ## Caches (68020)
 
