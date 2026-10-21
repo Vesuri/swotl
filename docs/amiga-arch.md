@@ -12,8 +12,8 @@ slave: [whdload.md](whdload.md).
 | --- | --- |
 | Machine | PAL A1200, 68020, AGA required (`GFXF_AA_LISA` after `SetPatch`), L8 |
 | Memory | 2 MiB Chip for DMA data; Fast RAM required (D15, [translator-design.md](translator-design.md)); default 4 KiB Shell stack, L52 |
-| Launch | Shell, Workbench and WHDLoad (kickemu, INITAGA) run the same executable |
-| Display | 320×200, 8 planes, 256 colours from the 18-bit VGA palette, L31 |
+| Launch | Shell. To run the same executable: Workbench (L84, open-work 39) and a WHDLoad slave (kickemu, INITAGA; [whdload.md](whdload.md)) |
+| Display | 320×200, 8 non-interleaved planes, 256 colours from the 18-bit VGA palette, L31 |
 | Timebase | PAL vblank (50 Hz) for display, input and audio; PIT channel 0 on a CIA-B timer (D8) |
 
 ## Layers
@@ -33,10 +33,12 @@ DanceDiverse3 set (`Palette24Bit`, `setPalette24Bit`) is kept for it.
 
 ## Lifecycle
 
-1. **Entry.** Take the WBStartup message if there is no CLI (L84); open dos/graphics
+1. **Entry.** Workbench start (L84) is not handled yet (open-work 39); open dos/graphics
    outside `Forbid`; require AGA (L8); parse `GetArgStr` (L85).
 2. **Reserve.** Every game-owned block, all-or-nothing, largest first; Chip only for DMA
-   data (L53, L54). Failure frees everything and returns 20 before takeover.
+   data (L53, L54); only find-first's name records are allocated later, inside their I/O
+   window (`plat_alloc`). Failure frees everything before takeover; `main` returns 0
+   either way (20 on failure: open-work 39).
 3. **Load.** The optional TFH `sfx.rsc` (argument `TFH`) before takeover (L82); the
    guest's own files later, through I/O windows.
 4. **Build.** Bitmaps, copper lists and palettes completely, then publish them to the ISR
@@ -50,7 +52,7 @@ DanceDiverse3 set (`Palette24Bit`, `setPalette24Bit`) is kept for it.
    back, `Permit`; the copper display and the keyboard interrupt stay; fields the OS
    serves are added from `GfxBase->VBCounter`.
 7. **Return** in SL/VT's order (L4), then pending saves, frees, `releaseBlitterQueue`
-   (L50), library closes, Workbench reply last (L84). A readable-state restore check runs in
+   (L50), library closes (the Workbench reply, L84: open-work 39). A readable-state restore check runs in
    the harness (L5).
 
 ## Interrupts
@@ -109,7 +111,7 @@ per period (L44). Publication never feeds back into simulation; missed slots are
   Paula-only re-hoster (`fm_paula.c`, `Audio.cpp`) never decides what sounds (L71);
   optional TFH samples. Facts and decisions: [sound-plan.md](sound-plan.md).
 - **Shared rules.** Channel ownership between music and effects is an explicit policy
-  (L59); stereo placement deliberate (L68); LED filter decided (L69).
+  (L59); stereo placement deliberate (L68); the LED filter is left as booted (L69: open-work 40).
 
 ## Input
 
@@ -130,8 +132,9 @@ at runtime is followed by `CacheClearU()` (L87).
 ## Build rules
 
 `-m68020 -msoft-float -nostdlib -fcheck-new`, framework headers via `SASCCompat.h`,
-`AmigaHardware.h` included last, vasm `-no-opt`, replaced `memset`/`memcpy`, `alignas(4)`
-audit, `elf2hunk -s` for release (L94, L96–105). Exact flags: [toolchain.md](toolchain.md).
+`AmigaHardware.h` included last, vasm `-no-opt` for hand-written asm, replaced
+`memset`/`memcpy`, `elf2hunk -s` for release (L94, L96–103, L105); L104 (`alignas(4)` with a
+link audit) not applied (open-work 41). Exact flags: [toolchain.md](toolchain.md).
 
 ## Standing target checks
 

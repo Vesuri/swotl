@@ -1,10 +1,10 @@
 # Translator design
 
 The translator, runtime and test contract as built. Decisions D1–D16 are
-settled where this file states them (D1 memory and calls, D2 overlays and BP
-regions, D4 registers, D6 flags, D7 indirect transfers, D8 interrupts, D9
-display, D11 strings, D15 memory, D16 self-modified code, D10 sound at the
-end). Speed forms are indexed in
+settled where this file states them (D1 memory and calls, D2 overlays, D4
+registers, D6 flags, D7 indirect transfers, D8 interrupts, D9 display, D11
+strings, D15 memory, D16 self-modified code, D10 sound at the end); speed-plan
+§8's decisions are cited as "speed-plan Dn". Speed forms are indexed in
 [speed-plan.md](speed-plan.md) §7. Overview and guardrails:
 [architecture.md](architecture.md).
 
@@ -29,7 +29,7 @@ end). Speed forms are indexed in
 | `translator/compute.py` | admission and emission of `kind=compute` HLE rows ([native-compute.md](native-compute.md)) |
 | `translator/emit.py` | program mode: global flag liveness, per-function return sets, leaders, labels, transfers, `build/gen/<module>.s`, `program.s` (assembly root, dispatch table) |
 | `translator/support.py` | state-block equates, flag/BCD helpers (`build/gen/support.s`) |
-| `src/runtime/` | runtime (C + `rt_entry.s`): machine model of the reference (PSP, environment, MCBs, IVT values), EXEC of `SWOTL.EXE`, INT 21h/10h/67h services, `rt_*` entries, dispatch lookup with PLINK residency; platform interface `platform.h` |
+| `src/runtime/` | runtime (C + `rt_entry.s`): machine model of the reference (PSP, environment, MCBs, IVT values), EXEC of `SWOTL.EXE`, INT 21h/10h/16h/33h/67h services, `rt_*` entries, dispatch lookup with PLINK residency; platform interface `platform.h` |
 | `src/platform/host/`, `src/platform/amiga/` | `platform.h` for Unicorn (harness-served stubs) and AmigaOS (dos.library, private native stack) |
 | `tests/` | `host_run.py` (generated program + runtime on Unicorn 68020 to a milestone vs the reference; `--amiga` capture; `--sabotage`), `test_decode.py` (Capstone), `x86_diff.py` + `x86_sabotage.py` (Unicorn x86-16), `m68k_diff.py` (instructions/short blocks, test mode) + `m68k_blocks.py` (generated program, traced blocks) + `m68k_sabotage.py` (Unicorn 68020), `test_guards.py` (G1/G2 plants), `audit.csv` (audit expectations), `uc.py` (ctypes binding) |
 
@@ -92,7 +92,7 @@ diffs directly); relocated words in instructions are emitted as
   Byte and word memory operands fold into the 68k op (source, read-modify-
   write destination, INC/DEC/NEG/NOT, CMP with an immediate) where AF and
   PF are dead.
-- BP regions (D2, speed-plan R6, `region.py`): a BP-stable component (the
+- BP regions (speed-plan D2 and R6, `region.py`): a BP-stable component (the
   code after a BP write up to the next, calls continuing at their return
   site) chosen in `annotations/bp-regions.csv` (`tools/bp_regions.py`, from
   a meter run) gets a guarded copy (`<label>_bp`) in which `[bp+d]` and far
@@ -175,7 +175,7 @@ diffs directly); relocated words in instructions are emitted as
 - Overlays (D2 = a): every translated module resident in native code; the
   guest's own PLINK manager runs translated and loads the overlay bytes into
   guest RAM (data, CS-relative reads, RAM equal to the reference).
-- Memory (D15 = b): Fast RAM required (1.44 MB code + 1.06 MiB guest RAM);
+- Memory (D15 = b): Fast RAM required (1.36 MB code at R34 + 1.06 MiB guest RAM);
   the A1200 model runs with 8 MiB Fast; development runs set `--cpu=68030`
   (`AMIGA_CPU`, ~3× the 68020: logo at 80 vs 252 frames); timing runs
   leave it unset (68020).

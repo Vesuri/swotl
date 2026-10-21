@@ -55,7 +55,7 @@ Music stays enabled through the FM re-hoster in both effect modes.
   byte per OPL sample. Tonal loops retain canonical synthesis phase across
   timbre changes. All four free voices can play music; continuing selected
   notes keep their physical voice. Exact lookup tables use 24 KiB ordinary
-  RAM. Software mixing remains deferred.
+  RAM. No software mixing: each selected voice has its own Paula channel.
 - Check `make t-fm` (`tools/fm_check.cpp`, vs Nuked per channel): level
   within 3 dB (±1 field, above −30 dB, Paula's 6-bit volume) on ≥ 95% of
   fields, pitch within 10 cents on ≥ 99% of measurable fields; effect runs

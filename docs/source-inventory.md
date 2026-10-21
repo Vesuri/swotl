@@ -26,10 +26,10 @@ paragraph) followed by the code; code lands at load seg + link seg and each
 fixup word gets the load segment added (gate 1). DATA is the C data segment
 (DGROUP): DS = load seg + `3BAB`. Load segment in all runs: `0822`.
 
-Other first-run facts: PIT reprogrammed (~250 Hz INT 8); AdLib music
+Other first-run facts: PIT reprogrammed (236.7 Hz INT 8); AdLib music
 (`388h/389h`); joystick probe on `201h`; mouse via INT 33h; EMS 4.0 used
 for paging data (INT 67h AH=40–44); keyboard via C runtime `kbhit`
-(INT 21h AH=0Bh at `SWOTL.EXE+13ED3`) and INT 16h AH=02h; only RTSVGA
+(INT 21h AH=0Bh at `SWOTL.EXE+13ED1`) and INT 16h AH=02h; only RTSVGA
 touches VGA memory. Full inventory: [external-surface.md](external-surface.md).
 
 ## Launcher
@@ -49,13 +49,12 @@ arguments prints "Run INSTALL".
 | 6 | `Y` | film disk cache: `N/n` → `[612A]=0` (film room "DISK CACHE: OFF"), else 1 | `+0152`, film room run with `Y N 32` |
 | 7 | `64` | film cache size in KB: if arg 6 ≠ N `[61E6]=max(atol,16)`, else `3FFh`; film room "CACHE SIZE: 64K" | `+01C2`, film room run with `Y Y 32` |
 
-PLINK thunks (root `+16B66` onwards, 12 bytes each): `call far 1E39:034C`
-(overlay manager), `dw` overlay id, `jmp far` target.
+PLINK thunks: root `+16B66` onwards ([plink.md](plink.md)).
 
 ## Coverage
 
-`make map` over `tmp/pc-runs/ref-*` (milestones m0–m7 + coverage scripts
-c1–c6). Bytes of each module's code part. Static = reached by the sweep
+`make map` over `tmp/pc-runs/ref-*` (94 traces: milestones m0–m7 and coverage
+scripts c1–c85). Bytes of each module's code part. Static = reached by the sweep
 (traced starts, direct flow incl. `loop`/`jcxz`, PLINK thunks and the manager,
 child-to-parent far calls, switch tables); executed = bytes
 of traced instructions (m0–m7 alone in brackets). Residue = never decoded:
@@ -67,18 +66,18 @@ by `annotations/self-modifying.csv`. Executed bytes outside sweep code: 0.
 
 | Module | Code part | Static | Executed (m0–m7) | Switch tables | Residue: zero / text / code-like / other |
 |---|---|---|---|---|---|
-| SWOTL | 96,000 | 80,055 | 45,727 (39,886) | 110 | 138 / 66 / 1,796 / 13,835 |
-| SPAZ | 5,952 | 4,324 | 3,308 (3,308) | 0 | 1,458 / 0 / 133 / 37 |
-| RTSVGA | 18,272 | 3,694 | 2,326 (2,278) | 0 | 14,550 / 0 / 0 / 28 |
-| FRONTEND | 77,216 | 55,463 | 8,533 (7,858) | 308 | 1 / 0 / 171 / 21,273 |
-| CAMPAIGN | 40,912 | 35,733 | 3,856 (2,237) | 78 | 0 / 0 / 0 / 5,101 |
-| NOTCAMP | 39,152 | 36,088 | 6,983 (5,350) | 80 | 0 / 0 / 0 / 2,984 |
-| FLIGHT | 99,744 | 93,879 | 38,736 (30,242) | 642 | 0 / 4,728 / 83 / 412 |
-| REPLAY | 15,088 | 13,698 | 5,902 (2,528) | 54 | 0 / 0 / 0 / 1,336 |
-| PANEL | 13,280 | 13,200 | 6,724 (6,414) | 0 | 0 / 0 / 0 / 80 |
+| SWOTL | 96,000 | 85,000 | 61,586 (39,886) | 190 | 138 / 66 / 1,217 / 9,389 |
+| SPAZ | 5,952 | 4,324 | 3,374 (3,308) | 0 | 1,458 / 0 / 133 / 37 |
+| RTSVGA | 18,272 | 3,694 | 2,899 (2,278) | 0 | 14,550 / 0 / 0 / 28 |
+| FRONTEND | 77,216 | 55,487 | 39,830 (7,858) | 308 | 1 / 0 / 171 / 21,249 |
+| CAMPAIGN | 40,912 | 35,733 | 27,778 (2,237) | 78 | 0 / 0 / 0 / 5,101 |
+| NOTCAMP | 39,152 | 36,088 | 27,913 (5,350) | 80 | 0 / 0 / 0 / 2,984 |
+| FLIGHT | 99,744 | 93,879 | 63,971 (30,242) | 642 | 0 / 4,728 / 83 / 412 |
+| REPLAY | 15,088 | 13,698 | 8,498 (2,528) | 54 | 0 / 0 / 0 / 1,336 |
+| PANEL | 13,280 | 13,200 | 12,376 (6,414) | 0 | 0 / 0 / 0 / 80 |
 
-DATA.OVL (62,640 B) is DGROUP: no code. Executed coverage still rises
-with each new script (c1–c6 added 0–134 %), so the translator works from
+DATA.OVL (62,640 B) is DGROUP: no code. Executed coverage rises with the
+scripts (c1–c85 add 2–1,142 % over m0–m7), so the translator works from
 static reach and unknown indirect targets stop loudly (D7).
 
 ## Their Finest Hour (Amiga) — cross-reference only
@@ -90,7 +89,7 @@ translator output).
 
 | Fact | Value |
 |---|---|
-| Version | TFH 1.0, 28 Apr 1990 (`data/read.me`) |
+| Version | `data/BOB` v1.1, 254,400 bytes ([tfh-cross-reference.md](tfh-cross-reference.md)); `data/read.me` still says 1.0, 28 Apr 1990 |
 | Executables | `data/BOB` (game, code 204,352 B; initialized data 43,888 B in a 64,020 B allocation; BSS 4 B), `data/MB` (mission builder) |
 | Compiler | Manx Aztec C (`MANX` marker; `LINK A5`/`UNLK A5` frames); no symbol or debug hunks |
 | Shared with SWOTL | UI strings ("Insert Your Campaign Disk", "Do you want to fly the same mission again?") present in SWOTL's root/overlays: common C source |

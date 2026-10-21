@@ -77,6 +77,13 @@ speed work: [speed-plan.md](speed-plan.md).
     crashes during startup with a Line F emulator exception. Fault PC/opcode
     and Guru number are unavailable. Reproduce and fix against evidence.
     Build flags specify 68020 and soft float; cause is not yet established.
+39. Workbench start (L84): without a CLI, take the WBStartup message before
+    opening dos.library and reply it last under `Forbid`; return 20 when a start
+    fails (`src/main.cpp` returns 0; the gcc8 `_start` does neither).
+40. LED filter (L69): left as booted (on, ~5 kHz low-pass); the original AdLib
+    output has none. Turn it off at takeover, restore it on exit.
+41. `alignas(4)` on even-sized globals of 4 bytes or more, with a link audit
+    (L104): not applied; m68k GCC aligns them to 2.
 
 ## Release
 

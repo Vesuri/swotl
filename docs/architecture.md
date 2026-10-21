@@ -69,7 +69,7 @@ root EXE + .OVL images (proved against DOSBox captures)
 - Overlays: each `.OVL` is a separately translated module at its proved load
   address, all resident in native code (D2); the translated PLINK manager
   loads the bytes into guest RAM and its thunks jump to the native module.
-- Memory: Fast RAM required (D15): ~1.44 MB code + 1.06 MiB guest RAM.
+- Memory: Fast RAM required (D15): ~1.36 MB code + 1.06 MiB guest RAM.
 - Runtime (`src/runtime/`): the reference machine as the guest sees it
   (DOS 5 PSP/MCBs/environment, IVT values, BIOS/EMS answers) behind
   `platform.h`; one implementation for the host harness and the A1200.
@@ -91,6 +91,8 @@ root EXE + .OVL images (proved against DOSBox captures)
 - Generated 68020 code on host: Unicorn 68020 (as Slicks) runs the same
   cases (`make test-m68k`) and the generated program's traced blocks
   (`make test-blocks`), so differentials need no Amiga (gate 4).
-- Whole game: lockstep against DOSBox with recorded input; compare guest RAM
-  and the mode 13h framebuffer at frame boundaries
-  ([pc-reference-loop.md](pc-reference-loop.md)).
+- Whole game: lockstep against DOSBox with the reference's input and
+  interrupts replayed (the host run above): the service log throughout, guest
+  RAM, framebuffer and DAC at the milestones
+  ([pc-reference-loop.md](pc-reference-loop.md)); whether it must compare more:
+  open-work 24.

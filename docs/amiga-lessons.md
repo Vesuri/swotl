@@ -210,7 +210,8 @@ them here. Structure for this port: [amiga-arch.md](amiga-arch.md). Elsewhere:
 ## G. Memory
 
 52. **Design for 2 MiB Chip, no Fast RAM, the default 4 KiB Shell stack.** WHDLoad adds no
-    expansion memory (`FASTMEMSIZE = 0`). — *SL `docs/memory.md`, `docs/whdload.md`*
+    expansion memory (`FASTMEMSIZE = 0`). — *SL `docs/memory.md`, `docs/whdload.md`*. SWOTL:
+    Fast RAM required (D15).
 53. **`MEMF_CHIP` only for what DMA reads (bitplanes, copper, sprites, Paula, blitter
     operands); everything else `MEMF_ANY`.** — uses Fast RAM when present. — *PK
     `docs/architecture.md`; SL `docs/memory.md`*

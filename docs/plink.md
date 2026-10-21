@@ -2,9 +2,9 @@
 
 Phoenix PLINK overlay manager as linked into `SWOTL.EXE`. Root offsets are
 load-image offsets; `seg:off` are link (unrelocated) values. Checked by
-`tools/plink_check.py` over the trace corpus (m0–m7 + c1–c6):
-110 load calls reading 121 files, 269,508 calls on resident overlays, 0
-model violations.
+`tools/plink_check.py` over the trace corpus (94 traces, m0–m7 + c1–c85):
+1,009 load calls reading 1,128 files, 4,109,156 calls on resident overlays,
+0 model violations.
 Load layout proved by `tools/load_image.py` (gate 1).
 
 ## Pieces
