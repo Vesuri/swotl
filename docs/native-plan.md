@@ -90,7 +90,9 @@ establish BB70’s latency bound; its deferred prototype retained seven sync sit
 keep its projection call outside the native body (nested hooks reject). R38
 uses the approved continuation endpoint for D5DA–D5F6 → D5F8.
 User approved multiple proved non-return endpoints for 109D6 on 2026-10-22;
-its transform/projection calls and return checks remain generated
+its transform/projection calls and return checks remain generated.
+User approved the same endpoint contract for F290 tile selection on 2026-10-23:
+F31A → F339/F35F/F3B4; object processing and calls remain generated
 ([contract](native-compute.md#multiple-continuation-endpoints-user-2026-10-22)).
 Outside every contract: `F290`, `BD68`, `FDE0` (with `end`) call
 another overlay through the PLINK manager; `109D6` reaches DOS (`int 21h` in
@@ -104,8 +106,9 @@ the replacement before the call) or annotations, with its routine.
   has no positive price;
   `109D6` vertex loops deferred by the user 2026-10-22 after the initial
   guarded adapter exceeded its diagnostic budget.
-  The remaining work after narrower rows: `F290`
-  (`tile_scenery`), `4DAE`, `BD68`, `D69C`, `FDE0`, `BFD1`.
+  `F290` deferred by the user 2026-10-23: its narrow tile-selection adapter
+  has no positive price (R41).
+  Remaining: `4DAE`, `BD68`, `D69C`, `FDE0`, `BFD1`.
 
 ## Z. Close
 

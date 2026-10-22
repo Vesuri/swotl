@@ -265,7 +265,8 @@ plus the row's native differential and the existing U5/U8 protocol checks.
 
 ### Multiple continuation endpoints (user, 2026-10-22)
 
-Approved for 109D6’s scenery vertex loops. Optional `exits` on a
+Approved for 109D6’s scenery vertex loops; user also approved F290’s
+F31A → F339/F35F/F3B4 tile-selection scope on 2026-10-23. Optional `exits` on a
 `resume=continue` row lists additional module offsets. The primary endpoint
 still follows `last`; every endpoint must be a distinct, reachable non-return
 instruction in the root module, outside the replaced body. An endpoint may be

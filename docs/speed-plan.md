@@ -407,11 +407,12 @@ items left.
 N3's frames-fixture medians are 370, 350 and 340 ms: the middle run needs
 110 ms (31.4%) less to reach 240 ms; the run range needs 100–130 ms less.
 No priced translator candidate remains (§7). N1, N2’s B393 projection and B4E2 divide,
-and N4’s D5DA normalization loop are kept. The U5 poll contract is implemented
+and N4’s D5DA normalization loop and scenery clear are kept. The U5 poll contract is implemented
 ([native-compute.md](native-compute.md#poll-contract-u5)), and the U8
-extensions (C4). Remaining: `B8A1` (N2, U4), `BB70` (N4, U6). See [native-plan.md](native-plan.md).
+extensions (C4). Active candidates and user deferrals: open-work 14b and
+[native-plan.md](native-plan.md).
 
-Current candidate costs, A3 run 2 (`6bf8aef`, 100 fields, 28,420,399 profiler cycle
+Historical candidate costs, A3 run 2 (`6bf8aef`, 100 fields, 28,420,399 profiler cycle
 units). Own cost groups generated instructions by call-target boundary; inclusive
 cost follows completed A7 call scopes, excluding hardware and guest interrupt
 delivery (`tmp/item30/inclusive.py` method). All listed observed calls finish inside
@@ -442,7 +443,7 @@ variation when pricing candidates. Per-run counts and costs: `tmp/native/A3/fram
 The rendering map consolidates these costs with source availability, admission
 and adaptation prices. U0/U2/U3 approve the transform pilot with complete
 byte-write history; U4 authorizes B017’s B393 long path and B4E2, U6 the
-D5DA normalization loop; other routines remain deferred.
+remaining N4 routines under S1–S9. Current decisions: native-plan U4/U6.
 
 ## 10. Rejected and not built
 
@@ -477,3 +478,5 @@ history at `781975e` and §5.)
   startup timing or unreachability claim. Evidence: `tmp/native/X1/`.
 
 - R39 / BB70: deferred by user 2026-10-22; whole-body prototype skipped kept syncs. Repair budget 4,363,049 versus 3,198,000 generated model cycles; no positive price. Generated differential and skipped-sync sabotage retained; evidence `tmp/native/N4-classify/`.
+
+- R41 / F290: user deferred 2026-10-23; narrow tile-selection design estimated at 1,654,904 versus 1,147,792 generated model cycles. No implementation built; guards and frequent handoffs outweigh the priced arithmetic folds. Evidence: `tmp/native/N4-terrain/`.
