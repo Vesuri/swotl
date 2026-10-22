@@ -1036,6 +1036,10 @@ def main(argv=None, on_batch=None) -> int:
     n, failures = point_projection_entries()
     count['point projection predecessors'] += n
     bad += failures
+    from test_perspective_divide import predecessor_cases as perspective_divide_entries
+    n, failures = perspective_divide_entries()
+    count['perspective divide predecessors'] += n
+    bad += failures
     if on_batch:
         on_batch(sum(v for k, v in count.items() if k != 'return checks'), bad)
     n, failures = flag_helper_entries()

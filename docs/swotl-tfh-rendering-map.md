@@ -59,9 +59,9 @@ costs, adaptation inventory and eligibility sensitivity: [B3](#b3-candidate-pric
 |---|---|---:|---:|---:|---|---|---|
 | `B52D` | transform wrapper | 1.02% | 1,483 | 3.99 | generated wrapper retained | Admitted | Shared with `B54B`; do not add |
 | `B54B` | point transform | 6.17% | 1,483 | 24.06 | `xform20` | Enabled (N1) | 11.48–12.04 priced; measured per-call ratio below |
-| `B4E2` | perspective divide | 1.82% | 2,072 | 7.09 | `xdiv20` | Admitted (U8) | Unpriced |
+| `B4E2` | perspective divide | 1.82% | 2,072 | 7.09 | `xdiv20` | Enabled (R37) | Measured per-call cost below; no frame-rate claim |
 | `B017` | projection | 2.99% | 1,036 | 11.65 | `xproj20`, long path only | B393 long path enabled (R36) | Measured per-call cost below; no frame-rate claim |
-| `D5A6` | normalise/project | 2.07% | 836 | 8.07 | `xpnorm20` | Narrow scope required around enabled projection hook | Unpriced |
+| `D5A6` | normalise/project | 2.07% | 836 | 8.07 | `xpnorm20` | Narrow scope required around enabled projection/divide hooks | Unpriced |
 | `B8A1` | face-facing test | 0% | 0 | 0.00 | None | Admitted; no captured calls | 0 in A3; native cost unpriced |
 | `BB70` | polygon bounds/classify | 1.33% | 177 | 5.20 | None | Admitted (U5) | Unpriced |
 | `109D6` | ground objects | 2.64% | 109 | 10.31 | `scen_verts`, `clr_scenery`, partial | DOS call in callee | Unpriced |
@@ -344,9 +344,9 @@ This is not authorization to implement or weaken admission.
 |---|---|---:|---:|
 | `B52D` | Admitted; same body saving as `B54B`, wrapper unchanged | 11.48–12.04 shared | 11.48–12.04 shared |
 | `B54B` | Admitted; priced adapter above | 11.48–12.04 | 11.48–12.04 |
-| `B4E2` | Admitted (U8); native cost unpriced | Unpriced | Unpriced |
+| `B4E2` | Enabled (R37); measured below | Unpriced ms/frame | Unpriced ms/frame |
 | `B017` | B393 long path enabled (R36); prefix remains generated; measured below | Unpriced ms/frame | Unpriced ms/frame |
-| `D5A6` | U5 on unhooked body; now needs scope excluding projection hook | Unpriced | Unpriced |
+| `D5A6` | U5 on unhooked body; now needs scope excluding projection/divide hooks | Unpriced | Unpriced |
 | `B8A1` | Admitted; no improved source, no A3 calls | 0 in A3; native cost unpriced | 0 in A3; native cost unpriced |
 | `BB70` | No improved source; admitted (U5) | Unpriced | Unpriced |
 | `109D6` | DOS call in callee; partial source only | Unpriced | Unpriced |
@@ -438,6 +438,11 @@ The consolidated decision table is under Candidates.
 - Slave: one shift by the counted amount (`bfffo`).
 
 ### Divide `B4E2` ↔ `2F374`
+
+Enabled by R37 (U4, 2026-10-22): original return retained, all register
+results including intermediate BP exact, no guest stores or poll changes.
+Measured 251.151 → 153.673 cycles/call (−38.8126%); whole meter −0.6499%.
+No measured ms/frame saving claim. Evidence: `tmp/native/N2-divide/`.
 
 - Two word divides → 32-bit quotient, × scale, rounded with 8000h, numerator's sign;
   explicit zero denominator. Denominator DS:`22C2`, scale `22D8` (TFH `1094`, `10A8`).

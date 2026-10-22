@@ -30,8 +30,8 @@ speed work: [speed-plan.md](speed-plan.md).
     flag-word packing is rejected (speed-plan §10). The U5
     [poll contract](native-compute.md#poll-contract-u5) (C3) and the
     [U8 extensions](native-compute.md#contract-extensions-u8) (C4) are
-    implemented. Remaining: N2 `B4E2`, `B8A1` (each needs U4); N4 `D5A6`
-    (scope must exclude the enabled projection hook), `BB70` (each needs U6).
+    implemented. Remaining: N2 `B8A1` (needs U4); N4 `D5A6`
+    (scope must exclude the enabled projection/divide hooks), `BB70` (each needs U6).
     The other N4 candidates call other overlays, DOS or
     unresolved/shared code (native-plan C). Other admitted routines still need a
     native price (S2) and individual authorization (U4/U6).

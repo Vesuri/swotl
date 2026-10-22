@@ -38,7 +38,7 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 | U1 | Approved 2026-10-21: executed backward branches only (taken back edges in the measured workload) | — |
 | U2 | Approved 2026-10-21: transform pilot at `B54B` from `xform20`; retain generated `B52D` wrapper and return checks | — |
 | U3 | Confirmed 2026-10-21: keep every byte's complete write history, SMC/display bookkeeping and all other state checks | — |
-| U4 | Approved 2026-10-22: `SWOTL.EXE+B017`, adapting the slave’s `xproj20`, by S1–S9. Other N2 routines remain deferred; the `B393` long-path hook returning at `B4E1` is approved | N2 |
+| U4 | Approved 2026-10-22: `SWOTL.EXE+B017`, adapting the slave’s `xproj20`, by S1–S9. B4E2 adapting `xdiv20` authorized 2026-10-22; other N2 routines remain deferred; the `B393` long-path hook returning at `B4E1` is approved | N2 |
 | U5 | Approved 2026-10-21: chosen polls (removed interior polls, return poll, optional sync sites), up to one PIT period of interrupt delay in a native routine, affected references re-recorded per row ([contract](native-compute.md#poll-contract-u5), implemented by C3) | — |
 | U6 | Authorize each routine that needs C | N4 |
 | U7 | Direction if Z1 leaves the target unmet (FM quality tradeoff, `BFD1`, revised target) | — |
@@ -68,13 +68,15 @@ explicit unpriced savings; do not invent a native price for them.
   control flags, writes (per U3), all RAM. The row's sabotage plant is caught.
 - **S7** Meter and bench (three runs per arm, same session, equal final RAM); FS-UAE frames
   capture per arm: the routine's cycles per call before and after. Accept by §3.
-- **S8** Full `make gates` with the row active, references unchanged.
+- **S8** Checks relevant to the row, its callers, consumers and shared contracts
+  (AGENTS.md; user reaffirmed 2026-10-22), with the row active and references
+  unchanged. State the selection before running; retain green unchanged inputs.
 - **S9** Docs: speed-plan §1 and §7, open-work 14b, the rendering map row (measured).
 
 ## N. Native routines
 
 - **N2** The other admitted poll-free routines in B3 price order, each after U4:
-  `B4E2` (`xdiv20`, divide decline), `B8A1` (no A3 calls).
+  `B8A1` (no A3 calls).
 
 ## C. Contract for routines with polls and loops
 
@@ -83,7 +85,7 @@ Contracts: [U5](native-compute.md#poll-contract-u5) (`hle.csv` `polls`;
 `t-compute-u8`), implemented. Admission on the candidates (C4,
 [inventory](swotl-tfh-rendering-map.md#compute-admission-inventory)): `D5A6`
 (its poll removed) and `BB70` (7 polls removed, no sync site needed) admit
-under U5 on their original unhooked bodies. With B393 enabled, D5A6 must
+under U5 on their original unhooked bodies. With B393 and B4E2 enabled, D5A6 must
 keep its projection call outside the native body (nested hooks reject).
 Outside every contract: `F290`, `BD68`, `FDE0` (with `end`) call
 another overlay through the PLINK manager; `109D6` reaches DOS (`int 21h` in

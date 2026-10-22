@@ -115,11 +115,11 @@ def emission():
 
 def candidate_admission(plant=False):
     # Admission inventory concerns the original generated bodies. Keep the
-    # production Program intact and disable only projection in this copy.
+    # production Program intact and disable the two enabled nested hooks in this copy.
     enabled = base()
     original = copy(enabled)
-    projection = at(0xb393)
-    original.hle = {n: row for n, row in enabled.hle.items() if n != projection}
+    hooks = {at(0xb393), at(0xb4e2)} & enabled.hle.keys()
+    original.hle = {n: row for n, row in enabled.hle.items() if n not in hooks}
     count = 0
     for first, sync, returns in ((0xb017, None, 4), (0xb4e2, None, 1), (0xd5a6, (), 1)):
         rets, _ = original.reach(at(first), {})
@@ -129,13 +129,15 @@ def candidate_admission(plant=False):
         row = admit(original)
         assert len(row.returns) == returns, hex(first)
         count += 1
-        if projection in enabled.hle and projection in row.body:
+        for hook in sorted((hooks & row.body) - {at(first)}):
+            nested = copy(original)
+            nested.hle = {**original.hle, hook: enabled.hle[hook]}
             try:
-                admit(original if plant else enabled)
+                admit(original if plant else nested)
             except LowerError as error:
-                assert 'hook' in str(error) and str(projection) in str(error), error
+                assert 'hook' in str(error) and str(hook) in str(error), error
             else:
-                raise AssertionError(f'{first:x}: enabled nested projection admitted')
+                raise AssertionError(f'{first:x}: enabled nested hook {hook} admitted')
             count += 1
     return count
 

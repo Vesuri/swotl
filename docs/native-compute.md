@@ -4,7 +4,11 @@ Enabled: the user-authorized (2026-10-21, native-plan U2)
 `SWOTL.EXE+B54B` transform pilot from `xform20`, retaining generated `B52D`
 and return checks. U3 keeps complete byte-write history. The user-authorized
 (2026-10-22, U4) projection long path at `B393` through `B4E1`, adapted from
-`xproj20`, is enabled (speed-plan §7, R36). Other routines
+`xproj20`, is enabled (speed-plan §7, R36). The user-authorized (2026-10-22, U4)
+`B4E2` perspective divide from `xdiv20` is enabled (R37). It writes
+no guest memory and handles the explicit zero-denominator path; for nonzero
+denominators both original word quotients fit (DX=0, then remainder<divisor).
+Other routines
 remain deferred and need individual authorization (speed-plan §2.2).
 
 ## Admission
@@ -93,7 +97,8 @@ replace, arithmetic boundaries and guard-edge cases from the rendering map.
 
 Tests: `make t-compute-contract t-sab-compute-contract`,
 `t-point-transform t-sab-point-transform`,
-`t-point-projection t-sab-point-projection`, and
+`t-point-projection t-sab-point-projection`,
+`t-perspective-divide t-sab-perspective-divide`, and
 `t-compute-code-writes t-sab-compute-code-writes`; the predecessor cases
 also run in `tests/m68k_blocks.py`. Generated synthetic callback bodies exercise
 both arms against x86 without hand-porting guest code. Admission, wrong-arm,
@@ -102,8 +107,8 @@ be caught.
 
 Before enabling an authorized row: record original entry states with the
 existing DOSBox snapshot mechanism, add the routine-specific boundaries and
-fallback cases, demonstrate its sabotage, and run the unchanged full gates
-with that row active. Keep each row's oracle command and evidence in its
+fallback cases, demonstrate its sabotage, and run the relevant checks under AGENTS.md
+with that row active (native-plan S8). Keep each row's oracle command and evidence in its
 `hle.csv` entry. Price, measure and accept under speed-plan §3–4.
 Captures and byte-derived test material remain local; never re-record an
 existing reference without approval.
