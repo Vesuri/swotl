@@ -32,8 +32,8 @@ speed work: [speed-plan.md](speed-plan.md).
     [U8 extensions](native-compute.md#contract-extensions-u8) (C4) are
     implemented. Admitted: N2 `B017`, `B4E2`, `B8A1` (each needs U4); N4 `D5A6`,
     `BB70` (each needs U6). The other N4 candidates call other overlays, DOS or
-    unresolved/shared code (native-plan C). N2 still
-    needs viable prices/contracts and individual authorization (U4).
+    unresolved/shared code (native-plan C). Each admitted routine still needs a
+    native price (S2) and individual authorization (U4/U6).
     Current meter/target costs: speed-plan §1; candidate facts: the rendering map.
     Native replacement
     requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
