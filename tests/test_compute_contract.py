@@ -189,7 +189,7 @@ def check(validate):
     return count
 
 
-def emission():
+def emission(plant=False):
     """A temporary row in memory checks real Program integration, never hle.csv."""
     from unittest.mock import patch
     from translator import emit, image
@@ -206,13 +206,33 @@ def emission():
                reason='test admission/emission only; no replacement',
                oracle='tests/test_compute_contract.py')
 
+    # A second independent temporary row makes coexistence a positive control,
+    # even when no other production compute row is enabled.
+    other = ('SWOTL.EXE', 0xb8a1)
+    other_rets, other_escapes = p.reach(other, {})
+    assert len(other_rets) == 1 and not other_escapes
+    other_resume = next(iter(other_rets))
+    other_last = next(o for o, i in u.insns.items() if o + i.size == other_resume[1])
+    other_row = dict(row, first=hex(other[1]), last=hex(other_last),
+                     service='contract_test_other')
     def rows(name):
-        return original(name) + ([row] if name == 'hle.csv' else [])
+        return original(name) + ([row, other_row] if name == 'hle.csv' else [])
 
     with patch.object(image, 'rows', rows):
         candidate = emit.Program(units=p.units)
         lines, _ = candidate.module_text(first[0])
-    assert candidate.compute_rows == {first}
+    if plant:
+        candidate.compute_rows.remove(other)
+    assert candidate.compute_rows == p.compute_rows | {first, other}
+    for existing in p.compute_rows - {first, other}:
+        assert candidate.hle[existing] == p.hle[existing]
+        assert candidate.compute_bodies[existing] == p.compute_bodies[existing]
+    assert other in candidate.leaders and other_resume in candidate.leaders
+    assert candidate.compute_bodies[other] == compute.validate(p, other, other_resume)
+    other_hook = compute.hook('rt_hle_contract_test_other', emit.label(*other_resume),
+                              emit.cs_expr(u.cs[other[1]]))
+    other_start = lines.index('\tjsr rt_hle_contract_test_other') - 1
+    assert lines[other_start:other_start + len(other_hook)] == other_hook
     assert first in candidate.leaders and resume in candidate.leaders
     assert candidate.compute_bodies[first] == compute.validate(p, first, resume)
     assert first not in candidate.polled_resumes, 'one return keeps the legacy hook'
@@ -220,7 +240,7 @@ def emission():
     start = lines.index('\tjsr rt_hle_contract_test_only') - 1
     assert lines[start:start + len(hook)] == hook
     assert any(line.startswith(emit.label(*resume) + ':') for line in lines)
-    return 5
+    return 9
 
 
 def captured_memory():
@@ -290,6 +310,12 @@ def main():
     print('compute emission:', emission(), 'controls pass')
     print('captured memory:', captured_memory(), 'controls pass')
     if '--sabotage' in sys.argv:
+        try:
+            emission(plant=True)
+        except AssertionError:
+            print('compute emission: lost independent row caught')
+        else:
+            raise AssertionError('lost independent compute row escaped')
         original = compute.forbidden
         compute.forbidden = lambda p, n: False
         try:

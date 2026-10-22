@@ -60,8 +60,8 @@ costs, adaptation inventory and eligibility sensitivity: [B3](#b3-candidate-pric
 | `B52D` | transform wrapper | 1.02% | 1,483 | 3.99 | generated wrapper retained | Admitted | Shared with `B54B`; do not add |
 | `B54B` | point transform | 6.17% | 1,483 | 24.06 | `xform20` | Enabled (N1) | 11.48–12.04 priced; measured per-call ratio below |
 | `B4E2` | perspective divide | 1.82% | 2,072 | 7.09 | `xdiv20` | Admitted (U8) | Unpriced |
-| `B017` | projection | 2.99% | 1,036 | 11.65 | `xproj20`, long path only | Admitted (U8, four returns) | Unpriced |
-| `D5A6` | normalise/project | 2.07% | 836 | 8.07 | `xpnorm20` | Admitted (U5) | Unpriced |
+| `B017` | projection | 2.99% | 1,036 | 11.65 | `xproj20`, long path only | B393 long path enabled (R36) | Measured per-call cost below; no frame-rate claim |
+| `D5A6` | normalise/project | 2.07% | 836 | 8.07 | `xpnorm20` | Narrow scope required around enabled projection hook | Unpriced |
 | `B8A1` | face-facing test | 0% | 0 | 0.00 | None | Admitted; no captured calls | 0 in A3; native cost unpriced |
 | `BB70` | polygon bounds/classify | 1.33% | 177 | 5.20 | None | Admitted (U5) | Unpriced |
 | `109D6` | ground objects | 2.64% | 109 | 10.31 | `scen_verts`, `clr_scenery`, partial | DOS call in callee | Unpriced |
@@ -345,8 +345,8 @@ This is not authorization to implement or weaken admission.
 | `B52D` | Admitted; same body saving as `B54B`, wrapper unchanged | 11.48–12.04 shared | 11.48–12.04 shared |
 | `B54B` | Admitted; priced adapter above | 11.48–12.04 | 11.48–12.04 |
 | `B4E2` | Admitted (U8); native cost unpriced | Unpriced | Unpriced |
-| `B017` | Admitted (U8); only long path has improved source | Unpriced | Unpriced |
-| `D5A6` | Admitted (U5); native cost unpriced | Unpriced | Unpriced |
+| `B017` | B393 long path enabled (R36); prefix remains generated; measured below | Unpriced ms/frame | Unpriced ms/frame |
+| `D5A6` | U5 on unhooked body; now needs scope excluding projection hook | Unpriced | Unpriced |
 | `B8A1` | Admitted; no improved source, no A3 calls | 0 in A3; native cost unpriced | 0 in A3; native cost unpriced |
 | `BB70` | No improved source; admitted (U5) | Unpriced | Unpriced |
 | `109D6` | DOS call in callee; partial source only | Unpriced | Unpriced |
@@ -361,6 +361,16 @@ User decision, 2026-10-21: **use ceilings and explicit unpriced rows** for
 missing implementations/contracts. Their measured ceilings are above; unpriced
 is neither zero cost nor zero potential. C's poll contract does not resolve all
 B2 blockers. U3 retains every-byte write history; the relaxed alternative was not selected.
+
+### N2 projection measurement
+
+Authorized `B393..B4E1` long path only, from `xproj20`; the B017 prefix,
+divides and short/special paths remain generated. Same-session target cost
+809.612 → 596.125 cycles/call (−26.3690%); m4 meter −0.2838%.
+No measured ms/frame saving is asserted. Full gate coverage green; speed-plan R36.
+With B393 enabled, whole-B017 and D5A6 admission reaches a nested hook and
+rejects. The C4 inventory describes the original unhooked bodies; a future
+D5A6 replacement must keep the projection call outside its native body.
 
 ### N1 measured calibration
 

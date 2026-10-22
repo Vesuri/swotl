@@ -1032,6 +1032,12 @@ def main(argv=None, on_batch=None) -> int:
     bad += failures
     from test_point_transform import run as point_transform_entries
     count['point transform predecessors'] += point_transform_entries(predecessors=True)
+    from test_point_projection import predecessor_cases as point_projection_entries
+    n, failures = point_projection_entries()
+    count['point projection predecessors'] += n
+    bad += failures
+    if on_batch:
+        on_batch(sum(v for k, v in count.items() if k != 'return checks'), bad)
     n, failures = flag_helper_entries()
     count["flag helper predecessors"] += n
     bad += failures

@@ -6,6 +6,7 @@ original x86 (tools/compute_oracle.py): it checks the protocol (dispatch to
 each return, return polls, exact decline at a divide fault, REP in a removed
 loop, flow past the return), never a native implementation (S6 does that).
 """
+from copy import copy
 import random
 import sys
 from pathlib import Path
@@ -97,13 +98,8 @@ def emission():
     # REP and fault edge in the body; the handler stays outside
     assert at(0x14486) in program('1446a').compute_bodies[at(0x1446a)].body
     assert INT0 not in program('db9d').compute_bodies[at(0xdb9d)].body
-    # the candidates C3 could not admit for U8 reasons
-    for first, sync, returns in ((0xb017, None, 4), (0xb4e2, None, 1), (0xd5a6, (), 1)):
-        rets, _ = p.reach(at(first), {})
-        row = (compute.validate(p, at(first), max(rets)) if sync is None else
-               compute.validate_polled(p, at(first), max(rets), sync))
-        assert len(row.returns) == returns, hex(first)
-    count += 5
+    count += candidate_admission()
+    count += 2
     for name, polls, end, kind in (('15416', None, None, 'range'),
                                    ('15416', None, 0x1543e, 'end before resume'),
                                    ('1446a', 'return 0x14486', -1, 'REP sync site'),
@@ -114,6 +110,33 @@ def emission():
             count += 1
         else:
             raise AssertionError(f'{name}: {kind} generated')
+    return count
+
+
+def candidate_admission(plant=False):
+    # Admission inventory concerns the original generated bodies. Keep the
+    # production Program intact and disable only projection in this copy.
+    enabled = base()
+    original = copy(enabled)
+    projection = at(0xb393)
+    original.hle = {n: row for n, row in enabled.hle.items() if n != projection}
+    count = 0
+    for first, sync, returns in ((0xb017, None, 4), (0xb4e2, None, 1), (0xd5a6, (), 1)):
+        rets, _ = original.reach(at(first), {})
+        def admit(p):
+            return (compute.validate(p, at(first), max(rets)) if sync is None else
+                    compute.validate_polled(p, at(first), max(rets), sync))
+        row = admit(original)
+        assert len(row.returns) == returns, hex(first)
+        count += 1
+        if projection in enabled.hle and projection in row.body:
+            try:
+                admit(original if plant else enabled)
+            except LowerError as error:
+                assert 'hook' in str(error) and str(projection) in str(error), error
+            else:
+                raise AssertionError(f'{first:x}: enabled nested projection admitted')
+            count += 1
     return count
 
 
@@ -336,6 +359,7 @@ def main():
         else:
             raise AssertionError(f'{name} plant escaped')
 
+    caught('nested hook admitted', lambda: candidate_admission(plant=True))
     real_effect, real_validate, real_polled = compute.effect, compute.validate, compute.validate_polled
     with patch.object(compute, 'effect', lambda p, n: real_effect(p, n) or bool(p.node_insn(n).rep)):
         caught('REP as effect', emission)

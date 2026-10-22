@@ -2,7 +2,9 @@
 
 Enabled: the user-authorized (2026-10-21, native-plan U2)
 `SWOTL.EXE+B54B` transform pilot from `xform20`, retaining generated `B52D`
-and return checks. U3 keeps complete byte-write history. Further routines
+and return checks. U3 keeps complete byte-write history. The user-authorized
+(2026-10-22, U4) projection long path at `B393` through `B4E1`, adapted from
+`xproj20`, is enabled (speed-plan §7, R36). Other routines
 remain deferred and need individual authorization (speed-plan §2.2).
 
 ## Admission
@@ -71,8 +73,8 @@ User-approved entry boundary (2026-10-21): the oracle rejects writes to an
 instruction already fetched, or later fetching an instruction byte previously
 written during the call, including the retained return instruction. It reports
 failure, never a skipped/passing comparison.
-The transform declines unchanged unless DS is at least CS+1000h (computed
-without 16-bit wrap) and DS ≤ F000h; its data cannot overlap the CS window.
+The transform and projection decline unchanged unless DS is at least CS+1000h (computed
+without 16-bit wrap) and DS ≤ F000h; their data cannot overlap the CS window.
 The original generated fallback remains responsible for declined entries;
 arbitrary self-modifying code outside D16 is not admitted by this contract.
 
@@ -90,7 +92,8 @@ inputs without seeing the x86 results. Recorded game states supplement, never
 replace, arithmetic boundaries and guard-edge cases from the rendering map.
 
 Tests: `make t-compute-contract t-sab-compute-contract`,
-`t-point-transform t-sab-point-transform`, and
+`t-point-transform t-sab-point-transform`,
+`t-point-projection t-sab-point-projection`, and
 `t-compute-code-writes t-sab-compute-code-writes`; the predecessor cases
 also run in `tests/m68k_blocks.py`. Generated synthetic callback bodies exercise
 both arms against x86 without hand-porting guest code. Admission, wrong-arm,

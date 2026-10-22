@@ -107,7 +107,8 @@ def host_image(labels, joystick_header=None):
     """Link generated diagnostic REP lowering with the unchanged host runtime."""
     objects = [ROOT / 'build/host' / (p.stem + '.o') for p in sorted((ROOT / 'src/runtime').glob('*.c'))]
     objects += [ROOT / 'build/host' / n for n in ('host_s.o', 'host.o', 'rt_entry.o')]
-    inputs = [Path(__file__)] + sorted((ROOT / 'translator').glob('*.py')) + sorted((ROOT / 'build/gen').glob('*.s')) + objects
+    tail_objects = [ROOT / 'build/host/compute_projection.o']
+    inputs = [Path(__file__)] + sorted((ROOT / 'translator').glob('*.py')) + sorted((ROOT / 'build/gen').glob('*.s')) + objects + tail_objects
     digest = hashlib.sha256(('\n'.join(labels)).encode())
     if joystick_header is not None:
         digest.update(joystick_header.encode())
@@ -149,5 +150,5 @@ def host_image(labels, joystick_header=None):
                         '-c', str(out / 'joystick_host.c'), '-o', str(out / 'joystick.o')], check=True)
         extra = [str(out / 'joystick.o'), '--wrap=rt_port_in', '--wrap=rt_port_out']
     subprocess.run([str(toolchain / 'bin/m68k-amiga-elf-ld'), '-Ttext=0x10000', '-e', '_start',
-                    '-o', str(elf), *(str(p) for p in objects), str(out / 'program.o'), str(out / 'rep.o'), *extra], check=True)
+                    '-o', str(elf), *(str(p) for p in objects), str(out / 'program.o'), *(str(p) for p in tail_objects), str(out / 'rep.o'), *extra], check=True)
     return elf

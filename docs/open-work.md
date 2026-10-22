@@ -30,9 +30,10 @@ speed work: [speed-plan.md](speed-plan.md).
     flag-word packing is rejected (speed-plan §10). The U5
     [poll contract](native-compute.md#poll-contract-u5) (C3) and the
     [U8 extensions](native-compute.md#contract-extensions-u8) (C4) are
-    implemented. Admitted: N2 `B017`, `B4E2`, `B8A1` (each needs U4); N4 `D5A6`,
-    `BB70` (each needs U6). The other N4 candidates call other overlays, DOS or
-    unresolved/shared code (native-plan C). Each admitted routine still needs a
+    implemented. Remaining: N2 `B4E2`, `B8A1` (each needs U4); N4 `D5A6`
+    (scope must exclude the enabled projection hook), `BB70` (each needs U6).
+    The other N4 candidates call other overlays, DOS or
+    unresolved/shared code (native-plan C). Other admitted routines still need a
     native price (S2) and individual authorization (U4/U6).
     Current meter/target costs: speed-plan §1; candidate facts: the rendering map.
     Native replacement
@@ -42,7 +43,7 @@ speed work: [speed-plan.md](speed-plan.md).
     Bench acceptance for platform/layout work (D5) and
     a separate later palette window (D6) are approved; all fidelity gates and
     no slowdown remain mandatory, except the explicitly accepted R20/R35 opening-bench
-    tradeoffs (speed-plan §7).
+    tradeoffs and R36’s specific bench difference accepted as noise (speed-plan §7).
 14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`
     `Harness`: each byte drew from a fresh generator with the same seed).
     A random background is stronger but changes every corpus case; needs
