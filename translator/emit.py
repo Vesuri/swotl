@@ -865,6 +865,17 @@ class Program:
             cur.append(o)
         return out + [cur]
 
+    def compute_resume(self, resume, tag, stubs):
+        """Native state may change BP: re-prove a copy's range at its continuation."""
+        for _, _, nodes, rng in self.comps:
+            if resume in nodes:
+                # A cold stub can be far from either copy. Use full-range
+                # transfers; never inherit the native entry's BP guard.
+                stubs += [tag + ':'] + region.guard(rng, label(*resume), '.l')
+                stubs += [f'\tjmp {copy_label(*resume)}']
+                return tag
+        return label(*resume)
+
     def run_text(self, mod: str, run: list[int], stats: Counter, stubs: list[str],
                  comp: int | None = None) -> tuple[list[str], bool]:
         """One run (exact, or in component `comp`'s copy): its lines and whether it
@@ -922,13 +933,16 @@ class Program:
                 _, service = self.hle[(mod, o)]
                 entry = self.polled_entry[(mod, o)]
                 lines += compute.polled_hook(service, entry, f"{lab(mod, o)}_cx", cs_expr(u.cs[o]))
-                stubs += compute.polled_dispatch(f"{lab(mod, o)}_cx", [label(*x) for x in polled],
+                targets = [self.compute_resume(x, f"{lab(mod, o)}_cr{k}", stubs)
+                           for k, x in enumerate(polled)]
+                stubs += compute.polled_dispatch(f"{lab(mod, o)}_cx", targets,
                                                  hx(u.ip_of(o)))
                 stats["HLE hook"] += 1
             elif (mod, o) in self.hle:
                 resume, service = self.hle[(mod, o)]
                 if (mod, o) in self.compute_rows:
-                    lines += compute.hook(service, label(*resume), cs_expr(u.cs[o]))
+                    target = self.compute_resume(resume, f"{lab(mod, o)}_cr", stubs)
+                    lines += compute.hook(service, target, cs_expr(u.cs[o]))
                 else:
                     lines += [f"\tmove.w {GREG[a]},{d}" for a, d in zip(self.hle_args[(mod, o)], ("d7", "d6"))]
                     lines += [f"\tjsr {service}", f"\tbne {label(*resume)}"]

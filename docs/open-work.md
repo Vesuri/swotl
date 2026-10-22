@@ -30,25 +30,22 @@ speed work: [speed-plan.md](speed-plan.md).
     flag-word packing is rejected (speed-plan §10). The U5
     [poll contract](native-compute.md#poll-contract-u5) (C3) and the
     [U8 extensions](native-compute.md#contract-extensions-u8) (C4) are
-    implemented. Remaining: N2 `B8A1`; N4 `BB70`, `109D6`, `F290`, `4DAE`,
-    `BD68`, `D69C`, `FDE0`, `BFD1`. All nine authorized 2026-10-22.
-    The other N4 candidates call other overlays, DOS or
-    unresolved/shared code (native-plan C). Other admitted routines still need a
-    native price (S2); the other candidates need admitted scopes.
-    B8A1 deferred by the user (no calls in m4/c13/c27); BB70 deferred by the
-    user 2026-10-22 (sync-preserving repair has no positive price). Both remain
-    generated. Next: 109D6 scope/admission and price, adapting `scen_verts` and
-    `clr_scenery`; multiple proved continuation endpoints approved 2026-10-22,
-    implemented and validated; transform/projection calls stay generated. S1–S9 still applies.
-    Current meter/target costs: speed-plan §1; candidate facts: the rendering map.
-    Native replacement
-    requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
-    [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md); interface and validation:
-    [native-compute.md](native-compute.md).
-    Bench acceptance for platform/layout work (D5) and
-    a separate later palette window (D6) are approved; all fidelity gates and
-    no slowdown remain mandatory, except the explicitly accepted R20/R35 opening-bench
-    tradeoffs and R36’s specific bench difference accepted as noise (speed-plan §7).
+    implemented. Active N4 candidates: `F290` (`tile_scenery`), `4DAE`,
+    `BD68`, `D69C`, `FDE0`, `BFD1`; all authorized 2026-10-22. They need
+    admitted scopes and prices (native-plan C, S1–S9). Next: F290 scope and price.
+    Deferred by the user: N2 `B8A1` (no calls in m4/c13/c27), N4 `BB70`
+    (sync-preserving design has no positive price), and `109D6` vertex loops
+    (initial guarded adapter exceeded its budget). These remain generated.
+    Current meter and target costs: speed-plan §1; candidate facts and native
+    source mapping: [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md).
+    Interface: [native-compute.md](native-compute.md). Native replacement needs
+    per-routine authorization; the remaining-candidates authorization does not
+    waive admission, pricing, exactness, validation or contract decisions.
+    Bench acceptance for platform/layout work (D5) and a later palette window
+    (D6) are approved. Fidelity gates and no slowdown remain mandatory except
+    the specific R20/R35 tradeoffs and R36/R40 bench differences accepted by
+    the user as noise (speed-plan §7). After N4, run Z1; if the target remains
+    unmet, ask for U7.
 14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`
     `Harness`: each byte drew from a fresh generator with the same seed).
     A random background is stronger but changes every corpus case; needs

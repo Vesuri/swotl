@@ -102,7 +102,9 @@ the replacement before the call) or annotations, with its routine.
   order; S8 includes re-recording the references its poll set affects. Price each
   with its return/sync polls and exits. `BB70` deferred by the user 2026-10-22: preserving its seven sync sites
   has no positive price;
-  the others after narrower rows: `109D6` (`scen_verts`, `clr_scenery`), `F290`
+  `109D6` vertex loops deferred by the user 2026-10-22 after the initial
+  guarded adapter exceeded its diagnostic budget.
+  The remaining work after narrower rows: `F290`
   (`tile_scenery`), `4DAE`, `BD68`, `D69C`, `FDE0`, `BFD1`.
 
 ## Z. Close

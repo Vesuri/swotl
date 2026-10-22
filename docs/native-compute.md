@@ -59,7 +59,10 @@ No annotation may declare a register, flag or scratch store dead.
 Decline before changing any guest register, flag, RAM or runtime state. The
 emitter tests d7 and either resumes at the original return or runs the original
 body. Hook and resume are leaders; entry with live CCR-only flags is rejected.
-The handled path branches to the exact resume, leaving any BP-specialized copy.
+The handled path rechecks the current BP against the proved component range
+when a specialized resume exists. It enters that copy only on success; otherwise
+it takes the exact resume. Both destinations retain their poll, and interrupt
+return still leaves the copy. The native entry’s guard is never inherited.
 
 Every guest store, including scratch and stack stores, must retain its address
 and value. Effective-address arithmetic wraps at 16 bits as the original does;

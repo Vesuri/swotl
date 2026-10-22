@@ -181,6 +181,11 @@ stack stores, segment wrapping and generated write bookkeeping under
   only when both parents are projected and z > 20000. TFH's checked flights
   did not exercise all-behind, midpoint or shared-projection paths
   (`docs/internals.md:134–141`); SWOTL needs explicit oracle cases for them.
+  SWOTL differs: its world midpoint shifts the wrapped sum with SAR/RCR
+  (no negative rounding adjustment); its projected midpoint adds first,
+  then uses SAR on the high word and SHR on the low word, without carry
+  between them. Its depth guard tests the signed high word against 2.
+  R40's original-x86 cases cover these paths; do not import TFH's arithmetic.
 - **Terrain rings:** saves D4–D7/A2–A3, uses a new four-byte A5 frame and
   register-held loop variables. Inputs: plane 11668/11672(A4), heading 11680,
   map/offset/object pointers 12132/12136/12140, tables −21726..−21670 and
@@ -474,6 +479,11 @@ No measured ms/frame saving claim. Evidence: `tmp/native/N2-divide/`.
 - `BD68` builds edge records for `BFD1`; TFH draws with its own rasterizer.
 
 ### Ground objects `109D6` ↔ `1142C` (vertex loops `11604..11B34`)
+
+- R40 clear-only adapter `10A2F..10A51 → 10A53`: final host meter
+  −0.150466%; target 606.930 → 405.636 cycles/call (−33.1659%).
+  Bench +0.030708% accepted as noise by the user 2026-10-23; relevant
+  correctness checks pass. Vertex loops remain deferred. Evidence: speed-plan §7.
 
 - Offset-table select, clear vertex state, 7-byte header, faces with indexed vertices,
   facing test, transform uncached vertices, midpoint vertices, project, submit;

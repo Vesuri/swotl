@@ -1044,6 +1044,14 @@ def main(argv=None, on_batch=None) -> int:
     n, failures = point_normalise_entries()
     count['point normalise predecessors'] += n
     bad += failures
+    from test_compute_reentry import predecessor_cases as compute_reentries
+    n, errors = compute_reentries()
+    count['compute re-entry predecessors'] += n
+    bad.extend(errors)
+    from test_scenery import predecessor_cases as scenery_entries
+    n, failures = scenery_entries()
+    count['scenery clear predecessors'] += n
+    bad += failures
     from test_polygon_classify import predecessor_cases as polygon_classify_entries
     n, failures = polygon_classify_entries()
     count['polygon classify predecessors'] += n
