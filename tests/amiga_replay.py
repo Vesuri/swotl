@@ -13,6 +13,7 @@ from pathlib import Path
 import struct
 import subprocess
 import sys
+import tempfile
 
 sys.path[:0] = [str(Path(__file__).resolve().parent), str(Path(__file__).resolve().parents[1])]
 import host_run as H
@@ -114,6 +115,12 @@ def build(out):
                     'GEN=../gen', 'REPLAY=..'], check=True)
 
 
+def fresh_run_directory(out):
+    # debug.sh copies the original data but deliberately does not delete game
+    # writes. A replay must not inherit files from an earlier failed attempt.
+    return Path(tempfile.mkdtemp(prefix='run-', dir=out))
+
+
 def run(name, out, trace=None):
     capture = out / 'capture'
     capture.mkdir(exist_ok=True)
@@ -132,7 +139,7 @@ def run(name, out, trace=None):
         port = listener.getsockname()[1]
     env = dict(os.environ, DEBUG_PORT=str(port), FSUAE_PORT_PINNED='1',
                AMIGA_CPU=os.environ.get('AMIGA_CPU', '68030'),
-               SWOTL_ELF=str(out / 'amiga/out/Swotl.elf'), FSUAE_RUN=os.path.relpath(out / 'run', ROOT / 'amiga'), FSUAE_CLAIM_STRICT='1', SWOTL_ARGS='')
+               SWOTL_ELF=str(out / 'amiga/out/Swotl.elf'), FSUAE_RUN=os.path.relpath(fresh_run_directory(out), ROOT / 'amiga'), FSUAE_CLAIM_STRICT='1', SWOTL_ARGS='')
     with (capture / 'gdb.log').open('w') as log:
         command = [str(ROOT / 'amiga/debug.sh'), '', str(capture / 'fixture.gdb'),
                    str(out / 'amiga/out/Swotl.exe')]

@@ -56,6 +56,12 @@ static int32_t open_as(const char *path, LONG mode)
             if (!f) {
                 return -1;
             }
+            /* DOS permits another open (including an attribute query) while
+             * a created file is live. MODE_NEWFILE starts exclusive on Amiga. */
+            if (mode == MODE_NEWFILE && !ChangeMode(CHANGE_FH, f, SHARED_LOCK)) {
+                Close(f);
+                return -1;
+            }
             files[k] = f;
             file_stamped[k] = 0;
             file_modified[k] = mode == MODE_NEWFILE;
