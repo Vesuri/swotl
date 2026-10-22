@@ -8,8 +8,9 @@ and return checks. U3 keeps complete byte-write history. The user-authorized
 `B4E2` perspective divide from `xdiv20` is enabled (R37). It writes
 no guest memory and handles the explicit zero-denominator path; for nonzero
 denominators both original word quotients fit (DX=0, then remainder<divisor).
-Other routines
-remain deferred and need individual authorization (speed-plan §2.2).
+The user-authorized (2026-10-22, U6) D5DA normalization loop from
+`xpnorm20` resumes at D5F8 under U5 (R38); it writes no guest memory.
+Other routines remain deferred and need individual authorization (speed-plan §2.2).
 
 ## Admission
 
@@ -98,7 +99,8 @@ replace, arithmetic boundaries and guard-edge cases from the rendering map.
 Tests: `make t-compute-contract t-sab-compute-contract`,
 `t-point-transform t-sab-point-transform`,
 `t-point-projection t-sab-point-projection`,
-`t-perspective-divide t-sab-perspective-divide`, and
+`t-perspective-divide t-sab-perspective-divide`,
+`t-point-normalise t-sab-point-normalise`, and
 `t-compute-code-writes t-sab-compute-code-writes`; the predecessor cases
 also run in `tests/m68k_blocks.py`. Generated synthetic callback bodies exercise
 both arms against x86 without hand-porting guest code. Admission, wrong-arm,
@@ -116,7 +118,7 @@ existing reference without approval.
 ## Poll contract (U5)
 
 Approved by the user 2026-10-21 (native-plan U5); replaces the C1 exact-handoff
-design (`f4a7c68`). Implemented by C3; no row uses it yet: each routine needs
+design (`f4a7c68`). Implemented by C3; R38 uses it for normalization. Each routine needs
 U6 and S1–S9. Divide faults, multiple root returns and REP: [U8](#contract-extensions-u8).
 Device or interrupt-control effects and nested HLE remain outside every contract.
 
@@ -175,7 +177,8 @@ of them, so its liveness includes theirs.
 ### References (user, 2026-10-21)
 
 A row that changes the poll set re-records every affected DOSBox reference with
-the new `poll-points.csv` in the same commit, then runs full gates against them.
+the new `poll-points.csv` in the same commit, then runs the affected host/replay
+checks and compute-contract gates (AGENTS.md validation scope).
 Record the old and new poll-set fingerprints (`summary.txt` `polls=`) and the
 re-recorded references in the commit message. This is the only approved
 reference change: no PIT rate, interrupt order, fixture or tolerance changes.
@@ -239,3 +242,18 @@ every return poll. Plants caught: REP as effect, fault edge as flow, returns
 dropped (poll-free, U5), early return without poll, mutate then decline, no
 decline at a fault, wrong return. Admission controls: `t-compute-contract`,
 `t-compute-polls`.
+
+## Continuation endpoints (user, 2026-10-22)
+
+Approved for the D5A6 normalization loop: an explicit `hle.csv`
+`resume=continue` admits a non-return endpoint on a U5 compute row.
+`last` still names the instruction immediately before that endpoint.
+The endpoint is outside the replaced body and remains generated; it gets
+the U5 poll and resume id 1. Root returns before it, an unreachable endpoint,
+escaping flow and range extensions reject. Calls retain all existing admission
+checks, including nested-hook rejection. The existing sync, shared-poll,
+live-state, latency and reference rules apply unchanged. Empty `resume`
+retains the return-only contract.
+
+Checks: `tests/test_compute_endpoint.py` (admission, emission, poll sabotage),
+plus the row's native differential and the existing U5/U8 protocol checks.

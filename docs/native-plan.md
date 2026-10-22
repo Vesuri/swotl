@@ -40,7 +40,7 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 | U3 | Confirmed 2026-10-21: keep every byte's complete write history, SMC/display bookkeeping and all other state checks | — |
 | U4 | Approved 2026-10-22: `SWOTL.EXE+B017`, adapting the slave’s `xproj20`, by S1–S9. B4E2 adapting `xdiv20` authorized 2026-10-22; other N2 routines remain deferred; the `B393` long-path hook returning at `B4E1` is approved | N2 |
 | U5 | Approved 2026-10-21: chosen polls (removed interior polls, return poll, optional sync sites), up to one PIT period of interrupt delay in a native routine, affected references re-recorded per row ([contract](native-compute.md#poll-contract-u5), implemented by C3) | — |
-| U6 | Authorize each routine that needs C | N4 |
+| U6 | Approved 2026-10-22: D5A6 adapting xpnorm20; normalization loop D5DA–D5F6 → D5F8 with explicit non-return endpoint extension and U5 polls. Other N4 routines need individual authorization | N4 |
 | U7 | Direction if Z1 leaves the target unmet (FM quality tradeoff, `BFD1`, revised target) | — |
 | U8 | Approved 2026-10-21: REP away from kept polls, divide-fault decline, multiple returns; range/unresolved flow by annotations ([extensions](native-compute.md#contract-extensions-u8), implemented by C4); routines still need U4/U6 | — |
 
@@ -86,7 +86,8 @@ Contracts: [U5](native-compute.md#poll-contract-u5) (`hle.csv` `polls`;
 [inventory](swotl-tfh-rendering-map.md#compute-admission-inventory)): `D5A6`
 (its poll removed) and `BB70` (7 polls removed, no sync site needed) admit
 under U5 on their original unhooked bodies. With B393 and B4E2 enabled, D5A6 must
-keep its projection call outside the native body (nested hooks reject).
+keep its projection call outside the native body (nested hooks reject). R38
+uses the approved continuation endpoint for D5DA–D5F6 → D5F8.
 Outside every contract: `F290`, `BD68`, `FDE0` (with `end`) call
 another overlay through the PLINK manager; `109D6` reaches DOS (`int 21h` in
 the callee at `144B7`); `4DAE` has `call dx`; `BFD1` reaches unresolved flow in
@@ -95,7 +96,7 @@ the replacement before the call) or annotations, with its routine.
 
 - **N4** Routines that need C, each after U6, by S1–S9 plus C's cases, in B3 price
   order; S8 includes re-recording the references its poll set affects. Price each
-  with its return/sync polls and exits. Admitted: `D5A6` (`xpnorm20`), `BB70`;
+  with its return/sync polls and exits. Remaining admitted: `BB70`;
   the others after narrower rows: `109D6` (`scen_verts`, `clr_scenery`), `F290`
   (`tile_scenery`), `4DAE`, `BD68`, `D69C`, `FDE0`, `BFD1`.
 

@@ -136,7 +136,7 @@ CALLS = {'call', 'callf'}
 RETURNS = {'ret', 'retf'}
 
 
-def validate_polled(p, first, resume, sync=(), end=None):
+def validate_polled(p, first, resume, sync=(), end=None, endpoint=False):
     """Prove a U5 row: root returns (U8), resolved flow, no effects, chosen polls.
 
 Polls reachable only through the row are removed in both arms; the return gets
@@ -146,8 +146,10 @@ reaches without passing a hook entry must be a sync site; sync sites in callees
 and recursion are rejected. Each removed loop must not be a pure wait (wait()).
     """
     tail = p.node_insn(resume)
-    if first == resume or tail is None or tail.op not in RETURNS:
+    if first == resume or tail is None or (not endpoint and tail.op not in RETURNS):
         raise LowerError('compute: resume must be the original RET/RETF')
+    if endpoint and (tail.op in RETURNS or end is not None):
+        raise LowerError('compute: continuation needs a non-return endpoint and no range extension')
     limit = resume[1] if end is None else end
     if limit < resume[1]:
         raise LowerError('compute: range end before the resume')
@@ -156,12 +158,17 @@ and recursion are rejected. Each removed loop must not be a pure wait (wait()).
         raise LowerError('compute: sync sites must be distinct and not the resume')
     callees: dict = {}
     rets = {resume}
+    reached_endpoint = False
 
     def function(entry, root, stack):
+        nonlocal reached_endpoint
         nodes, work = set(), [entry]
         while work:
             n = work.pop()
-            if root and n == resume or n in nodes:
+            if root and n == resume:
+                reached_endpoint = True
+                continue
+            if n in nodes:
                 continue
             if not isinstance(n, tuple) or n not in p.succ or p.node_insn(n) is None:
                 raise LowerError(f'compute: unresolved flow {n}')
@@ -175,6 +182,8 @@ and recursion are rejected. Each removed loop must not be a pure wait (wait()).
             i = p.node_insn(n)
             if i.op in RETURNS:
                 if root:    # U8: another resume, outside the body like the declared one
+                    if endpoint:
+                        raise LowerError('compute: return before continuation endpoint')
                     nodes.discard(n)
                     rets.add(n)
                 continue
@@ -194,6 +203,8 @@ and recursion are rejected. Each removed loop must not be a pure wait (wait()).
         return nodes
 
     root = function(first, True, frozenset())
+    if endpoint and not reached_endpoint:
+        raise LowerError('compute: continuation endpoint is unreachable')
     body = set(root).union(*(c for c in callees.values() if c))
     for s in sync:
         if s not in root:

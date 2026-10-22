@@ -19,7 +19,7 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   kept; R34 FM continuity accepted as a quality tradeoff. Item 14b's 240 ms target
   remains unmet. R35 enables the authorized N1 transform pilot. R36 enables
   B017’s authorized B393 projection long path; R37 enables the authorized
-  B4E2 perspective divide.
+  B4E2 perspective divide; R38 enables D5A6’s normalization loop.
   Next: [native-plan.md](native-plan.md).
 - **Frames fixture** (N3, `7a5087a`, 2026-10-21): medians 370, 350 and
   340 ms; run-median span 340–370 ms. Frames 4–11 intervals (fields):
@@ -37,8 +37,8 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   All three final guest RAM hashes match the established bench endpoint
   (`951adbe5…39b6c63`). This spread exceeds the introduction's two-line observation
   (§4); no build-to-build claim. Palette window 38,392–38,405 lines (R17).
-- **Meter** (R37, m4, A4 weights): generated + walk + runtime
-  164,224,200 model cycles, down 0.6499% from the parent’s 165,298,556; unchanged host
+- **Meter** (R38, m4, A4 weights): generated + walk + runtime
+  162,028,058 model cycles, down 1.3373% from the parent’s 164,224,200; unchanged host
   platform adds 2,035. Three identical runs per arm. Native callbacks bypass
   body labels, so label-derived guest counts are not semantic work counts.
 - **N1 measurements** (2026-10-21): transform 1,182.182 → 634.432 target
@@ -61,6 +61,12 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   Host payload +110 bytes; Amiga executable +152 bytes. Single frames
   captures both have 350 ms medians; no frame-rate gain claimed.
   Evidence: `tmp/native/N2-divide/`.
+- **R38 measurements** (2026-10-22): normalization loop plus poll
+  427.549 → 138.246 target cycles/call (−67.6654%). Bench medians
+  68,584 → 68,581 lines (−0.0044%), spans 68,537–68,584 → 68,557–68,590;
+  all six RAM hashes match. Host payload +102 bytes; Amiga executable +188.
+  Single frames captures have 340 → 350 ms medians; no frame-rate gain claimed.
+  Evidence: `tmp/native/N4-normalise/`.
 - **Capture** (A3, second frames run, 100 fields): generated code 76.18%
   (cell walk 3.75%), runtime/platform 19.52% (`render`, `fm_field`, `loop_for`
   12.11%), no PC 2.23%, Kickstart 1.03%, IRQ transition 1.03%.
@@ -351,9 +357,10 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | N3 | post-transform frames checkpoint: 370, 350, 340 ms; target unmet | docs | measurement only |
 | R36 / N2 | guarded projection long path from authorized xproj20; complete byte-write history | runtime, compute tests | −0.2838% (bench +0.0423%; user accepts initial +0.0598% as noise) |
 | R37 / N2 | perspective divide from authorized xdiv20; exact intermediate BP and all register results | runtime, compute tests | −0.6499% (bench −0.0219%) |
+| R38 / N4 | counted normalization from authorized xpnorm20; proved continuation endpoint and U5 poll | runtime, compute contract/tests | −1.3373% (bench −0.0044%) |
 
-No priced translator candidate remains. Unchanged (§2): poll points
-(`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
+No priced translator candidate remains. Unchanged outside authorized U5 rows (§2):
+poll points (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
 `__set_flags` (POPF/IRET) and `__flags_word` are the largest runtime-side
 items left.
 
@@ -388,11 +395,10 @@ items left.
 
 N3's frames-fixture medians are 370, 350 and 340 ms: the middle run needs
 110 ms (31.4%) less to reach 240 ms; the run range needs 100–130 ms less.
-No priced translator candidate remains (§7). N1 and N2’s B393 projection and B4E2 divide
-are kept. The U5 poll contract is implemented
+No priced translator candidate remains (§7). N1, N2’s B393 projection and B4E2 divide,
+and N4’s D5DA normalization loop are kept. The U5 poll contract is implemented
 ([native-compute.md](native-compute.md#poll-contract-u5)), and the U8
-extensions (C4). Remaining: `B8A1` (N2, U4), `D5A6`
-(scope excluding the projection/divide hooks), `BB70` (N4, U6 each). See [native-plan.md](native-plan.md).
+extensions (C4). Remaining: `B8A1` (N2, U4), `BB70` (N4, U6). See [native-plan.md](native-plan.md).
 
 Current candidate costs, A3 run 2 (`6bf8aef`, 100 fields, 28,420,399 profiler cycle
 units). Own cost groups generated instructions by call-target boundary; inclusive
@@ -424,7 +430,8 @@ Across the three captures, sprite share is 2.88–7.98% (9–49 calls), rasteriz
 variation when pricing candidates. Per-run counts and costs: `tmp/native/A3/frames-*/`.
 The rendering map consolidates these costs with source availability, admission
 and adaptation prices. U0/U2/U3 approve the transform pilot with complete
-byte-write history; U4 authorizes B017’s B393 long path and B4E2; other routines remain deferred.
+byte-write history; U4 authorizes B017’s B393 long path and B4E2, U6 the
+D5DA normalization loop; other routines remain deferred.
 
 ## 10. Rejected and not built
 

@@ -1040,6 +1040,10 @@ def main(argv=None, on_batch=None) -> int:
     n, failures = perspective_divide_entries()
     count['perspective divide predecessors'] += n
     bad += failures
+    from test_point_normalise import predecessor_cases as point_normalise_entries
+    n, failures = point_normalise_entries()
+    count['point normalise predecessors'] += n
+    bad += failures
     if on_batch:
         on_batch(sum(v for k, v in count.items() if k != 'return checks'), bad)
     n, failures = flag_helper_entries()

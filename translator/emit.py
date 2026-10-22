@@ -330,6 +330,7 @@ class Program:
         self.compute_rows: set[tuple[str, int]] = set()
         self.sync_sites: dict[tuple[str, int], tuple] = {}  # U5 rows: first -> sync sites
         self.compute_end: dict[tuple[str, int], int] = {}   # U8: range end past the return
+        self.compute_endpoints: set[tuple[str, int]] = set()
         for r in image.rows("hle.csv"):
             mod, first, last = r["module"], int(r["first"], 16), int(r["last"], 16)
             u = self.units[mod]
@@ -342,6 +343,13 @@ class Program:
                 raise LowerError(f"hle.csv: {mod}+{first:05X} args {args}: two plain word registers at most")
             self.hle_args[(mod, first)] = args
             kind = r.get('kind') or 'hook'
+            continuation = r.get('resume') or ''
+            if continuation not in {'', 'continue'}:
+                raise LowerError('hle.csv: resume must be empty or continue')
+            if continuation:
+                if kind != 'compute' or not r.get('polls'):
+                    raise LowerError('hle.csv: continuation needs a polled compute row')
+                self.compute_endpoints.add((mod, first))
             if kind not in {'hook', 'compute'}:
                 raise LowerError(f'hle.csv: unknown kind {kind}')
             if kind == 'compute':
@@ -384,7 +392,8 @@ class Program:
         self.ret_of: dict = {}
         self.returns()
         self.compute_bodies = {n: compute.validate_polled(self, n, self.hle[n][0], self.sync_sites[n],
-                                                          self.compute_end.get(n))
+                                                          self.compute_end.get(n),
+                                                          *((True,) if n in self.compute_endpoints else ()))
                                if n in self.sync_sites else
                                compute.validate(self, n, self.hle[n][0], self.compute_end.get(n))
                                for n in self.compute_rows}

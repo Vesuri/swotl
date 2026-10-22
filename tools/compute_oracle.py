@@ -262,7 +262,7 @@ class PollGaps:
 
 
 def generated(path, module, first, cache, end=None):
-    """Exercise the recorder/oracle against current generated code, no HLE row.
+    """Exercise the recorder/oracle against generated code (native hooks decline).
 
     This establishes the harness on original game entries. Future authorized
     native rows must additionally exercise their handled and fallback arms.
@@ -272,10 +272,15 @@ def generated(path, module, first, cache, end=None):
     from translator import compute, emit
     p = emit.Program()
     node = (module, first)
-    rets, escapes = p.reach(node, {})
-    if escapes or not rets:
-        raise ValueError('routine needs proved returns')
-    region = compute.validate(p, node, max(rets), end)
+    if node in p.compute_endpoints:
+        if end is not None:
+            raise ValueError('continuation endpoint cannot extend its range')
+        region = p.compute_bodies[node]  # Program proved the explicit U5 boundary
+    else:
+        rets, escapes = p.reach(node, {})
+        if escapes or not rets:
+            raise ValueError('routine needs proved returns')
+        region = compute.validate(p, node, max(rets), end)
     u = p.units[module]
     ram, regs = load_entry(path)
     cs = u.cs[first] + B.LOADSEG
@@ -313,7 +318,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('entry', type=Path)
     ap.add_argument('--resume', help='hex CS:IP, before original return')
-    ap.add_argument('--generated', help='compare generated MODULE+hex-offset (no native row)')
+    ap.add_argument('--generated', help='compare generated MODULE+hex-offset (native hooks decline)')
     ap.add_argument('--end', help='hex range end past the return (hle.csv end, U8)')
     args = ap.parse_args()
     if args.generated:

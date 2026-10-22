@@ -468,7 +468,7 @@ def plant_check(base_json: Path, objdump: str) -> int:
                    cwd=work / "gen", check=True)
     order = ["host_s.o", "host.o", "rt_entry.o"]
     runtime_c = sorted(p.stem for p in (REPO / "src/runtime").glob("*.c"))
-    objs = [host / o for o in order] + [host / f"{c}.o" for c in runtime_c] + [work / "program.o", host / "compute_projection.o", host / "compute_divide.o"]
+    objs = [host / o for o in order] + [host / f"{c}.o" for c in runtime_c] + [work / "program.o", host / "compute_projection.o", host / "compute_divide.o", host / "compute_normalise.o"]
     subprocess.run([cross + "ld", "-Ttext=0x10000", "-e", "_start", "-o", str(work / "swotl.elf")]
                    + [str(o) for o in objs], check=True)
     elf = work / "swotl.elf"

@@ -43,7 +43,7 @@ OBJECTS = obj/main.o obj/Swotl.o obj/Input.o obj/Audio.o obj/GCCRuntime.o \
 	obj/framework_copper_list.o obj/framework_palette24.o \
 	obj/gcc8_c_support.o obj/gcc8_a_support.o obj/memory.o obj/version.o \
 	obj/amiga_platform.o obj/tfh_paula.o obj/fm_paula.o obj/amiga_run.o obj/c2p1x1_8_c5_bm.o obj/rt_entry.o \
-	$(patsubst $(RUNTIME)/%.c,obj/rt_%.o,$(wildcard $(RUNTIME)/*.c)) obj/program.o obj/compute_projection.o obj/compute_divide.o
+	$(patsubst $(RUNTIME)/%.c,obj/rt_%.o,$(wildcard $(RUNTIME)/*.c)) obj/program.o obj/compute_projection.o obj/compute_divide.o obj/compute_normalise.o
 
 # Diagnostic image is built in a separate working directory by the replay test.
 ifneq ($(REPLAY),)
@@ -131,6 +131,9 @@ obj/rt_%.o: $(RUNTIME)/%.c | obj
 	$(CC) $(CCFLAGS) -ffreestanding -I"$(RUNTIME)" -c -o $@ $<
 
 obj/rt_entry.o: $(RUNTIME)/rt_entry.s $(RUNTIME)/compute_transform.s | obj
+	$(VASM) $(VASMFLAGS) -I"$(RUNTIME)" -o $@ $<
+
+obj/compute_normalise.o: $(RUNTIME)/compute_normalise.s | obj
 	$(VASM) $(VASMFLAGS) -I"$(RUNTIME)" -o $@ $<
 
 obj/compute_divide.o: $(RUNTIME)/compute_divide.s | obj

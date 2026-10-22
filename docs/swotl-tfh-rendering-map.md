@@ -61,7 +61,7 @@ costs, adaptation inventory and eligibility sensitivity: [B3](#b3-candidate-pric
 | `B54B` | point transform | 6.17% | 1,483 | 24.06 | `xform20` | Enabled (N1) | 11.48–12.04 priced; measured per-call ratio below |
 | `B4E2` | perspective divide | 1.82% | 2,072 | 7.09 | `xdiv20` | Enabled (R37) | Measured per-call cost below; no frame-rate claim |
 | `B017` | projection | 2.99% | 1,036 | 11.65 | `xproj20`, long path only | B393 long path enabled (R36) | Measured per-call cost below; no frame-rate claim |
-| `D5A6` | normalise/project | 2.07% | 836 | 8.07 | `xpnorm20` | Narrow scope required around enabled projection/divide hooks | Unpriced |
+| `D5A6` | normalise/project | 2.07% | 836 | 8.07 | `xpnorm20` | D5DA loop enabled (R38) | Measured per-call cost below; no frame-rate claim |
 | `B8A1` | face-facing test | 0% | 0 | 0.00 | None | Admitted; no captured calls | 0 in A3; native cost unpriced |
 | `BB70` | polygon bounds/classify | 1.33% | 177 | 5.20 | None | Admitted (U5) | Unpriced |
 | `109D6` | ground objects | 2.64% | 109 | 10.31 | `scen_verts`, `clr_scenery`, partial | DOS call in callee | Unpriced |
@@ -346,7 +346,7 @@ This is not authorization to implement or weaken admission.
 | `B54B` | Admitted; priced adapter above | 11.48–12.04 | 11.48–12.04 |
 | `B4E2` | Enabled (R37); measured below | Unpriced ms/frame | Unpriced ms/frame |
 | `B017` | B393 long path enabled (R36); prefix remains generated; measured below | Unpriced ms/frame | Unpriced ms/frame |
-| `D5A6` | U5 on unhooked body; now needs scope excluding projection/divide hooks | Unpriced | Unpriced |
+| `D5A6` | D5DA loop enabled (R38) | Unpriced ms/frame | Unpriced ms/frame |
 | `B8A1` | Admitted; no improved source, no A3 calls | 0 in A3; native cost unpriced | 0 in A3; native cost unpriced |
 | `BB70` | No improved source; admitted (U5) | Unpriced | Unpriced |
 | `109D6` | DOS call in callee; partial source only | Unpriced | Unpriced |
@@ -369,8 +369,8 @@ divides and short/special paths remain generated. Same-session target cost
 809.612 → 596.125 cycles/call (−26.3690%); m4 meter −0.2838%.
 No measured ms/frame saving is asserted. Full gate coverage green; speed-plan R36.
 With B393 enabled, whole-B017 and D5A6 admission reaches a nested hook and
-rejects. The C4 inventory describes the original unhooked bodies; a future
-D5A6 replacement must keep the projection call outside its native body.
+rejects. The C4 inventory describes the original unhooked bodies. R38 keeps
+the projection call outside the normalization replacement.
 
 ### N1 measured calibration
 
@@ -431,6 +431,13 @@ The consolidated decision table is under Candidates.
 - Slave: one `mulu.l` per term (bits 16–47 equal the halves' sum; no carry out).
 
 ### Normalise `D5A6` ↔ `3041C`
+
+R38 enables the authorized D5DA–D5F6 loop, resuming at D5F8. The generated
+prefix, sign restoration, stores, projection call and returns remain. U5 moves D5DA's poll to D5F8 in both arms. No guest writes
+occur inside the native loop. The counted shift retains the original BP and
+all six coordinate words. Measured loop-plus-poll cost 427.549 → 138.246
+cycles/call (−67.6654%); whole meter −1.3373%. No ms/frame saving claimed.
+Evidence: `tmp/native/N4-normalise/`; speed-plan R38.
 
 - x and y as magnitudes (signs from DS:`2399/239B`); x, y, z shifted right together
   until x|y|z < 8000h (loop `D5DA..D5F6`, poll point `D5DA`); signs back; words

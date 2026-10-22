@@ -115,11 +115,18 @@ def emission():
 
 def candidate_admission(plant=False):
     # Admission inventory concerns the original generated bodies. Keep the
-    # production Program intact and disable the two enabled nested hooks in this copy.
+    # production Program intact and disable the enabled nested hooks in this copy.
     enabled = base()
     original = copy(enabled)
-    hooks = {at(0xb393), at(0xb4e2)} & enabled.hle.keys()
+    hooks = {at(0xb393), at(0xb4e2), at(0xd5da)} & enabled.hle.keys()
     original.hle = {n: row for n, row in enabled.hle.items() if n not in hooks}
+    # Restore this row's original poll too: this inventory concerns the
+    # original bodies, not the chosen-poll version used by the native hook.
+    original.loop_heads = set(enabled.loop_heads)
+    for hook in hooks:
+        if hook in enabled.sync_sites:
+            row = enabled.compute_bodies[hook]
+            original.loop_heads = (original.loop_heads - set(row.returns) - set(row.sync)) | row.removed
     count = 0
     for first, sync, returns in ((0xb017, None, 4), (0xb4e2, None, 1), (0xd5a6, (), 1)):
         rets, _ = original.reach(at(first), {})
