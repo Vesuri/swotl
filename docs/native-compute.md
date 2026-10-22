@@ -259,3 +259,19 @@ retains the return-only contract.
 
 Checks: `tests/test_compute_endpoint.py` (admission, emission, poll sabotage),
 plus the row's native differential and the existing U5/U8 protocol checks.
+
+### Multiple continuation endpoints (user, 2026-10-22)
+
+Approved for 109D6’s scenery vertex loops. Optional `exits` on a
+`resume=continue` row lists additional module offsets. The primary endpoint
+still follows `last`; every endpoint must be a distinct, reachable non-return
+instruction in the root module, outside the replaced body. An endpoint may be
+a call: admission stops before it, leaving the call and return check generated.
+Callee endpoints, undeclared escapes, unreachable endpoints, nested hooks and
+shared removed polls reject. Existing range and latency rules remain.
+
+All endpoints become leaders and U5 polls; d7 resumes 1..R select them in
+ascending offset order, followed by the sync sites. Liveness includes every
+endpoint. This adds no production row or poll change by itself.
+Checks: `t-compute-multi-endpoint`, `t-sab-compute-multi-endpoint`, existing
+endpoint/U5/U8/contract checks; the routine still needs S1–S9.

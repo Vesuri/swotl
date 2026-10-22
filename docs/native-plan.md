@@ -89,6 +89,9 @@ under U5 on their original unhooked bodies. Structural admission alone does not
 establish BB70’s latency bound; its deferred prototype retained seven sync sites. With B393 and B4E2 enabled, D5A6 must
 keep its projection call outside the native body (nested hooks reject). R38
 uses the approved continuation endpoint for D5DA–D5F6 → D5F8.
+User approved multiple proved non-return endpoints for 109D6 on 2026-10-22;
+its transform/projection calls and return checks remain generated
+([contract](native-compute.md#multiple-continuation-endpoints-user-2026-10-22)).
 Outside every contract: `F290`, `BD68`, `FDE0` (with `end`) call
 another overlay through the PLINK manager; `109D6` reaches DOS (`int 21h` in
 the callee at `144B7`); `4DAE` has `call dx`; `BFD1` reaches unresolved flow in

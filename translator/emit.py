@@ -331,6 +331,7 @@ class Program:
         self.sync_sites: dict[tuple[str, int], tuple] = {}  # U5 rows: first -> sync sites
         self.compute_end: dict[tuple[str, int], int] = {}   # U8: range end past the return
         self.compute_endpoints: set[tuple[str, int]] = set()
+        self.compute_exits: dict[tuple[str, int], tuple] = {}
         for r in image.rows("hle.csv"):
             mod, first, last = r["module"], int(r["first"], 16), int(r["last"], 16)
             u = self.units[mod]
@@ -350,6 +351,16 @@ class Program:
                 if kind != 'compute' or not r.get('polls'):
                     raise LowerError('hle.csv: continuation needs a polled compute row')
                 self.compute_endpoints.add((mod, first))
+            if r.get('exits'):
+                if not continuation:
+                    raise LowerError('hle.csv: exits need continuation endpoints')
+                try:
+                    exits = tuple((mod, int(x, 16)) for x in r['exits'].split())
+                except ValueError as error:
+                    raise LowerError('hle.csv: invalid continuation exits') from error
+                if any(o not in u.insns for _, o in exits):
+                    raise LowerError('hle.csv: continuation exit is no instruction')
+                self.compute_exits[(mod, first)] = exits
             if kind not in {'hook', 'compute'}:
                 raise LowerError(f'hle.csv: unknown kind {kind}')
             if kind == 'compute':
@@ -393,7 +404,8 @@ class Program:
         self.returns()
         self.compute_bodies = {n: compute.validate_polled(self, n, self.hle[n][0], self.sync_sites[n],
                                                           self.compute_end.get(n),
-                                                          *((True,) if n in self.compute_endpoints else ()))
+                                                          *((True,) if n in self.compute_endpoints else ()),
+                                                          **({"exits": self.compute_exits[n]} if n in self.compute_exits else {}))
                                if n in self.sync_sites else
                                compute.validate(self, n, self.hle[n][0], self.compute_end.get(n))
                                for n in self.compute_rows}

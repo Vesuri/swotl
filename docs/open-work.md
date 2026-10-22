@@ -38,8 +38,8 @@ speed work: [speed-plan.md](speed-plan.md).
     B8A1 deferred by the user (no calls in m4/c13/c27); BB70 deferred by the
     user 2026-10-22 (sync-preserving repair has no positive price). Both remain
     generated. Next: 109D6 scope/admission and price, adapting `scen_verts` and
-    `clr_scenery`; multiple proved continuation endpoints await user approval
-    to keep transform/projection calls generated. S1–S9 still applies.
+    `clr_scenery`; multiple proved continuation endpoints approved 2026-10-22,
+    implemented and validated; transform/projection calls stay generated. S1–S9 still applies.
     Current meter/target costs: speed-plan §1; candidate facts: the rendering map.
     Native replacement
     requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:
