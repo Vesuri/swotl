@@ -1044,6 +1044,10 @@ def main(argv=None, on_batch=None) -> int:
     n, failures = point_normalise_entries()
     count['point normalise predecessors'] += n
     bad += failures
+    from test_polygon_classify import predecessor_cases as polygon_classify_entries
+    n, failures = polygon_classify_entries()
+    count['polygon classify predecessors'] += n
+    bad += failures
     if on_batch:
         on_batch(sum(v for k, v in count.items() if k != 'return checks'), bad)
     n, failures = flag_helper_entries()

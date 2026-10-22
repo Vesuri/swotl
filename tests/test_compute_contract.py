@@ -189,7 +189,7 @@ def check(validate):
     return count
 
 
-def emission(plant=False):
+def emission(plant=False, missing_sync=False):
     """A temporary row in memory checks real Program integration, never hle.csv."""
     from unittest.mock import patch
     from translator import emit, image
@@ -215,18 +215,44 @@ def emission(plant=False):
     other_last = next(o for o, i in u.insns.items() if o + i.size == other_resume[1])
     other_row = dict(row, first=hex(other[1]), last=hex(other_last),
                      service='contract_test_other')
+    # Keep sync-entry coexistence coverage even with no production sync row.
+    sync_root = ('SWOTL.EXE', 0xbb70)
+    sync_sites = tuple(('SWOTL.EXE', o) for o in
+                      (0xbbac, 0xbbb3, 0xbc55, 0xbc73, 0xbcc4, 0xbd14, 0xbd44))
+    sync_row = dict(row, first='0xBB70', last='0xBD66',
+                    service='contract_test_sync',
+                    polls='return ' + ' '.join(hex(n[1]) for n in sync_sites))
     def rows(name):
-        return original(name) + ([row, other_row] if name == 'hle.csv' else [])
+        return original(name) + ([row, other_row, sync_row] if name == 'hle.csv' else [])
 
     with patch.object(image, 'rows', rows):
         candidate = emit.Program(units=p.units)
         lines, _ = candidate.module_text(first[0])
     if plant:
         candidate.compute_rows.remove(other)
-    assert candidate.compute_rows == p.compute_rows | {first, other}
+    assert candidate.compute_rows == p.compute_rows | {first, other, sync_root} | set(sync_sites)
+    sync_entries = candidate.compute_rows - candidate.compute_bodies.keys()
+    if missing_sync:
+        assert sync_entries, 'missing-sync plant requires an enabled sync entry'
+        candidate.polled_entry.pop(sorted(sync_entries)[0])
     for existing in p.compute_rows - {first, other}:
         assert candidate.hle[existing] == p.hle[existing]
+        assert existing in candidate.leaders
+        assert candidate.polled_entry.get(existing) == p.polled_entry.get(existing)
+        assert candidate.polled_resumes.get(existing) == p.polled_resumes.get(existing)
+    for existing in p.compute_bodies.keys() - {first, other}:
         assert candidate.compute_bodies[existing] == p.compute_bodies[existing]
+    assert tuple(candidate.compute_bodies[sync_root].sync) == sync_sites
+    for entry, site in enumerate((sync_root, *sync_sites)):
+        assert candidate.polled_entry.get(site) == entry
+        assert candidate.polled_resumes.get(site) == [('SWOTL.EXE', 0xbd67), *sync_sites]
+    for site in sync_entries:
+        targets = candidate.polled_resumes[site]
+        assert set(targets) <= candidate.leaders
+        dispatch = compute.polled_dispatch(f'{emit.label(*site)}_cx',
+            [emit.label(*target) for target in targets], emit.hx(u.ip_of(site[1])))
+        start = lines.index(dispatch[0])
+        assert lines[start:start + len(dispatch)] == dispatch
     assert other in candidate.leaders and other_resume in candidate.leaders
     assert candidate.compute_bodies[other] == compute.validate(p, other, other_resume)
     other_hook = compute.hook('rt_hle_contract_test_other', emit.label(*other_resume),
@@ -316,6 +342,12 @@ def main():
             print('compute emission: lost independent row caught')
         else:
             raise AssertionError('lost independent compute row escaped')
+        try:
+            emission(missing_sync=True)
+        except AssertionError:
+            print('compute emission: lost sync entry caught')
+        else:
+            raise AssertionError('lost sync compute entry escaped')
         original = compute.forbidden
         compute.forbidden = lambda p, n: False
         try:

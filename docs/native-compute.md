@@ -10,7 +10,9 @@ no guest memory and handles the explicit zero-denominator path; for nonzero
 denominators both original word quotients fit (DX=0, then remainder<divisor).
 The user-authorized (2026-10-22, U6) D5DA normalization loop from
 `xpnorm20` resumes at D5F8 under U5 (R38); it writes no guest memory.
-Other routines remain deferred and need individual authorization (speed-plan §2.2).
+Remaining candidates were authorized individually by the user’s all-candidates
+goal (2026-10-22, native-plan U4/U6); B8A1 and BB70 are deferred. No other
+row is enabled; admission, pricing and S1–S9 remain required.
 
 ## Admission
 

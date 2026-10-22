@@ -464,3 +464,5 @@ history at `781975e` and §5.)
   in A3’s three captures and the fresh 49-frame m4 census; zero priced saving
   in the acceptance window. Startup executes four sites (319,670 bytes); no
   startup timing or unreachability claim. Evidence: `tmp/native/X1/`.
+
+- R39 / BB70: deferred by user 2026-10-22; whole-body prototype skipped kept syncs. Repair budget 4,363,049 versus 3,198,000 generated model cycles; no positive price. Generated differential and skipped-sync sabotage retained; evidence `tmp/native/N4-classify/`.

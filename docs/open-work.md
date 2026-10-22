@@ -30,10 +30,16 @@ speed work: [speed-plan.md](speed-plan.md).
     flag-word packing is rejected (speed-plan §10). The U5
     [poll contract](native-compute.md#poll-contract-u5) (C3) and the
     [U8 extensions](native-compute.md#contract-extensions-u8) (C4) are
-    implemented. Remaining: N2 `B8A1` (needs U4); N4 `BB70` (needs U6).
+    implemented. Remaining: N2 `B8A1`; N4 `BB70`, `109D6`, `F290`, `4DAE`,
+    `BD68`, `D69C`, `FDE0`, `BFD1`. All nine authorized 2026-10-22.
     The other N4 candidates call other overlays, DOS or
     unresolved/shared code (native-plan C). Other admitted routines still need a
-    native price (S2) and individual authorization (U4/U6).
+    native price (S2); the other candidates need admitted scopes.
+    B8A1 deferred by the user (no calls in m4/c13/c27); BB70 deferred by the
+    user 2026-10-22 (sync-preserving repair has no positive price). Both remain
+    generated. Next: 109D6 scope/admission and price, adapting `scen_verts` and
+    `clr_scenery`; multiple proved continuation endpoints await user approval
+    to keep transform/projection calls generated. S1–S9 still applies.
     Current meter/target costs: speed-plan §1; candidate facts: the rendering map.
     Native replacement
     requires per-routine authorization (§2.2); what to adapt from Their Finest Hour:

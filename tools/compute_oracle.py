@@ -272,10 +272,10 @@ def generated(path, module, first, cache, end=None):
     from translator import compute, emit
     p = emit.Program()
     node = (module, first)
-    if node in p.compute_endpoints:
+    if node in p.compute_bodies:
         if end is not None:
-            raise ValueError('continuation endpoint cannot extend its range')
-        region = p.compute_bodies[node]  # Program proved the explicit U5 boundary
+            raise ValueError('declared compute row cannot extend its range')
+        region = p.compute_bodies[node]  # Program proved the row, including U5 loops
     else:
         rets, escapes = p.reach(node, {})
         if escapes or not rets:
