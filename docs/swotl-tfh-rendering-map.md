@@ -514,6 +514,10 @@ No measured ms/frame saving claim. Evidence: `tmp/native/N2-divide/`.
 
 ### Rasterizer `BFD1` (no TFH equivalent, no improved source)
 
+- Priority searches C2F2/C32D remain generated: user deferred R46 after
+  bench no-slowdown acceptance remained unproved. Ordering, expiry and
+  advance scopes are authorized and await pricing (native-plan N4).
+
 - Edge records, 16 bytes (arena DS:`2360`, ≤ 500; buckets `1F40 + 16·y`, active list
   `4060/4062`): +0 lifetime, +2 priority (DS:`252F`), +4 colour, +5 event and slope
   flags, +6 x, +8 endpoint then fraction, +A/+C step, +E start row.

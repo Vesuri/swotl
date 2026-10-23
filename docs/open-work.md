@@ -33,7 +33,9 @@ speed work: [speed-plan.md](speed-plan.md).
     implemented, as is the exact-poll contract used by R42's sprite packet loop
     and R44's line pixel loops.
     Active N4 candidate: `BFD1`, authorized
-    2026-10-22. It needs an admitted scope and price (native-plan C, S1–S9).
+    2026-10-22. Its exact-poll scopes were approved 2026-10-23 (native-plan
+    N4). Ordering, expiry and advance still need prices. The user deferred
+    R46 priority searches: no-slowdown acceptance remained unproved.
     Deferred by the user: N2 `B8A1` (no calls in m4/c13/c27), N4 `BB70`
     (sync-preserving design has no positive price), `109D6` vertex loops
     (initial guarded adapter exceeded its budget), `F290` (narrow

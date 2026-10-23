@@ -392,6 +392,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R40 / N4 | guarded scenery clears from clr_scenery; proved BP continuation guard and U5 endpoint poll | runtime, translator, compute tests | −0.150466% (bench +0.030708%, user accepts as noise) |
 | R42 / N4 | guarded sprite packet loop; exact original polls and handler-state re-entry | runtime, translator, compute/replay tests | −0.131085% (bench −0.007312%) |
 | R44 / N4 | guarded line pixel loops; exact original polls and handler-state re-entry | runtime, compute tests | −0.040939% (bench −0.016083%) |
+| R46 / N4 | priority searches deferred; generated oracle coverage and optional short poll macro retained | tests, translator tooling | No shipped speed change |
 
 No priced translator candidate remains. Unchanged outside authorized U5 rows (§2):
 poll points (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
@@ -507,3 +508,5 @@ history at `781975e` and §5.)
 - R43 / BD68: user deferred 2026-10-23; approved exact-poll edge scopes budget 843,635 versus 667,905 generated model cycles even with optimistic credits. Frequent external-call handoffs outweigh address reuse; no implementation built. Evidence: `tmp/native/N4-edges/`.
 
 - R45 / FDE0: user deferred 2026-10-23; approved cache-loop design budgets 476,194 versus 434,107 generated model cycles, even with optimistic credits. Frequent cache-miss exits outweigh address reuse; no implementation built. Evidence: `tmp/native/N4-polygons/`.
+
+- R46 / BFD1 priority searches: user deferred 2026-10-23; meter −0.087648%, target mix −3.777903%, but four bench pairs give median +0.049732% with overlapping ranges. No-slowdown acceptance unproved; native hooks removed, generated coverage retained. Evidence: `tmp/native/N4-raster/`.

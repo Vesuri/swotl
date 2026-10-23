@@ -824,6 +824,20 @@ class Program:
                 else:
                     lines += ['\ttst.b G_IRQ(a6)', f'\tbne.l {lab}_native_irq']
                 lines += [f'{lab}_native_np:', '\tendm']
+                lines += [f'{service}_poll_{k}_tail macro',
+                          f'\txref {lab}_native_irq',
+                          f'\tjmp {lab}_native_irq', '\tendm']
+                # A caller may place a JMP to the same generated tail nearby.
+                # This optional form keeps the hot branch short, without a
+                # private stack frame or changing either poll alias.
+                lines += [f'{service}_poll_{k}_local macro',
+                          f'\txdef {lab}_native_poll,{lab}_native_np',
+                          f'\txref {lab}_native_irq', f'{lab}_native_poll:']
+                if site in self.diagnostic_hooks:
+                    lines += ['\tbra.s \\1']
+                else:
+                    lines += ['\ttst.b G_IRQ(a6)', '\tbne.s \\1']
+                lines += [f'{lab}_native_np:', '\tendm']
         return '\n'.join(lines) + '\n'
 
     def near_walks(self, mod: str, off: int) -> set[tuple[int, int]]:

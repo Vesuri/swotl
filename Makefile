@@ -177,7 +177,7 @@ test-x86:
 	$(PYTHON) tests/x86_diff.py
 
 test-sabotage: host
-	@$(MAKE) -s -k -j$(JOBS) t-sab-line-pixels t-sab-sprite-packet t-sab-compute-exact-polls t-sab-replay-run-isolation t-sab-amiga-file-sharing t-sab-compute-reentry t-sab-scenery t-sab-compute-multi-endpoint t-sab-compute-code-writes t-sab-point-projection t-sab-perspective-divide t-sab-point-normalise t-sab-polygon-classify t-sab-compute-endpoint t-sab-point-transform t-sab-compute-contract t-sab-compute-polls t-sab-compute-u8 t-sab-far-return-protocol t-sab-jump-fusion t-sab-block-boundary t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-cell-cache t-sab-replay-hooks t-sab-replay-events t-sab-host-replay-visits t-sab-rep-replay t-sab-rep-lowering t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence t-sab-fm t-sab-fm-quality t-sab-fm-render t-sab-fm-envelope t-sab-fm-allocation t-sab-fm-phase t-sab-tfh t-sab-sound-hooks t-sab-audio t-sab-load-image t-sab-host-launch t-sab-keyboard-prefix t-sab-interrupt-frame-mask t-sab-dosbox-retf t-sab-dos-search t-sab-dos-sda t-sab-machine-vectors t-sab-oracle-boundary t-sab-oracle-exception-writes t-sab-helper-branches t-sab-block-assembly t-sab-key-release t-sab-key-chords t-sab-replay-chords t-sab-fixture-inputs t-sab-joystick
+	@$(MAKE) -s -k -j$(JOBS) t-sab-priority-search t-sab-line-pixels t-sab-sprite-packet t-sab-compute-exact-polls t-sab-replay-run-isolation t-sab-amiga-file-sharing t-sab-compute-reentry t-sab-scenery t-sab-compute-multi-endpoint t-sab-compute-code-writes t-sab-point-projection t-sab-perspective-divide t-sab-point-normalise t-sab-polygon-classify t-sab-compute-endpoint t-sab-point-transform t-sab-compute-contract t-sab-compute-polls t-sab-compute-u8 t-sab-far-return-protocol t-sab-jump-fusion t-sab-block-boundary t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-cell-cache t-sab-replay-hooks t-sab-replay-events t-sab-host-replay-visits t-sab-rep-replay t-sab-rep-lowering t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence t-sab-fm t-sab-fm-quality t-sab-fm-render t-sab-fm-envelope t-sab-fm-allocation t-sab-fm-phase t-sab-tfh t-sab-sound-hooks t-sab-audio t-sab-load-image t-sab-host-launch t-sab-keyboard-prefix t-sab-interrupt-frame-mask t-sab-dosbox-retf t-sab-dos-search t-sab-dos-sda t-sab-machine-vectors t-sab-oracle-boundary t-sab-oracle-exception-writes t-sab-helper-branches t-sab-block-assembly t-sab-key-release t-sab-key-chords t-sab-replay-chords t-sab-fixture-inputs t-sab-joystick
 
 test-m68k:
 	$(PYTHON) tests/m68k_diff.py
@@ -194,7 +194,7 @@ JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc)
 RUN = @mkdir -p tmp/test; if $(2) > tmp/test/$(1).log 2>&1; then echo "ok    $(1)"; \
 	else echo "FAIL  $(1) (tmp/test/$(1).log)"; tail -n 15 tmp/test/$(1).log; exit 1; fi
 SHARDS = forms.0/4 forms.1/4 forms.2/4 forms.3/4 space.0/1 boundary.0/1 blocks.0/1
-TESTS = t-line-pixels t-sprite-packet t-compute-exact-polls t-replay-run-isolation t-amiga-file-sharing t-compute-reentry t-scenery t-compute-multi-endpoint t-polygon-classify t-compute-endpoint t-point-normalise t-compute-code-writes t-perspective-divide t-point-projection t-point-transform t-compute-contract t-compute-polls t-compute-u8 t-far-return-protocol t-jump-fusion t-gate-runner t-block-boundary t-joystick t-rep-replay t-rep-lowering t-host-replay-visits t-fixture-inputs t-key-chords t-replay-chords t-key-release t-oracle-boundary t-oracle-exception-writes t-helper-branches t-block-assembly t-dos-sda t-dos-search t-machine-vectors t-interrupt-frame-mask t-keyboard-prefix t-host-launch t-load-image t-align-convergence t-replay-hooks t-replay-events t-file-dates t-mouse-irq t-display-queue t-display-palette t-amiga-input t-smc-flow t-cell-cache t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
+TESTS = t-priority-search t-line-pixels t-sprite-packet t-compute-exact-polls t-replay-run-isolation t-amiga-file-sharing t-compute-reentry t-scenery t-compute-multi-endpoint t-polygon-classify t-compute-endpoint t-point-normalise t-compute-code-writes t-perspective-divide t-point-projection t-point-transform t-compute-contract t-compute-polls t-compute-u8 t-far-return-protocol t-jump-fusion t-gate-runner t-block-boundary t-joystick t-rep-replay t-rep-lowering t-host-replay-visits t-fixture-inputs t-key-chords t-replay-chords t-key-release t-oracle-boundary t-oracle-exception-writes t-helper-branches t-block-assembly t-dos-sda t-dos-search t-machine-vectors t-interrupt-frame-mask t-keyboard-prefix t-host-launch t-load-image t-align-convergence t-replay-hooks t-replay-events t-file-dates t-mouse-irq t-display-queue t-display-palette t-amiga-input t-smc-flow t-cell-cache t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
 	t-blocks t-guards t-fm t-fm-quality t-fm-render t-fm-envelope t-fm-allocation t-fm-phase t-tfh t-sound-hooks t-audio $(HOST_MILESTONES:%=t-host-%)
 
 test: host
@@ -657,10 +657,12 @@ t-compute-exact-polls:
 	$(call RUN,compute-exact-polls,$(PYTHON) tests/test_compute_exact_polls.py)
 	$(call RUN,native-poll-replay,$(PYTHON) tests/test_native_poll_replay.py)
 	$(call RUN,native-poll-stack,$(PYTHON) tests/test_native_poll_stack.py)
+	$(call RUN,native-local-poll,$(PYTHON) tests/test_native_local_poll.py)
 t-sab-compute-exact-polls:
 	$(call RUN,sabotage-compute-exact-polls,$(PYTHON) tests/test_compute_exact_polls.py --sabotage)
 	$(call RUN,sabotage-native-poll-replay,$(PYTHON) tests/test_native_poll_replay.py)
 	$(call RUN,sabotage-native-poll-stack,$(PYTHON) tests/test_native_poll_stack.py)
+	$(call RUN,sabotage-native-local-poll,$(PYTHON) tests/test_native_local_poll.py --sabotage)
 
 build/host/compute_native.o: src/runtime/compute_native.s src/runtime/compute_sprite.s src/runtime/compute_line.s build/gen/native_polls.i
 	@mkdir -p $(dir $@)
@@ -675,3 +677,8 @@ t-line-pixels:
 	$(call RUN,line-pixels,$(PYTHON) tests/test_line_pixels.py --generated --predecessors)
 t-sab-line-pixels:
 	$(call RUN,sabotage-line-pixels,$(PYTHON) tests/test_line_pixels.py --sabotage)
+
+t-priority-search:
+	$(call RUN,priority-search,$(PYTHON) tests/test_priority_search.py --generated)
+t-sab-priority-search:
+	$(call RUN,sabotage-priority-search,$(PYTHON) tests/test_priority_search.py --sabotage)
