@@ -4,3 +4,7 @@
 	ifd NATIVE_rt_hle_sprite_packet
 	include "compute_sprite.s"
 	endif
+
+	ifd NATIVE_rt_hle_line_right
+	include "compute_line.s"
+	endif

@@ -535,6 +535,13 @@ No measured ms/frame saving claim. Evidence: `tmp/native/N2-divide/`.
 
 ### Line `D69C` ↔ `30486`
 
+- R44 scopes D92A → D93D and D95C → D96F admit under exact polling.
+  Guarded ordinary-memory loops retain every pixel write and original poll;
+  clipping, shared callees and returns remain generated. Meter −0.040939%,
+  target work with exact instruction weighting −5.866799%, bench −0.016083%;
+  all selected checks pass. Evidence `tmp/native/N4-line/`, speed-plan §1.
+  No TFH original code imported.
+
 - Two consecutive points, ordered by y, rejected and interpolated at the viewport.
   SWOTL swaps the source records, TFH copies; endpoint order differs. `DAD3`/`D43F`
   vs `302B8`: equivalence not established.

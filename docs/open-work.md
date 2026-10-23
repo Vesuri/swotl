@@ -30,8 +30,9 @@ speed work: [speed-plan.md](speed-plan.md).
     flag-word packing is rejected (speed-plan §10). The U5
     [poll contract](native-compute.md#poll-contract-u5) (C3) and the
     [U8 extensions](native-compute.md#contract-extensions-u8) (C4) are
-    implemented, as is the exact-poll contract used by R42's sprite packet loop.
-    Active N4 candidates: `D69C`, `FDE0`, `BFD1`; all authorized
+    implemented, as is the exact-poll contract used by R42's sprite packet loop
+    and R44's line pixel loops.
+    Active N4 candidates: `FDE0`, `BFD1`; all authorized
     2026-10-22. They need admitted scopes and prices (native-plan C, S1–S9).
     Deferred by the user: N2 `B8A1` (no calls in m4/c13/c27), N4 `BB70`
     (sync-preserving design has no positive price), `109D6` vertex loops

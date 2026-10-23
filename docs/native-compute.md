@@ -10,9 +10,12 @@ no guest memory and handles the explicit zero-denominator path; for nonzero
 denominators both original word quotients fit (DX=0, then remainder<divisor).
 The user-authorized (2026-10-22, U6) D5DA normalization loop from
 `xpnorm20` resumes at D5F8 under U5 (R38); it writes no guest memory.
-Remaining candidates were authorized individually by the user’s all-candidates
-goal (2026-10-22, native-plan U4/U6); B8A1 and BB70 are deferred. No other
-row is enabled; admission, pricing and S1–S9 remain required.
+The scenery clear at 10A2F uses a continuation endpoint (R40); the sprite
+packet loop at 4ECD preserves every original poll (R42). D69C’s pixel loops
+at D92A and D95C use the same exact-poll contract (R44),
+retaining generated clipping, shared callees and returns.
+Remaining candidates and user deferrals: open-work 14b. Admission, pricing
+and S1–S9 remain required.
 
 ## Admission
 

@@ -189,7 +189,7 @@ def check(validate):
     return count
 
 
-def emission(plant=False, missing_sync=False):
+def emission(plant=False, missing_sync=False, repeat_poll=False):
     """A temporary row in memory checks real Program integration, never hle.csv."""
     from unittest.mock import patch
     from translator import emit, image
@@ -222,15 +222,22 @@ def emission(plant=False, missing_sync=False):
     sync_row = dict(row, first='0xBB70', last='0xBD66',
                     service='contract_test_sync',
                     polls='return ' + ' '.join(hex(n[1]) for n in sync_sites))
+    # Exact polls resume after the visit; retain this control without a
+    # production row by adding an independent temporary pixel-loop row.
+    exact_root = ('SWOTL.EXE', 0xd92a)
+    exact_site = ('SWOTL.EXE', 0xd92d)
+    exact_row = dict(row, first='0xD92A', last='0xD93B',
+                     service='contract_test_exact', polls='exact', resume='continue')
     def rows(name):
-        return original(name) + ([row, other_row, sync_row] if name == 'hle.csv' else [])
+        extra = [] if exact_root in p.compute_rows else [exact_row]
+        return original(name) + ([row, other_row, sync_row] + extra if name == 'hle.csv' else [])
 
     with patch.object(image, 'rows', rows):
         candidate = emit.Program(units=p.units)
         lines, _ = candidate.module_text(first[0])
     if plant:
         candidate.compute_rows.remove(other)
-    assert candidate.compute_rows == p.compute_rows | {first, other, sync_root} | set(sync_sites)
+    assert candidate.compute_rows == p.compute_rows | {first, other, sync_root, exact_root, exact_site} | set(sync_sites)
     sync_entries = candidate.compute_rows - candidate.compute_bodies.keys()
     if missing_sync:
         assert sync_entries, 'missing-sync plant requires an enabled sync entry'
@@ -246,13 +253,29 @@ def emission(plant=False, missing_sync=False):
     for entry, site in enumerate((sync_root, *sync_sites)):
         assert candidate.polled_entry.get(site) == entry
         assert candidate.polled_resumes.get(site) == [('SWOTL.EXE', 0xbd67), *sync_sites]
-    for site in sync_entries:
+    exact_checked = 0
+    planted = False
+    for site in sorted(sync_entries):
         targets = candidate.polled_resumes[site]
         assert set(targets) <= candidate.leaders
+        root = candidate.exact_entries.get(site)
+        after_poll = set(candidate.compute_bodies[root].sync) if root else set()
+        names = [emit.label(*target) + ('_np' if target in after_poll else '')
+                 for target in targets]
+        exact_checked += bool(after_poll)
         dispatch = compute.polled_dispatch(f'{emit.label(*site)}_cx',
-            [emit.label(*target) for target in targets], emit.hx(u.ip_of(site[1])))
+            names, emit.hx(u.ip_of(site[1])))
         start = lines.index(dispatch[0])
+        if repeat_poll and after_poll and not planted:
+            target = next(target for target in targets if target in after_poll)
+            old = '\tjmp ' + emit.label(*target) + '_np'
+            offset = dispatch.index(old)
+            assert lines[start + offset] == old
+            lines[start + offset] = '\tjmp ' + emit.label(*target)
+            planted = True
         assert lines[start:start + len(dispatch)] == dispatch
+    assert exact_checked, 'exact-poll positive control missing'
+    assert not repeat_poll or planted, 'repeat-poll plant did not run'
     assert other in candidate.leaders and other_resume in candidate.leaders
     assert candidate.compute_bodies[other] == compute.validate(p, other, other_resume)
     other_hook = compute.hook('rt_hle_contract_test_other', emit.label(*other_resume),
@@ -348,6 +371,12 @@ def main():
             print('compute emission: lost sync entry caught')
         else:
             raise AssertionError('lost sync compute entry escaped')
+        try:
+            emission(repeat_poll=True)
+        except AssertionError:
+            print('compute emission: repeated exact poll caught')
+        else:
+            raise AssertionError('repeated exact poll escaped')
         original = compute.forbidden
         compute.forbidden = lambda p, n: False
         try:

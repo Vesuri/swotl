@@ -1060,6 +1060,10 @@ def main(argv=None, on_batch=None) -> int:
     n, failures = sprite_packet_entries()
     count['sprite packet predecessors'] += n
     bad += failures
+    from test_line_pixels import predecessor_cases as line_pixel_entries
+    n, failures = line_pixel_entries()
+    count['line pixel predecessors'] += n
+    bad += failures
     if on_batch:
         on_batch(sum(v for k, v in count.items() if k != 'return checks'), bad)
     n, failures = flag_helper_entries()

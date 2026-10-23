@@ -108,12 +108,15 @@ the replacement before the call) or annotations, with its routine.
   guarded adapter exceeded its diagnostic budget.
   `F290` deferred by the user 2026-10-23: its narrow tile-selection adapter
   has no positive price (R41).
-  Remaining: `D69C`, `FDE0`, `BFD1`.
+  Remaining: `FDE0`, `BFD1`.
   The 4DAE packet loop uses the approved exact-poll contract
   ([native-compute.md](native-compute.md#exact-native-polling-user-2026-10-23));
   broader sprite decoding and dispatch remain generated.
   `BD68` deferred by the user 2026-10-23: its approved exact-poll edge-loop
   scopes have no positive price under the initial address-reuse design (R43).
+  User approved D69C's exact-poll pixel scopes D92A → D93D and
+  D95C → D96F on 2026-10-23; clipping, shared callees and returns stay
+  generated. R44 enables the guarded pixel loops; measurements: speed-plan §1.
 
 ## Z. Close
 
