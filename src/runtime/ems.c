@@ -72,9 +72,10 @@ void rt_int67(void)
     case 0x41:  /* page frame segment */
         rt_r.bx = EMS_FRAME;
         break;
-    case 0x42:  /* unallocated / total pages */
+    case 0x42:  /* unallocated / "total" pages: DOSBox-X answers the largest
+                 * free block, the free count while nothing is released */
         rt_r.bx = ems_free;
-        rt_r.dx = RT_EMS_PAGES;
+        rt_r.dx = ems_free;
         break;
     case 0x43:  /* allocate BX pages */
         if (rt_r.bx > ems_free || ems_handles == EMS_HANDLES) {
