@@ -23,6 +23,7 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   R40 enables the guarded scenery clears with proved BP-region re-entry.
   R42 enables the guarded sprite packet loop with every original poll retained.
   R44 enables the guarded line pixel loops with every original poll retained.
+  R48 enables guarded edge ordering and merging with exact original polls.
   Next: [native-plan.md](native-plan.md).
 - **Frames fixture** (N3, `7a5087a`, 2026-10-21): medians 370, 350 and
   340 ms; run-median span 340–370 ms. Frames 4–11 intervals (fields):
@@ -40,8 +41,8 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   All three final guest RAM hashes match the established bench endpoint
   (`951adbe5…39b6c63`). This spread exceeds the introduction's two-line observation
   (§4); no build-to-build claim. Palette window 38,392–38,405 lines (R17).
-- **Meter** (R44, m4, A4 weights): generated + walk + runtime
-  161,506,038 model cycles, down 0.040939% from the parent’s 161,572,185; unchanged host
+- **Meter** (R48, m4, A4 weights): generated + walk + runtime
+  161,344,429 model cycles, down 0.100064% from the parent’s 161,506,038; unchanged host
   platform adds 2,035. Three identical runs per arm. Native callbacks bypass
   body labels, so label-derived guest counts are not semantic work counts.
 - **N1 measurements** (2026-10-21): transform 1,182.182 → 634.432 target
@@ -98,6 +99,16 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   captures `[21,18,17,20,17,20,17,15]` → `[20,19,16,16,17,24,17,17]`:
   medians 350 → 340 ms, spans 15–21 → 16–24 fields. No frame-rate gain
   claimed. Evidence: `tmp/native/N4-line/`.
+- **R48 measurements** (2026-10-23): edge ordering/merging target cost
+  1,106.530 → 857.514 cycles/entry (381 entries in each initial capture);
+  exact host-instruction weighting −10.780077%, including rare IRQ handoffs
+  from user-approved targeted captures. Bench medians 68,383 → 68,384 lines
+  (+0.001462%, user accepts this specific difference as noise), spans
+  68,361–68,393 → 68,372–68,400; all six RAM hashes match.
+  Host payload +1,162 bytes; Amiga executable +3,300 bytes. Initial frames
+  captures `[21,19,15,17,17,23,18,16]` → `[21,19,15,17,17,23,17,16]`,
+  medians 350 → 340 ms; both spans 15–23 fields. No frame-rate gain claimed.
+  Evidence: `tmp/native/N4-raster-remaining/`. Next: Z1 checkpoint.
 - **Capture** (A3, second frames run, 100 fields): generated code 76.18%
   (cell walk 3.75%), runtime/platform 19.52% (`render`, `fm_field`, `loop_for`
   12.11%), no PC 2.23%, Kickstart 1.03%, IRQ transition 1.03%.
@@ -393,40 +404,12 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R42 / N4 | guarded sprite packet loop; exact original polls and handler-state re-entry | runtime, translator, compute/replay tests | −0.131085% (bench −0.007312%) |
 | R44 / N4 | guarded line pixel loops; exact original polls and handler-state re-entry | runtime, compute tests | −0.040939% (bench −0.016083%) |
 | R46 / N4 | priority searches deferred; generated oracle coverage and optional short poll macro retained | tests, translator tooling | No shipped speed change |
+| R48 / N4 | guarded edge ordering/merging; wrapping index reuse and exact original polls | runtime, compute tests | −0.100064% (bench +0.001462%, user accepts as noise) |
 
 No priced translator candidate remains. Unchanged outside authorized U5 rows (§2):
 poll points (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
 `__set_flags` (POPF/IRET) and `__flags_word` are the largest runtime-side
 items left.
-
-### R48 / BFD1 ordering — priced, not implemented
-
-Fresh m4 meter: 161,506,038 generated/walk/runtime cycles; census 49 frames.
-Exact-poll admission passes for all three approved scopes. Address-reuse
-budgets below retain all reads, writes, flags and polls; no native code added.
-
-| Scope | Generated label cost | Native budget | Estimated saving (% full meter) |
-|---|---:|---:|---:|
-| ordering C0C2 → C1C2 | 4,342,832 | 4,301,224 | 41,609 (0.025763%) |
-| expiry C395 → C3DF/C000 | 1,048,049 | 1,304,535 | −256,486 (−0.158809%) |
-| advance C3DF → C429/C3EB | 1,676,612 | 1,769,291 | −92,678 (−0.057384%) |
-
-Ordering: cache the wrapping reversed BX index in a0, retaining the existing
-SI/DI accesses and wrap guards. Census: 3,089 entries, 5,738 passes,
-34,461 comparisons, 6,348 swaps. Credit repeated BX index formation and
-shorten only C0C5/C0D1 poll branches; C11A/C129 are already short.
-Charge two segment guards, selector/return dispatch, per-pass index setup,
-hooks and 32,768 cycles for pending handoffs/local stubs. Hot-loop size and
-short-stub reach remain S5/S7 obligations; S3–S9 remain required.
-
-Expiry: 3,040 entries, 12,519 iterations; cached DI reads and folded SI
-increments do not pay for guards/hooks. Its poll branch is already short.
-Advance: 10,455 iterations, 800 exits to slope initialization; even crediting
-four saved DI address formations on every iteration and counting only 3,040
-initial entries leaves a negative price. This omits extra re-entry, wrap and
-IRQ costs, so is optimistic for this design. No claim about all possible designs.
-User deferred expiry/advance on 2026-10-23 (R47); proceed with ordering.
-Evidence: `tmp/native/N4-raster-remaining/{prices.json,census-m4.log,meter-parent.json,poll-encodings.txt}`.
 
 ## 8. User decisions (D0–D4 2026-10-08)
 
@@ -460,7 +443,7 @@ Evidence: `tmp/native/N4-raster-remaining/{prices.json,census-m4.log,meter-paren
 N3's frames-fixture medians are 370, 350 and 340 ms: the middle run needs
 110 ms (31.4%) less to reach 240 ms; the run range needs 100–130 ms less.
 No priced translator candidate remains (§7). N1, N2’s B393 projection and B4E2 divide,
-and N4’s D5DA normalization loop, scenery clear, sprite packet loop and line pixel loops are kept. The U5 poll contract is implemented
+and N4’s D5DA normalization loop, scenery clear, sprite packet loop, line pixel loops and edge ordering/merging are kept. The U5 poll contract is implemented
 ([native-compute.md](native-compute.md#poll-contract-u5)), and the U8
 extensions (C4). Active candidates and user deferrals: open-work 14b and
 [native-plan.md](native-plan.md).

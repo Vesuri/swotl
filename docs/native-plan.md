@@ -108,7 +108,7 @@ the replacement before the call) or annotations, with its routine.
   guarded adapter exceeded its diagnostic budget.
   `F290` deferred by the user 2026-10-23: its narrow tile-selection adapter
   has no positive price (R41).
-  Remaining: `BFD1`.
+  No non-deferred candidate remains; next is Z1.
   User approved exact-poll scopes C0C2 → C1C2 (ordering), C2F2 → C302
   and C32D → C33D (priority), C395 → C3DF/C000 (expiry), and
   C3DF → C429/C3EB (advance) on 2026-10-23. Price each and implement
@@ -116,8 +116,8 @@ the replacement before the call) or annotations, with its routine.
   Priority searches deferred by the user 2026-10-23 (R46): meter and
   target cost improve, but bench no-slowdown acceptance remains unproved.
   User deferred expiry/advance on 2026-10-23 (R47): address-reuse
-  designs have no positive price. Proceed with ordering, priced at
-  0.025763% of the full meter (speed-plan §7, R48).
+  designs have no positive price. R48 keeps ordering C0C2 → C1C2 with
+  exact original polls; measurements: speed-plan §1.
   The 4DAE packet loop uses the approved exact-poll contract
   ([native-compute.md](native-compute.md#exact-native-polling-user-2026-10-23));
   broader sprite decoding and dispatch remain generated.

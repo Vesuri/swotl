@@ -1064,6 +1064,10 @@ def main(argv=None, on_batch=None) -> int:
     n, failures = line_pixel_entries()
     count['line pixel predecessors'] += n
     bad += failures
+    from test_edge_ordering import predecessor_cases as edge_ordering_entries
+    n, failures = edge_ordering_entries()
+    count['edge ordering predecessors'] += n
+    bad += failures
     if on_batch:
         on_batch(sum(v for k, v in count.items() if k != 'return checks'), bad)
     n, failures = flag_helper_entries()

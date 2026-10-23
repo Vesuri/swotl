@@ -8,3 +8,7 @@
 	ifd NATIVE_rt_hle_line_right
 	include "compute_line.s"
 	endif
+
+	ifd NATIVE_rt_hle_edge_ordering
+	include "compute_ordering.s"
+	endif

@@ -32,9 +32,10 @@ speed work: [speed-plan.md](speed-plan.md).
     [U8 extensions](native-compute.md#contract-extensions-u8) (C4) are
     implemented, as is the exact-poll contract used by R42's sprite packet loop
     and R44's line pixel loops.
-    Active N4 candidate: `BFD1`, authorized
-    2026-10-22. Its exact-poll scopes were approved 2026-10-23 (native-plan
-    N4). R48 ordering is priced at 0.025763% of the meter and is in S3–S9.
+    N4's final non-deferred candidate is kept: R48 edge ordering/merging,
+    meter −0.100064%, exact target weighting −10.780077%; user accepts
+    the bench's +0.001462% as noise. Next: native-plan Z1's three-run frames
+    checkpoint and U7 if the 240 ms target remains unmet.
     User deferred expiry/advance (R47): address-reuse designs have no
     positive price (speed-plan §10).
     The user deferred R46 priority searches: no-slowdown acceptance remained unproved.

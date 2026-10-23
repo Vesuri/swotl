@@ -163,5 +163,5 @@ clean:
 
 -include obj/*.d
 
-obj/compute_native.o: $(RUNTIME)/compute_native.s $(RUNTIME)/compute_sprite.s $(RUNTIME)/compute_line.s $(GEN)/native_polls.i | obj
+obj/compute_native.o: $(RUNTIME)/compute_native.s $(RUNTIME)/compute_sprite.s $(RUNTIME)/compute_line.s $(RUNTIME)/compute_ordering.s $(GEN)/native_polls.i | obj
 	$(VASM) $(VASMFLAGS) -I"$(RUNTIME)" -I"$(GEN)" -o $@ $<

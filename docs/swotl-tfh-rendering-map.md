@@ -517,8 +517,10 @@ No measured ms/frame saving claim. Evidence: `tmp/native/N2-divide/`.
 - Priority searches C2F2/C32D remain generated: user deferred R46 after
   bench no-slowdown acceptance remained unproved. Ordering, expiry and
   advance scopes are authorized. User deferred expiry/advance (R47):
-  address-reuse designs have no positive price. Ordering proceeds under
-  S1–S9 with a 0.025763% full-meter price (speed-plan §7, R48).
+  address-reuse designs have no positive price. R48 keeps guarded ordering/
+  merging C0C2 → C1C2 with wrapping BX-index reuse and every original poll.
+  Meter −0.100064%; exact target weighting −10.780077%; bench +0.001462%
+  accepted as noise by the user. Measured details: speed-plan §1.
 
 - Edge records, 16 bytes (arena DS:`2360`, ≤ 500; buckets `1F40 + 16·y`, active list
   `4060/4062`): +0 lifetime, +2 priority (DS:`252F`), +4 colour, +5 event and slope
