@@ -36,6 +36,8 @@ speed work: [speed-plan.md](speed-plan.md).
     meter −0.100064%, exact target weighting −10.780077%; user accepts
     the bench's +0.001462% as noise. No non-deferred native candidate remains.
     U7: user paused speed work on 2026-10-23; resume only at their request.
+    Flyby profile (speed-plan §1 F0): EMS paging takes 25% of CPU with close
+    bombers; ranked plan F0–F10 and pending U9: native-plan F.
     User deferred expiry/advance (R47): address-reuse designs have no
     positive price (speed-plan §10).
     The user deferred R46 priority searches: no-slowdown acceptance remained unproved.

@@ -1,7 +1,7 @@
 # Native routine plan (open-work 14b)
 
 Work after the translator steps, in order: candidate table (B), native routines
-(N, each by procedure S), contract for routines with polls (C), close (Z). User decisions (U) gate it. Rules: speed-plan §2; nothing
+(N, each by procedure S), contract for routines with polls (C), flyby plan (F), close (Z). User decisions (U) gate it. Rules: speed-plan §2; nothing
 here authorizes a routine (§2.2). Interface and oracle: [native-compute.md](native-compute.md);
 facts per candidate: [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md).
 Evidence: `tmp/native/<id>/`.
@@ -43,6 +43,7 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 | U6 | Approved 2026-10-22: D5A6 adapting xpnorm20; normalization loop D5DA–D5F6 → D5F8 with explicit non-return endpoint extension and U5 polls. BB70, 109D6, F290, 4DAE, BD68, D69C, FDE0 and BFD1 authorized 2026-10-22 by the remaining-candidates goal; admission, pricing and S1–S9 remain required | N4 |
 | U7 | User chose to pause speed work, 2026-10-23; target and deferred candidates remain open | — |
 | U8 | Approved 2026-10-21: REP away from kept polls, divide-fault decline, multiple returns; range/unresolved flow by annotations ([extensions](native-compute.md#contract-extensions-u8), implemented by C4); routines still need U4/U6 | — |
+| U9 | Pending: resume under the flyby plan, F0 fixture and F2–F9 needs ([F](#f-flyby-plan)) | F |
 
 ## Candidate evidence
 
@@ -131,9 +132,39 @@ the replacement before the call) or annotations, with its routine.
   and overlay calls remain generated. User deferred FDE0 on 2026-10-23:
   the initial cache-loop design has no positive price (R45).
 
+## F. Flyby plan
+
+From the flyby profile (speed-plan §1, F0). Shares are of clip CPU. Estimates
+apply the measured per-call reductions of earlier natives (26–68%) to the part
+still generated; they are not measurements. Whole-routine scopes: narrow scopes
+lost their gain to guards, hooks, exits and polls (R41–R47).
+
+| Step | Item | Kind | Ceiling | Estimate | Needs |
+|---|---|---|---:|---:|---|
+| F0 | `amiga/perf_flyby.gdb` + committed inclusive-cost tool; re-profile after each kept step | instrument | — | — | user: supplementary fixture (§2.9) |
+| F1 | EMS map copy (`ems.c`): long-word/`movem` copy, same semantics; then a dirty-page design if the frame is never written in flight | runtime | 10.30% | 7.5–8% | none for the copy; dirty design to the user |
+| F2 | `RTSVGA+3B9A` frame compare and changed-span copy | guest | 4.11% | 2.5–2.9% | authorization (new) |
+| F3 | Geometry as whole routines: `B52D`+`B54B`; `D5A6`→`B017` all paths→`B4E2` | guest | 4.57% generated | 2.3–3.0% | scope (U2 kept `B52D` generated) |
+| F4 | FM synthesis inner loop in asm, bit-exact to the C | platform | 10.97% | 3.3–5.5% | user only if output changes |
+| F5 | `BFD1` rasterizer, one scope (annotate unresolved callee flow) | guest | 7.58% | 3.0–4.2% | scope; deferred R46/R47 scopes |
+| F6 | Terrain `FDE0`+`F290`+`EA74`, scope ends before the PLINK call | guest | 7.09% | 2.5–3.5% | lift deferrals; `EA74` authorization |
+| F7 | `109D6` whole, native geometry called directly, DOS call a generated exit | guest | 5.0% | 2.0–2.8% | lift deferral; scope |
+| F8 | Sprite decoder `4D7D`/`4DAE` incl. `call dx` dispatch | guest | 3.9% | 1.6–2.1% | scope |
+| F9 | SPAZ OPL write `0CEE`: delay loop in O(1), exact final state | guest | 2.67% | ~2.4% | user: §2.9 out of bounds |
+| F10 | Present/C2P reusing `3B9A`'s changed spans | platform | 5.22% | 1.0–1.5% | none (D5 bench) |
+
+Next: `FLIGHT+1538C` object drawing (1.1–1.6%), `FLIGHT+0A8D2` AI scan (~1.5%).
+All estimates: clip −28–36% (555 → 355–400 ms/frame); frames fixture, EMS ≈ 0,
+−22–31% (340 → 235–265 ms): 240 ms only at the top of the range.
+Each guest step follows S1–S9 with whole-scope prices and the exact-poll
+contract; runtime/platform steps follow speed-plan §3. Z-style frames
+checkpoints after F3, F7 and F10.
+
 ## Z. Close
 
 - **U7** Speed work paused by the user on 2026-10-23. Z1's final run
   medians are 340, 340 and 350 ms (`9afe0b8`), above 240 ms. Parent ranges
   overlap; no frame-rate gain claimed. Resume only at the user's request;
   routine and contract approvals still apply. Measurements: speed-plan §1.
+- **U9** Pending: resume under the [flyby plan](#f-flyby-plan), approve F0
+  and the per-step needs (F2–F9).

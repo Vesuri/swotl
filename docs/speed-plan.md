@@ -37,6 +37,17 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   Ranges overlap: no frame-rate gain established. Target remains unmet;
   340 ms needs 100 ms (29.4%) less to reach 240 ms. Evidence:
   `tmp/native/N4-raster-remaining/z1-summary.json`; raw captures deleted.
+- **Flyby profile** (F0, frozen R48 build `8b46b6a5…`, 2026-10-23): attract
+  demo, fields 1144–1648 after drawn frame 12, five consecutive 100-field
+  captures; 142,101,991 cycles, 18 drawn frames (555 ms/frame). Drawn frames
+  per 100 fields 5, 5, 3 (distant fighters, terrain), 3, 2 (close B-17s).
+  Inclusive shares, clip (w0–w2 / w3–w4): EMS map `rt_int67` 10.30%
+  (0–0.9 / 25.6, 24.8; 61 maps, 240K cycles each, two byte-wise 16 KB copies),
+  FM `fm_field` 10.97%, `BFD1` 9.16%, `109D6` 9.20%, `FDE0` 6.92%, sprites
+  `4D7D` 4.57% (0.8–1.4 / 7.6, 12.0), present+C2P 5.22%, SPAZ timer driver
+  4.55%, `RTSVGA+3B9A` 4.11%, simulation `FLIGHT+012E6` 15.66%. The frames
+  fixture's 100-field window misses the EMS-bound section. Plan:
+  [native-plan.md](native-plan.md#f-flyby-plan). Evidence: `tmp/flyby/`.
 - **Bench** (A3, `6bf8aef`, 2026-10-21): opening frames 4–11 sums 68,525,
   68,536 and 68,493 lines; median 68,525, span 43 lines (0.063%). Corresponding
   profiler cycles: 62,220,700; 62,230,688; 62,191,644 (908/line).
