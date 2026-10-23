@@ -58,22 +58,13 @@ audio the game has; RTSEGA, RTSTANDY and SFXA (PC speaker) are out.
 
 ## Shared environment and knowledge
 
-The Amiga toolchain, emulators, Kickstarts, WHDLoad and Unicorn come from AmigaXDev
-(`make setup` there); `amiga/env.sh` sources `~/.local/share/amiga/env.sh`. Generic
-lessons live in AmigaXDev and are edited there; this repo's docs keep what is specific
-to SWOTL.
-
-| AmigaXDev doc | For |
-|---|---|
-| `docs/environment.md` | shared variables and paths |
-| `docs/playbooks/new-port-playbook.md` | port phases, translator rules and guardrails (§7) |
-| `docs/reference/measurement-method.md` | profiling, A/B, pricing, when to stop |
-| `docs/reference/validation-harness.md` | oracles, differentials, sabotage, determinism |
-| `docs/reference/m68k-optimisation.md` | 68020 cost model and code generation |
-| `docs/reference/amiga-hardware.md` | takeover, interrupts, copper, AGA, Paula, framework |
-| `docs/reference/headless-fsuae.md` | launcher, gdb stub, diag runs |
-| `docs/reference/port-toolchain.md` | flags, linking, audits, Ghidra, release images |
-| `docs/native-port-validation.md` | crash dumps, installer updates, release archive checks |
+Shared guidance starts at `~/.local/share/amiga/docs/index.md`: read the rows that match the
+task. It routes to the playbooks (this project follows `docs/playbooks/new-port-playbook.md`),
+the references (measurement, validation, 68020 optimisation, Amiga hardware, headless FS-UAE,
+toolchain) and the shared tools and material (`docs/environment.md`; local list:
+`docs/toolchain.md`). The environment comes from AmigaXDev's `make setup`; `amiga/env.sh`
+sources `~/.local/share/amiga/env.sh` and selects the arm64 FS-UAE. Generic lessons go into
+AmigaXDev's docs (edit them there, then `make share`); this repo keeps what is specific to SWOTL.
 
 ## Pointers
 

@@ -35,6 +35,12 @@ provenance is in brackets.
 | WHDLoad dev files | `~/.local/share/amiga/WHDLoad` (`$WHDLOAD`, 20.1) | see [whdload.md](whdload.md), [release.md](release.md) |
 | Kickstart | `~/.local/share/amiga/Kickstarts/kick40063.A600` (`$KICKSTART`) | see [headless-fsuae.md](headless-fsuae.md) |
 
+- Other shared material (`~/.local/share/amiga`, variables from its `env.sh`): docs index
+  `docs/index.md` (installed by AmigaXDev `make share`); Developer CD 2.1 `$ADCD` (RKMs,
+  Hardware Manual, autodocs); AGA registers `$AGA_GUIDE`; NDK 3.2 `ndk/`; Kalms c2p
+  `kalms-c2p/` (vendor what is used); framework `$AMIGA_FRAMEWORK`; emulators `$FSUAE_APROF`
+  (exact cycles per PC: `monitor aprof start`/`stop FILE`) and `$FSUAE_MMU` (cached 040/060
+  MMU correction).
 - Generic toolchain rules (space-free install path, matched gcc/gdb/elf2hunk/FS-UAE, flags,
   link audits, `elf2hunk`): AmigaXDev `docs/reference/port-toolchain.md`; paths and variables:
   AmigaXDev `docs/environment.md`.
