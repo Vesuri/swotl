@@ -6,3 +6,6 @@
 # or, from amiga/:
 #   . env.sh
 . "${AMIGA_ENV:-$HOME/.local/share/amiga/env.sh}"
+# Emulator: the shared native arm64 FS-UAE (harness commands: exact `monitor fields`,
+# gapless chained `monitor profile`). Measurements compare one binary only (speed-plan §4).
+export FSUAE="${FSUAE:-$FSUAE_ARM}"

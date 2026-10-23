@@ -324,15 +324,18 @@ class ModuleCounts(unittest.TestCase):
         self.assertRegex(report, r"FLIGHT\.OVL  0  14\.0\n")
 
 
-def capture(path, fields):
-    """Barto capture of fields of (pc, cost, a7) records (tools/profile_tree.py)."""
+def capture(path, fields, base=0):
+    """Barto capture of fields of (pc, cost, a7) records (tools/profile_tree.py).
+    base > 0: absolute program PCs over a first hunk at base (the native build)."""
     import numpy as np
-    w = [len(fields), 1, 0] + [0] * 4 + [0, 0, 0] + [28375160, 128]
+    w = [len(fields), 1, base] + [0] * 4 + [0, 0, 0] + [28375160, 128]
     for recs in fields:
         trace = []
         for pc, cost, a7 in recs:
             regs = [0] * 17
             regs[15] = a7
+            if base and pc is not None and pc < 0xF80000:
+                pc += base
             trace += ([pc] if pc is not None else []) + [0xFFFFFFFF - cost] + regs
         w += [0, 0, 0, 0, 0, 0, sum(c for _, c, _ in recs), 0, len(trace)] + trace + [0, 0]
     np.array(w, dtype="<u4").tofile(path)
@@ -349,14 +352,14 @@ class ProfileTree(unittest.TestCase):
     SECOND = [(0x200, 2, 0x200100), (0x200, 6, 0xFFC), (0x110, 5, 0x1000),
               (0x300, 1, 0x1004)]
 
-    def run_tree(self, captures):
+    def run_tree(self, captures, base=0):
         with tempfile.TemporaryDirectory() as tmp, \
                 patch.object(T.P, "symbols", return_value=self.SYMS), \
                 patch.object(T.P, "routine_entries", return_value=self.ENTRIES):
             paths = []
             for k, fields in enumerate(captures):
                 paths.append(Path(tmp, f"p{k}.bin"))
-                capture(paths[-1], fields)
+                capture(paths[-1], fields, base)
             return T.analyse("unused", paths, Path(tmp), "objdump", "R_044E2")
 
     def check(self, d):
@@ -375,6 +378,19 @@ class ProfileTree(unittest.TestCase):
 
     def test_one_capture_two_fields(self):
         self.check(self.run_tree([[self.FIRST, self.SECOND]]))
+
+    def test_absolute_pcs_of_the_native_build(self):
+        self.check(self.run_tree([[self.FIRST], [self.SECOND]], base=0x219CA8))
+
+    def test_absolute_pc_below_the_hunk_is_outside(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp, "p.bin")
+            capture(path, [[(0x100, 3, 0x1000), (0xF80010, 2, 0x1000)]], base=0x219CA8)
+            pcs, _, _ = next(T.records(path))
+        self.assertEqual(pcs, [0x100, 0xF80010])
+        rel = T.P.hunk_relative([0x219CA8 + 4, 0x2188A0, 0xF80010, T.P.IRQ_MARKER, T.P.NO_PC], 0x219CA8)
+        self.assertEqual(rel.tolist(), [4, T.P.OUTSIDE, 0xF80010, T.P.IRQ_MARKER, T.P.NO_PC])
+        self.assertEqual(T.P.hunk_relative([4, 0x100], 0x219CA8).tolist(), [4, 0x100])
 
     def test_record_without_pc(self):
         d = self.run_tree([[[(0x300, 1, 0x1004), (None, 9, 0x1004)]]])
@@ -399,6 +415,11 @@ if __name__ == "__main__":
                     unittest.defaultTestLoader.loadTestsFromTestCase(ProfileTree))
             assert result.failures and not result.errors, name + " plant escaped"
             print("profile tree: " + name + " plant caught")
+        with patch.object(T.P, "hunk_relative", lambda pcs, base: P.np.asarray(pcs, dtype=P.np.int64)):
+            result = unittest.TextTestRunner(stream=io.StringIO()).run(
+                unittest.defaultTestLoader.loadTestsFromTestCase(ProfileTree))
+        assert result.failures or result.errors, "absolute PCs plant escaped"
+        print("profile tree: absolute native PCs left unrelocated plant caught")
         for name, fn, old, new in (
                 ("lowering helpers counted", L.is_entry, 'g[3] in ("", "_bp")', 'True'),
                 ("zero-code entries omitted", L.EntryMap.count,

@@ -30,7 +30,7 @@ provenance is in brackets.
 | `elf2hunk` | `~/.local` | AROS, "Modified 2018-2020, Bartman/Abyss" |
 | gcc8 support | `~/.local/support/gcc8_{a_support.s,c_support.c,c_support.h}` | Slicks: `SUPPORT = $(dir $(which CC))../../support` |
 | NDK headers | `~/.local/opt/m68k-amiga-elf/sys-include` | Slicks: `SDKDIR` |
-| FS-UAE | `~/.local/fs-uae/fs-uae` | `0.0.0-remote_debug.0`, SDL2 bundled |
+| FS-UAE | `$FSUAE_ARM` (`~/.local/share/amiga/fs-uae-arm/fs-uae`), `amiga/env.sh` default for `FSUAE` | native arm64 Barto build with the harness commands (AmigaXDev `docs/reference/headless-fsuae.md`); the x86_64 `~/.local/fs-uae/fs-uae` (Rosetta) on `PATH` measured everything before 2026-10-24 |
 | Shrinkler, exe2adf | `~/.local` | Shrinkler dev build (Bartman stats) |
 | WHDLoad dev files | `~/.local/share/amiga/WHDLoad` (`$WHDLOAD`, 20.1) | see [whdload.md](whdload.md), [release.md](release.md) |
 | Kickstart | `~/.local/share/amiga/Kickstarts/kick40063.A600` (`$KICKSTART`) | see [headless-fsuae.md](headless-fsuae.md) |

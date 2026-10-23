@@ -47,7 +47,7 @@ def records(path):
         pos += n
 
     fields = word()
-    [word() for _ in range(word())]
+    sections = [word() for _ in range(word())]
     skip(16)                                # stack bounds
     for _ in range(3):                      # ROM, chip RAM, bogo RAM
         skip(word())
@@ -76,7 +76,7 @@ def records(path):
                 i += 18
         if i != count or pc != P.NO_PC:
             raise ValueError(f"{path} field {f}: invalid record boundary")
-        yield pcs, costs, a7s
+        yield P.hunk_relative(pcs, sections[0] if sections else 0).tolist(), costs, a7s
         size = word()
         word()
         skip(size)

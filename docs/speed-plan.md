@@ -44,6 +44,13 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   242,459 cycles (12, 15 maps); F1 622 (36 maps, all identical remaps) and
   12,138 (108 maps, copies and skips). Runtime +316 bytes, executable +392.
   Evidence: `tmp/speed/f1/`.
+- **arm64 baseline** (2026-10-24, `f0b93f8`, `$FSUAE_ARM`): every FS-UAE
+  number before this entry is from the x86_64 build and does not compare
+  with later ones (§4). Bench frames 4–11: 68,366 lines median (68,345–68,374;
+  RAM hash `951adbe5…6c63` in all three). Frames fixture 370, 370, 380 ms
+  (an earlier same-build session 370, 360, 350). Flyby: 22 and 20 drawn
+  frames in 500 fields (455, 500 ms/frame); `3B9A` 4.19% inclusive.
+  Evidence: `tmp/speed/arm64-base/`.
 - **F2 measurements** (2026-10-23): REP MOVSW by longs (translator). The
   flyby profile puts `3B9A`'s cost in its REP instructions (`repe cmpsw`
   `03BE9`, `repne cmpsw` `03C0F`, `rep movsw` `03C2D`), not its glue
@@ -264,6 +271,10 @@ lines.
 
 ## 4. Measurement
 
+- **Emulator.** `$FSUAE` (`amiga/env.sh`: the shared arm64 `$FSUAE_ARM`
+  since 2026-10-24; x86_64 before). Compare FS-UAE numbers from one binary
+  only; `ab_runs.py` fingerprints it. Its captures hold absolute PCs
+  (`profile_report.hunk_relative`).
 - **Frame period (P).** `amiga/perf_frames.gdb` under `amiga/debug.sh`
   (68020, 8 MB Fast): field at each of the first 12 drawn frames of the
   attract demo flight (one gdb stop per frame at the frame loop `R_044E2`).

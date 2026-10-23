@@ -37,6 +37,21 @@ INSIDE = re.compile(r"_(np|sr\d+|hr\d+|pr\d+|gr\d+|kr\d+|dfend|dispatchend)$")
 TRAMPOLINE = re.compile(r"^(R|SPZ|VGA|FE|CMP|NCP|FLT|RPL|PNL)_rm\d+$")
 DEFAULT_GEN = Path(__file__).resolve().parents[1] / "build/gen"
 IRQ_MARKER = 0x7FFFFFFF
+OUTSIDE = 0x7FFFFFFE     # absolute PC below the first hunk (native build)
+
+
+def hunk_relative(pcs, base):
+    """PCs relative to the first hunk. The x86_64 Barto build records them so;
+    the native arm64 build records absolute addresses. Relative PCs stay below
+    the code size, under the hunk base, so a field with any program PC at or
+    above the base is absolute: those PCs move down by the base, program PCs
+    below it (other hunks) become OUTSIDE. ROM, the IRQ marker and NO_PC stay."""
+    pcs = np.asarray(pcs, dtype=np.int64)
+    prog = (pcs >= 0) & (pcs < 0xF80000)
+    above = prog & (pcs >= base)
+    if base > 0 and above.any():
+        pcs = np.where(above, pcs - base, np.where(prog, OUTSIDE, pcs))
+    return pcs
 NO_PC = -1      # record without a PC frame: code outside the profiled ranges
 
 
@@ -87,7 +102,7 @@ def decode(path):
                 i += 1 + 17
         if i != count or pc != NO_PC:
             raise ValueError(f"field {f}: invalid record boundary")
-        pcs, cost = np.array(pcs, dtype=np.int64), np.array(cost, dtype=np.int64)
+        pcs, cost = hunk_relative(pcs, sections[0] if sections else 0), np.array(cost, dtype=np.int64)
         if abs(int(cost.sum()) - cycles) > max(100, cycles // 1000):
             raise ValueError(f"field {f}: accounted {cost.sum()} vs {cycles}")
         out.append((cycles, idle, pcs, cost))

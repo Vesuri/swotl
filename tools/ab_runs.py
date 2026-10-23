@@ -44,7 +44,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 AMIGA = ROOT / "amiga"
 SHARE = Path.home() / ".local/share/amiga"
-TOOLS = ("fs-uae", "m68k-amiga-elf-gdb", "m68k-amiga-elf-objdump", "m68k-amiga-elf-ld")
+TOOLS = ("m68k-amiga-elf-gdb", "m68k-amiga-elf-objdump", "m68k-amiga-elf-ld")
 FILES = (SHARE / "env.sh", SHARE / "fsuae_common.sh", AMIGA / "debug.sh",
          AMIGA / "bench_frames.gdb", AMIGA / "perf_frames.gdb", AMIGA / "perf_flyby.gdb",
          ROOT / "tools/profile_report.py", ROOT / "tools/profile_tree.py",
@@ -52,7 +52,8 @@ FILES = (SHARE / "env.sh", SHARE / "fsuae_common.sh", AMIGA / "debug.sh",
 
 
 def fingerprints():
-    paths = [Path(shutil.which(t) or t) for t in TOOLS] + list(FILES)
+    emulator = os.environ.get("FSUAE") or "fs-uae"     # amiga/env.sh selects it
+    paths = [Path(shutil.which(t) or t) for t in (emulator, *TOOLS)] + list(FILES) + [AMIGA / "env.sh"]
     missing = [str(p) for p in paths if not p.exists()]
     if missing:
         sys.exit(f"measurement tools missing: {missing} (source amiga/env.sh)")

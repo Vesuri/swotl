@@ -13,7 +13,9 @@ AmigaXDev `docs/reference/headless-fsuae.md`. This page holds what is specific t
 
 Boot volume: `dh0/s/startup-sequence` runs `C:SetPatch QUIET`, `cd dh1:` and the program; the
 user's own `SetPatch` comes from `SETPATCH` and is never committed. Kickstart: the shared
-`$KICKSTART` (3.1); `$KICKSTART_A1200` is beside it.
+`$KICKSTART` (3.1); `$KICKSTART_A1200` is beside it. Emulator: `amiga/env.sh` sets
+`FSUAE` to the shared arm64 `$FSUAE_ARM` (override by setting `FSUAE`); a 68040/060 check
+uses `$FSUAE_MMU` (`FSUAE="$FSUAE_MMU" AMIGA_SETUP=a1200-040 amiga/run.sh`).
 
 `make test-amiga` captures guest state at the original milestone label, then
 waits for that exact queued frame's handoff before capturing visible pixels,
