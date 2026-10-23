@@ -12,6 +12,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import profile_report as P
 import lowering_cost as L
+import profile_tree as T
 
 
 class ProfileTools(unittest.TestCase):
@@ -323,8 +324,81 @@ class ModuleCounts(unittest.TestCase):
         self.assertRegex(report, r"FLIGHT\.OVL  0  14\.0\n")
 
 
+def capture(path, fields):
+    """Barto capture of fields of (pc, cost, a7) records (tools/profile_tree.py)."""
+    import numpy as np
+    w = [len(fields), 1, 0] + [0] * 4 + [0, 0, 0] + [28375160, 128]
+    for recs in fields:
+        trace = []
+        for pc, cost, a7 in recs:
+            regs = [0] * 17
+            regs[15] = a7
+            trace += ([pc] if pc is not None else []) + [0xFFFFFFFF - cost] + regs
+        w += [0, 0, 0, 0, 0, 0, sum(c for _, c, _ in recs), 0, len(trace)] + trace + [0, 0]
+    np.array(w, dtype="<u4").tofile(path)
+
+
+class ProfileTree(unittest.TestCase):
+    SYMS = [(0x100, "R_00100"), (0x110, "R_00110"), (0x200, "R_00200"),
+            (0x300, "R_044E2"), (0x400, "fm_field"), (0x500, "rt_irq")]
+    ENTRIES = {"SWOTL.EXE": [0x100, 0x200, 0x44E2]}
+    # frame; A; A body; B (called by A); guest IRQ; fm_field inside the IRQ |
+    # hardware interrupt record; back in B; back in A; frame (closes A)
+    FIRST = [(0x300, 1, 0x1004), (0x100, 10, 0x1000), (0x110, 5, 0x1000),
+             (0x200, 7, 0xFFC), (0x500, 3, 0xFF8), (0x400, 4, 0xFF4)]
+    SECOND = [(0x200, 2, 0x200100), (0x200, 6, 0xFFC), (0x110, 5, 0x1000),
+              (0x300, 1, 0x1004)]
+
+    def run_tree(self, captures):
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(T.P, "symbols", return_value=self.SYMS), \
+                patch.object(T.P, "routine_entries", return_value=self.ENTRIES):
+            paths = []
+            for k, fields in enumerate(captures):
+                paths.append(Path(tmp, f"p{k}.bin"))
+                capture(paths[-1], fields)
+            return T.analyse("unused", paths, Path(tmp), "objdump", "R_044E2")
+
+    def check(self, d):
+        incl, own = dict(d["incl"]), dict(d["own"])
+        self.assertEqual(d["total"], 44)
+        self.assertEqual(d["frames"], 2)
+        self.assertEqual(incl, {"SWOTL.EXE+00100": 33, "SWOTL.EXE+00200": 13, "fm_field": 4})
+        self.assertEqual(d["edges"], [["SWOTL.EXE+00100", "SWOTL.EXE+00200", 13]])
+        self.assertEqual(own["SWOTL.EXE+00100"], 20)
+        self.assertEqual(own["SWOTL.EXE+00200"], 15)
+        self.assertEqual(own["rt_irq"], 3)
+        self.assertEqual(d["open_scopes"], [])
+
+    def test_scopes_carry_across_consecutive_captures(self):
+        self.check(self.run_tree([[self.FIRST], [self.SECOND]]))
+
+    def test_one_capture_two_fields(self):
+        self.check(self.run_tree([[self.FIRST, self.SECOND]]))
+
+    def test_record_without_pc(self):
+        d = self.run_tree([[[(0x300, 1, 0x1004), (None, 9, 0x1004)]]])
+        self.assertEqual(dict(d["own"])["<no PC>"], 9)
+
+
 if __name__ == "__main__":
     if "--sabotage" in sys.argv:
+        for name, old, new in (
+                ("guest interrupt charged to the interrupted routine",
+                 "if name is None:\n                        continue", "if name is None:\n                        name = 'irq'"),
+                ("scope state reset per capture", "for pcs, costs, a7s in records(cap):",
+                 "for pcs, costs, a7s in (stack.clear(), records(cap))[1]:"),
+                ("supervisor records charged", "or pc == P.IRQ_MARKER:", "and False:")):
+            source = inspect.getsource(T.analyse)
+            broken = source.replace(old, new)
+            assert broken != source, name
+            scope = dict(T.__dict__)
+            exec(broken, scope)
+            with patch.object(T, "analyse", scope["analyse"]):
+                result = unittest.TextTestRunner(stream=io.StringIO()).run(
+                    unittest.defaultTestLoader.loadTestsFromTestCase(ProfileTree))
+            assert result.failures and not result.errors, name + " plant escaped"
+            print("profile tree: " + name + " plant caught")
         for name, fn, old, new in (
                 ("lowering helpers counted", L.is_entry, 'g[3] in ("", "_bp")', 'True'),
                 ("zero-code entries omitted", L.EntryMap.count,

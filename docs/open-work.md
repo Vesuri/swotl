@@ -35,9 +35,9 @@ speed work: [speed-plan.md](speed-plan.md).
     N4's final non-deferred candidate is kept: R48 edge ordering/merging,
     meter −0.100064%, exact target weighting −10.780077%; user accepts
     the bench's +0.001462% as noise. No non-deferred native candidate remains.
-    U7: user paused speed work on 2026-10-23; resume only at their request.
+    U7 paused speed work; U9 (2026-10-23) resumes it under native-plan F.
     Flyby profile (speed-plan §1 F0): EMS paging takes 25% of CPU with close
-    bombers; ranked plan F0–F10 and pending U9: native-plan F.
+    bombers; ranked plan F0–F10, approved under U9: native-plan F.
     User deferred expiry/advance (R47): address-reuse designs have no
     positive price (speed-plan §10).
     The user deferred R46 priority searches: no-slowdown acceptance remained unproved.
@@ -58,7 +58,7 @@ speed work: [speed-plan.md](speed-plan.md).
     Bench acceptance for platform/layout work (D5) and a later palette window
     (D6) are approved. Fidelity gates and no slowdown remain mandatory except
     the specific R20/R35 tradeoffs and R36/R40/R48 bench differences accepted by
-    the user as noise (speed-plan §7). Z1 leaves the target unmet; speed work is paused under U7.
+    the user as noise (speed-plan §7). Z1 leaves the target unmet; plan F is next.
 14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`
     `Harness`: each byte drew from a fresh generator with the same seed).
     A random background is stronger but changes every corpus case; needs

@@ -24,7 +24,7 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   R42 enables the guarded sprite packet loop with every original poll retained.
   R44 enables the guarded line pixel loops with every original poll retained.
   R48 enables guarded edge ordering and merging with exact original polls.
-  Speed work paused by the user under U7, 2026-10-23 ([native-plan.md](native-plan.md)).
+  Paused under U7, resumed under U9 (2026-10-23): [native-plan.md](native-plan.md#f-flyby-plan).
 - **Frames fixture** (Z1, `9afe0b8`, 2026-10-23): medians 340, 340 and
   350 ms; run-median span 340–350 ms. Frames 4–11 intervals (fields):
   `[21,19,15,17,17,23,17,16]`, `[24,15,25,17,17,17,19,16]`,
@@ -46,7 +46,12 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   FM `fm_field` 10.97%, `BFD1` 9.16%, `109D6` 9.20%, `FDE0` 6.92%, sprites
   `4D7D` 4.57% (0.8–1.4 / 7.6, 12.0), present+C2P 5.22%, SPAZ timer driver
   4.55%, `RTSVGA+3B9A` 4.11%, simulation `FLIGHT+012E6` 15.66%. The frames
-  fixture's 100-field window misses the EMS-bound section. Plan:
+  fixture's 100-field window misses the EMS-bound section. Second run
+  (`4838add` rebuilt, start field 1126, 20 frames, 500 ms/frame) caught close
+  fighters and smoke instead: sprites `4D7D` 15.46%, EMS 1.83% (9 maps,
+  288K cycles each), `BFD1` 7.85%, `109D6` 7.64%, `FDE0` 5.89%, FM 10.89%,
+  `3B9A` 4.53%, present 3.88%. The window's content follows the start field:
+  rank on several runs. Plan:
   [native-plan.md](native-plan.md#f-flyby-plan). Evidence: `tmp/flyby/`.
 - **Bench** (A3, `6bf8aef`, 2026-10-21): opening frames 4–11 sums 68,525,
   68,536 and 68,493 lines; median 68,525, span 43 lines (0.063%). Corresponding
@@ -121,7 +126,7 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   Host payload +1,162 bytes; Amiga executable +3,300 bytes. Initial frames
   captures `[21,19,15,17,17,23,18,16]` → `[21,19,15,17,17,23,17,16]`,
   medians 350 → 340 ms; both spans 15–23 fields. No frame-rate gain claimed.
-  Evidence: `tmp/native/N4-raster-remaining/`. Speed work paused under U7.
+  Evidence: `tmp/native/N4-raster-remaining/`.
 - **Capture** (A3, second frames run, 100 fields): generated code 76.18%
   (cell walk 3.75%), runtime/platform 19.52% (`render`, `fm_field`, `loop_for`
   12.11%), no PC 2.23%, Kickstart 1.03%, IRQ transition 1.03%.
@@ -302,6 +307,10 @@ lines.
   Its window (the static opening view) runs no cell walk: the FS-UAE check
   of a walk change uses a frames-fixture capture per arm (cycles per mov
   cell, `move.b d0` executions in the walk).
+- **Flyby** (F0, user 2026-10-23): `amiga/perf_flyby.gdb`, five consecutive
+  100-field captures from drawn frame 12 of the attract demo (fighters to close
+  B-17s); `tools/profile_tree.py` over all five. Supplements the frames fixture
+  and bench; runs: `tools/ab_runs.py flyby`.
 - **Palette bench (D6).** `SWOTL_ARGS=BENCH ./debug.sh ""
   bench_palette.gdb`, same model and runtime schedule. Measure intervals
   60–67, dump guest RAM at frame 68, then capture 100 fields. Require equal
@@ -457,7 +466,7 @@ items left.
 Z1's frames-fixture medians are 340, 340 and 350 ms: the middle run needs
 100 ms (29.4%) less to reach 240 ms; the run range needs 100–110 ms less.
 Parent run ranges overlap; no frame-rate gain is established. The user
-paused speed work under U7 on 2026-10-23; resume only at their request.
+resumed speed work under U9 on 2026-10-23: plan F in native-plan.
 No priced translator candidate remains (§7). N1, N2’s B393 projection and B4E2 divide,
 and N4’s D5DA normalization loop, scenery clear, sprite packet loop, line pixel loops and edge ordering/merging are kept. The U5 poll contract is implemented
 ([native-compute.md](native-compute.md#poll-contract-u5)), and the U8
@@ -467,7 +476,7 @@ extensions (C4). Active candidates and user deferrals: open-work 14b and
 Historical candidate costs, A3 run 2 (`6bf8aef`, 100 fields, 28,420,399 profiler cycle
 units). Own cost groups generated instructions by call-target boundary; inclusive
 cost follows completed A7 call scopes, excluding hardware and guest interrupt
-delivery (`tmp/item30/inclusive.py` method). All listed observed calls finish inside
+delivery (`tools/profile_tree.py` method). All listed observed calls finish inside
 this window. `B8A1` is an explicit extra boundary; neither it nor `CE3C` executes.
 Zero here does not prove a routine unreachable. Inclusive rows overlap; do not add them.
 

@@ -41,9 +41,9 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 | U4 | Approved 2026-10-22: `SWOTL.EXE+B017`, adapting the slave’s `xproj20`, by S1–S9. B4E2 adapting `xdiv20` authorized 2026-10-22; B8A1 authorized then deferred 2026-10-22: no calls in the acceptance workload; the `B393` long-path hook returning at `B4E1` is approved | N2 |
 | U5 | Approved 2026-10-21: chosen polls (removed interior polls, return poll, optional sync sites), up to one PIT period of interrupt delay in a native routine, affected references re-recorded per row ([contract](native-compute.md#poll-contract-u5), implemented by C3) | — |
 | U6 | Approved 2026-10-22: D5A6 adapting xpnorm20; normalization loop D5DA–D5F6 → D5F8 with explicit non-return endpoint extension and U5 polls. BB70, 109D6, F290, 4DAE, BD68, D69C, FDE0 and BFD1 authorized 2026-10-22 by the remaining-candidates goal; admission, pricing and S1–S9 remain required | N4 |
-| U7 | User chose to pause speed work, 2026-10-23; target and deferred candidates remain open | — |
+| U7 | User paused speed work 2026-10-23; resumed under U9 the same day | — |
 | U8 | Approved 2026-10-21: REP away from kept polls, divide-fault decline, multiple returns; range/unresolved flow by annotations ([extensions](native-compute.md#contract-extensions-u8), implemented by C4); routines still need U4/U6 | — |
-| U9 | Pending: resume under the flyby plan, F0 fixture and F2–F9 needs ([F](#f-flyby-plan)) | F |
+| U9 | Approved 2026-10-23: "I approve resuming the speed work and the things required to fix those top 10 bottlenecks": [F](#f-flyby-plan) F0–F10 with each step's listed needs, including F9's §2.9 exception; S1–S9 and §3 acceptance still apply | F |
 
 ## Candidate evidence
 
@@ -109,7 +109,7 @@ the replacement before the call) or annotations, with its routine.
   guarded adapter exceeded its diagnostic budget.
   `F290` deferred by the user 2026-10-23: its narrow tile-selection adapter
   has no positive price (R41).
-  No non-deferred candidate remains; speed work is paused under U7.
+  No non-deferred candidate remained; U9 resumes speed work under plan F.
   User approved exact-poll scopes C0C2 → C1C2 (ordering), C2F2 → C302
   and C32D → C33D (priority), C395 → C3DF/C000 (expiry), and
   C3DF → C429/C3EB (advance) on 2026-10-23. Price each and implement
@@ -134,22 +134,22 @@ the replacement before the call) or annotations, with its routine.
 
 ## F. Flyby plan
 
-From the flyby profile (speed-plan §1, F0). Shares are of clip CPU. Estimates
+From the flyby profile (speed-plan §1, F0; first run, F8 and F1 ranges from both). Shares are of clip CPU. Estimates
 apply the measured per-call reductions of earlier natives (26–68%) to the part
 still generated; they are not measurements. Whole-routine scopes: narrow scopes
 lost their gain to guards, hooks, exits and polls (R41–R47).
 
 | Step | Item | Kind | Ceiling | Estimate | Needs |
 |---|---|---|---:|---:|---|
-| F0 | `amiga/perf_flyby.gdb` + committed inclusive-cost tool; re-profile after each kept step | instrument | — | — | user: supplementary fixture (§2.9) |
-| F1 | EMS map copy (`ems.c`): long-word/`movem` copy, same semantics; then a dirty-page design if the frame is never written in flight | runtime | 10.30% | 7.5–8% | none for the copy; dirty design to the user |
+| F0 | `amiga/perf_flyby.gdb`, `tools/profile_tree.py`, `tools/ab_runs.py`; re-profile after each kept step | instrument | — | — | U9 |
+| F1 | EMS map copy (`ems.c`): long-word/`movem` copy, same semantics; then a dirty-page design if the frame is never written in flight | runtime | 1.8–10.3% | 1.4–8% | none for the copy; dirty design to the user |
 | F2 | `RTSVGA+3B9A` frame compare and changed-span copy | guest | 4.11% | 2.5–2.9% | authorization (new) |
 | F3 | Geometry as whole routines: `B52D`+`B54B`; `D5A6`→`B017` all paths→`B4E2` | guest | 4.57% generated | 2.3–3.0% | scope (U2 kept `B52D` generated) |
 | F4 | FM synthesis inner loop in asm, bit-exact to the C | platform | 10.97% | 3.3–5.5% | user only if output changes |
 | F5 | `BFD1` rasterizer, one scope (annotate unresolved callee flow) | guest | 7.58% | 3.0–4.2% | scope; deferred R46/R47 scopes |
 | F6 | Terrain `FDE0`+`F290`+`EA74`, scope ends before the PLINK call | guest | 7.09% | 2.5–3.5% | lift deferrals; `EA74` authorization |
 | F7 | `109D6` whole, native geometry called directly, DOS call a generated exit | guest | 5.0% | 2.0–2.8% | lift deferral; scope |
-| F8 | Sprite decoder `4D7D`/`4DAE` incl. `call dx` dispatch | guest | 3.9% | 1.6–2.1% | scope |
+| F8 | Sprite decoder `4D7D`/`4DAE` incl. `call dx` dispatch | guest | 3.9–14.8% | 1.6–7% | scope |
 | F9 | SPAZ OPL write `0CEE`: delay loop in O(1), exact final state | guest | 2.67% | ~2.4% | user: §2.9 out of bounds |
 | F10 | Present/C2P reusing `3B9A`'s changed spans | platform | 5.22% | 1.0–1.5% | none (D5 bench) |
 
@@ -162,9 +162,8 @@ checkpoints after F3, F7 and F10.
 
 ## Z. Close
 
-- **U7** Speed work paused by the user on 2026-10-23. Z1's final run
+- **U7** Speed work paused by the user on 2026-10-23, resumed under U9. Z1's final run
   medians are 340, 340 and 350 ms (`9afe0b8`), above 240 ms. Parent ranges
-  overlap; no frame-rate gain claimed. Resume only at the user's request;
-  routine and contract approvals still apply. Measurements: speed-plan §1.
-- **U9** Pending: resume under the [flyby plan](#f-flyby-plan), approve F0
-  and the per-step needs (F2–F9).
+  overlap; no frame-rate gain claimed. Routine and contract approvals still
+  apply. Measurements: speed-plan §1.
+- **U9** Speed work resumed 2026-10-23 under the [flyby plan](#f-flyby-plan).

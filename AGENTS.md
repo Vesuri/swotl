@@ -17,6 +17,12 @@ audio the game has; RTSEGA, RTSTANDY and SFXA (PC speaker) are out.
 - This file carries rules and pointers only.
 - `ref/`, `tmp/`, generated code (`build/gen/`), captures, traces and any
   other byte-derived game material stay local and are never committed.
+- `tmp/` holds local artifacts only: game-derived bytes, captures, traces,
+  RAM dumps, frozen builds, logs. Tooling and knowledge are committed:
+  reusable scripts in `tools/` (listed in the relevant doc), plans and
+  decisions in `docs/`, and the method behind every committed number in a
+  committed tool or its commit message. A script stays in `tmp/` only if it
+  is a one-off that nothing committed names or relies on.
 - Guest code reaches the Amiga only as translator output. Never hand-port a
   guest routine to C or asm, never edit generated files, never fix output by
   hand: fix the translator or `annotations/` and regenerate.

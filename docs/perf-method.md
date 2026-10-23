@@ -29,6 +29,13 @@ its binding rules: [speed-plan.md](speed-plan.md).
   [--vram]` (host run between milestone snapshots: label executions, string-op
   elements, A0000h writers and rows per frame); `amiga/perf_frames.gdb` (frame
   period and a capture, [speed-plan.md](speed-plan.md) §4).
+- **Call tree**: `tools/profile_tree.py ELF CAPTURE... [--gen] [--json]`: self and
+  inclusive cycles per guest routine and runtime symbol, call edges, over consecutive
+  captures (A7 scopes; hardware and guest interrupt delivery not charged to the
+  interrupted routine). Inclusive rows overlap.
+- **Paired runs**: `tools/ab_runs.py freeze ARM`, then `bench|frames|flyby|meter
+  SESSION ARM...`: interleaved runs of frozen arms, tool fingerprints checked per run,
+  results never overwritten, captures deleted after reporting (speed-plan §4).
 - **Target A/B**: `tools/ab_labels.py CAP_A ELF_A CAP_B ELF_B METER_A
   --meter-b METER_B` uses both meters' exact 68k execution counts. Each
   required target PC must match the host instruction and have samples. Changed-label
