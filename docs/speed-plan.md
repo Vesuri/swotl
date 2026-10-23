@@ -24,7 +24,7 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   R42 enables the guarded sprite packet loop with every original poll retained.
   R44 enables the guarded line pixel loops with every original poll retained.
   R48 enables guarded edge ordering and merging with exact original polls.
-  Next: [native-plan.md](native-plan.md).
+  Speed work paused by the user under U7, 2026-10-23 ([native-plan.md](native-plan.md)).
 - **Frames fixture** (Z1, `9afe0b8`, 2026-10-23): medians 340, 340 and
   350 ms; run-median span 340–350 ms. Frames 4–11 intervals (fields):
   `[21,19,15,17,17,23,17,16]`, `[24,15,25,17,17,17,19,16]`,
@@ -110,7 +110,7 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   Host payload +1,162 bytes; Amiga executable +3,300 bytes. Initial frames
   captures `[21,19,15,17,17,23,18,16]` → `[21,19,15,17,17,23,17,16]`,
   medians 350 → 340 ms; both spans 15–23 fields. No frame-rate gain claimed.
-  Evidence: `tmp/native/N4-raster-remaining/`. Next: U7 direction decision.
+  Evidence: `tmp/native/N4-raster-remaining/`. Speed work paused under U7.
 - **Capture** (A3, second frames run, 100 fields): generated code 76.18%
   (cell walk 3.75%), runtime/platform 19.52% (`render`, `fm_field`, `loop_for`
   12.11%), no PC 2.23%, Kickstart 1.03%, IRQ transition 1.03%.
@@ -407,7 +407,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R44 / N4 | guarded line pixel loops; exact original polls and handler-state re-entry | runtime, compute tests | −0.040939% (bench −0.016083%) |
 | R46 / N4 | priority searches deferred; generated oracle coverage and optional short poll macro retained | tests, translator tooling | No shipped speed change |
 | R48 / N4 | guarded edge ordering/merging; wrapping index reuse and exact original polls | runtime, compute tests | −0.100064% (bench +0.001462%, user accepts as noise) |
-| Z1 | post-N4 frames checkpoint: 340, 340, 350 ms; target unmet, U7 pending | docs | measurement only |
+| Z1 | post-N4 frames checkpoint: 340, 340, 350 ms; target unmet; user paused speed work (U7) | docs | measurement only |
 
 No priced translator candidate remains. Unchanged outside authorized U5 rows (§2):
 poll points (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
@@ -445,8 +445,8 @@ items left.
 
 Z1's frames-fixture medians are 340, 340 and 350 ms: the middle run needs
 100 ms (29.4%) less to reach 240 ms; the run range needs 100–110 ms less.
-Parent run ranges overlap; no frame-rate gain is established. U7 direction
-is required before more speed work.
+Parent run ranges overlap; no frame-rate gain is established. The user
+paused speed work under U7 on 2026-10-23; resume only at their request.
 No priced translator candidate remains (§7). N1, N2’s B393 projection and B4E2 divide,
 and N4’s D5DA normalization loop, scenery clear, sprite packet loop, line pixel loops and edge ordering/merging are kept. The U5 poll contract is implemented
 ([native-compute.md](native-compute.md#poll-contract-u5)), and the U8

@@ -41,7 +41,7 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 | U4 | Approved 2026-10-22: `SWOTL.EXE+B017`, adapting the slave’s `xproj20`, by S1–S9. B4E2 adapting `xdiv20` authorized 2026-10-22; B8A1 authorized then deferred 2026-10-22: no calls in the acceptance workload; the `B393` long-path hook returning at `B4E1` is approved | N2 |
 | U5 | Approved 2026-10-21: chosen polls (removed interior polls, return poll, optional sync sites), up to one PIT period of interrupt delay in a native routine, affected references re-recorded per row ([contract](native-compute.md#poll-contract-u5), implemented by C3) | — |
 | U6 | Approved 2026-10-22: D5A6 adapting xpnorm20; normalization loop D5DA–D5F6 → D5F8 with explicit non-return endpoint extension and U5 polls. BB70, 109D6, F290, 4DAE, BD68, D69C, FDE0 and BFD1 authorized 2026-10-22 by the remaining-candidates goal; admission, pricing and S1–S9 remain required | N4 |
-| U7 | Direction if Z1 leaves the target unmet (FM quality tradeoff, `BFD1`, revised target) | — |
+| U7 | User chose to pause speed work, 2026-10-23; target and deferred candidates remain open | — |
 | U8 | Approved 2026-10-21: REP away from kept polls, divide-fault decline, multiple returns; range/unresolved flow by annotations ([extensions](native-compute.md#contract-extensions-u8), implemented by C4); routines still need U4/U6 | — |
 
 ## Candidate evidence
@@ -108,7 +108,7 @@ the replacement before the call) or annotations, with its routine.
   guarded adapter exceeded its diagnostic budget.
   `F290` deferred by the user 2026-10-23: its narrow tile-selection adapter
   has no positive price (R41).
-  No non-deferred candidate remains; next is U7 after the Z1 checkpoint.
+  No non-deferred candidate remains; speed work is paused under U7.
   User approved exact-poll scopes C0C2 → C1C2 (ordering), C2F2 → C302
   and C32D → C33D (priority), C395 → C3DF/C000 (expiry), and
   C3DF → C429/C3EB (advance) on 2026-10-23. Price each and implement
@@ -133,8 +133,7 @@ the replacement before the call) or annotations, with its routine.
 
 ## Z. Close
 
-- **U7** Direction needed: Z1's final run medians are 340, 340 and 350 ms
-  (`9afe0b8`), above 240 ms. Parent ranges overlap; no frame-rate gain claimed.
-  Choose further work (for example revisiting deferred rasterizer designs),
-  an audio-quality tradeoff, or a revised target. No further routine or
-  contract change is authorized by this list. Measurements: speed-plan §1.
+- **U7** Speed work paused by the user on 2026-10-23. Z1's final run
+  medians are 340, 340 and 350 ms (`9afe0b8`), above 240 ms. Parent ranges
+  overlap; no frame-rate gain claimed. Resume only at the user's request;
+  routine and contract approvals still apply. Measurements: speed-plan §1.
