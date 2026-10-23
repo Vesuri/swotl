@@ -491,3 +491,5 @@ history at `781975e` and §5.)
 - R39 / BB70: deferred by user 2026-10-22; whole-body prototype skipped kept syncs. Repair budget 4,363,049 versus 3,198,000 generated model cycles; no positive price. Generated differential and skipped-sync sabotage retained; evidence `tmp/native/N4-classify/`.
 
 - R41 / F290: user deferred 2026-10-23; narrow tile-selection design estimated at 1,633,529 versus 1,147,792 generated model cycles (JSR/RTS model accesses corrected after 7744ce5). No implementation built; guards and frequent handoffs outweigh the priced arithmetic folds. Evidence: `tmp/native/N4-terrain/`.
+
+- R43 / BD68: user deferred 2026-10-23; approved exact-poll edge scopes budget 843,635 versus 667,905 generated model cycles even with optimistic credits. Frequent external-call handoffs outweigh address reuse; no implementation built. Evidence: `tmp/native/N4-edges/`.

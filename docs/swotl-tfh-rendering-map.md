@@ -477,6 +477,9 @@ No measured ms/frame saving claim. Evidence: `tmp/native/N2-divide/`.
 - Eight-byte screen points (DS:`2445`): extremal y, tied-vertex count, per-vertex bits,
   viewport extremes; a packed classification for `BD68`. Tie rules matter.
 - `BD68` builds edge records for `BFD1`; TFH draws with its own rasterizer.
+  Its exact-poll edge-loop design was deferred by the user (2026-10-23, R43):
+  planning budget 843,635 versus 667,905 generated model cycles; no native
+  implementation built.
 
 ### Ground objects `109D6` ↔ `1142C` (vertex loops `11604..11B34`)
 

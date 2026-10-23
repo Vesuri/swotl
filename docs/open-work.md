@@ -31,12 +31,14 @@ speed work: [speed-plan.md](speed-plan.md).
     [poll contract](native-compute.md#poll-contract-u5) (C3) and the
     [U8 extensions](native-compute.md#contract-extensions-u8) (C4) are
     implemented, as is the exact-poll contract used by R42's sprite packet loop.
-    Active N4 candidates: `BD68`, `D69C`, `FDE0`, `BFD1`; all authorized
+    Active N4 candidates: `D69C`, `FDE0`, `BFD1`; all authorized
     2026-10-22. They need admitted scopes and prices (native-plan C, S1–S9).
     Deferred by the user: N2 `B8A1` (no calls in m4/c13/c27), N4 `BB70`
     (sync-preserving design has no positive price), `109D6` vertex loops
-    (initial guarded adapter exceeded its budget), and `F290` (narrow
-    tile-selection adapter has no positive price, R41). These remain generated.
+    (initial guarded adapter exceeded its budget), `F290` (narrow
+    tile-selection adapter has no positive price, R41), and `BD68` (edge-loop
+    address-reuse design has no positive price, R43; deferred 2026-10-23).
+    These remain generated.
     Current meter and target costs: speed-plan §1; candidate facts and native
     source mapping: [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md).
     Interface: [native-compute.md](native-compute.md). Native replacement needs
