@@ -525,6 +525,12 @@ No measured ms/frame saving claim. Evidence: `tmp/native/N2-divide/`.
 
 ### Terrain `FDE0` ↔ `104B6..10830`; rings `F290` ↔ `11138`
 
+- FDE0 cache-loop scopes 10008 → 10126/1004B and 1012F → 101DE/10186
+  admit under exact polling, but the initial address-reuse design has no
+  positive price (476,194 budget versus 434,107 generated model cycles).
+  User deferred it on 2026-10-23; generated code remains. R45 evidence:
+  `tmp/native/N4-polygons/`.
+
 - `FDE0`: cells `(645C−60)>>6`, `(658E−40)>>6`; 13×13×5 table (far pointer `BF02`),
   ≤ 5 polygon IDs per cell, FF ends, marked visited before transform; transform and
   projection caches, 25 entries each, one-based, no eviction; camera-plane clip

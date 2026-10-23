@@ -505,3 +505,5 @@ history at `781975e` and §5.)
 - R41 / F290: user deferred 2026-10-23; narrow tile-selection design estimated at 1,633,529 versus 1,147,792 generated model cycles (JSR/RTS model accesses corrected after 7744ce5). No implementation built; guards and frequent handoffs outweigh the priced arithmetic folds. Evidence: `tmp/native/N4-terrain/`.
 
 - R43 / BD68: user deferred 2026-10-23; approved exact-poll edge scopes budget 843,635 versus 667,905 generated model cycles even with optimistic credits. Frequent external-call handoffs outweigh address reuse; no implementation built. Evidence: `tmp/native/N4-edges/`.
+
+- R45 / FDE0: user deferred 2026-10-23; approved cache-loop design budgets 476,194 versus 434,107 generated model cycles, even with optimistic credits. Frequent cache-miss exits outweigh address reuse; no implementation built. Evidence: `tmp/native/N4-polygons/`.
