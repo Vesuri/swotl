@@ -65,7 +65,7 @@ costs, adaptation inventory and eligibility sensitivity: [B3](#b3-candidate-pric
 | `B8A1` | face-facing test | 0% | 0 | 0.00 | None | Admitted; no captured calls | 0 in A3; native cost unpriced |
 | `BB70` | polygon bounds/classify | 1.33% | 177 | 5.20 | None | Admitted (U5) | Unpriced |
 | `109D6` | ground objects | 2.64% | 109 | 10.31 | `scen_verts`, `clr_scenery`, partial | DOS call in callee | Unpriced |
-| `4DAE` | sprite decoder | 7.98% | 49 | 31.12 | None | `call dx` | Unpriced |
+| `4DAE` | sprite decoder | 7.98% | 49 | 31.12 | None | Packet loop enabled (R42); dispatch remains generated | Measured packet cost below; no frame-rate claim |
 | `D69C` | clipped line | 0.99% | 130 | 3.87 | None | Shared callee poll | Unpriced |
 | `BD68` | edge submission | 0.67% | 94 | 2.60 | None | Overlay call | Unpriced |
 | `FDE0` | terrain polygons | 1.59% | 5 | 6.21 | None | Overlay call | Unpriced |
@@ -494,6 +494,11 @@ No measured ms/frame saving claim. Evidence: `tmp/native/N2-divide/`.
 
 ### Sprite decoder `4D7D`/`4DAE` ↔ `2BA28`/`2BACE`
 
+- R42 replaces only `4ECD–4F07 → 4F09`, preserving every original poll,
+  table read and byte-write history. Generated decoding and `call dx` remain.
+  Measured 815.176 → 782.000 target cycles/packet; exact host-instruction
+  weighting −5.261052%, full meter −0.131085%. Bench −0.007312%, equal RAM;
+  no frame-rate gain claimed. Evidence: `tmp/native/N4-sprite/`, R42 commit.
 - Setup `4CA1` ↔ `2B9A2`: two orientation contexts (DS:`12BE/1A78`), `9291` only on an
   angle miss. Header 5 bytes (x origin byte 0, or −byte 2 mirrored; y byte 1;
   transparent selector byte 4); packets: FF ends, count + 3 advances, forward or

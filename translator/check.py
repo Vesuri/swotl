@@ -33,7 +33,7 @@ GUEST_NAME = re.compile(
 
 def check_gen(regen: bool, out: Path = gen.OUT) -> list[str]:
     bad = []
-    files = sorted(list(out.glob("*.ir")) + list(out.glob("*.s")))
+    files = sorted(list(out.glob("*.ir")) + list(out.glob("*.s")) + list(out.glob("*.i")))
     if not files:
         return [f"no generated files in {out}"]
     for f in files:

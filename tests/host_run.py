@@ -36,7 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import uc as U  # noqa: E402
 import joystick_replay
-from translator import emit, image  # noqa: E402
+from translator import compute, emit, image  # noqa: E402
 from tools import fixture_inputs
 
 REPO = image.REPO
@@ -730,7 +730,8 @@ class Host:
         rep = script.get("rep") if script else None
         rep_labels = set(rep.labels) if rep else set()
         # an instruction's label and its guarded copy's (R6) are one guest instruction
-        at = {lab: {self.syms[x] for x in (lab, lab + "_bp") if x in self.syms}
+        compute.poll_aliases(self.syms)  # reject missing visit/execution metadata
+        at = {lab: {self.syms[x] for x in (lab, lab + "_bp", lab + "_native_poll") if x in self.syms}
               for lab in {t[0] for t, _ in steps} | {lab for _, lab, _, _ in self.irqs} | rep_labels}
         canon = {a: lab for lab, addrs in at.items() for a in addrs}
 
@@ -833,7 +834,7 @@ class Host:
         # instruction continuation, including returns from guarded copies.
         continuations = {}
         for lab in {r[1] for r in self.irqs} | rep_labels:
-            for name in (lab + "_np", lab + "_bp_np"):
+            for name in (lab + "_np", lab + "_bp_np", lab + "_native_np"):
                 if name in self.syms:
                     continuations[self.syms[name]] = lab
             if lab + "_np" not in self.syms:
@@ -904,7 +905,7 @@ class Host:
             self.e.hook_range(U.HOOK_CODE, skip_hit, a, a)
             for r in csv.DictReader(POLLS.open()):
                 for a in {self.syms[x] for lab in [emit.label(r["module"], int(r["offset"], 16))]
-                          for x in (lab, lab + "_bp") if x in self.syms}:
+                          for x in (lab, lab + "_bp", lab + "_native_poll") if x in self.syms}:
                     self.e.hook_range(U.HOOK_CODE, late, a, a)
             for r in image.rows("hle.csv"):
                 if r["service"] == "music_skip":

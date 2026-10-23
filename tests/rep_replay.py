@@ -108,7 +108,7 @@ def host_image(labels, joystick_header=None):
     objects = [ROOT / 'build/host' / (p.stem + '.o') for p in sorted((ROOT / 'src/runtime').glob('*.c'))]
     objects += [ROOT / 'build/host' / n for n in ('host_s.o', 'host.o', 'rt_entry.o')]
     tail_objects = [ROOT / 'build/host' / n for n in ('compute_projection.o', 'compute_divide.o', 'compute_normalise.o', 'compute_scenery.o')]
-    inputs = [Path(__file__)] + sorted((ROOT / 'translator').glob('*.py')) + sorted((ROOT / 'build/gen').glob('*.s')) + objects + tail_objects
+    inputs = [Path(__file__), ROOT / 'src/runtime/compute_native.s', ROOT / 'src/runtime/compute_sprite.s'] + sorted((ROOT / 'translator').glob('*.py')) + sorted((ROOT / 'build/gen').glob('*.s')) + objects + tail_objects
     digest = hashlib.sha256(('\n'.join(labels)).encode())
     if joystick_header is not None:
         digest.update(joystick_header.encode())
@@ -132,6 +132,11 @@ def host_image(labels, joystick_header=None):
     vasm = str(os.environ.get('VASM') or Path.home() / '.local/vasmm68k_mot')
     subprocess.run([vasm, '-quiet', '-m68020', '-Felf', '-x', '-nowarn=62',
                     '-o', str(out / 'program.o'), 'program.s'], cwd=out / 'gen', check=True)
+    subprocess.run([vasm, '-quiet', '-m68020', '-Felf', '-x', '-nowarn=62',
+                    '-I' + str(ROOT / 'src/runtime'), '-I' + str(out / 'gen'),
+                    '-o', str(out / 'compute_native.o'),
+                    str(ROOT / 'src/runtime/compute_native.s')], check=True)
+    tail_objects.append(out / 'compute_native.o')
     # The host hook supplies the result in the argument slot; no guest work here.
     (out / 'rep.s').write_text(' section .text,code\n xdef rt_replay_rep\nrt_replay_rep:\n rts\n')
     subprocess.run([vasm, '-quiet', '-m68020', '-Felf', '-o', str(out / 'rep.o'),

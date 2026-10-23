@@ -21,6 +21,7 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   B017’s authorized B393 projection long path; R37 enables the authorized
   B4E2 perspective divide; R38 enables D5A6’s normalization loop.
   R40 enables the guarded scenery clears with proved BP-region re-entry.
+  R42 enables the guarded sprite packet loop with every original poll retained.
   Next: [native-plan.md](native-plan.md).
 - **Frames fixture** (N3, `7a5087a`, 2026-10-21): medians 370, 350 and
   340 ms; run-median span 340–370 ms. Frames 4–11 intervals (fields):
@@ -38,8 +39,8 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   All three final guest RAM hashes match the established bench endpoint
   (`951adbe5…39b6c63`). This spread exceeds the introduction's two-line observation
   (§4); no build-to-build claim. Palette window 38,392–38,405 lines (R17).
-- **Meter** (R40, m4, A4 weights): generated + walk + runtime
-  161,784,260 model cycles, down 0.150466% from the parent’s 162,028,058; unchanged host
+- **Meter** (R42, m4, A4 weights): generated + walk + runtime
+  161,572,185 model cycles, down 0.131085% from the parent’s 161,784,260; unchanged host
   platform adds 2,035. Three identical runs per arm. Native callbacks bypass
   body labels, so label-derived guest counts are not semantic work counts.
 - **N1 measurements** (2026-10-21): transform 1,182.182 → 634.432 target
@@ -77,6 +78,15 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   medians 340 ms, spans 16–26 → 15–25 fields. No frame-rate gain claimed.
   Both arms use checked matching tool versions; earlier mixed-version target
   comparisons are excluded. Evidence: `tmp/native/N4-scenery/`.
+- **R42 measurements** (2026-10-23): sprite packet work
+  815.176 → 782.000 target cycles/packet (535 packets / 2,908 iterations
+  in each capture); exact host-instruction weighting −5.261052%.
+  Bench medians 68,385 → 68,380 lines (−0.007312%), spans
+  68,351–68,386 → 68,379–68,383; all six RAM hashes match.
+  Host payload +240 bytes; Amiga executable +580 bytes. Single frames
+  captures `[21,18,15,17,16,24,19,16]` → `[21,18,16,21,17,21,16,16]`:
+  both medians 350 ms, spans 15–24 → 16–21 fields. No frame-rate gain
+  claimed. Evidence: `tmp/native/N4-sprite/`; investigation in the R42 commit.
 - **Capture** (A3, second frames run, 100 fields): generated code 76.18%
   (cell walk 3.75%), runtime/platform 19.52% (`render`, `fm_field`, `loop_for`
   12.11%), no PC 2.23%, Kickstart 1.03%, IRQ transition 1.03%.
@@ -369,6 +379,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R37 / N2 | perspective divide from authorized xdiv20; exact intermediate BP and all register results | runtime, compute tests | −0.6499% (bench −0.0219%) |
 | R38 / N4 | counted normalization from authorized xpnorm20; proved continuation endpoint and U5 poll | runtime, compute contract/tests | −1.3373% (bench −0.0044%) |
 | R40 / N4 | guarded scenery clears from clr_scenery; proved BP continuation guard and U5 endpoint poll | runtime, translator, compute tests | −0.150466% (bench +0.030708%, user accepts as noise) |
+| R42 / N4 | guarded sprite packet loop; exact original polls and handler-state re-entry | runtime, translator, compute/replay tests | −0.131085% (bench −0.007312%) |
 
 No priced translator candidate remains. Unchanged outside authorized U5 rows (§2):
 poll points (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
@@ -407,7 +418,7 @@ items left.
 N3's frames-fixture medians are 370, 350 and 340 ms: the middle run needs
 110 ms (31.4%) less to reach 240 ms; the run range needs 100–130 ms less.
 No priced translator candidate remains (§7). N1, N2’s B393 projection and B4E2 divide,
-and N4’s D5DA normalization loop and scenery clear are kept. The U5 poll contract is implemented
+and N4’s D5DA normalization loop, scenery clear and sprite packet loop are kept. The U5 poll contract is implemented
 ([native-compute.md](native-compute.md#poll-contract-u5)), and the U8
 extensions (C4). Active candidates and user deferrals: open-work 14b and
 [native-plan.md](native-plan.md).
@@ -479,4 +490,4 @@ history at `781975e` and §5.)
 
 - R39 / BB70: deferred by user 2026-10-22; whole-body prototype skipped kept syncs. Repair budget 4,363,049 versus 3,198,000 generated model cycles; no positive price. Generated differential and skipped-sync sabotage retained; evidence `tmp/native/N4-classify/`.
 
-- R41 / F290: user deferred 2026-10-23; narrow tile-selection design estimated at 1,654,904 versus 1,147,792 generated model cycles. No implementation built; guards and frequent handoffs outweigh the priced arithmetic folds. Evidence: `tmp/native/N4-terrain/`.
+- R41 / F290: user deferred 2026-10-23; narrow tile-selection design estimated at 1,633,529 versus 1,147,792 generated model cycles (JSR/RTS model accesses corrected after 7744ce5). No implementation built; guards and frequent handoffs outweigh the priced arithmetic folds. Evidence: `tmp/native/N4-terrain/`.

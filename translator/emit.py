@@ -95,6 +95,21 @@ def poll_stub(lab: str, ip: int, cs: str) -> list[str]:
             "\tjsr rt_irq", f"\tbra {lab}_np"]
 
 
+def native_poll_stub(lab: str, ip: int, cs: str, result: int,
+                     diagnostic: int | None = None) -> list[str]:
+    """Tail handoff: discard no guest state and return to the callback caller."""
+    tail = lab + '_native_irq'
+    lines = [f'\txdef {tail}', tail + ':']
+    if diagnostic is not None:
+        lines += [f'\tpea {diagnostic}.w', '\tjsr rt_replay_point',
+                  '\tlea 4(sp),sp', '\ttst.b G_IRQ(a6)', f'\tbeq {tail}_done']
+    lines += [f'\tmove.l #{hx(ip)},d7', f'\tmove.l #({cs})<<16,d6',
+              '\tjsr rt_irq', tail + '_done:',
+              (f'\tmoveq #{result},d7' if result <= 127 else f'\tmove.l #{result},d7'),
+              '\trts']
+    return lines
+
+
 # A return check's mismatch branch (lower.return_check) targets a module-local
 # trampoline, so vasm can encode it as bne.s/bne.w instead of bne.l to the
 # runtime (speed-plan R5). The lowering emits RM; module_text names the
@@ -332,6 +347,7 @@ class Program:
         self.compute_end: dict[tuple[str, int], int] = {}   # U8: range end past the return
         self.compute_endpoints: set[tuple[str, int]] = set()
         self.compute_exits: dict[tuple[str, int], tuple] = {}
+        self.exact_rows: set[tuple[str, int]] = set()
         for r in image.rows("hle.csv"):
             mod, first, last = r["module"], int(r["first"], 16), int(r["last"], 16)
             u = self.units[mod]
@@ -370,7 +386,9 @@ class Program:
                 if r.get('end'):    # U8: the routine's code continues past the return
                     self.compute_end[(mod, first)] = int(r['end'], 16)
                 polls = (r.get('polls') or '').split()
-                if polls:   # U5: 'return' and the sync sites' offsets
+                if polls == ['exact']:
+                    self.exact_rows.add((mod, first))
+                elif polls:   # U5: 'return' and the sync sites' offsets
                     if polls[0] != 'return':
                         raise LowerError(f"hle.csv: {mod}+{first:05X} polls must start with 'return'")
                     sites = tuple((mod, int(x, 16)) for x in polls[1:])
@@ -402,7 +420,12 @@ class Program:
         self.ccr_only: dict = {}    # label -> live flags only the CCR holds there (R14d)
         self.ret_of: dict = {}
         self.returns()
-        self.compute_bodies = {n: compute.validate_polled(self, n, self.hle[n][0], self.sync_sites[n],
+        self.compute_bodies = {n: compute.validate_exact(self, n, self.hle[n][0],
+                                                          self.compute_end.get(n),
+                                                          n in self.compute_endpoints,
+                                                          self.compute_exits.get(n, ()))
+                               if n in self.exact_rows else
+                               compute.validate_polled(self, n, self.hle[n][0], self.sync_sites[n],
                                                           self.compute_end.get(n),
                                                           *((True,) if n in self.compute_endpoints else ()),
                                                           **({"exits": self.compute_exits[n]} if n in self.compute_exits else {}))
@@ -416,7 +439,18 @@ class Program:
         # dispatches on d7 like a U5 row, without polls.
         self.polled_resumes: dict[tuple[str, int], list] = {}
         self.polled_entry: dict[tuple[str, int], int] = {}
+        self.exact_entries: dict[tuple[str, int], tuple[str, int]] = {}
         for n, row in self.compute_bodies.items():
+            if n in self.exact_rows:
+                entries = (n, *(s for s in row.sync if s != n))
+                for k, h in enumerate(entries):
+                    self.exact_entries[h] = n
+                    self.hle[h] = self.hle[n]
+                    self.hle_args[h] = []
+                    self.polled_resumes[h] = [*row.returns, *row.sync]
+                    self.polled_entry[h] = k
+                self.compute_rows |= set(entries)
+                continue
             sites = self.sync_sites.get(n)
             if sites is None:
                 if len(row.returns) > 1:
@@ -770,6 +804,28 @@ class Program:
         lines += ["\tsection\t.bss,bss"] + data
         return "\n".join(lines) + "\n"
 
+    def native_poll_text(self) -> str:
+        """Native code includes generated macros, never guest CS:IP constants.
+
+        Every expansion exports a visit and execution alias. The matching
+        generated trampoline is a tail target, not a callable subroutine.
+        """
+        lines = ['; Generated exact native poll protocol. No private stack at a poll.']
+        for root in sorted(self.exact_rows):
+            _, service = self.hle[root]
+            lines += [f'NATIVE_{service} equ 1']
+            for k, site in enumerate(self.compute_bodies[root].sync):
+                lab = label(*site)
+                lines += [f'{service}_poll_{k} macro',
+                          f'\txdef {lab}_native_poll,{lab}_native_np',
+                          f'\txref {lab}_native_irq', f'{lab}_native_poll:']
+                if site in self.diagnostic_hooks:
+                    lines += [f'\tbra.l {lab}_native_irq']
+                else:
+                    lines += ['\ttst.b G_IRQ(a6)', f'\tbne.l {lab}_native_irq']
+                lines += [f'{lab}_native_np:', '\tendm']
+        return '\n'.join(lines) + '\n'
+
     def near_walks(self, mod: str, off: int) -> set[tuple[int, int]]:
         """Walks reachable by a near indirect transfer. An incomplete target census
         cannot exclude a modified region in the same CS; a proved table can."""
@@ -926,17 +982,26 @@ class Program:
                     lines.append("\tlea 4(sp),sp")
             polled = self.polled_resumes.get((mod, o))
             # U5 sync site: the visit (poll) precedes re-entering the callback
-            early = polled and (mod, o) in self.loop_heads and self.sync_poll_first
+            exact = self.exact_entries.get((mod, o))
+            early = polled and (mod, o) in self.loop_heads and (exact or self.sync_poll_first)
             if early:
                 visit(o)
             if polled:
                 _, service = self.hle[(mod, o)]
                 entry = self.polled_entry[(mod, o)]
                 lines += compute.polled_hook(service, entry, f"{lab(mod, o)}_cx", cs_expr(u.cs[o]))
-                targets = [self.compute_resume(x, f"{lab(mod, o)}_cr{k}", stubs)
+                after = set(self.compute_bodies[exact].sync) if exact else set()
+                targets = [label(*x) + '_np' if x in after else
+                           self.compute_resume(x, f"{lab(mod, o)}_cr{k}", stubs)
                            for k, x in enumerate(polled)]
                 stubs += compute.polled_dispatch(f"{lab(mod, o)}_cx", targets,
                                                  hx(u.ip_of(o)))
+                if exact and (mod, o) in after and comp is None:
+                    # Called by tail jump: rt_irq sees the same stack depth as
+                    # a native poll visit; RTS abandons the callback directly.
+                    stubs += native_poll_stub(label(mod, o), u.ip_of(o), cs_expr(u.cs[o]),
+                                              polled.index((mod, o)) + 1,
+                                              self.diagnostic_hooks.get((mod, o)))
                 stats["HLE hook"] += 1
             elif (mod, o) in self.hle:
                 resume, service = self.hle[(mod, o)]

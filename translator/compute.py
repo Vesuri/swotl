@@ -136,7 +136,7 @@ CALLS = {'call', 'callf'}
 RETURNS = {'ret', 'retf'}
 
 
-def validate_polled(p, first, resume, sync=(), end=None, endpoint=False, exits=()):
+def validate_polled(p, first, resume, sync=(), end=None, endpoint=False, exits=(), *, exact=False):
     """Prove a U5 row: root returns (U8), resolved flow, no effects, chosen polls.
 
 Polls reachable only through the row are removed in both arms; the return gets
@@ -190,7 +190,7 @@ and recursion are rejected. Each removed loop must not be a pure wait (wait()).
                 raise LowerError(f'compute: flow outside the declared range at {n}')
             if effect(p, n) or n in p.hle and n != first:
                 raise LowerError(f'compute: hook or external effect at {n}')
-            if n in p.diagnostic_hooks and not (root and n in sync):
+            if n in p.diagnostic_hooks and not (root and (n in sync or exact and n in p.loop_heads)):
                 raise LowerError(f'compute: diagnostic hook inside the body at {n}')
             nodes.add(n)
             i = p.node_insn(n)
@@ -220,6 +220,13 @@ and recursion are rejected. Each removed loop must not be a pure wait (wait()).
     if endpoint and not reached_endpoint:
         raise LowerError('compute: continuation endpoint is unreachable')
     body = set(root).union(*(c for c in callees.values() if c))
+    if exact:
+        # Tail handoff resumes in the root's generated code. A callee poll
+        # would require reconstructing its guest return stack as well.
+        polls = body & set(p.loop_heads)
+        if polls - root:
+            raise LowerError('compute: exact poll in callee needs a separate contract')
+        sync = tuple(sorted(polls))
     for s in sync:
         if s not in root:
             raise LowerError(f'compute: sync site {s} is not in the root body')
@@ -235,6 +242,34 @@ and recursion are rejected. Each removed loop must not be a pure wait (wait()).
     for h in sorted(removed):
         wait(p, graph, body, h)
     return Polled(frozenset(body), removed, sync, resume, tuple(sorted(rets)))
+
+
+def validate_exact(p, first, resume, end=None, endpoint=False, exits=()):
+    """Keep every original root poll; no endpoint poll or latency relaxation.
+
+    Reuse the resolved-flow/effect/endpoint proof. Keeping every body poll
+    permits shared entries and pure waits without dropping their delivery
+    opportunities. REP at a kept poll and callee polls remain unsupported.
+    """
+    return validate_polled(p, first, resume, end=end, endpoint=endpoint,
+                           exits=exits, exact=True)
+
+
+def poll_aliases(symbols):
+    """Linked, generated exact-poll metadata; reject partial integrations."""
+    suffixes = ('_native_irq', '_native_poll', '_native_np')
+    roots = {name[:-len(suffix)] for name in symbols for suffix in suffixes
+             if name.endswith(suffix)}
+    result = {}
+    for root in sorted(roots):
+        required = (root, root + '_np', *(root + s for s in suffixes))
+        if any(name not in symbols for name in required):
+            raise ValueError(f'incomplete exact native poll metadata: {root}')
+        visit, execution = symbols[root + '_native_poll'], symbols[root + '_native_np']
+        if visit == execution:
+            raise ValueError(f'exact native poll visit aliases execution: {root}')
+        result[root] = (visit, execution)
+    return result
 
 
 def shared(p, body, graph, hooks):

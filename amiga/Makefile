@@ -43,7 +43,7 @@ OBJECTS = obj/main.o obj/Swotl.o obj/Input.o obj/Audio.o obj/GCCRuntime.o \
 	obj/framework_copper_list.o obj/framework_palette24.o \
 	obj/gcc8_c_support.o obj/gcc8_a_support.o obj/memory.o obj/version.o \
 	obj/amiga_platform.o obj/tfh_paula.o obj/fm_paula.o obj/amiga_run.o obj/c2p1x1_8_c5_bm.o obj/rt_entry.o \
-	$(patsubst $(RUNTIME)/%.c,obj/rt_%.o,$(wildcard $(RUNTIME)/*.c)) obj/program.o obj/compute_projection.o obj/compute_divide.o obj/compute_normalise.o obj/compute_scenery.o
+	$(patsubst $(RUNTIME)/%.c,obj/rt_%.o,$(wildcard $(RUNTIME)/*.c)) obj/program.o obj/compute_projection.o obj/compute_divide.o obj/compute_normalise.o obj/compute_scenery.o obj/compute_native.o
 
 # Diagnostic image is built in a separate working directory by the replay test.
 ifneq ($(REPLAY),)
@@ -162,3 +162,6 @@ clean:
 	$(RM) -r obj out
 
 -include obj/*.d
+
+obj/compute_native.o: $(RUNTIME)/compute_native.s $(RUNTIME)/compute_sprite.s $(GEN)/native_polls.i | obj
+	$(VASM) $(VASMFLAGS) -I"$(RUNTIME)" -I"$(GEN)" -o $@ $<

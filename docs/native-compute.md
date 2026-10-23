@@ -279,3 +279,45 @@ ascending offset order, followed by the sync sites. Liveness includes every
 endpoint. This adds no production row or poll change by itself.
 Checks: `t-compute-multi-endpoint`, `t-sab-compute-multi-endpoint`, existing
 endpoint/U5/U8/contract checks; the routine still needs S1–S9.
+
+## Exact native polling (user, 2026-10-23)
+
+User authorized implementation and validation for 4DAE on 2026-10-23.
+The opt-in `polls=exact` contract is used by the 4DAE packet loop.
+U5 above remains unchanged:
+
+- Keep the original poll set in both arms; add no endpoint poll. Declined
+  generated code keeps its existing polls. No reference re-recording is needed
+  solely for this mode if the poll fingerprint stays identical.
+- At every original poll, native registers, segments, live flags, RAM and
+  per-byte write history equal the original. A7 holds only the callback's
+  return address: no private stack frame or saved guest values remain.
+- The ordinary native path tests G_IRQ at an exported canonical visit alias.
+  No pending work continues at a distinct execution alias. Pending work
+  tail-jumps to a translator-generated trampoline: original CS:IP, existing
+  rt_irq path, then RTS to the callback's caller with an explicit after-poll
+  resume result. Dispatch resumes after the original poll, never its entry.
+  Guest state changed by a handler is neither restored nor reused from a
+  native cache; any new callback invocation rechecks its guards.
+- Diagnostic builds tail-hand off every native poll to a generated trampoline
+  using the existing replay hook and poll order. After-poll dispatch avoids
+  replaying a visit. Other diagnostic interior points require explicit support
+  or admission rejection, never silently missing a hook.
+- Generated metadata binds native visit/execution aliases to original points.
+  Host IRQ groups retain their actual A7 key: the tail jump adds no call frame
+  before rt_irq. Key/snapshot/release triggers and census consumers need the
+  same aliases. All original polls must be accounted for, including first entry.
+- Bench watching can hold G_IRQ set without a queued guest IRQ; it still takes
+  the trampoline once per visit. Preserve display refresh, IF handling, queue
+  order and checked guest-handler returns through rt_irq.
+
+Local protocol evidence: `tmp/native/N4-sprite/poll-tail-protocol.log` exercises
+Host.run's hooks (two queued IRQs, no event, stack ownership, exact-once visits).
+`tail-asm.json` / `tail-asm.log` exercise a synthetic 68020 callback with an IRQ
+stub, handler register changes and persistent bench watch. Missing polls,
+duplicate visits and bad native stack depth are caught. These probes are not
+production IRQ/replay integration or guest-routine correctness evidence.
+
+Checks: `t-compute-exact-polls`, `t-sab-compute-exact-polls`,
+`t-sprite-packet`, `t-sab-sprite-packet`; unchanged m4/c13/c27 host and
+diagnostic replays. Current acceptance status: open-work 14b.
