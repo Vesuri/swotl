@@ -26,10 +26,27 @@ static uint8_t *frame_page(uint8_t phys)
     return rt_span(lin(EMS_FRAME, 0) + phys * RT_EMS_PAGE, RT_EMS_PAGE);
 }
 
+/* One page. Frame pages and the store share their address mod 4 (both are
+ * rt_guest + 1 mod 4), so after the head bytes both run long-aligned. */
 static void copy(uint8_t *d, const uint8_t *s)
 {
-    for (uint32_t k = 0; k < RT_EMS_PAGE; ++k) {
-        d[k] = s[k];
+    uint32_t n = RT_EMS_PAGE;
+    while (n && ((uintptr_t)d & 3)) {
+        *d++ = *s++;
+        --n;
+    }
+    if (n >= 32) {
+        uint16_t k = n / 32 - 1;    /* dbra count, at most 511 */
+        __asm__ volatile(
+            "1:\tmove.l (%0)+,(%1)+\n\tmove.l (%0)+,(%1)+\n\t"
+            "move.l (%0)+,(%1)+\n\tmove.l (%0)+,(%1)+\n\t"
+            "move.l (%0)+,(%1)+\n\tmove.l (%0)+,(%1)+\n\t"
+            "move.l (%0)+,(%1)+\n\tmove.l (%0)+,(%1)+\n\t"
+            "dbra %2,1b"
+            : "+a"(s), "+a"(d), "+d"(k) : : "memory");
+    }
+    for (n &= 31; n; --n) {
+        *d++ = *s++;
     }
 }
 
@@ -45,6 +62,18 @@ static uint8_t map(uint8_t phys, uint16_t page, uint16_t handle)
         return 0x8a;
     }
     uint8_t *frame = frame_page(phys);
+    if (page != 0xffff && mapped[phys].handle == handle && mapped[phys].page == page) {
+        /* Write-back then reload of the same page leaves the frame unchanged
+         * (every remap writes back before the store is read), unless another
+         * frame page holds an alias whose bytes the reload would bring in. */
+        int alias = 0;
+        for (int k = 0; k < EMS_PHYS; ++k) {
+            alias |= k != phys && mapped[k].handle == handle && mapped[k].page == page;
+        }
+        if (!alias) {
+            return 0;
+        }
+    }
     if (mapped[phys].handle) {
         copy(store(mapped[phys].handle, mapped[phys].page), frame);
         mapped[phys].handle = 0;

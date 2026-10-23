@@ -37,6 +37,13 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   Ranges overlap: no frame-rate gain established. Target remains unmet;
   340 ms needs 100 ms (29.4%) less to reach 240 ms. Evidence:
   `tmp/native/N4-raster-remaining/z1-summary.json`; raw captures deleted.
+- **F1 measurements** (2026-10-23): EMS map copy. Meter m4 unchanged
+  (161,346,464; no maps in its window). Meter c12 (B-17 bombing, 715 frames,
+  10.3 maps/frame): 10,719,598,079 → 7,748,395,558 (−27.72%), runtime
+  4,469,615,307 → 1,498,412,785. Flyby target cost per map: base 242,524 and
+  242,459 cycles (12, 15 maps); F1 622 (36 maps, all identical remaps) and
+  12,138 (108 maps, copies and skips). Runtime +316 bytes, executable +392.
+  Evidence: `tmp/speed/f1/`.
 - **Flyby profile** (F0, frozen R48 build `8b46b6a5…`, 2026-10-23): attract
   demo, fields 1144–1648 after drawn frame 12, five consecutive 100-field
   captures; 142,101,991 cycles, 18 drawn frames (555 ms/frame). Drawn frames
@@ -428,6 +435,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R46 / N4 | priority searches deferred; generated oracle coverage and optional short poll macro retained | tests, translator tooling | No shipped speed change |
 | R48 / N4 | guarded edge ordering/merging; wrapping index reuse and exact original polls | runtime, compute tests | −0.100064% (bench +0.001462%, user accepts as noise) |
 | Z1 | post-N4 frames checkpoint: 340, 340, 350 ms; target unmet; user paused speed work (U7) | docs | measurement only |
+| F1 | EMS map: long-word page copy, exact identical-remap skip | runtime, EMS oracle | c12 meter −27.72% (m4 unchanged) |
 
 No priced translator candidate remains. Unchanged outside authorized U5 rows (§2):
 poll points (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
