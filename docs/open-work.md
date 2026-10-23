@@ -23,10 +23,10 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Translator and validation
 
-14b. Speed target remains unmet: frames-fixture 68020 run medians on `7a5087a`
-    (N3, 2026-10-21) 370, 350 and 340 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
-    §1, §9). The middle run needs 110 ms (31.4%) less; no controlled frame-rate
-    gain claimed against saved A3. No priced translator candidate remains;
+14b. Speed target remains unmet: frames-fixture 68020 run medians on `9afe0b8`
+    (Z1, 2026-10-23) 340, 340 and 350 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
+    §1, §9). The middle run needs 100 ms (29.4%) less; same-session parent
+    medians 350, 360, 340 ms overlap, so no frame-rate gain is established. No priced translator candidate remains;
     flag-word packing is rejected (speed-plan §10). The U5
     [poll contract](native-compute.md#poll-contract-u5) (C3) and the
     [U8 extensions](native-compute.md#contract-extensions-u8) (C4) are
@@ -34,8 +34,8 @@ speed work: [speed-plan.md](speed-plan.md).
     and R44's line pixel loops.
     N4's final non-deferred candidate is kept: R48 edge ordering/merging,
     meter −0.100064%, exact target weighting −10.780077%; user accepts
-    the bench's +0.001462% as noise. Next: native-plan Z1's three-run frames
-    checkpoint and U7 if the 240 ms target remains unmet.
+    the bench's +0.001462% as noise. No non-deferred native candidate remains.
+    Next: native-plan U7 direction decision; no further speed work is started.
     User deferred expiry/advance (R47): address-reuse designs have no
     positive price (speed-plan §10).
     The user deferred R46 priority searches: no-slowdown acceptance remained unproved.
@@ -55,9 +55,8 @@ speed work: [speed-plan.md](speed-plan.md).
     waive admission, pricing, exactness, validation or contract decisions.
     Bench acceptance for platform/layout work (D5) and a later palette window
     (D6) are approved. Fidelity gates and no slowdown remain mandatory except
-    the specific R20/R35 tradeoffs and R36/R40 bench differences accepted by
-    the user as noise (speed-plan §7). After N4, run Z1; if the target remains
-    unmet, ask for U7.
+    the specific R20/R35 tradeoffs and R36/R40/R48 bench differences accepted by
+    the user as noise (speed-plan §7). Z1 leaves the target unmet; U7 is pending.
 14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`
     `Harness`: each byte drew from a fresh generator with the same seed).
     A random background is stronger but changes every corpus case; needs

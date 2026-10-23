@@ -108,7 +108,7 @@ the replacement before the call) or annotations, with its routine.
   guarded adapter exceeded its diagnostic budget.
   `F290` deferred by the user 2026-10-23: its narrow tile-selection adapter
   has no positive price (R41).
-  No non-deferred candidate remains; next is Z1.
+  No non-deferred candidate remains; next is U7 after the Z1 checkpoint.
   User approved exact-poll scopes C0C2 → C1C2 (ordering), C2F2 → C302
   and C32D → C33D (priority), C395 → C3DF/C000 (expiry), and
   C3DF → C429/C3EB (advance) on 2026-10-23. Price each and implement
@@ -133,5 +133,8 @@ the replacement before the call) or annotations, with its routine.
 
 ## Z. Close
 
-- **Z1** After N3 and after N4: frames fixture P, three runs, parent as control. P ≤ 240 ms
-  closes 14b; otherwise U7.
+- **U7** Direction needed: Z1's final run medians are 340, 340 and 350 ms
+  (`9afe0b8`), above 240 ms. Parent ranges overlap; no frame-rate gain claimed.
+  Choose further work (for example revisiting deferred rasterizer designs),
+  an audio-quality tradeoff, or a revised target. No further routine or
+  contract change is authorized by this list. Measurements: speed-plan §1.

@@ -25,16 +25,18 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   R44 enables the guarded line pixel loops with every original poll retained.
   R48 enables guarded edge ordering and merging with exact original polls.
   Next: [native-plan.md](native-plan.md).
-- **Frames fixture** (N3, `7a5087a`, 2026-10-21): medians 370, 350 and
-  340 ms; run-median span 340–370 ms. Frames 4–11 intervals (fields):
-  `[22,19,18,18,18,27,20,17]`, `[22,19,17,17,17,26,16,18]`,
-  `[21,20,16,17,17,25,17,17]`. Interval spans 17–27, 16–26 and 16–25
-  fields. Three unchanged 68020/8 MB Fast runs, each followed by a 100-field
-  capture; executable hash matches the validated N1 build. Evidence:
-  `tmp/native/N3/summary.json`, per-run logs and profile reports; raw captures deleted.
-  Saved A3 (`6bf8aef`) medians: 370, 390, 400 ms (370–400 ms span).
-  The ranges touch; historical comparison only, not a same-session control
-  or a demonstrated frame-rate gain.
+- **Frames fixture** (Z1, `9afe0b8`, 2026-10-23): medians 340, 340 and
+  350 ms; run-median span 340–350 ms. Frames 4–11 intervals (fields):
+  `[21,19,15,17,17,23,17,16]`, `[24,15,25,17,17,17,19,16]`,
+  `[21,18,17,20,17,20,17,16]`; interval spans 15–23, 15–25 and 16–21.
+  Same-session parent `6855468`: medians 350, 360 and 340 ms (340–360 span),
+  intervals `[21,19,15,17,17,23,18,16]`, `[21,18,15,17,18,23,18,16]`,
+  `[20,19,16,17,17,24,17,16]`; spans 15–23, 15–23 and 16–24.
+  Three unchanged 68020/8 MB Fast runs per arm, each followed by 100-field
+  profiling; frozen executables and tool versions match R48 validation.
+  Ranges overlap: no frame-rate gain established. Target remains unmet;
+  340 ms needs 100 ms (29.4%) less to reach 240 ms. Evidence:
+  `tmp/native/N4-raster-remaining/z1-summary.json`; raw captures deleted.
 - **Bench** (A3, `6bf8aef`, 2026-10-21): opening frames 4–11 sums 68,525,
   68,536 and 68,493 lines; median 68,525, span 43 lines (0.063%). Corresponding
   profiler cycles: 62,220,700; 62,230,688; 62,191,644 (908/line).
@@ -51,13 +53,13 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   final RAM hashes match. Single frames captures: `[25,16,21,19,21,19,19,16]`
   → `[21,19,16,17,18,26,17,17]`, medians 380 → 350 ms, spans 16–25 →
   16–26 fields. These per-call captures do not establish a frame-rate gain;
-  N3 reports the current three-run checkpoint above. Payload +446 bytes; full gates green.
+  Z1 reports the current three-run checkpoint above. Payload +446 bytes; full gates green.
 - **R36 measurements** (2026-10-22): B393 long path
   809.612 → 596.125 target cycles/call (−26.3690%). Opening-bench medians
   68,538 → 68,567 lines (+0.0423%), spans 68,527–68,558 → 68,551–68,621;
   all six final RAM hashes match. User accepts the initial +0.0598% layout
   difference as noise; no general no-slowdown exemption. Payload +432 bytes.
-  Single S7 profiles do not establish a frame-rate gain; N3 remains the latest
+  Single S7 profiles do not establish a frame-rate gain; Z1 is the latest
   three-run frames checkpoint. Evidence: `tmp/native/N2-projection/`.
 - **R37 measurements** (2026-10-22): divide 251.151 → 153.673 target
   cycles/call (−38.8126%). Bench medians 68,580 → 68,565 lines (−0.0219%),
@@ -108,7 +110,7 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   Host payload +1,162 bytes; Amiga executable +3,300 bytes. Initial frames
   captures `[21,19,15,17,17,23,18,16]` → `[21,19,15,17,17,23,17,16]`,
   medians 350 → 340 ms; both spans 15–23 fields. No frame-rate gain claimed.
-  Evidence: `tmp/native/N4-raster-remaining/`. Next: Z1 checkpoint.
+  Evidence: `tmp/native/N4-raster-remaining/`. Next: U7 direction decision.
 - **Capture** (A3, second frames run, 100 fields): generated code 76.18%
   (cell walk 3.75%), runtime/platform 19.52% (`render`, `fm_field`, `loop_for`
   12.11%), no PC 2.23%, Kickstart 1.03%, IRQ transition 1.03%.
@@ -405,6 +407,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R44 / N4 | guarded line pixel loops; exact original polls and handler-state re-entry | runtime, compute tests | −0.040939% (bench −0.016083%) |
 | R46 / N4 | priority searches deferred; generated oracle coverage and optional short poll macro retained | tests, translator tooling | No shipped speed change |
 | R48 / N4 | guarded edge ordering/merging; wrapping index reuse and exact original polls | runtime, compute tests | −0.100064% (bench +0.001462%, user accepts as noise) |
+| Z1 | post-N4 frames checkpoint: 340, 340, 350 ms; target unmet, U7 pending | docs | measurement only |
 
 No priced translator candidate remains. Unchanged outside authorized U5 rows (§2):
 poll points (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
@@ -440,8 +443,10 @@ items left.
 
 ## 9. Gap
 
-N3's frames-fixture medians are 370, 350 and 340 ms: the middle run needs
-110 ms (31.4%) less to reach 240 ms; the run range needs 100–130 ms less.
+Z1's frames-fixture medians are 340, 340 and 350 ms: the middle run needs
+100 ms (29.4%) less to reach 240 ms; the run range needs 100–110 ms less.
+Parent run ranges overlap; no frame-rate gain is established. U7 direction
+is required before more speed work.
 No priced translator candidate remains (§7). N1, N2’s B393 projection and B4E2 divide,
 and N4’s D5DA normalization loop, scenery clear, sprite packet loop, line pixel loops and edge ordering/merging are kept. The U5 poll contract is implemented
 ([native-compute.md](native-compute.md#poll-contract-u5)), and the U8
