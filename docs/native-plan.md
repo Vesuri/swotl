@@ -115,7 +115,9 @@ the replacement before the call) or annotations, with its routine.
   viable designs; drawing and slope-initialization calls stay generated.
   Priority searches deferred by the user 2026-10-23 (R46): meter and
   target cost improve, but bench no-slowdown acceptance remains unproved.
-  Next: price ordering, expiry and advance.
+  User deferred expiry/advance on 2026-10-23 (R47): address-reuse
+  designs have no positive price. Proceed with ordering, priced at
+  0.025763% of the full meter (speed-plan §7, R48).
   The 4DAE packet loop uses the approved exact-poll contract
   ([native-compute.md](native-compute.md#exact-native-polling-user-2026-10-23));
   broader sprite decoding and dispatch remain generated.

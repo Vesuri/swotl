@@ -34,8 +34,12 @@ speed work: [speed-plan.md](speed-plan.md).
     and R44's line pixel loops.
     Active N4 candidate: `BFD1`, authorized
     2026-10-22. Its exact-poll scopes were approved 2026-10-23 (native-plan
-    N4). Ordering, expiry and advance still need prices. The user deferred
-    R46 priority searches: no-slowdown acceptance remained unproved.
+    N4). R48 ordering is priced at 0.025763% of the meter and is in S3–S9.
+    User deferred expiry/advance (R47): address-reuse designs have no
+    positive price (speed-plan §10).
+    The user deferred R46 priority searches: no-slowdown acceptance remained unproved.
+    Its removed prototype subsequently failed c13/c27 endpoint checks at
+    IRQ 1634 / C32D; investigate before any revival (logs: `tmp/native/N4-raster/`).
     Deferred by the user: N2 `B8A1` (no calls in m4/c13/c27), N4 `BB70`
     (sync-preserving design has no positive price), `109D6` vertex loops
     (initial guarded adapter exceeded its budget), `F290` (narrow

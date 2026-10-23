@@ -399,6 +399,35 @@ poll points (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The
 `__set_flags` (POPF/IRET) and `__flags_word` are the largest runtime-side
 items left.
 
+### R48 / BFD1 ordering — priced, not implemented
+
+Fresh m4 meter: 161,506,038 generated/walk/runtime cycles; census 49 frames.
+Exact-poll admission passes for all three approved scopes. Address-reuse
+budgets below retain all reads, writes, flags and polls; no native code added.
+
+| Scope | Generated label cost | Native budget | Estimated saving (% full meter) |
+|---|---:|---:|---:|
+| ordering C0C2 → C1C2 | 4,342,832 | 4,301,224 | 41,609 (0.025763%) |
+| expiry C395 → C3DF/C000 | 1,048,049 | 1,304,535 | −256,486 (−0.158809%) |
+| advance C3DF → C429/C3EB | 1,676,612 | 1,769,291 | −92,678 (−0.057384%) |
+
+Ordering: cache the wrapping reversed BX index in a0, retaining the existing
+SI/DI accesses and wrap guards. Census: 3,089 entries, 5,738 passes,
+34,461 comparisons, 6,348 swaps. Credit repeated BX index formation and
+shorten only C0C5/C0D1 poll branches; C11A/C129 are already short.
+Charge two segment guards, selector/return dispatch, per-pass index setup,
+hooks and 32,768 cycles for pending handoffs/local stubs. Hot-loop size and
+short-stub reach remain S5/S7 obligations; S3–S9 remain required.
+
+Expiry: 3,040 entries, 12,519 iterations; cached DI reads and folded SI
+increments do not pay for guards/hooks. Its poll branch is already short.
+Advance: 10,455 iterations, 800 exits to slope initialization; even crediting
+four saved DI address formations on every iteration and counting only 3,040
+initial entries leaves a negative price. This omits extra re-entry, wrap and
+IRQ costs, so is optimistic for this design. No claim about all possible designs.
+User deferred expiry/advance on 2026-10-23 (R47); proceed with ordering.
+Evidence: `tmp/native/N4-raster-remaining/{prices.json,census-m4.log,meter-parent.json,poll-encodings.txt}`.
+
 ## 8. User decisions (D0–D4 2026-10-08)
 
 - **D0.** Per-step acceptance by the meter (§3), instead of FS-UAE frame A/B.
@@ -510,3 +539,5 @@ history at `781975e` and §5.)
 - R45 / FDE0: user deferred 2026-10-23; approved cache-loop design budgets 476,194 versus 434,107 generated model cycles, even with optimistic credits. Frequent cache-miss exits outweigh address reuse; no implementation built. Evidence: `tmp/native/N4-polygons/`.
 
 - R46 / BFD1 priority searches: user deferred 2026-10-23; meter −0.087648%, target mix −3.777903%, but four bench pairs give median +0.049732% with overlapping ranges. No-slowdown acceptance unproved; native hooks removed, generated coverage retained. Evidence: `tmp/native/N4-raster/`.
+
+- R47 / BFD1 expiry and advance: user deferred 2026-10-23; address-reuse budgets 1,304,535 versus 1,048,049 and 1,769,291 versus 1,676,612 model cycles. No implementation built; evidence `tmp/native/N4-raster-remaining/`.
