@@ -25,7 +25,7 @@ bench   amiga/bench_frames.gdb: frames 4-11 line sums, RAM hash at frame 12
 frames  amiga/perf_frames.gdb: frames 4-11 field intervals, median ms,
         profile_report (with --count) of the 100-field window.
 flyby   amiga/perf_flyby.gdb: frames 0-11 fields, five 100-field captures,
-        profile_tree report and JSON.
+        profile_tree report and JSON, profile_report of each capture.
 meter   tools/cost_meter.py on the arm's host ELF and gen.
 Claims: speed-plan §3-4 (ranges must not overlap for a frame-rate claim).
 """
@@ -188,8 +188,10 @@ def flyby(a):
             caps = [d / f"flyby-{k}.bin" for k in range(5)]
             tool("profile_tree.py", Path(arm) / "amiga/Swotl.elf", *caps, "--gen", Path(arm) / "gen",
                  "--json", d / "tree.json", out=d / "tree.txt")
-            if not a.keep:
-                for c in caps:
+            for k, c in enumerate(caps):
+                tool("profile_report.py", c, Path(arm) / "amiga/Swotl.elf", "--entries", Path(arm) / "gen",
+                     out=d / f"profile-{k}.txt")
+                if not a.keep:
                     c.unlink()
             tree = json.loads((d / "tree.json").read_text())
             windows = [int(f) for f in re.findall(r"^WINDOW \d+ field (\d+)$", log, re.M)]

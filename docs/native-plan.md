@@ -143,7 +143,7 @@ lost their gain to guards, hooks, exits and polls (R41–R47).
 |---|---|---|---:|---:|---|
 | F0 | `amiga/perf_flyby.gdb`, `tools/profile_tree.py`, `tools/ab_runs.py`; re-profile after each kept step | instrument | — | — | U9 |
 | F1 | EMS map copy (`ems.c`): long-word copy, exact identical-remap skip. Done: c12 meter −27.72% (speed-plan §1); a write-back skip needs a cheap exact unmodified test | runtime | 1.8–10.3% | 1.4–8% | — |
-| F2 | `RTSVGA+3B9A` frame compare and changed-span copy | guest | 4.11% | 2.5–2.9% | authorization (new) |
+| F2 | `RTSVGA+3B9A` frame compare and changed-span copy. Done as a lowering: its cost is its REP instructions; REP MOVSW by longs, flyby `rep movsw` −29% (speed-plan §1). Left: `repne cmpsw` 1.0–1.4% and `repe cmpsw` 1.4–1.5% of the clip, already word/long loops; a native merging search and copy has no price yet | translator | 4.11% | 0.3% kept | — |
 | F3 | Geometry as whole routines: `B52D`+`B54B`; `D5A6`→`B017` all paths→`B4E2` | guest | 4.57% generated | 2.3–3.0% | scope (U2 kept `B52D` generated) |
 | F4 | FM synthesis inner loop in asm, bit-exact to the C | platform | 10.97% | 3.3–5.5% | user only if output changes |
 | F5 | `BFD1` rasterizer, one scope (annotate unresolved callee flow) | guest | 7.58% | 3.0–4.2% | scope; deferred R46/R47 scopes |

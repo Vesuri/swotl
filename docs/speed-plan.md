@@ -44,6 +44,16 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   242,459 cycles (12, 15 maps); F1 622 (36 maps, all identical remaps) and
   12,138 (108 maps, copies and skips). Runtime +316 bytes, executable +392.
   Evidence: `tmp/speed/f1/`.
+- **F2 measurements** (2026-10-23): REP MOVSW by longs (translator). The
+  flyby profile puts `3B9A`'s cost in its REP instructions (`repe cmpsw`
+  `03BE9`, `repne cmpsw` `03C0F`, `rep movsw` `03C2D`), not its glue
+  (≈0.3%), so a lowering replaces the native. Censuses (`--strops`) per
+  frame: `03C2D` m4 151 words (5.8/run), c12 177 (4.1/run), c13 110; the long
+  spans are the outside-view flyby's. Meter m4 161,346,464 → 161,335,708
+  (−0.0067%; `rep movsw` −11,809); generated code +1,446 bytes. Flyby pairs
+  (two runs per arm): `03C2D` cycles per `03C0F` cycle (same words) 0.866,
+  0.842 → 0.625, 0.583 (−29%); `03C2D` 0.88–1.17% → 0.77% of the clip.
+  Evidence: `tmp/speed/f2/`.
 - **Flyby profile** (F0, frozen R48 build `8b46b6a5…`, 2026-10-23): attract
   demo, fields 1144–1648 after drawn frame 12, five consecutive 100-field
   captures; 142,101,991 cycles, 18 drawn frames (555 ms/frame). Drawn frames
@@ -436,6 +446,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | R48 / N4 | guarded edge ordering/merging; wrapping index reuse and exact original polls | runtime, compute tests | −0.100064% (bench +0.001462%, user accepts as noise) |
 | Z1 | post-N4 frames checkpoint: 340, 340, 350 ms; target unmet; user paused speed work (U7) | docs | measurement only |
 | F1 | EMS map: long-word page copy, exact identical-remap skip | runtime, EMS oracle | c12 meter −27.72% (m4 unchanged) |
+| F2 | REP MOVSW by longs; element order kept for CX < 4 and DI 1–3 bytes above SI | `lower.py` | −0.0067% (flyby `rep movsw` −29%) |
 
 No priced translator candidate remains. Unchanged outside authorized U5 rows (§2):
 poll points (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers

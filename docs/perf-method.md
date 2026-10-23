@@ -35,7 +35,8 @@ its binding rules: [speed-plan.md](speed-plan.md).
   interrupted routine). Inclusive rows overlap.
 - **Paired runs**: `tools/ab_runs.py freeze ARM`, then `bench|frames|flyby|meter
   SESSION ARM...`: interleaved runs of frozen arms, tool fingerprints checked per run,
-  results never overwritten, captures deleted after reporting (speed-plan §4).
+  results never overwritten, captures deleted after reporting (flyby: a
+  `profile_report` per capture, for per-instruction costs) (speed-plan §4).
 - **Target A/B**: `tools/ab_labels.py CAP_A ELF_A CAP_B ELF_B METER_A
   --meter-b METER_B` uses both meters' exact 68k execution counts. Each
   required target PC must match the host instruction and have samples. Changed-label

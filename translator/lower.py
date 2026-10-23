@@ -1600,6 +1600,8 @@ class Lowering:
             self.e(f"suba.w d6,{p}")
         if n == 2 and (op == "stos" or (op == "cmps" and i.rep == "repe")):
             self.string_pairs()
+        elif n == 2 and op == "movs":
+            self.string_copy()
         else:
             self.string_words()
         for p, base in ptrs:        # offset = (base - pointer) ^ 8000h, low word
@@ -1708,6 +1710,55 @@ class Lowering:
         self.e("lsr.l #1,d1")
         self.compare_pair("(a4)", "(a5)")
         self.stats["string pairs"] += 1
+
+    def string_copy(self) -> None:
+        """F2: REP MOVSW by longs. A long reads both words before writing
+        either, which equals the element order unless [ES:DI] starts 1-3
+        bytes above [SI] (a4 - a5 in 1..3) and overwrites the second word
+        before it is read: that case, and CX < 4, take the element loop.
+        Otherwise as R24: a first word where the destination is not long
+        aligned, eight longs per pass, an odd last word."""
+        words, loop, fin, done = self.local(), self.local(), self.local(), self.local()
+        self.e("cmp.w #4,d1")
+        self.e(f"bcs.s {words}")
+        self.e("move.l a4,d6")
+        self.e("sub.l a5,d6")
+        self.e("subq.l #1,d6")
+        self.e("moveq #2,d7")
+        self.e("cmp.l d7,d6")
+        self.e(f"bls.s {words}")
+        tail = self.local()
+        self.e("move.w a5,d7")
+        self.e("lsr.b #2,d7")
+        self.e(f"bcc.s {tail}")
+        self.e("move.w -(a4),-(a5)")
+        self.e("subq.w #1,d1")
+        self.at(tail)
+        self.e("move.w d1,d7")
+        self.e("lsr.w #1,d1")
+        self.e("moveq #7,d6")
+        self.e("and.w d1,d6")
+        self.e("lsr.w #3,d1")
+        self.e("neg.w d6")
+        self.e(f"jmp {fin}(pc,d6.w*2)")
+        self.at(loop)
+        for _ in range(8):
+            self.e("move.l -(a4),-(a5)")
+        self.at(fin)
+        self.e(f"dbf d1,{loop}")
+        self.e("lsr.w #1,d7")
+        self.e(f"bcc.s {done}")
+        self.e("move.w -(a4),-(a5)")
+        self.e(f"bra.s {done}")
+        self.at(words)
+        self.e("subq.w #1,d1")
+        loop = self.local()
+        self.at(loop)
+        self.e("move.w -(a4),-(a5)")
+        self.e(f"dbf d1,{loop}")
+        self.at(done)
+        self.e("clr.w d1")
+        self.stats["string copy"] += 1
 
     def string_words(self) -> None:
         """The fast path's element loop: `db<cc>` on CX - 1."""

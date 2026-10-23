@@ -540,6 +540,7 @@ def boundary(h: Harness) -> None:
     string_fill_cases(h)
     bp_data_cases(h)
     string_compare_cases(h)
+    string_copy_cases(h)
     carry_setup_cases(h)
     far_call_push_cases(h)
     seg_repeat_cases(h)
@@ -591,6 +592,41 @@ def string_compare_cases(h):
             h.case(b"\xf3\xab", "b:fill-stosw-fast-edge",
                    overrides={"regs": {"cx": cx, "di": off, "es": 0x5000,
                                        "ax": h.rng.randrange(0x10000)}, "flags": {"DF": 0}})
+
+
+def string_copy_cases(h):
+    """F2: REP MOVSW by longs. CX 1-40 and longer (the element loop below 4, no,
+    one and several passes, an odd last word); SI and DI at every offset mod 4
+    (the aligning first word or none); overlapping copies with DI - SI from -5
+    to 6 in one segment (1-3 keep the element order); ranges ending at FFFFh
+    (fast path) and one past it."""
+    counts = list(range(1, 41)) + [47, 48, 49, 63, 64, 65, 255, 256, 257]
+    for cx in counts:
+        for k in range(4):
+            si, di = 0x100 + k, 0x300 + (k + cx) % 4
+            h.case(b"\xf3\xa5", "b:copy-movsw",
+                   overrides={"regs": {"cx": cx, "si": si, "di": di, "ds": 0x5000, "es": 0x6000},
+                              "flags": {"DF": 0},
+                              "mem": [(0x50000 + si, bytes(h.rng.randrange(256)
+                                                           for _ in range(2 * cx)))]})
+    for cx in (4, 5, 7, 8, 9, 17, 33):
+        for delta in range(-5, 7):
+            si = 0x200
+            h.case(b"\xf3\xa5", "b:copy-movsw-overlap",
+                   overrides={"regs": {"cx": cx, "si": si, "di": si + delta,
+                                       "ds": 0x5000, "es": 0x5000},
+                              "flags": {"DF": 0},
+                              "mem": [(0x50000 + si - 8, bytes(h.rng.randrange(256)
+                                                               for _ in range(2 * cx + 16)))]})
+    for cx in (4, 16, 17, 33):
+        for slack in (0, 1, 2, 3):
+            off = 0x10000 - 2 * cx + slack & 0xFFFF
+            h.case(b"\xf3\xa5", "b:copy-movsw-edge",
+                   overrides={"regs": {"cx": cx, "si": 0x100, "di": off,
+                                       "ds": 0x6000, "es": 0x5000}, "flags": {"DF": 0}})
+            h.case(b"\xf3\xa5", "b:copy-movsw-edge",
+                   overrides={"regs": {"cx": cx, "si": off, "di": 0x100,
+                                       "ds": 0x6000, "es": 0x5000}, "flags": {"DF": 0}})
 
 
 def bp_data_cases(h):

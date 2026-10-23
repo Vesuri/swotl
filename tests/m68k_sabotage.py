@@ -433,6 +433,12 @@ def fill_remainder_skipped(self, out):
             for k, x in enumerate(out)]
 
 
+def copy_overlap_ignored(self, out):
+    """F2: REP MOVSW copies by longs when DI is 1-3 bytes above SI."""
+    return ["\tnop" if x.startswith("\tbls.s ") and out[k - 3:k] == [
+        "\tsubq.l #1,d6", "\tmoveq #2,d7", "\tcmp.l d7,d6"] else x for k, x in enumerate(out)]
+
+
 def pair_half_store(self, out):
     """R12: REP STOSW stores AX in one word of each long only."""
     return [x for k, x in enumerate(out)
@@ -630,6 +636,8 @@ SABOTAGE = [
     ("fill passes of sixteen longs", sub(r"^\tlsr\.w #3,d1$", "\tlsr.w #4,d1"), "boundary"),
     ("pair count keeps the even part", sub(r"^\tlsr\.l #1,d1$", "\tlsr.l #1,d1\n\tbclr #0,d1"),
      "boundary"),
+    ("copy by longs ignores overlap", copy_overlap_ignored, "boundary"),
+    ("copy aligning word not counted", drop_after("move.w -(a4),-(a5)", "subq.w #1,d1"), "boundary"),
     ("compare skips the remainder pairs", compare_remainder_skipped, "boundary"),
     ("compare pass ignores an early mismatch", compare_pass_exit_dropped, "boundary"),
     ("held index survives register writes", "reuse writes", "boundary"),
