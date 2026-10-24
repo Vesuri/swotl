@@ -86,13 +86,6 @@ speed work: [speed-plan.md](speed-plan.md).
 28. `make test-amiga AMIGA_MILESTONE=m2-choose-side` (plain fixture) ends
     `SWOTL_MILESTONE_WRONG_HANDOFF`, already at 1020874; m2 passes in
     `test-amiga-replay`.
-29. Real A1200/full 68040 with MMU active: supplied preinstalled TFH archive
-    crashes during startup with a Line F emulator exception. Fault PC/opcode
-    and Guru number are unavailable. Reproduce and fix against evidence.
-    Build flags specify 68020 and soft float; cause is not yet established.
-    Not reproduced in FS-UAE (2026-10-24): 0.90 release → Installer → packed
-    preinstalled TFH LHA, `test_whdload.py --installed --setup a1200-040`
-    (68040, TC=8000, CACR=8000, JIT off) runs 3,000 fields to TIMEOUT.
 39. Workbench start (L84): without a CLI, take the WBStartup message before
     opening dos.library and reply it last under `Forbid`; return 20 when a start
     fails (`src/main.cpp` returns 0; the gcc8 `_start` does neither). Read the
