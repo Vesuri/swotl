@@ -39,6 +39,18 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   Ranges overlap: no frame-rate gain established. Target remains unmet;
   340 ms needs 100 ms (29.4%) less to reach 240 ms. Evidence:
   `tmp/native/N4-raster-remaining/z1-summary.json`; raw captures deleted.
+- **Frames checkpoint after F3/F4** (ZF3, `130bd18`, 2026-10-24, arm64):
+  medians 330, 300 and 300 ms; run range 300–330 ms. Intervals (fields)
+  `[20,17,14,18,16,18,15,15]`, `[19,18,14,15,14,23,15,15]`,
+  `[20,18,14,15,14,23,15,15]`. Same session: pre-F3 arm (`f0b93f8`) 360,
+  350, 360 ms (`[24,15,25,18,17,18,19,16]`, `[24,15,25,18,17,17,19,16]`,
+  `[23,16,25,18,17,18,19,16]`); F3 arm 350, 340, 330 ms
+  (`[20,18,15,20,16,19,17,15]`, `[20,17,15,21,15,19,17,15]`,
+  `[20,18,14,16,16,23,17,16]`). F3+F4 against pre-F3: ranges 300–330 and
+  350–360 do not overlap, a frame-rate gain (−60 ms median, −16.7%). F3
+  alone and F4 alone overlap their parents. 300 ms needs 60 ms (20%) less
+  to reach 240 ms. `tools/ab_runs.py frames`, three runs per arm,
+  interleaved. Evidence: `tmp/speed/zf3/`.
 - **F1 measurements** (2026-10-23): EMS map copy. Meter m4 unchanged
   (161,346,464; no maps in its window). Meter c12 (B-17 bombing, 715 frames,
   10.3 maps/frame): 10,719,598,079 → 7,748,395,558 (−27.72%), runtime
@@ -490,6 +502,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | F3a | projection `B017` whole with divide `B4E2`, four returns; folds R36/R37 rows; merged long stores | runtime, compute tests | −1.4854% (bench −0.0921%) |
 | F3b | transform `B52D` whole with `B54B`; wrapper pushes stored, SI/DI/BP restored | runtime, compute tests | −1.5848% (bench +0.025%, user accepts as noise) |
 | F4 | FM loop cache: split key/stamp arrays, first-free hint, freed-range refit; render loop per feedback/connection | Amiga platform, FM tests | outside meter (flyby `fm_field` −24.4%/call; bench +0.20%, user accepts as noise) |
+| ZF3 | post-F3/F4 frames checkpoint: 330, 300, 300 ms against pre-F3 360, 350, 360 (no overlap); target unmet | docs | measurement only |
 
 No priced translator candidate remains. Unchanged outside authorized U5 rows (§2):
 poll points (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
@@ -525,9 +538,10 @@ items left.
 
 ## 9. Gap
 
-Z1's frames-fixture medians are 340, 340 and 350 ms: the middle run needs
-100 ms (29.4%) less to reach 240 ms; the run range needs 100–110 ms less.
-Parent run ranges overlap; no frame-rate gain is established. The user
+ZF3's frames-fixture medians (arm64) are 330, 300 and 300 ms: the middle
+run needs 60 ms (20%) less to reach 240 ms; the run range needs 60–90 ms
+less. Against the same-session pre-F3 arm (350–360 ms) the ranges do not
+overlap: F3+F4 is an established frame-rate gain. The user
 resumed speed work under U9 on 2026-10-23: plan F in native-plan.
 No priced translator candidate remains (§7). N1, N2’s B393 projection and B4E2 divide,
 and N4’s D5DA normalization loop, scenery clear, sprite packet loop, line pixel loops and edge ordering/merging are kept. The U5 poll contract is implemented

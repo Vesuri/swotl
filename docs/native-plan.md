@@ -159,7 +159,8 @@ All estimates: clip −28–36% (555 → 355–400 ms/frame); frames fixture, EM
 −22–31% (340 → 235–265 ms): 240 ms only at the top of the range.
 Each guest step follows S1–S9 with whole-scope prices and the exact-poll
 contract; runtime/platform steps follow speed-plan §3. Z-style frames
-checkpoints after F3, F7 and F10.
+checkpoints after F3, F7 and F10. After F3 (run after F4, ZF3 2026-10-24):
+330, 300, 300 ms against pre-F3 360, 350, 360 ms (speed-plan §1).
 
 ## Z. Close
 

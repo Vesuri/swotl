@@ -23,10 +23,10 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Translator and validation
 
-14b. Speed target remains unmet: frames-fixture 68020 run medians on `9afe0b8`
-    (Z1, 2026-10-23) 340, 340 and 350 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
-    §1, §9). The middle run needs 100 ms (29.4%) less; same-session parent
-    medians 350, 360, 340 ms overlap, so no frame-rate gain is established. No priced translator candidate remains;
+14b. Speed target remains unmet: frames-fixture 68020 run medians on `130bd18`
+    (ZF3, 2026-10-24, arm64) 330, 300 and 300 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
+    §1, §9). The middle run needs 60 ms (20%) less; same-session pre-F3
+    medians 360, 350, 360 ms do not overlap, so F3+F4 is a frame-rate gain. No priced translator candidate remains;
     flag-word packing is rejected (speed-plan §10). The U5
     [poll contract](native-compute.md#poll-contract-u5) (C3) and the
     [U8 extensions](native-compute.md#contract-extensions-u8) (C4) are
