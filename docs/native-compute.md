@@ -1,8 +1,8 @@
 # Native compute contract
 
 Enabled: the user-authorized (2026-10-21, native-plan U2)
-`SWOTL.EXE+B54B` transform pilot from `xform20`, retaining generated `B52D`
-and return checks. U3 keeps complete byte-write history. The user-authorized
+transform from `xform20`, since 2026-10-24 (U10, F3b) the whole `B52D`
+wrapper with `B54B`: pushes stored, SI/DI/BP restored, `retf` generated. U3 keeps complete byte-write history. The user-authorized
 (2026-10-22, U4; whole routine 2026-10-24, U10) projection `B017` with its
 divide `B4E2` is one poll-free row with four returns (speed-plan §7, F3a),
 from `xproj20`/`xdiv20` and the original's 16-bit path; it folds the earlier
@@ -180,7 +180,7 @@ of them, so its liveness includes theirs.
   68k core: cost-model weights without the i-cache discount, gaps between G_IRQ
   reads. Over the bound: add sync sites or reject. Ticks queue in the 32-entry
   `rt_irq_ring` and are delivered in order at the next poll.
-- Poll-free rows (the `B54B` transform) are unchanged: no return poll is added.
+- Poll-free rows (the `B52D` transform) are unchanged: no return poll is added.
 
 ### References (user, 2026-10-21)
 

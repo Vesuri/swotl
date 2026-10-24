@@ -57,8 +57,8 @@ costs, adaptation inventory and eligibility sensitivity: [B3](#b3-candidate-pric
 
 | SWOTL | Function | Own share | Calls/100 fields | Own ceiling (ms) | Improved slave source | Admission / blocker | Priced saving (ms/frame) |
 |---|---|---:|---:|---:|---|---|---|
-| `B52D` | transform wrapper | 1.02% | 1,483 | 3.99 | generated wrapper retained | Admitted | Shared with `B54B`; do not add |
-| `B54B` | point transform | 6.17% | 1,483 | 24.06 | `xform20` | Enabled (N1) | 11.48–12.04 priced; measured per-call ratio below |
+| `B52D` | transform wrapper | 1.02% | 1,483 | 3.99 | `xform20` with the wrapper | Enabled with `B54B` (F3b) | Measured per-call cost below |
+| `B54B` | point transform | 6.17% | 1,483 | 24.06 | `xform20` | Enabled (N1; inside `B52D` since F3b) | 11.48–12.04 priced; measured per-call ratio below |
 | `B4E2` | perspective divide | 1.82% | 2,072 | 7.09 | `xdiv20` | Enabled inside `B017` (F3a) | Measured with `B017` below |
 | `B017` | projection | 2.99% | 1,036 | 11.65 | `xproj20`; 16-bit path from the original | Whole routine with `B4E2` enabled (F3a) | Measured per-call cost below; no frame-rate claim |
 | `D5A6` | normalise/project | 2.07% | 836 | 8.07 | `xpnorm20` | D5DA loop enabled (R38) | Measured per-call cost below; no frame-rate claim |
@@ -426,6 +426,12 @@ The consolidated decision table is under Candidates.
 ## Facts per candidate
 
 ### Transform `B52D`/`B54B` ↔ `2F48C`/`2F4AE`
+
+F3b (U2, U10, 2026-10-24): `B52D` with `B54B` as one poll-free row. The
+wrapper's four pushes are stored; SI, DI and BP keep their entry values (its
+pops); the frame SP−8..SP+15 must not wrap (else decline). m4 meter
+−1.5848%; flyby inclusive 820 → 629 cycles/call (−23.3%; native 565).
+Evidence: `tmp/speed/f3/`.
 
 - Wrapper: three 32-bit stack arguments into AX:BX, DX:CX, SI:DI.
 - Point − camera (DS:`2276/227A/227E`; TFH A4+`103A/103E/1042`) as sign and magnitude,

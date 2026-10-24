@@ -194,7 +194,7 @@ def emission(plant=False, missing_sync=False, repeat_poll=False):
     from unittest.mock import patch
     from translator import emit, image
     p = emit.Program()
-    first = ('SWOTL.EXE', 0xb54b)
+    first = ('SWOTL.EXE', 0xb52d)
     rets, escapes = p.reach(first, {})
     assert len(rets) == 1 and not escapes
     resume = next(iter(rets))

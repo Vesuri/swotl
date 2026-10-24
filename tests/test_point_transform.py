@@ -1,4 +1,5 @@
-"""Authorized transform: original x86 vs xform20 adapter, no stored expectations."""
+"""Authorized transform B52D with B54B, whole: original x86 vs xform20 adapter,
+no stored expectations. The wrapper reads AX:BX, DX:CX, SI:DI from SS:SP+4.."""
 import argparse
 from functools import lru_cache
 import random
@@ -20,8 +21,8 @@ def boundaries():
     ram = bytearray(B.X.RAM)
     raw = B.relocated(image.load()['SWOTL.EXE'])
     ram[B.LOADSEG * 16:B.LOADSEG * 16 + len(raw)] = raw
-    regs = dict(ax=0, bx=0, cx=0, dx=0, si=0, di=0, sp=0xfffe, bp=0x8000,
-                cs=B.LOADSEG + 0x49b, ip=0x6b9b, ds=0x5000, ss=0x6000,
+    regs = dict(ax=0x1111, bx=0x2222, cx=0x3333, dx=0x4444, si=0x5555, di=0x6666, sp=0xf000,
+                bp=0x8000, cs=B.LOADSEG + 0x49b, ip=0x6b7d, ds=0x5000, ss=0x6000,
                 es=0xa000, flags=0x7603)
     rng = random.Random(35)
     cases = []
@@ -35,14 +36,21 @@ def boundaries():
         cases.append((f'guard-{ds:x}', [0xffffffff]*3, [1]*3, [0x8000]*8, [0xffff]*8, ds))
     for mul in (0, 1, 0x7fff, 0x8000, 0x8001, 0xffff):
         cases.append((f'product-{mul:x}', [0x10001,0xffff8000,0x7fffffff], [0]*3, [mul]*8, [0]*8, 0x5000))
+    # Frame SP-8..SP+15 inside the segment: admitted at SP 8 and FFF0, declined
+    # (generated, wrapping) at 6 and FFF2.
+    for sp in (6, 8, 0xfff0, 0xfff2):
+        cases.append((f'stack-{sp:x}', [0x12345678, 0x9abcdef0, 0x0fedcba9], [1, 2, 3],
+                      [0x8001]*8, [0x8000]*8, 0x5000, sp))
     for k in range(32):
         cases.append((f'random-{k}', [rng.getrandbits(32) for _ in range(3)],
                       [rng.getrandbits(32) for _ in range(3)], [rng.getrandbits(16) for _ in range(8)],
                       [rng.getrandbits(16) for _ in range(8)], 0x5000))
-    for name, points, camera, matrix, signs, ds in cases:
-        data, r = bytearray(ram), dict(regs, ds=ds)
-        for (hi, lo), v in zip((('ax','bx'),('dx','cx'),('si','di')), points):
-            r[hi], r[lo] = v>>16, v & 0xffff
+    for name, points, camera, matrix, signs, ds, *sp in cases:
+        data, r = bytearray(ram), dict(regs, ds=ds, sp=sp[0] if sp else regs['sp'])
+        for k, v in enumerate(points):
+            for j, half in enumerate((v & 0xffff, v >> 16)):
+                at = r['ss']*16 + (r['sp'] + 4 + 4*k + 2*j & 0xffff)
+                data[at:at+2] = half.to_bytes(2, 'little')
         for i, v in enumerate(camera):
             at = ds*16 + 0x2276 + 4*i
             data[at:at+4] = v.to_bytes(4, 'little')
@@ -56,7 +64,7 @@ def boundaries():
 @lru_cache(maxsize=1)
 def program():
     p = emit.Program()
-    node, resume = ('SWOTL.EXE', 0xb54b), ('SWOTL.EXE', 0xb708)
+    node, resume = ('SWOTL.EXE', 0xb52d), ('SWOTL.EXE', 0xb54a)
     compute.validate(p, node, resume)
     cache = ROOT/'tmp/point-transform'
     cache.mkdir(exist_ok=True)
@@ -86,7 +94,13 @@ def run(entries=(), plant=None, predecessors=False, generated=False):
     elif plant == 'sign':
         callback = callback.replace('bpl,movea.l', 'bmi,movea.l', 1)
     elif plant == 'register':
-        callback = callback.replace('\tmove.w d2,a5', '\tmove.w #0,a5')
+        callback = callback.replace('\tmove.l a0,d1\n', '\tmove.l d4,d1\n')
+    elif plant == 'frame-guard':
+        callback = callback.replace('\tbgt .decline', '')
+    elif plant == 'missing-push':
+        callback = callback.replace('\tmove.w a4,5(a2,d4.w)\n', '')
+    elif plant == 'restore':
+        callback = callback.replace('\tmovem.l (sp)+,d4-d5/a4-a5', '\tmovem.l (sp)+,d4-d5/a4-a5\n\tmove.w d3,a4')
     cases = list(boundaries())
     for path in entries:
         ram, regs = O.load_entry(path)
@@ -97,8 +111,10 @@ def run(entries=(), plant=None, predecessors=False, generated=False):
     _, alias_ram, alias_regs = cases[0]
     alias_ram, alias_regs = bytearray(alias_ram), dict(alias_regs)
     old_ds = alias_regs['ds']
-    alias_regs['ds'] = 0x1150
-    alias_ram[0x11500+0x224e:0x11500+0x2282] = alias_ram[old_ds*16+0x224e:old_ds*16+0x2282]
+    # DS 740h: the inputs sit on code the routine never runs; the outputs
+    # (DS:C38C..C397) land on B54B's already-fetched instructions.
+    alias_regs['ds'] = 0x740
+    alias_ram[0x7400+0x224e:0x7400+0x2282] = alias_ram[old_ds*16+0x224e:old_ds*16+0x2282]
     cases.append(('code-alias-refusal', bytes(alias_ram), alias_regs))
     # Every legal predecessor reaches the same compute ABI; its own guest
     # stack effects remain in the generated caller and return protocol.
@@ -118,7 +134,7 @@ def run(entries=(), plant=None, predecessors=False, generated=False):
             before_at = int.from_bytes(code[:4], 'big')
             result_at = int.from_bytes(code[4:8], 'big')
             for name, ram, regs in cases:
-                end = (regs['cs'], 0x6d58)
+                end = (regs['cs'], 0x6b9a)
                 if name == 'code-alias-refusal':
                     try:
                         O.run(ram, regs, end)
@@ -157,7 +173,8 @@ def run(entries=(), plant=None, predecessors=False, generated=False):
                     got, fl, fx, mem, outs, writes, info = m.run(B.SNIP+8,
                         (regs, flags, regs['flags'] & 0xf000, regs['ip'], []), random.Random(35), irq=False)
                     assert not info['err'] and info['stop'] == 'compute_resume' and not outs and not info['irq'], info
-                    assert outcomes == [not generated and regs['cs'] + 0x1000 <= regs['ds'] <= 0xf000], (name, 'guard outcome', outcomes)
+                    assert outcomes == [not generated and regs['cs'] + 0x1000 <= regs['ds'] <= 0xf000
+                                        and 8 <= regs['sp'] <= 0xfff0], (name, 'guard outcome', outcomes)
                     if expected is None:
                         assert not writes and not history and m.gread(0, B.X.RAM) == ram, name
                         count += 1
@@ -175,14 +192,16 @@ def run(entries=(), plant=None, predecessors=False, generated=False):
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('--entries', nargs='*', type=Path, default=[])
+    ap.add_argument('--entries', nargs='*', type=Path,
+                    default=sorted(ROOT.glob('tmp/pc-runs/native-F3-transform-*/trace/snap-entry*')))
     ap.add_argument('--sabotage', action='store_true')
     ap.add_argument('--predecessors', action='store_true')
     args = ap.parse_args()
     print('generated transform:', run(args.entries, generated=True), 'cases pass', flush=True)
     print('point transform:', run(args.entries, predecessors=args.predecessors), 'cases pass', flush=True)
     if args.sabotage:
-        for plant in ('missing-store', 'duplicate-store', 'decline-state', 'guard', 'overlap-guard', 'sign', 'register'):
+        for plant in ('missing-store', 'duplicate-store', 'decline-state', 'guard', 'overlap-guard', 'sign',
+                      'register', 'frame-guard', 'missing-push', 'restore'):
             try:
                 run(plant=plant)
             except AssertionError as error:
