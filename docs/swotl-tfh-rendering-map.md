@@ -70,7 +70,7 @@ costs, adaptation inventory and eligibility sensitivity: [B3](#b3-candidate-pric
 | `BD68` | edge submission | 0.67% | 94 | 2.60 | None | Overlay call | Unpriced |
 | `FDE0` | terrain polygons | 1.59% | 5 | 6.21 | None | Overlay call | Unpriced |
 | `F290` | terrain/scenery selection | 1.10% | 5 | 4.30 | `tile_scenery` | Overlay call | Unpriced |
-| `BFD1` | rasterizer | 6.57% | 5 | 25.63 | None | Unresolved callee flow | Unpriced |
+| `BFD1` | rasterizer | 6.57% | 5 | 25.63 | None | Scanline loop enabled (F5): guest calls are exits | Measured below (speed-plan §1 F5) |
 
 Admission after C4: see the [inventory](#compute-admission-inventory). No source/contract means
 unpriced, as approved for B3. `B8A1`'s zero calls do not prove unreachability.
@@ -360,7 +360,7 @@ This is not authorization to implement or weaken admission.
 | `BD68` | No improved source; overlay call | Unpriced | Unpriced |
 | `FDE0` | No improved source; overlay call | Unpriced | Unpriced |
 | `F290` | Overlay call | Unpriced | Unpriced |
-| `BFD1` | No improved source; unresolved callee flow | Unpriced | Unpriced |
+| `BFD1` | No improved source; scanline loop native (F5) | speed-plan §1 | speed-plan §1 |
 
 User decision, 2026-10-21: **use ceilings and explicit unpriced rows** for
 missing implementations/contracts. Their measured ceilings are above; unpriced
@@ -527,13 +527,13 @@ dispatch and retained return 92). Evidence: `tmp/speed/f3/`.
 
 ### Rasterizer `BFD1` (no TFH equivalent, no improved source)
 
-- Priority searches C2F2/C32D remain generated: user deferred R46 after
-  bench no-slowdown acceptance remained unproved. Ordering, expiry and
-  advance scopes are authorized. User deferred expiry/advance (R47):
-  address-reuse designs have no positive price. R48 keeps guarded ordering/
-  merging C0C2 → C1C2 with wrapping BX-index reuse and every original poll.
-  Meter −0.100064%; exact target weighting −10.780077%; bench +0.001462%
-  accepted as noise by the user. Measured details: speed-plan §1.
+- F5 replaces the scanline loop `C000..C42C` whole (row `C000`/`C02A`,
+  endpoint `C02C`): add, ordering/merging (folds R48), clear, visibility,
+  priority searches `C2F2`/`C32D`, expiry and advance, with all 13 original
+  polls exact. Guest calls (`C03A`, `C040`, `C043`, `C2A5`, `C2B3`, `C2BD`,
+  `C3EB`) are continuation exits; prologue, span output (`CD99`/`CE3C`),
+  slope initialization (`C8E0`) and epilogue stay generated. Record pointers
+  above FFF0h decline at their poll. Measured details: speed-plan §1.
 
 - Edge records, 16 bytes (arena DS:`2360`, ≤ 500; buckets `1F40 + 16·y`, active list
   `4060/4062`): +0 lifetime, +2 priority (DS:`252F`), +4 colour, +5 event and slope

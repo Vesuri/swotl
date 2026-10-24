@@ -14,7 +14,9 @@ The user-authorized (2026-10-22, U6) D5DA normalization loop from
 The scenery clear at 10A2F uses a continuation endpoint (R40); the sprite
 packet loop at 4ECD preserves every original poll (R42). D69C’s pixel loops
 at D92A and D95C use the same exact-poll contract (R44),
-retaining generated clipping, shared callees and returns.
+retaining generated clipping, shared callees and returns. BFD1's scanline
+loop from C000 is one exact-poll row (F5, folds R48's ordering row): `end`
+C42C, its guest calls and epilogue continuation exits (`hle.csv` `exits`).
 Remaining candidates and user deferrals: open-work 14b. Admission, pricing
 and S1–S9 remain required.
 
@@ -258,7 +260,8 @@ Approved for the D5A6 normalization loop: an explicit `hle.csv`
 `last` still names the instruction immediately before that endpoint.
 The endpoint is outside the replaced body and remains generated; it gets
 the U5 poll and resume id 1. Root returns before it, an unreachable endpoint,
-escaping flow and range extensions reject. Calls retain all existing admission
+escaping flow and range extensions reject; user 2026-10-24 (F5): `end` may widen
+a continuation row past its endpoints, for a loop body after them. Calls retain all existing admission
 checks, including nested-hook rejection. The existing sync, shared-poll,
 live-state, latency and reference rules apply unchanged. Empty `resume`
 retains the return-only contract.

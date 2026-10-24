@@ -102,6 +102,23 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   code moves 0x434 bytes; with it padded back to the base mod 256 the bench is
   still +0.12%. After frame 12 the guest executes +0.9% instructions per 100
   fields. User 2026-10-24: bench accepted as noise. Evidence: `tmp/speed/f4/`.
+- **F5 measurements** (2026-10-24, `$FSUAE_ARM`, clean worktree arms at
+  `4d4272d`): `BFD1` scanline loop `C000..C42C` one exact-poll row, guest
+  calls as continuation exits; folds R48. Meter m4 156,420,369 → 156,394,228
+  (−0.0167%; generated −11,656,496, runtime +11,630,355; code +1,612
+  generated, +1,260 runtime bytes); 1,509,262 fewer guest instructions.
+  Bench, 5 interleaved runs per arm: medians 68,421 → 68,391 (−0.044%), spans
+  68,365–68,461 and 68,351–68,449, RAM hash `951adbe5…6c63` in all 10. Flyby
+  (23 frames each): `BFD1` inclusive 632,281 → 618,740 cycles/call (−2.1%);
+  without `CD99` 6.63% → 6.58% of the clip. The S2 estimate (−45–60% of
+  ~300K/call) missed: exact polls and byte histories leave the native close
+  to the generated code, and 6,264 m4 entries pay guards, hooks and the
+  generated segments between an exit and the next poll. Two fixes found
+  here: native dispatch onto a poll's execution alias (`*_native_np`)
+  double-counted host visits (lost IRQ at `C3A4` in the meter; entries now
+  start below the alias; probably R46's c13/c27 failure at `C32D`); hooks
+  with five or more resume ids dispatch through a PC-relative table (the
+  chain cost 375K m4 cycles). Evidence: `tmp/speed/f5/`, `tmp/native/F5/`.
 - **Flyby profile** (F0, frozen R48 build `8b46b6a5…`, 2026-10-23): attract
   demo, fields 1144–1648 after drawn frame 12, five consecutive 100-field
   captures; 142,101,991 cycles, 18 drawn frames (555 ms/frame). Drawn frames
@@ -508,6 +525,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | F3b | transform `B52D` whole with `B54B`; wrapper pushes stored, SI/DI/BP restored | runtime, compute tests | −1.5848% (bench +0.025%, user accepts as noise) |
 | F4 | FM loop cache: split key/stamp arrays, first-free hint, freed-range refit; render loop per feedback/connection | Amiga platform, FM tests | outside meter (flyby `fm_field` −24.4%/call; bench +0.20%, user accepts as noise) |
 | ZF3 | post-F3/F4 frames checkpoint: 330, 300, 300 ms against pre-F3 360, 350, 360 (no overlap); target unmet | docs | measurement only |
+| F5 | `BFD1` whole, exact polls, guest calls as exits; folds R48. Price (S2, flyby `130bd18`): 575,524 inclusive cycles/call, self 260,523 + ordering 86,293; clear 0.80% of the clip stays (long stores, U3); replaceable ~300K/call; estimate −45–60% of it, 1.5–2.5% of the clip | runtime, translator, compute tests | −0.0167% (bench −0.044%, flyby `BFD1` −2.1%/call) |
 
 No priced translator candidate remains. Unchanged outside authorized U5 rows (§2):
 poll points (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
@@ -551,7 +569,7 @@ less. Against the same-session pre-F3 arm (350–360 ms) the ranges do not
 overlap: F3+F4 is an established frame-rate gain. The user
 resumed speed work under U9 on 2026-10-23: plan F in native-plan.
 No priced translator candidate remains (§7). N1, N2’s B393 projection and B4E2 divide,
-and N4’s D5DA normalization loop, scenery clear, sprite packet loop, line pixel loops and edge ordering/merging are kept. The U5 poll contract is implemented
+and N4’s D5DA normalization loop, scenery clear, sprite packet loop and line pixel loops are kept; F5's whole `BFD1` scanline loop replaces R48's ordering row. The U5 poll contract is implemented
 ([native-compute.md](native-compute.md#poll-contract-u5)), and the U8
 extensions (C4). Active candidates and user deferrals: open-work 14b and
 [native-plan.md](native-plan.md).

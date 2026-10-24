@@ -108,6 +108,13 @@ def polled_hook(service, entry, dispatch, cs):
 
 def polled_dispatch(dispatch, resumes, ip):
     """Out of line: the result's resume label; any other value stops loudly."""
+    if len(resumes) >= 5:
+        # PC-relative long offsets: constant time for any resume id.
+        out = [f'{dispatch}:', '\tsubq.l #1,d7', f'\tcmp.l #{len(resumes)-1},d7',
+               f'\tbhi.s {dispatch}u', f'\tmove.l ({dispatch}t,pc,d7.w*4),d7',
+               f'\tjmp ({dispatch}t,pc,d7.l)',
+               f'{dispatch}t:'] + [f'\tdc.l {t}-{dispatch}t' for t in resumes] + [f'{dispatch}u:']
+        return out + [f'\tmove.l #{ip},d7', '\tjmp rt_stop_unknown']
     out = [f'{dispatch}:']
     for k, target in enumerate(resumes):
         out += ['\tsubq.l #1,d7', f'\tbne.s {dispatch}{k}', f'\tjmp {target}', f'{dispatch}{k}:']
@@ -148,8 +155,8 @@ and recursion are rejected. Each removed loop must not be a pure wait (wait()).
     tail = p.node_insn(resume)
     if first == resume or tail is None or (not endpoint and tail.op not in RETURNS):
         raise LowerError('compute: resume must be the original RET/RETF')
-    if endpoint and (tail.op in RETURNS or end is not None):
-        raise LowerError('compute: continuation needs a non-return endpoint and no range extension')
+    if endpoint and tail.op in RETURNS:
+        raise LowerError('compute: continuation needs a non-return endpoint')
     exits = tuple(exits)
     if exits and not endpoint:
         raise LowerError('compute: extra exits require continuation endpoints')

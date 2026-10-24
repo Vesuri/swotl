@@ -32,20 +32,16 @@ speed work: [speed-plan.md](speed-plan.md).
     [U8 extensions](native-compute.md#contract-extensions-u8) (C4) are
     implemented, as is the exact-poll contract used by R42's sprite packet loop
     and R44's line pixel loops.
-    N4's final non-deferred candidate is kept: R48 edge ordering/merging,
-    meter −0.100064%, exact target weighting −10.780077%; user accepts
-    the bench's +0.001462% as noise. No non-deferred native candidate remains.
+    N4's R48 edge ordering/merging is folded into F5's whole `BFD1` row.
     U7 paused speed work; U9 (2026-10-23) resumes it under native-plan F.
     Flyby profile (speed-plan §1 F0): EMS paging takes 25% of CPU with close
     bombers (F1 kept: c12 meter −27.72%; F2 kept: REP MOVSW by longs; F3a kept: `B017` whole,
     meter −1.4854%; F3b kept: `B52D` whole, meter −1.5848%, bench +0.025% accepted by the user as noise; F4 kept:
-    FM cache and render loop, flyby `fm_field` −24.4%/call, bench +0.20% accepted by the user as noise); ranked plan F0–F10,
+    FM cache and render loop, flyby `fm_field` −24.4%/call, bench +0.20% accepted by the user as noise; F5 kept:
+    `BFD1` scanline loop, meter −0.0167%, flyby `BFD1` −2.1%/call); ranked plan F0–F10,
     approved under U9: native-plan F.
-    User deferred expiry/advance (R47): address-reuse designs have no
-    positive price (speed-plan §10).
-    The user deferred R46 priority searches: no-slowdown acceptance remained unproved.
-    Its removed prototype subsequently failed c13/c27 endpoint checks at
-    IRQ 1634 / C32D; investigate before any revival (logs: `tmp/native/N4-raster/`).
+    F5 covers the R46 priority searches and R47 expiry/advance inside the
+    whole `BFD1` row.
     Deferred by the user: F3's `D5A6` prefix (2026-10-24; poll-set change and
     reference re-recording for ~0.5% of the flyby), N2 `B8A1` (no calls in m4/c13/c27), N4 `BB70`
     (sync-preserving design has no positive price), `109D6` vertex loops

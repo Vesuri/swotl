@@ -9,6 +9,6 @@
 	include "compute_line.s"
 	endif
 
-	ifd NATIVE_rt_hle_edge_ordering
-	include "compute_ordering.s"
+	ifd NATIVE_rt_hle_rasterize
+	include "compute_raster.s"
 	endif

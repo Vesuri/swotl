@@ -44,6 +44,7 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 | U7 | User paused speed work 2026-10-23; resumed under U9 the same day | — |
 | U8 | Approved 2026-10-21: REP away from kept polls, divide-fault decline, multiple returns; range/unresolved flow by annotations ([extensions](native-compute.md#contract-extensions-u8), implemented by C4); routines still need U4/U6 | — |
 | U10 | Approved 2026-10-24: "Replace B52D too, go ahead with F3": F3 replaces whole geometry routines, `B52D` included (widens U2) | F3 |
+| U11 | Approved 2026-10-24: allow `end` on continuation rows (escaping flow, returns and nested hooks still reject) for F5's whole `BFD1` row | F5 |
 | U9 | Approved 2026-10-23: "I approve resuming the speed work and the things required to fix those top 10 bottlenecks": [F](#f-flyby-plan) F0–F10 with each step's listed needs, including F9's §2.9 exception; S1–S9 and §3 acceptance still apply | F |
 
 ## Candidate evidence
@@ -98,8 +99,8 @@ F31A → F339/F35F/F3B4; object processing and calls remain generated
 ([contract](native-compute.md#multiple-continuation-endpoints-user-2026-10-22)).
 Outside every contract: `F290`, `BD68`, `FDE0` (with `end`) call
 another overlay through the PLINK manager; `109D6` reaches DOS (`int 21h` in
-the callee at `144B7`); `4DAE` has `call dx`; `BFD1` reaches unresolved flow in
-a callee; `D69C`'s callee poll `D4FA` is shared. Each needs a narrower row (end
+the callee at `144B7`); `4DAE` has `call dx`; `D69C`'s callee poll `D4FA` is
+shared. `BFD1`'s callee flow is resolved by continuation exits (F5). Each needs a narrower row (end
 the replacement before the call) or annotations, with its routine.
 
 - **N4** Routines that need C, each after U6, by S1–S9 plus C's cases, in B3 price
@@ -147,7 +148,7 @@ lost their gain to guards, hooks, exits and polls (R41–R47).
 | F2 | `RTSVGA+3B9A` frame compare and changed-span copy. Done as a lowering: its cost is its REP instructions; REP MOVSW by longs, flyby `rep movsw` −29% (speed-plan §1). Left: `repne cmpsw` 1.0–1.4% and `repe cmpsw` 1.4–1.5% of the clip, already word/long loops; a native merging search and copy has no price yet | translator | 4.11% | 0.3% kept | — |
 | F3 | Geometry as whole routines: `B52D`+`B54B`; `D5A6`→`B017` all paths→`B4E2`. `B017` whole with `B4E2` done (folds the `B393` and `B4E2` rows): meter −1.4854%, flyby cycles/call −22.7% (speed-plan §1). `D5A6` stays a separate row: `B017` is also called directly (~15% of calls) and nested hooks reject. `B52D` whole with `B54B` done: meter −1.5848%, flyby cycles/call −23.3%; bench +0.025% (8 runs per arm), accepted by the user as noise. `D5A6` prefix deferred by the user 2026-10-24: ~0.5% of the clip; it changes the poll set (D5F8 → the `B017` call) and re-records references | guest | 4.57% generated | 2.3–3.0% | U10 |
 | F4 | FM synthesis speed, output unchanged. Done in C (asm not needed): loop cache and render loop; flyby `fm_field` −24.4% per call (10.75% → 8.11% of the clip); bench +0.20% (frames 4–11 render no loops), accepted by the user as noise 2026-10-24 (speed-plan §1) | platform | 10.97% | 3.3–5.5% | user only if output changes |
-| F5 | `BFD1` rasterizer, one scope (annotate unresolved callee flow) | guest | 7.58% | 3.0–4.2% | scope; deferred R46/R47 scopes |
+| F5 | `BFD1` rasterizer, one scope. Done: `C000..C42C`, guest calls as continuation exits (U11), folds R48; meter −0.0167%, bench −0.044%, flyby `BFD1` −2.1%/call (speed-plan §1): far below the estimate | guest | 7.58% | 3.0–4.2% kept 0.05% | U11 |
 | F6 | Terrain `FDE0`+`F290`+`EA74`, scope ends before the PLINK call | guest | 7.09% | 2.5–3.5% | lift deferrals; `EA74` authorization |
 | F7 | `109D6` whole, native geometry called directly, DOS call a generated exit | guest | 5.0% | 2.0–2.8% | lift deferral; scope |
 | F8 | Sprite decoder `4D7D`/`4DAE` incl. `call dx` dispatch | guest | 3.9–14.8% | 1.6–7% | scope |

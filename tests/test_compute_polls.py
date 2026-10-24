@@ -515,7 +515,7 @@ def main():
             caught(name, admission)
     real = compute.validate_polled
     with patch.object(compute, 'validate_polled',
-                      lambda *a: real(*a)._replace(removed=frozenset())):
+                      lambda *a, **k: real(*a, **k)._replace(removed=frozenset())):
         caught('kept removed poll', emission)
     caught('missing return poll', lambda: emission(drop_return_poll=True))
     with patch.object(emit.Program, 'sync_poll_first', False):

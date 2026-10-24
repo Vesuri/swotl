@@ -33,18 +33,29 @@ def admission():
             assert n['a6'] not in row.body
             assert row.removed == {n['a1'], n['a4']}
         count += 1
-    for defect in ('return-endpoint', 'range-extension'):
+    p, n, insns = graph()
+    try:
+        compute.validate_polled(p, n['a0'], n['a6'], endpoint=True)
+    except LowerError:
+        count += 1
+    else:
+        raise AssertionError('return-endpoint admitted')
+    # User 2026-10-24 (F5): `end` widens a continuation row's range past its
+    # endpoint, for a loop body after the endpoint; escaping flow still rejects.
+    for end, escape in ((None, False), (70, False), (70, True)):
         p, n, insns = graph()
-        if defect == 'range-extension':
-            insns[n['a6']] = decode(b'\x40', 60)
+        insns[n['a6']] = decode(b'\x40', 60)
+        after = ('M', 64)
+        insns[after] = decode(b'\x40', 64)
+        p.succ[n['a5']], p.succ[after] = [n['a4'], after], [n['a6'] if not escape else n['x1']]
         try:
-            compute.validate_polled(p, n['a0'], n['a6'],
-                                    end=70 if defect == 'range-extension' else None,
-                                    endpoint=True)
+            row = compute.validate_polled(p, n['a0'], n['a6'], end=end, endpoint=True)
         except LowerError:
-            count += 1
+            assert end is None or escape, 'range extension rejected'
         else:
-            raise AssertionError(defect + ' admitted')
+            assert end is not None and not escape, (end, escape, 'admitted')
+            assert after in row.body and row.returns == (n['a6'],)
+        count += 1
     return count
 
 

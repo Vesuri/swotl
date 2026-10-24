@@ -268,10 +268,12 @@ def emission(plant=False, missing_sync=False, repeat_poll=False):
         start = lines.index(dispatch[0])
         if repeat_poll and after_poll and not planted:
             target = next(target for target in targets if target in after_poll)
-            old = '\tjmp ' + emit.label(*target) + '_np'
-            offset = dispatch.index(old)
-            assert lines[start + offset] == old
-            lines[start + offset] = '\tjmp ' + emit.label(*target)
+            # The after-poll target, as a chain jmp or a table offset.
+            old = emit.label(*target) + '_np'
+            offset = next(k for k, line in enumerate(dispatch)
+                          if line.split()[-1].split('-')[0] == old)
+            assert lines[start + offset] == dispatch[offset]
+            lines[start + offset] = dispatch[offset].replace(old, emit.label(*target))
             planted = True
         assert lines[start:start + len(dispatch)] == dispatch
     assert exact_checked, 'exact-poll positive control missing'
