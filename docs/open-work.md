@@ -59,6 +59,8 @@ speed work: [speed-plan.md](speed-plan.md).
     (D6) are approved. Fidelity gates and no slowdown remain mandatory except
     the specific R20/R35 tradeoffs and R36/R40/R48/F3b/F4 bench differences accepted by
     the user as noise (speed-plan §7) and D8's tiny bench regressions (speed-plan §3). Z1 leaves the target unmet; plan F is next.
+    Guest native steps after irq-plan I9 are priced without polls or write
+    histories (open-work 43, RC5).
 14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`
     `Harness`: each byte drew from a fresh generator with the same seed).
     A random background is stronger but changes every corpus case; needs
@@ -69,6 +71,10 @@ speed work: [speed-plan.md](speed-plan.md).
     not rewritten by the guest); decide whether lockstep needs more (dead
     flag bits in pushed images under the remaining `annotations/flags.csv`
     pair).
+43. Interrupt delivery without polling ([irq-plan.md](irq-plan.md), user
+    2026-10-24 with its rule changes): SPAZ's IRQ0 handler from the CIA-B
+    interrupt, keyboard and mouse at the vertical blank, sync points for
+    lockstep, native rows poll-free (U3/U5 retire). Next: I1 (measure).
 
 ## Amiga platform
 

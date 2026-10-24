@@ -37,14 +37,15 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 | U0 | Approved 2026-10-21: adapt the user's improved slave source; TFH's original game code/data remain excluded | — |
 | U1 | Approved 2026-10-21: executed backward branches only (taken back edges in the measured workload) | — |
 | U2 | Approved 2026-10-21: transform pilot at `B54B` from `xform20`; retain generated `B52D` wrapper and return checks | — |
-| U3 | Confirmed 2026-10-21: keep every byte's complete write history, SMC/display bookkeeping and all other state checks | — |
+| U3 | Confirmed 2026-10-21: keep every byte's complete write history, SMC/display bookkeeping and all other state checks; write histories retire at [irq-plan](irq-plan.md) I9 (U12) | — |
 | U4 | Approved 2026-10-22: `SWOTL.EXE+B017`, adapting the slave’s `xproj20`, by S1–S9. B4E2 adapting `xdiv20` authorized 2026-10-22; B8A1 authorized then deferred 2026-10-22: no calls in the acceptance workload; the `B393` long-path hook returning at `B4E1` is approved | N2 |
-| U5 | Approved 2026-10-21: chosen polls (removed interior polls, return poll, optional sync sites), up to one PIT period of interrupt delay in a native routine, affected references re-recorded per row ([contract](native-compute.md#poll-contract-u5), implemented by C3) | — |
+| U5 | Approved 2026-10-21: chosen polls (removed interior polls, return poll, optional sync sites), up to one PIT period of interrupt delay in a native routine, affected references re-recorded per row ([contract](native-compute.md#poll-contract-u5), implemented by C3); retires at [irq-plan](irq-plan.md) I9 (U12) | — |
 | U6 | Approved 2026-10-22: D5A6 adapting xpnorm20; normalization loop D5DA–D5F6 → D5F8 with explicit non-return endpoint extension and U5 polls. BB70, 109D6, F290, 4DAE, BD68, D69C, FDE0 and BFD1 authorized 2026-10-22 by the remaining-candidates goal; admission, pricing and S1–S9 remain required | N4 |
 | U7 | User paused speed work 2026-10-23; resumed under U9 the same day | — |
 | U8 | Approved 2026-10-21: REP away from kept polls, divide-fault decline, multiple returns; range/unresolved flow by annotations ([extensions](native-compute.md#contract-extensions-u8), implemented by C4); routines still need U4/U6 | — |
 | U10 | Approved 2026-10-24: "Replace B52D too, go ahead with F3": F3 replaces whole geometry routines, `B52D` included (widens U2) | F3 |
 | U11 | Approved 2026-10-24: allow `end` on continuation rows (escaping flow, returns and nested hooks still reject) for F5's whole `BFD1` row | F5 |
+| U12 | Approved 2026-10-24: [irq-plan](irq-plan.md) with rule changes RC1–RC6; U3 write histories, U5 and exact native polling retire at its I9 (RC5) | irq-plan |
 | U9 | Approved 2026-10-23: "I approve resuming the speed work and the things required to fix those top 10 bottlenecks": [F](#f-flyby-plan) F0–F10 with each step's listed needs, including F9's §2.9 exception; S1–S9 and §3 acceptance still apply | F |
 
 ## Candidate evidence

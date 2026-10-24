@@ -66,7 +66,8 @@ DanceDiverse3 set (`Palette24Bit`, `setPalette24Bit`) is kept for it.
 | Others | Exec | untouched; restored masks on exit |
 
 The original's timer (INT 08h) and keyboard (INT 09h) handlers do not run in Amiga
-interrupt context (L18). The CIA handlers post vectors to `rt_irq_ring` (keys to
+interrupt context (L18). [irq-plan](irq-plan.md) moves SPAZ's handler into the CIA-B
+interrupt (RC1, L18 exception) and keyboard reading into the vertical blank (RC4). The CIA handlers post vectors to `rt_irq_ring` (keys to
 `rt_key_ring`); the guest's or the runtime's BIOS handler runs at the next poll point with
 guest IF set ([translator-design.md](translator-design.md) D8). Shared rings are guarded
 by `Disable`/`Enable` (L20).

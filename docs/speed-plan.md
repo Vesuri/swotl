@@ -241,7 +241,7 @@ Breaking any of these voids the step, whatever it measures.
    the exact condition that makes it exact (DF, CX, no 16-bit offset wrap,
    no overlap) and falls back to an exact body otherwise. Flags live after
    the instruction keep their exact x86 values. No dropped return check,
-   poll point (except as native-plan U5 allows), fail-loud stop or wrap
+   poll point (except as native-plan U5 or [irq-plan](irq-plan.md) allows), fail-loud stop or wrap
    handling; no "usually true" or "never seen" assumption; no annotation
    asserting what the translator must prove.
 4. **D16:** every cell is matched against the writer forms from the guest RAM
@@ -277,8 +277,9 @@ Breaking any of these voids the step, whatever it measures.
    outermost graphics driver call returns), reading the frame to find
    changes, or skipping published frames; changing the PIT or timer rate
    or the order of interrupt delivery; removing or thinning poll points or
-   return checks (exception: native-plan U5 polls of a U6-authorized routine,
-   with its references re-recorded); shortening the guest's own delay loops
+   return checks (exceptions: native-plan U5 polls of a U6-authorized routine,
+   with its references re-recorded; [irq-plan](irq-plan.md)'s sync points and
+   asynchronous IRQ0, user 2026-10-24, RC2); shortening the guest's own delay loops
    (SPAZ OPL waits are guest semantics); a double buffer or copper display;
    Chip-only memory (19). Exception: the deterministic frame bench (§4,
    user 2026-10-08) posts PIT ticks on a fixed schedule in its own runtime

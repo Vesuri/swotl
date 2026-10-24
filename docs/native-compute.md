@@ -18,7 +18,8 @@ retaining generated clipping, shared callees and returns. BFD1's scanline
 loop from C000 is one exact-poll row (F5, folds R48's ordering row): `end`
 C42C, its guest calls and epilogue continuation exits (`hle.csv` `exits`).
 Remaining candidates and user deferrals: open-work 14b. Admission, pricing
-and S1–S9 remain required.
+and S1–S9 remain required. [irq-plan](irq-plan.md) I9 retires U3 write
+histories, the U5 poll contract and exact native polling (RC5, user 2026-10-24).
 
 ## Admission
 

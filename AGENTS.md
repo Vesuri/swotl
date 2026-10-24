@@ -73,7 +73,8 @@ AmigaXDev's docs (edit them there, then `make share`); this repo keeps what is s
   `docs/translation-lessons.md`, `docs/x86-notes.md`, `docs/method-lessons.md`
 - Process: `docs/perf-method.md`, `docs/speed-plan.md` (speed work: its rules
   bind every agent), `docs/native-plan.md` (work after the translator steps),
-  `docs/native-compute.md` (native routine contract),
+  `docs/native-compute.md` (native routine contract), `docs/irq-plan.md`
+  (interrupt delivery without polling),
   `docs/swotl-tfh-rendering-map.md`, `docs/tfh-cross-reference.md`
 - Sound: `docs/sound-plan.md`
 - Amiga: `docs/amiga-arch.md`, `docs/amiga-lessons.md`,

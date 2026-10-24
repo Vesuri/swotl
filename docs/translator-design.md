@@ -275,7 +275,8 @@ a profile choice, `tools/outline_sites.py` from `build/gen/outline-sites.csv`),
   `vram`), `tests/test_display_queue.py` (inheritance and queue races), and
   `amiga/display_audit.sh` (40 handoffs against published guest snapshots
   and DAC, no conversion into the shown bitmap, zero late handoffs).
-- Interrupts (D8): poll points at loop heads (targets of backward branches,
+- Interrupts (D8; [irq-plan](irq-plan.md) replaces loop-head polls with sync
+  points and asynchronous IRQ0): poll points at loop heads (targets of backward branches,
   all block leaders, so live flags are in the state block): `tst.b G_IRQ(a6)`
   and `bne` to the poll's stub `X_irq`, placed after the next run that cannot
   fall through: d6 = CS << 16, d7 = IP, `jsr rt_irq`, back past the test to
