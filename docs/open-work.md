@@ -100,3 +100,10 @@ speed work: [speed-plan.md](speed-plan.md).
 22. Establish which original data sources users can supply (disks,
     GOG/Steam re-releases if they exist) and whether conversion is needed;
     TFH mode: the installer copies the user's TFH `sfx.rsc`.
+    The code needs 2.2's SWOTL.EXE and overlays. v1.2 floppies (four 720K
+    FAT12 images, plain files) and a 1.x zip (another EXE build, 55,564 B)
+    differ from 2.2 in the EXE, every OVL except SPAZ and SFXA, and 13 data
+    files (AC/SPECS.SPC, FE menus, icons, records); 2.2 adds 301 files
+    (expansion aircraft, CM, CP, HF, MIS). Under WHDLoad (2026-10-24) the
+    v1.2 set exits at once; 2.2 EXE+OVLs over v1.2 data reach flight within
+    3,000 fields. User is looking for a 2.2 source.
