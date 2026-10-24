@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pack an installed Swotl drawer as a preinstalled LHA (local only: game data).
 
-    python3 tools/pack_preinstalled.py tmp/preinstalled/Swotl tmp/Swotl-preinstalled.lha
+    python3 tools/pack_preinstalled.py tmp/preinstalled/Swotl dist/Swotl-$(cat VERSION)-preinstalled-TFH.lha
 
 Members: Swotl.info (the drawer icon beside DIR), then Swotl/<every file>.
 The installed drawer comes from tools/test_release_installer.py --keep. The
