@@ -86,6 +86,44 @@ class Program(unittest.TestCase):
         self.assertEqual(M.model_cycles(p.feat[0x100a], 1, 1, coef), 6 + 5.0)
 
 
+POLLS = """\
+00001000 <R_00100>:
+    1000:\t4a2e 0009      \ttst.b 9(a6)
+    1004:\t6600 0010      \tbne.w 1016 <R_00100_irq>
+    1008:\t4a2e 0009      \ttst.b 9(a6)
+    100c:\t6700 0008      \tbeq.w 1016 <R_00100_irq>
+    1010:\t4a2e 0008      \ttst.b 8(a6)
+    1014:\t6600 0000      \tbne.w 1016 <R_00100_irq>
+
+00001016 <R_00100_irq>:
+    1016:\t4e75           \trts
+
+00002000 <rt_hle_x>:
+    2000:\t4a2e 0009      \ttst.b 9(a6)
+    2004:\t66ff 0000 0010 \tbne.l 2016 <rt_hle_x_pending>
+    200a:\t4e75           \trts
+"""
+
+
+class PollTests(unittest.TestCase):
+    """irq-plan I1: only `tst.b G_IRQ(a6)` + bne is a poll test, in any class."""
+
+    def test_counts_by_class(self):
+        p = M.Program.__new__(M.Program)
+        p.init(POLLS, [(0x1000, "R_00100"), (0x1016, "R_00100_irq"), (0x2000, "rt_hle_x")], set())
+        self.assertEqual(M.G_IRQ, 9)
+        self.assertEqual(p.polls, {0x1000, 0x1004, 0x2000, 0x2004})
+        p.set_loops(Counter())
+        coef = {k: 0.0 for k in M.FEATURES}
+        coef.update(insns=1.0, taken=10.0)
+        n = Counter({0x1000: 7, 0x1004: 7, 0x1008: 5, 0x100c: 5, 0x1010: 3, 0x1014: 3,
+                     0x2000: 4, 0x2004: 4})
+        taken = Counter({0x1004: 2, 0x2004: 1})
+        got = M.poll_counts(p, n, taken, coef)
+        self.assertEqual(got, {"generated": {"cycles": 7 + 7 + 20.0, "tests": 7, "taken": 2},
+                               "runtime": {"cycles": 4 + 4 + 10.0, "tests": 4, "taken": 1}})
+
+
 class Fit(unittest.TestCase):
     def test_recovers_non_negative_weights(self):
         rng = np.random.default_rng(1)

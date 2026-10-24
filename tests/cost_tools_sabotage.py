@@ -94,3 +94,16 @@ check(T.LongArithmetic, False)
 with patch.object(T.M, 'cost_features', lambda feat: list(feat)):
     check(T.LongArithmetic, True)
 print('cost meter: double-charged long arithmetic fetch/multiply plant caught')
+
+check(T.PollTests, False)
+source = textwrap.dedent(inspect.getsource(T.M.Program.init))
+for old, new, name in (
+        (' and mn[b][0].startswith("bne")', '', 'unpaired poll test'),
+        ('self.polls.update((a, b))', 'self.polls.add(a)', 'poll branch omitted')):
+    bad = source.replace(old, new)
+    assert bad != source
+    scope = dict(T.M.__dict__)
+    exec(bad, scope)
+    with patch.object(T.M.Program, 'init', scope['init']):
+        check(T.PollTests, True)
+    print(f'cost meter: {name} plant caught')

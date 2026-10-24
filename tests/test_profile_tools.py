@@ -13,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import profile_report as P
 import lowering_cost as L
 import profile_tree as T
+import cost_meter as M
+import irq_profile as I
 
 
 class ProfileTools(unittest.TestCase):
@@ -397,6 +399,61 @@ class ProfileTree(unittest.TestCase):
         self.assertEqual(dict(d["own"])["<no PC>"], 9)
 
 
+IRQ_DIS = "".join(f"{a:08x} <{n}>:\n" + "".join(f"    {pc:x}:\t4e71           \t{op}\n" for pc, op in body) + "\n"
+                  for a, n, body in (
+    (0x100, "R_00100", [(0x100, "nop"), (0x104, "tst.b 9(a6)"), (0x108, "bne.w 110 <R_00100_irq>"),
+                        (0x10c, "nop"), (0x110, "jsr 500 <rt_irq>"), (0x114, "nop")]),
+    (0x500, "rt_irq", [(0x500, "nop"), (0x502, "nop"), (0x504, "nop"), (0x506, "rts")]),
+    (0x520, "deliver_guest", [(0x520, "nop"), (0x530, "nop")]),
+    (0x600, "SPZ_007CC", [(0x600, "nop"), (0x602, "nop")]),
+    (0x700, "rt_video_refresh", [(0x700, "nop"), (0x704, "nop")]),
+    (0x720, "plat_service", [(0x720, "nop"), (0x722, "nop")]),
+    (0x740, "present", [(0x740, "nop"), (0x742, "nop")]), (0x760, "plat_present", [(0x760, "nop")]),
+    (0x780, "fm_field", [(0x780, "nop")])))
+
+
+class IrqProfile(unittest.TestCase):
+    """irq-plan I1: interrupt-path scopes per call, stack depth, poll share."""
+    # guest; poll test and taken bne; stub; rt_irq: refresh (plat_service, a
+    # hardware interrupt record, tail-called present > plat_present, a branch
+    # inside present opening nothing), deliver_guest (guest handler deeper, a
+    # poll in it delivering: nested rt_irq, not net), the loop back to rt_irq (no new scope), a second
+    # delivery; back in the guest | a second field: a poll not taken.
+    FIRST = [(0x100, 2, 0x1000), (0x104, 1, 0x1000), (0x108, 1, 0x1000), (0x110, 3, 0x1000),
+             (0x500, 2, 0xFFC), (0x700, 1, 0xFF8), (0x720, 4, 0xFF4), (0x722, 2, 0xFF0),
+             (0x900, 50, 0x200100), (0x704, 1, 0xFF8), (0x740, 3, 0xFF8), (0x742, 1, 0xFF8), (0x760, 5, 0xFF4),
+             (0x502, 1, 0xFFC), (0x520, 2, 0xFF8), (0x600, 10, 0xFF4), (0x602, 5, 0xFE8),
+             (0x500, 4, 0xFE4), (0x502, 2, 0xFE0), (0x530, 1, 0xFF8), (0x504, 1, 0xFFC), (0x500, 1, 0xFFC), (0x520, 3, 0xFF8),
+             (0x504, 1, 0xFFC), (0x506, 1, 0xFFC), (0x114, 1, 0x1000)]
+    SECOND = [(0x104, 1, 0x1000), (0x108, 1, 0x1000)]
+
+    def run_profile(self):
+        p = M.Program.__new__(M.Program)
+        syms = [(int(l[:8], 16), l[10:-2]) for l in IRQ_DIS.splitlines() if l.endswith(">:")]
+        p.init(IRQ_DIS, syms, set())
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp, "p.bin")
+            capture(path, [self.FIRST, self.SECOND])
+            return I.analyse(p, [path])
+
+    def test_scopes_depth_and_polls(self):
+        d = self.run_profile()
+        self.assertEqual(d["total"], sum(c for _, c, _ in self.FIRST + self.SECOND))
+        self.assertEqual(d["polls"], {"generated": {"cost": 4, "tests": 2}})
+        keys = ("calls", "total", "max", "depth", "net_total", "net_max", "net_depth")
+        s = {n: tuple(v[k] for k in keys) for n, v in d["scopes"].items()}
+        self.assertEqual(s, {"rt_irq": (2, 57, 51, 28, 51, 45, 20),
+                             "deliver_guest": (2, 27, 24, 24, 21, 18, 16),
+                             "rt_video_refresh": (1, 17, 17, 8, 17, 17, 8),
+                             "plat_service": (1, 6, 6, 4, 6, 6, 4),
+                             "present": (1, 9, 9, 4, 9, 9, 4),
+                             "plat_present": (1, 5, 5, 0, 5, 5, 0),
+                             "fm_field": (0, 0, 0, 0, 0, 0, 0)})
+        self.assertEqual(d["open_scopes"], [])
+        self.assertEqual((d["scopes"]["deliver_guest"]["p50"], d["scopes"]["deliver_guest"]["p99"]), (3, 24))
+        self.assertEqual([I.pct([5, 1, 4, 2, 3], q) for q in (1, 20, 50, 99, 100)], [1, 1, 3, 5, 5])
+
+
 if __name__ == "__main__":
     if "--sabotage" in sys.argv:
         for name, old, new in (
@@ -420,6 +477,22 @@ if __name__ == "__main__":
                 unittest.defaultTestLoader.loadTestsFromTestCase(ProfileTree))
         assert result.failures or result.errors, "absolute PCs plant escaped"
         print("profile tree: absolute native PCs left unrelocated plant caught")
+        for name, old, new in (
+                ("scope opened without a call", "a7 == prev - 4 or (", "True or ("),
+                ("tail call not opened", "name in TAIL and a7 == prev", "False"),
+                ("supervisor records charged", "or pc == P.IRQ_MARKER:", "and False:"),
+                ("depth not tracked", "s[3] = min(s[3], a7)", "pass"),
+                ("nested delivery counted as net", "if k >= inner:", "if True:")):
+            source = inspect.getsource(I.analyse)
+            broken = source.replace(old, new)
+            assert broken != source, name
+            scope = dict(I.__dict__)
+            exec(broken, scope)
+            with patch.object(I, "analyse", scope["analyse"]):
+                result = unittest.TextTestRunner(stream=io.StringIO()).run(
+                    unittest.defaultTestLoader.loadTestsFromTestCase(IrqProfile))
+            assert result.failures and not result.errors, name + " plant escaped"
+            print("irq profile: " + name + " plant caught")
         for name, fn, old, new in (
                 ("lowering helpers counted", L.is_entry, 'g[3] in ("", "_bp")', 'True'),
                 ("zero-code entries omitted", L.EntryMap.count,

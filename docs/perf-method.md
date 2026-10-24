@@ -33,6 +33,11 @@ its binding rules: [speed-plan.md](speed-plan.md).
   inclusive cycles per guest routine and runtime symbol, call edges, over consecutive
   captures (A7 scopes; hardware and guest interrupt delivery not charged to the
   interrupted routine). Inclusive rows overlap.
+- **Interrupt path**: `tools/irq_profile.py ELF CAPTURE... [--json]`: poll-test share
+  per class, and per call of `rt_irq`, `deliver_guest` (one guest handler run),
+  `rt_video_refresh`, `plat_service`, `present`, `plat_present`, `fm_field`: cycles
+  (mean, p50, p99, max) and native stack depth, also net of nested `rt_irq`
+  ([irq-plan.md](irq-plan.md) I1).
 - **Paired runs**: `tools/ab_runs.py freeze ARM`, then `bench|frames|flyby|meter
   SESSION ARM...`: interleaved runs of frozen arms, tool fingerprints checked per run,
   results never overwritten, captures deleted after reporting (flyby: a

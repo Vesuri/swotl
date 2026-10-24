@@ -8,8 +8,8 @@ with its rule changes by the user 2026-10-24. Speed-plan §2–4 apply except as
 here; one step, one commit, checks stated before running (AGENTS.md validation scope).
 Evidence: `tmp/irq/<step>/`.
 
-Why: at least 745,740 poll visits in the m4 meter window (`zf3arm-f4` arm), about 4–5% of
-model cycles at ~10 cycles each (estimate; I1 measures it). Exact native state at every
+Why: poll tests are 5.15% of the m4 meter's model cycles and 3.73% of the flyby (I1,
+Facts). Exact native state at every
 poll and U3 write histories hold native rows near the generated code (F5: `BFD1` −2.1% per
 call; its estimate was −45–60% of the replaceable ~300K cycles per call).
 
@@ -50,6 +50,24 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   pending IRQ0. Poll visits also time key releases (`release-visits` patch, `host_run.py`
   triggers), REP slices (`rep-chunks`), the bench spin rule (`RT_BENCH_POLLS` 8,956,
   `RT_BENCH_SPIN`), host IRQ groups and diagnostic replays (`amiga_replay`).
+- I1 (2026-10-24, `b666a22`, evidence `tmp/irq/I1/`). Meter m4 (`cost_meter.py`):
+  poll tests (`tst.b G_IRQ(a6)` + `bne`) 925,939 visits, 7,937,528 of 154,046,871 model
+  cycles (5.15%): generated 549,772 visits, 3.09%; native rows 376,167, 2.06% (mostly
+  F9's OPL delay loops); 441 taken. Flyby (`irq_profile.py`, five 100-field captures,
+  500 fields, 142,101,993 cycle units ≈ 68020 cycles): poll tests 3.73% (generated
+  433,612 visits 2.57%, native 219,130 visits 1.16%). Per call, cycle units mean / p50 /
+  p99 / max, native stack below the entry A7:
+  - SPAZ tick (`deliver_guest`, BIOS chain included; net of nested deliveries):
+    2,367 calls (236.7 Hz), 2,221 / 920 / 20,921 / 93,046; 3.89% of the flyby; stack
+    68 bytes (524 with a nested delivery's field work). The long ticks are OPL write
+    bursts: 70% of them in the `D03`/`D0F` delay loops and `rt_out8`.
+  - Field work at the first poll after a vertical blank (`rt_video_refresh`): 485 calls,
+    25,106 / 19,299 / 83,396 / 99,294; 8.57%; `plat_service` 24,987 mean, of it
+    `fm_field` 24,276 (8.29%); stack 432.
+  - `present` (tail-called): 29 calls, 284,619 / 200,683 / 781,584 max; 5.81%; of it
+    `plat_present` 233,614 mean; stack 196.
+  - `rt_irq` (one poll's deliveries and field work): 2,435 calls, 9,109 mean, 111,587
+    max; 15.61%; stack 536.
 - Guest memory backs 1 MiB + HMA (`RT_GUEST_BYTES`); host runs compare RAM from the
   environment MCB to A0000h with dead stack masked (open-work 24).
 

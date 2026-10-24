@@ -18,6 +18,8 @@ in this workload (the 68020 i-cache); data reads; data writes; mul/div.
 Unsigned register long arithmetic has a separately probed total cost. Model cycles =
 the features weighted by tools/cost_model.json. Exact and layout-blind: the
 same build gives the same numbers, and moving code changes nothing.
+Interrupt poll tests (`tst.b G_IRQ(a6)` and its bne; irq-plan I1) are
+counted per class: visits, taken branches and their model cycles.
 
 Calibrate: fit the weights (non-negative least squares) on an FS-UAE capture
 (tools/profile_report.py format) of the Amiga ELF of the same build: per-PC
@@ -56,6 +58,8 @@ VASM = os.environ.get("VASM") or str(Path.home() / ".local/vasmm68k_mot")
 OBJDUMP = CROSS + "objdump"
 FEATURES = ("insns", "bytes", "loop_bytes", "reads", "writes", "taken", "loop_taken", "muldiv", "long_arith")
 LOOP = 256      # 68020 instruction cache
+G_IRQ = int(re.search(r"^G_IRQ\s+equ\s+(\d+)", (REPO / "src/runtime/rt_entry.s").read_text(), re.M).group(1))
+POLL_TEST = ("tst.b", f"{G_IRQ}(a6)")
 
 # --- static features ---------------------------------------------------------
 
@@ -192,6 +196,13 @@ class Program:
         self.cls = {}
         for a in mn:
             self.cls[a] = self.classify(a, platform)
+        # Interrupt poll tests (irq-plan I1): `tst.b G_IRQ(a6)` and the bne
+        # after it, in generated code (emit.poll) and native rows alike.
+        self.polls = set()
+        for i in range(len(self.addrs) - 1):
+            a, b = int(self.addrs[i]), int(self.addrs[i + 1])
+            if mn[a] == POLL_TEST and mn[b][0].startswith("bne"):
+                self.polls.update((a, b))
 
     def set_loops(self, taken):
         """Reclassify bytes for this workload; cold back branches give no discount.
@@ -351,6 +362,21 @@ def taken_counts(prog: Program, taken: Counter) -> list:
             for pc, k in sorted(taken.items()) if k and prog.cls.get(pc) in ("generated", "walk")]
 
 
+def poll_counts(prog: Program, n: Counter, taken: Counter, coef: dict) -> dict:
+    """Per class: poll test visits, taken branches (deliveries) and the model
+    cycles of both instructions. Call after set_loops."""
+    polls = defaultdict(lambda: Counter())
+    for pc in prog.polls:
+        if n.get(pc):
+            c = polls[prog.cls[pc]]
+            c["cycles"] += model_cycles(prog.feat[pc], n[pc], taken[pc], coef)
+            if prog.mn[pc] == POLL_TEST:
+                c["tests"] += n[pc]
+            else:
+                c["taken"] += taken[pc]
+    return {k: dict(v) for k, v in polls.items()}
+
+
 def report(prog: Program, n: Counter, taken: Counter, coef: dict, gen: Path) -> dict:
     prog.set_loops(taken)
     text, _ = L.static_counts(gen)
@@ -390,6 +416,7 @@ def report(prog: Program, n: Counter, taken: Counter, coef: dict, gen: Path) -> 
             "labels": {k: dict(v) for k, v in labels.items()},
             "forms": {k: dict(v) for k, v in forms.items()},
             "ops": {k: dict(v) for k, v in ops.items()},
+            "polls": poll_counts(prog, n, taken, coef),
             "guest_instructions": guest,
             "instruction_counts": instruction_counts(prog, n),
             "taken_counts": taken_counts(prog, taken)}
@@ -415,6 +442,9 @@ def summary(res: dict) -> str:
             lines.append(f"  {k:9} cycles {c['cycles']:>14,.0f}  insns {c['insns']:>12,}  bytes "
                          f"{c['bytes'] + c['loop_bytes']:>13,} (loop {c['loop_bytes']:,})  reads "
                          f"{c['reads']:>11,}  writes {c['writes']:>11,}  taken {c['taken']:>11,}")
+    for k, c in sorted(res.get("polls", {}).items()):
+        lines.append(f"  poll tests ({k}): {c['tests']:,} visits, {c['taken']:,} taken, model cycles "
+                     f"{c['cycles']:,.0f} ({100 * c['cycles'] / tot:.2f}% of the total)")
     lines.append("  static bytes: " + ", ".join(f"{k} {v:,}" for k, v in sorted(res["static"].items())))
     return "\n".join(lines)
 

@@ -384,7 +384,7 @@ lines.
 - **Reference cadence** (DOSBox-X `cycles=fixed 12000`, m4): a drawn frame
   every 9 PIT ticks ≈ 36 ms, ≈ 408K x86 instructions per frame.
 - **Meter** (`tools/cost_meter.py`, deterministic): `--out tmp/meter/ARM.json`
-  per arm, `--compare A B` for the §3 deltas. Weights `tools/cost_model.json`,
+  per arm, `--compare A B` for the §3 deltas; also poll tests per class (irq-plan I1). Weights `tools/cost_model.json`,
   fit at A4 on the `e891ace` bench capture: per code byte 1.038 (0.912 inside
   a loop of ≤ 256 bytes whose back branch was taken in the workload), read
   1.795, write 3.219, taken transfer 5.113 outside such a loop and 1.712 inside,
