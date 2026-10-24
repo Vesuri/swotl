@@ -100,6 +100,14 @@ speed work: [speed-plan.md](speed-plan.md).
     output has none. Turn it off at takeover, restore it on exit.
 41. `alignas(4)` on even-sized globals of 4 bytes or more, with a link audit
     (L104): not applied; m68k GCC aligns them to 2.
+44. Arguments through dos.library `ReadArgs` (user 2026-10-25): the hand scan of
+    `GetArgStr()` in `amiga_guest_open` (`amiga_platform.c`) is case-sensitive, so
+    `swotl tfh` silently plays FM. Template for TFH, MUSIC, KEYS=, BENCH; case-
+    insensitive, `?` help, bad arguments fail with the DOS error. The WHDLoad slave's
+    `SetArgStr` line must still parse (`RDA_Source` from `GetArgStr()`, or check that
+    ReadArgs sees it). Refs: `~/.local/share/amiga/ndk/Autodocs/dos.doc` (ReadArgs,
+    FreeArgs, RDArgs), `adcd21/Reference/Amiga_Mail_Vol2/II-27/readargs.c`. Checks:
+    fixtures that pass KEYS/MUSIC/BENCH, `test-whdload` FM and TFH, lower-case `tfh`.
 
 ## Release
 
