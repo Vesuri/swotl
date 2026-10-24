@@ -68,6 +68,18 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
     `plat_present` 233,614 mean; stack 196.
   - `rt_irq` (one poll's deliveries and field work): 2,435 calls, 9,109 mean, 111,587
     max; 15.61%; stack 536.
+- I2 (2026-10-24, evidence `tmp/irq/I2/`). Handler: 1,158 instructions, 70 bytes of
+  stack, transparent; writes G `6564..658A` (effect counts), `813C`, `9BCA`,
+  `9C44..9CA9` (`[9C20]` ≤ 32h: `irq-bounds.csv`, main writes checked), `9D32..9D35`;
+  `188A` whole (SPAZ data), BDA `6C..70` through the chain; reads the song table and
+  song segments (S, located at run time); ports 20h, 388h, 389h; IF changes only in
+  play and stop-all; a divide at `+1229` could fault. Main code (DS per entry and
+  entry DS/SS; G = `43CDh`): 345 sync accesses (handler-written reads: `813C` and the
+  effect bytes, FLIGHT `+3F0F`/`+3F2A` `[6570]`; SPAZ `+064E`/`+065E` inc/dec of them;
+  the 9C20 writers; song-table setup; SPAZ's main-thread OPL writes), each one 68k
+  memory access; disjoint 16,368, masked 22, monitored 26,208, not reached 1,085.
+  `irq-ds.csv`: `__heap_search` and the cell walk driver `+EA74` return the caller's
+  DS unseen. Generated bodies unchanged; `make gen` +13 s.
 - Guest memory backs 1 MiB + HMA (`RT_GUEST_BYTES`); host runs compare RAM from the
   environment MCB to A0000h with dead stack masked (open-work 24).
 

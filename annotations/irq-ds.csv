@@ -1,0 +1,3 @@
+module,offset,reason
+SWOTL.EXE,0x15e35,"__heap_search: DS = [bx+8] only on a far-heap descriptor; _malloc and __heap_grow pass the near heap (DS:585C), whose next-segment word stays 0; host runs check DS at its returns (I3)"
+SWOTL.EXE,0xea74,"cell walk driver: saves DS to cs:[9B30] at +EA79 and reloads it at +EBC2/+EC1E before its returns; the indexed RET plants at +EC0D/+EC19 (not in self-modifying.csv) could alias the slot statically; host runs check DS at its returns (I3)"

@@ -13,7 +13,9 @@ Prints the audit (spills, flag materializations, dispatcher exits, stop
 sites, return checks) against tests/audit.csv, where a count above its
 expected value fails, and the coverage report (G6): executed instruction
 starts of the trace corpus as translated / self-modified (D16, not yet
-lowered) / HLE / unclassified; unclassified ones fail.
+lowered) / HLE / unclassified; unclassified ones fail. Writes
+build/gen/irq-footprint.csv (translator/irq.py, docs/irq-plan.md I2); a
+footprint violation fails generation.
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ from pathlib import Path
 import csv
 from collections import Counter
 
-from . import cfg, emit, image, support
+from . import cfg, emit, image, irq, support
 from .sem import lift
 
 VERSION = "swotl-gen 2 (ir, 68020)"
@@ -38,6 +40,7 @@ AUDIT = image.REPO / "tests/audit.csv"
 SUPPORT = "support"
 POLLS = "poll-points.csv"
 OUTLINE = "outline-sites.csv"
+FOOTPRINT = "irq-footprint.csv"
 PROGRAM = "program"  # assembly root: equates, runtime xrefs, includes, dispatch table
 OUT = image.REPO / "build/gen"
 M = image.M
@@ -172,6 +175,13 @@ def generate(out: Path, program: emit.Program | None = None) -> tuple[dict[str, 
     (out / OUTLINE).write_text("label,first,last,target,ends,place,outlined\n" + "".join(
         f"{lab},{a},{b},{t},{int(e)},{pl},{int(on)}\n"
         for lab, (a, b, t, e, pl, on) in sorted(prog.outline_sites.items())))
+    if program is None:
+        # I2: the IRQ0 handler's footprint and every main-code access classified
+        # against it (translator/irq.py); a violation fails generation
+        proof = irq.prove(prog)
+        (out / FOOTPRINT).write_text("kind,class,first,last,access,where\n"
+                                     + "".join(r + "\n" for r in proof.rows()))
+        print(proof.summary())
     return units, total, per
 
 

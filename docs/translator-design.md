@@ -193,7 +193,9 @@ component gets a guarded copy; a profile choice, `tools/bp_regions.py`),
 `outline.csv` (forward jcc whose fall-through range goes out of line, R27;
 a profile choice, `tools/outline_sites.py` from `build/gen/outline-sites.csv`),
 `seg-repeat.csv` (segment loads that compare first, R30; a profile choice,
-`tools/seg_repeat.py`).
+`tools/seg_repeat.py`), `irq-bounds.csv` (value bounds of variables that index
+the IRQ0 handler's accesses, I2) and `irq-ds.csv` (entries that return the
+caller's DS where the I2 analysis cannot see it; host runs check, I3).
 
 ### Tests
 
@@ -314,6 +316,14 @@ a profile choice, `tools/outline_sites.py` from `build/gen/outline-sites.csv`),
   same-visit group per return of the guest handler to that poll point (the
   reference takes interrupts only at poll points, `build/gen/poll-points.csv`;
   references are re-recorded when poll points change).
+- IRQ0 footprint (irq-plan I2, `translator/irq.py`, run by `make gen`): the guest
+  handler's memory, ports, IF changes, hooks and runtime calls, register
+  transparency proved over the lifted IR; every main-code access classified
+  masked, disjoint, sync (may meet the footprint) or monitored, with segment
+  registers per (entry, DS, SS) context. A sync access to a handler-written
+  byte lowers to one memory-touching 68k instruction, no compute row holds a
+  sync access, bounded G variables keep their bound, else generation fails.
+  Output `build/gen/irq-footprint.csv`; `t-irq-footprint` and its sabotage.
 - HLE (`annotations/hle.csv`, G3): at a range's first instruction
   `jsr rt_hle_<service>`; NE skips to the instruction after `last`, EQ runs
   the guest code. `args`: up to two guest word registers (not SP, BP), in d7
