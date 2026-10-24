@@ -1,0 +1,106 @@
+; Secret Weapons of the Luftwaffe WHDLoad installation. Commodore Installer V43 or newer.
+; File-install flow with WHDLoad Install Template / RAY Pokeri conventions.
+; $VER: Install 0.90 (24.10.2026)
+(set @app-name "Secret Weapons of the Luftwaffe")
+(set #prefix "Swotl")
+(if (< @installer-version (* 43 65536))
+  (abort "This installation requires Amiga Installer 43 or newer."))
+(welcome)
+(set #source (pathonly @icon))
+(set @execute-dir #source)
+; Show the instructions before asking for the destination or original data.
+; WHDLoad's template falls back to More on systems without MultiView.
+(set #readme (tackon #source "ReadMe"))
+(if (exists #readme)
+  (if (<> 0 (run ("SYS:Utilities/MultiView \"%s\"" #readme)))
+    (run ("SYS:Utilities/More \"%s\"" #readme))))
+; Same prerequisite check as the WHDLoad install template.
+(if (<> 0 (run "cd SYS:\nWhich WHDLoad >NIL:"))
+  (abort "Install WHDLoad 17 or newer first. It must be accessible via the command path. See https://www.whdload.de/"))
+(set #kick-ready 0)
+(if (and (exists "Devs:Kickstarts/kick40068.A1200") (exists "Devs:Kickstarts/kick40068.A1200.RTB")) (set #kick-ready 1))
+(if (and (exists "Devs:Kickstarts/kick40068.A4000") (exists "Devs:Kickstarts/kick40068.A4000.RTB")) (set #kick-ready 1))
+(if (and (exists "Devs:Kickstarts/kick40063.A600") (exists "Devs:Kickstarts/kick40063.A600.RTB")) (set #kick-ready 1))
+(if (<> (getassign "WHDCOMMON") "")
+  ((if (and (exists "WHDCOMMON:kick40068.A1200") (exists "WHDCOMMON:kick40068.A1200.RTB")) (set #kick-ready 1))
+   (if (and (exists "WHDCOMMON:kick40068.A4000") (exists "WHDCOMMON:kick40068.A4000.RTB")) (set #kick-ready 1))
+   (if (and (exists "WHDCOMMON:kick40063.A600") (exists "WHDCOMMON:kick40063.A600.RTB")) (set #kick-ready 1))))
+(if (= #kick-ready 0)
+  (message "WHDLoad needs a Kickstart 3.1 image and matching .RTB file in Devs:Kickstarts or WHDCOMMON: before playing. See ReadMe for supported image names." (all)))
+(if (getenv "WHDLInstPath")
+  (set @default-dest (getenv "WHDLInstPath")))
+(set #parent
+  (askdir (prompt "Where should Secret Weapons of the Luftwaffe be installed? A Swotl drawer will be created here.")
+    (help "Choose a writable hard disk drawer with at least 12 MB free.")
+    (default @default-dest)))
+(run ("setenv WHDLInstPath \"%s\"\ncopy ENV:WHDLInstPath ENVARC:" #parent))
+(set #dest (tackon #parent #prefix))
+(set #data (tackon #dest "data"))
+(set #helper (tackon #source "SwotlInstallData"))
+(set #staging (tackon #dest "InstallStaging"))
+(if (exists #dest)
+  ((set #remove-existing
+     (askbool
+       (prompt ("The drawer \"%s\" already exists. Remove it, including pilots, films and missions, before installing?" #dest))
+       (help "Remove deletes the whole Swotl drawer. Keep updates the program and keeps your pilots, films and missions; you can then keep or replace the game files.")
+       (choices "Remove" "Keep") (default 0)))
+   (if #remove-existing
+     (delete #dest (all) (infos) (optional "force") (help @delete-help)))))
+(set #install-data 1)
+(if (and (= (exists (tackon #data "SWOTL.EXE")) 1) (= (exists (tackon #data "RTSVGA.OVL")) 1))
+  (set #install-data
+    (askchoice
+      (prompt "The Secret Weapons of the Luftwaffe game files are already installed. Use the existing files or replace them from the disks?")
+      (help "Use existing keeps the installed game files and skips the disk question. Replace extracts all game files again from the Air Combat Classics disks; files the game created, such as pilots, films and missions, are kept.")
+      (choices "Use existing" "Replace") (default 0))))
+(if #install-data
+  (set #disks
+    (askdir (prompt "Select the drawer containing the three Air Combat Classics disk images or files.")
+      (help "Required: Disk1.img, Disk2.img and Disk3.img (images of the three 1.44 MB Air Combat Classics floppies), or CLASSICS.001, CLASSICS.002 and CLASSICS.003 copied from them. Other releases are not supported. Game files are not included.")
+      (default #source))))
+(set #tfh-ready (exists (tackon #data "sfx.rsc")))
+(set #tfh
+  (askchoice
+    (prompt "Which sound effects should the game use?")
+    (help "The game's own sound effects use AdLib FM synthesis. Their Finest Hour sampled sound effects need the file sfx.rsc from your Amiga Their Finest Hour installation. Change later with the Custom1 tooltype of the Swotl icon.")
+    (choices "Original AdLib" "Their Finest Hour")
+    (default #tfh-ready)))
+(if (and #tfh (= #tfh-ready 0))
+  (set #sfx
+    (askfile (prompt "Select the file sfx.rsc in your Their Finest Hour installation.")
+      (help "Their Finest Hour for the Amiga keeps it in its data drawer, for example TheirFinestHour/data/sfx.rsc. It is checked and copied into the Swotl drawer.")
+      (default #source))))
+(if (= (exists #dest) 0) (makedir #dest (infos) (help @makedir-help)))
+(if (= (exists #data) 0) (makedir #data (help @makedir-help)))
+; Extract into a private staging drawer; data/ changes only after success.
+(if (exists #staging) (delete #staging (all) (optional "force") (help @delete-help)))
+(if #install-data
+  ((working "Extracting and checking the game files from the Air Combat Classics disks...")
+   (if (<> 0 (run ("Stack 16384\n\"%s\" \"%s\" \"%s\"" #helper #disks #staging)))
+     ((if (exists #staging) (delete #staging (all) (optional "force") (help @delete-help)))
+      (abort "The Air Combat Classics disks could not be installed. Check that the drawer holds all three unmodified disk images or CLASSICS files. Existing game files were not changed.")))
+   (copyfiles (source #staging) (dest #data) (all) (help @copyfiles-help))
+   (delete #staging (all) (optional "force") (help @delete-help))))
+(if (and #tfh (= #tfh-ready 0))
+  ((if (<> 0 (run ("Stack 16384\n\"%s\" \"%s\" \"%s\"" #helper #sfx #staging)))
+     ((if (exists #staging) (delete #staging (all) (optional "force") (help @delete-help)))
+      (abort "This sfx.rsc is not supported. Select the file from the Amiga Their Finest Hour.")))
+   (copyfiles (source (tackon #staging "sfx.rsc")) (dest #data) (help @copyfiles-help))
+   (delete #staging (all) (optional "force") (help @delete-help))))
+(copyfiles (source (tackon #source "Swotl")) (dest #data) (help @copyfiles-help))
+(copyfiles (source (tackon #source "Swotl.slave")) (dest #dest) (help @copyfiles-help))
+(copyfiles (source (tackon #source "Swotl.inf")) (dest #dest) (newname "Swotl.info") (help @copyfiles-help))
+(if #tfh
+  (tooltype (dest (tackon #dest "Swotl")) (setdefaulttool "WHDLoad")
+    (settooltype "Slave" "Swotl.slave") (settooltype "PreLoad" "") (settooltype "Custom1" "1")
+    (setstack 16384) (noposition))
+  (tooltype (dest (tackon #dest "Swotl")) (setdefaulttool "WHDLoad")
+    (settooltype "Slave" "Swotl.slave") (settooltype "PreLoad" "") (settooltype "Custom1")
+    (setstack 16384) (noposition)))
+(copyfiles (source (tackon #source "ReadMe")) (dest #dest) (infos) (help @copyfiles-help))
+; openwbobject was added after Installer 43; retain the template version gate.
+(if (>= @installer-version (+ (* 44 65536) 10))
+  (openwbobject #dest))
+(set @default-dest #dest)
+(complete 100)
+(exit)

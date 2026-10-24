@@ -85,6 +85,9 @@ speed work: [speed-plan.md](speed-plan.md).
     crashes during startup with a Line F emulator exception. Fault PC/opcode
     and Guru number are unavailable. Reproduce and fix against evidence.
     Build flags specify 68020 and soft float; cause is not yet established.
+    Not reproduced in FS-UAE (2026-10-24): 0.90 release → Installer → packed
+    preinstalled TFH LHA, `test_whdload.py --installed --setup a1200-040`
+    (68040, TC=8000, CACR=8000, JIT off) runs 3,000 fields to TIMEOUT.
 39. Workbench start (L84): without a CLI, take the WBStartup message before
     opening dos.library and reply it last under `Forbid`; return 20 when a start
     fails (`src/main.cpp` returns 0; the gcc8 `_start` does neither).
@@ -95,15 +98,5 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Release
 
-21. Local SHA-256 table of the v2.2 originals; decide whether embedded
-    tables need Revs' block scan in the release audit.
-22. Establish which original data sources users can supply (disks,
-    GOG/Steam re-releases if they exist) and whether conversion is needed;
-    TFH mode: the installer copies the user's TFH `sfx.rsc`.
-    The code needs 2.2's SWOTL.EXE and overlays. v1.2 floppies (four 720K
-    FAT12 images, plain files) and a 1.x zip (another EXE build, 55,564 B)
-    differ from 2.2 in the EXE, every OVL except SPAZ and SFXA, and 13 data
-    files (AC/SPECS.SPC, FE menus, icons, records); 2.2 adds 301 files
-    (expansion aircraft, CM, CP, HF, MIS). Under WHDLoad (2026-10-24) the
-    v1.2 set exits at once; 2.2 EXE+OVLs over v1.2 data reach flight within
-    3,000 fields. User is looking for a 2.2 source.
+42. Manual pass of the Installer requesters (wording, layout) and one install
+    from real ACC floppy images on an A1200 (the FS-UAE test scripts every answer).

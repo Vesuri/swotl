@@ -1,7 +1,6 @@
 # Release pipeline — rules
 
-Converged sibling pipeline plus SWOTL's planned use. `[PLAN]` = SWOTL intent,
-not built. Provenance: `Sl` Slicks, `Ve` Vette, `Rv` Revs, `Po` Pokeri (newest:
+Converged sibling pipeline plus SWOTL's use (`SWOTL:` rows). Provenance: `Sl` Slicks, `Ve` Vette, `Rv` Revs, `Po` Pokeri (newest:
 0.91, commit 60cf93f), `RoF` Rescue on Fractalus, `SDK` `~/.local/share/amiga/WHDLoad`
 (`Install Template/Xxx Install`). Slave design: [whdload.md](whdload.md).
 
@@ -13,7 +12,7 @@ not built. Provenance: `Sl` Slicks, `Ve` Vette, `Rv` Revs, `Po` Pokeri (newest:
 - Rv: scans every member for any 256-byte block of the original engine → refuse. Stronger than whole-file hash; use for any exe that could embed original tables (Rv).
 - Checker also rejects extension patterns of user/original files (`.cfg`, `.dat`, saves, keys) (Po).
 - Private keys/saves read only at test runtime; never in source, generated headers, logs, package (Sl registration-support).
-- **[PLAN]** SWOTL: hash table of the v2.2 DOS install files (`ref/`) kept local-only (hashes, not bytes, may be committed as Sl/Ve do); add block-scan if any original table is compiled into the exe (open-work 21).
+- SWOTL: `release/originals.sha256` (560 hashes: DOS ACC install, `ref/`, CLASSICS volumes, local images, TFH `sfx.rsc`), written and checked by `tools/originals.py`. The checker also scans every member for any 64-byte block of `ref/` SWOTL.EXE and the OVLs, forward and reversed: none in the 0.90 exe (2026-10-24).
 
 ## Version
 
@@ -29,11 +28,16 @@ converter's `elf2hunk input.elf output.exe -s`. It verifies no symbol/debug
 records remain and every loadable record matches `Swotl.exe`, including
 relocations and allocation headers. The debug executable and ELF remain
 unchanged; perf continues to use them. `make smoke-release` boots the separate
-artifact using the same smoke fixture and emulator options. This target builds
-an executable only; packaging below remains planned. The slave
+artifact using the same smoke fixture and emulator options. The slave
 ([whdload.md](whdload.md)) loads this stripped executable as `data/Swotl`.
 
-## Make targets (Slicks shape)
+## Make targets
+
+SWOTL: `make install-data`, `make test-install-data`, `make release` (refuses a
+tree with uncommitted tracked changes; `amiga-release whdload install-data`,
+`tools/originals.py --check`, `tools/package_release.py`, `tools/check_release.py`
+→ `dist/Swotl-$(cat VERSION).lha`), `make release-check`,
+`make test-release-installer`. Sibling shape:
 
 | Target | Does | Prov |
 |---|---|---|
@@ -122,14 +126,16 @@ Sibling patterns:
 
 Common: helper writes to staging, removes own partial outputs, rejects existing different files; exe validates originals and returns 20 with a DOS error before display takeover (Ve, Sl, RoF §1).
 
-**[PLAN] SWOTL** (open-work 22)
+**SWOTL: Air Combat Classics floppies only**
 
-- Originals are a DOS **installed** directory (reference: v2.2, `ref/`), so the Pokeri pattern (source-drawer copy, no helper) is the default candidate.
-- User supplies their own copy: an existing PC/DOSBox install copied to the Amiga, original disks installed on a PC, or a digital re-release (GOG/Steam). Re-release layouts, versions and whether they match v2.2 are **unverified**.
-- Installer asks for the drawer, checks an allowlist of required files by size and (helper or exe) SHA-256 against known versions; unsupported version → clear refusal.
-- Exe re-validates at startup and fails with DOS error 20 before takeover.
-- Whether files need conversion (e.g. disk images or archives from re-releases) decides whether a helper is needed; avoid one if plain copy suffices.
-- TFH mode: the installer also copies the user's Their Finest Hour `sfx.rsc` ([sound-plan.md](sound-plan.md)).
+- Source: the three 1.44 MB PC floppies of Air Combat Classics (LucasArts 1993; SWOTL 2.2, BattleHawks 1942, Their Finest Hour). Their SWOTL.EXE and OVLs equal `ref/`. v1.2 floppies and the 1.x zip run other code (differing EXE, OVLs, 13 data files; 301 files fewer) and are refused. `ref/` is a repack: `_` for `-` in MIS names, missions in `CM/`, three patched files; the ACC tree is canonical.
+- Input: drawer with `Disk1-3.img` (FAT12; `.ima` also) or `CLASSICS.001-003`. Sizes 1,251,008 / 1,457,152 / 481,082; SHA-256 pinned in `tools/install-data/install.c` and `release/originals.sha256`.
+- Archive (INSTALIT): one PKWARE DCL implode stream per file (zlib contrib `blast`). Logical stream = CLASSICS.001[:1,204,461] + 002 + 003; the catalog (`\x05[PVM]`, 46,547 B, 808 records) occupies the rest of 001 from 1,204,461.
+- Record (55 B, first at catalog+6): `0x1c`; +1 LE32 offset in start disk; `0xf0`; +6 name (13); +19 attr; +20 compressed size (spans volume splits); +24 DOS date/time; +28 CRC-32; +32 start disk; +35 size; +39 LE16 product (1 SWOTL, 2 BH1942, 3 TFH/BoB 1940); +51 LE16 directory (1 root, 2 AC, 3 CP, 4 FE, 5 FX, 6 MIS). Start offset = in-disk offset + 1,204,461 for disk 2, + 1,457,152 more for disk 3.
+- SWOTL: 542 records; 539 installed (INSTALL.EXE, INSTALL2.BAT, READ.ME skipped), equal to the drawer the DOS ACC INSTALL.EXE writes (DOSBox, 2026-10-24).
+- Helper `SwotlInstallData` (`tools/install-data/`): volume SHA-256 first, per-file size and CRC-32, new destination only, removes its own files on failure or Ctrl-C. Installer runs it into `Swotl/InstallStaging`, then copies into `data/`; Replace overwrites only archive files (pilots, films, missions survive).
+- TFH mode: Installer asks for the user's Amiga TFH `sfx.rsc` (`TheirFinestHour/data/sfx.rsc`, 108,002 B, SHA-256 pinned); the helper checks and stages it; the game icon gets `Custom1=1` ([sound-plan.md](sound-plan.md)).
+- Tests: `tools/install-data/test_install.py` (host helper vs the DOS install; damaged/missing disks, refusal, cancel, sfx), `tools/test_release_installer.py` (Installer 43 + Amiga helper in FS-UAE: fresh, tfh, keep, replace, remove, bad-disks, bad-sfx; `INSTALL_SCRIPT` sabotage override; `--archive` installs from a release LHA, `--keep` keeps the drawer). `tools/pack_preinstalled.py` packs a kept drawer as a local-only preinstalled LHA (holds game data; never shared); `tools/test_whdload.py --installed DIR [--setup a1200-040]` runs it unchanged.
 
 ## Credits (ReadMe)
 
@@ -137,4 +143,4 @@ Common: helper writes to staging, removes own partial outputs, rejects existing 
 - WHDLoad kick31/kickfs framework: WHDLoad SDK (public domain) (Sl).
 - Reused components: dA JoRMaS display framework, Kalms C2P (public domain), puff (zlib licence text shipped beside helper) (Sl).
 - Contact: project GitHub URL; whdload.de / Aminet pointers (Sl).
-- **[PLAN]** SWOTL: credit Totally Games / Lucasfilm Games as original; list only components actually used.
+- SWOTL: Lucasfilm Games / Totally Games; WHDLoad kickemu; AmigaXDev install helpers (LGPL, `LICENSE.LGPL.txt`) and blast (zlib, `blast-license.txt`) shipped beside the helper.

@@ -5,6 +5,7 @@
     python3 tools/test_whdload.py --mode boot      # BootTest.slave: Kickstart 3.1 kickemu boots
     python3 tools/test_whdload.py --mode load      # LoadTest.slave: LoadSeg + PROGDIR
     python3 tools/test_whdload.py --mode run [--tfh] [--slave build/whdload/MemFree.slave]
+    python3 tools/test_whdload.py --mode run --installed DIR [--setup a1200-040]
 
 `run` starts the game under the release slave; WHDLoad TIMEOUT (needs the moved
 VBR of a 68020) ends it with COREDUMP and the dump is judged:
@@ -15,6 +16,9 @@ VBR of a 68020) ends it with COREDUMP and the dump is judged:
   - Custom1 (--tfh): the TFH sfx.rsc PCM payload is in Chip RAM; without it,
     no sample block is. Their copy in Chip is what the TFH path makes.
 The MemFree slave's low-water marks (Chip, Fast) are read from its $100 slot.
+--installed runs an installed Swotl drawer as it is (slave, data/Swotl, data).
+--setup a1200-040: full 68040 with its MMU and FPU, JIT off, on $FSUAE_MMU;
+the report must show TC=8000 (translation on; AmigaXDev whdload-mmu.md).
 
 Inputs are local, never shipped: Kickstart 3.1 A1200 + RTB, WHDLoad, the
 Workbench floppy, the original game files (ref/) and TFH sfx.rsc (TFH_RSC).
@@ -67,6 +71,8 @@ def main():
     p.add_argument('--exe', type=Path, default=ROOT / 'amiga/out/Swotl-release.exe',
                    help='stripped (make amiga-release): LoadSeg reads symbol hunks in small pieces')
     p.add_argument('--data', type=Path, default=ROOT / 'ref')
+    p.add_argument('--installed', type=Path, help='installed Swotl drawer, used unchanged')
+    p.add_argument('--setup', choices=('a1200', 'a1200-040'), default='a1200')
     p.add_argument('--rom', type=Path, default=KICK31)
     p.add_argument('--fast', type=int, default=8192, help='host Fast RAM in KiB')
     p.add_argument('--cpu', default='68020')
@@ -74,22 +80,31 @@ def main():
     p.add_argument('--no-preload', action='store_true')
     p.add_argument('--seconds', type=int, default=600, help='host safety ceiling')
     args = p.parse_args()
+    if args.installed:
+        assert args.mode == 'run' and not args.slave, '--installed runs its own slave'
+        args.data = args.installed / 'data'
+    mmu = args.setup == 'a1200-040'
+    if mmu:
+        args.cpu = '68040'
 
     (ROOT / 'tmp').mkdir(exist_ok=True)
     base = Path(tempfile.mkdtemp(prefix='whdload-test-', dir=ROOT / 'tmp'))
     print('Fixture:', base, flush=True)
     boot, game = base / 'boot', base / 'game'
     data = game / 'data'
+    if args.installed:
+        shutil.copytree(args.installed, game)
     for d in (boot / 's', boot / 'devs/Kickstarts', data, base / 'state'):
         d.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(WHDLOAD, game / 'WHDLoad')
-    shutil.copyfile(args.slave or ROOT / 'build/whdload' / SLAVES[args.mode], game / 'Swotl.slave')
+    if not args.installed:
+        shutil.copyfile(args.slave or ROOT / 'build/whdload' / SLAVES[args.mode], game / 'Swotl.slave')
     if args.mode != 'smoke':
         shutil.copyfile(args.rom, boot / 'devs/Kickstarts' / args.rom.name)
         shutil.copyfile(args.rom.with_name(args.rom.name + '.RTB'), boot / 'devs/Kickstarts' / (args.rom.name + '.RTB'))
-    if args.mode in ('load', 'run'):
+    if args.mode in ('load', 'run') and not args.installed:
         shutil.copyfile(args.exe, data / 'Swotl')
-    if args.mode == 'run':
+    if args.mode == 'run' and not args.installed:
         shutil.copytree(args.data, data, dirs_exist_ok=True, ignore=shutil.ignore_patterns('*.pdf'))
         shutil.copyfile(TFH_RSC, data / 'sfx.rsc')
     options = ['SPLASHDELAY=0', 'NOREQ']
@@ -108,10 +123,11 @@ def main():
         f'CD DH1:\n{command} >DH0:result\n'
         'If WARN\nEcho failed >DH0:failed\nElse\nEcho passed >DH0:passed\nEndIf\n')
 
-    fsuae = os.environ.get('FSUAE', 'fs-uae')
+    fsuae = os.environ.get('FSUAE_MMU' if mmu else 'FSUAE', 'fs-uae')
+    cpu = ['--uae_mmu_model=68040', '--uae_fpu_model=68040', '--uae_cpu_24bit_addressing=false'] if mmu else []
     with (base / 'emulator.log').open('w') as log:
         emu = subprocess.Popen([fsuae, '--amiga_model=A1200', '--cpu=' + args.cpu,
-            '--uae_cpu_model=' + args.cpu, '--jit_compiler=0',
+            '--uae_cpu_model=' + args.cpu, *cpu, '--jit_compiler=0',
             '--chip_memory=2048', '--fast_memory=' + str(args.fast),
             '--kickstart_file=' + str(KICK31),
             '--hard_drive_0=' + str(boot), '--hard_drive_0_priority=10', '--hard_drive_1=' + str(game),
@@ -157,6 +173,8 @@ def main():
     event = re.search(r'event=([0-9A-F]+)', report)
     if 'DEBUG caused' not in report or not event or int(event[1], 16) < args.ticks:
         raise SystemExit('FAIL: the run did not end by TIMEOUT\n' + report[:2000])
+    if mmu and 'TC=8000' not in report:
+        raise SystemExit('FAIL: 68040 MMU translation was not enabled (no TC=8000)\n' + report[:2000])
     memory = chip + exp
     resident = True
     for name in ('SWOTL.EXE', 'RTSVGA.OVL'):
@@ -176,7 +194,8 @@ def main():
         raise SystemExit('FAIL: Custom1 set but the TFH samples are not in Chip')
     if not args.tfh and in_chip:
         raise SystemExit('FAIL: TFH samples in Chip without Custom1')
-    print('PASS: game runs under WHDLoad, sound ' + ('TFH' if args.tfh else 'FM'))
+    print('PASS: game runs under WHDLoad, sound ' + ('TFH' if args.tfh else 'FM')
+          + (', 68040 MMU on' if mmu else ''))
 
 
 if __name__ == '__main__':

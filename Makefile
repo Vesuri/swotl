@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-all test-amiga test-amiga-replay test-amiga-restore amiga amiga-release smoke smoke-release whdload test-whdload size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-all test-amiga test-amiga-replay test-amiga-restore amiga amiga-release smoke smoke-release whdload test-whdload install-data test-install-data release release-check test-release-installer size clean
 
 PYTHON ?= python3
 # AmigaXDev's shared Python package (amigaxdev.dos.mz_info).
@@ -44,6 +44,11 @@ help:
 	@echo "  make smoke-release  boot the stripped executable under FS-UAE"
 	@echo "  make whdload        assemble the WHDLoad slaves into build/whdload/"
 	@echo "  make test-whdload   run the slaves under WHDLoad: smoke, boot, load, game FM and TFH"
+	@echo "  make install-data   build SwotlInstallData (host and Amiga) into build/install-data/"
+	@echo "  make test-install-data  helper vs the DOS ACC install: sources, refusals, cleanup"
+	@echo "  make release        package and audit dist/Swotl-\$$(cat VERSION).lha (clean tree only)"
+	@echo "  make release-check  audit the existing archive again"
+	@echo "  make test-release-installer  real Installer 43 in FS-UAE: fresh, keep, replace, TFH, refusals"
 	@echo "  make size    account for code, data, symbols and relocations in the executable"
 	@echo "  make smoke   boot it under FS-UAE + GDB and check the takeover runs"
 	@echo "  make clean   remove Amiga build output"
@@ -559,6 +564,29 @@ test-whdload: whdload amiga-release
 	. amiga/env.sh && for m in smoke boot load; do $(PYTHON) tools/test_whdload.py --mode $$m || exit 1; done
 	. amiga/env.sh && $(PYTHON) tools/test_whdload.py --mode run
 	. amiga/env.sh && $(PYTHON) tools/test_whdload.py --mode run --tfh
+
+install-data:
+	. amiga/env.sh && $(MAKE) -C tools/install-data all amiga
+
+# tools/install-data/test_install.py: ACC images, the DOS ACC install, TFH_RSC.
+test-install-data:
+	. amiga/env.sh && $(MAKE) -C tools/install-data test
+
+# Release from committed sources only; never a diagnostic build.
+RELEASE_ARCHIVE = dist/Swotl-$$(cat VERSION).lha
+release:
+	@git diff --quiet HEAD && test -z "$$(git status --porcelain --untracked-files=no)" || \
+		{ echo "release needs a clean tree: commit or stash first"; exit 1; }
+	$(MAKE) amiga-release whdload install-data
+	$(PYTHON) tools/originals.py --check
+	$(PYTHON) tools/package_release.py amiga/out/Swotl-release.exe dist
+	$(PYTHON) tools/check_release.py $(RELEASE_ARCHIVE)
+
+release-check:
+	$(PYTHON) tools/check_release.py $(RELEASE_ARCHIVE)
+
+test-release-installer: whdload amiga-release install-data
+	. amiga/env.sh && $(PYTHON) tools/test_release_installer.py
 
 size: amiga
 	$(PYTHON) tools/hunk_size.py amiga/out/Swotl.exe

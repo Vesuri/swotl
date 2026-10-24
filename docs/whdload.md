@@ -118,6 +118,7 @@ Pokeri, `RoF` Rescue on Fractalus (each project's `docs/whdload*.md` and
 | Dump tools: waiting-task inspector, planar-buffer decoder from real dump (not reference images) | Ve, Sl |
 | `FILELOG` on 68000 can outlast timeouts (LoadSeg's many small reads) | Rv |
 | Harness: isolated `tmp/whdload-test-*` fixture per run, kill only own emulator, `--no-preload` variant, 4 MiB Fast default | Ve, Sl |
+| SWOTL harness: `--installed DIR` runs an installed drawer unchanged; `--setup a1200-040` = 68040 + MMU + FPU on `$FSUAE_MMU`, requires TC=8000 in the report | — |
 | SWOTL harness: `--mode run` ends by `TIMEOUT` + `COREDUMP` (reported as "DEBUG caused" at the CIA-A event count); oracles: original SWOTL.EXE/RTSVGA.OVL blocks in guest RAM (byte-reversed), TFH PCM in Chip only with `--tfh`. The quit key needs a Lua FS-UAE to press; not tested headlessly | Rv |
 | Headless emulator mechanics: [headless-fsuae.md](headless-fsuae.md) | — |
 
