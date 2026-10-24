@@ -16,6 +16,40 @@ from translator.ir import FLAGS, FLAG_BIT
 from translator.support import equates
 
 
+class TransformMismatch(AssertionError):
+    """A comparison failure after `cases` cases (block differential protocol)."""
+    def __init__(self, cases, detail):
+        super().__init__(detail)
+        self.cases = cases
+
+
+def predecessor_cases():
+    """Report only comparison failures through the block differential protocol."""
+    # Sabotage workers reuse the process with different translator patches.
+    program.cache_clear()
+    try:
+        return run(predecessors=True), []
+    except TransformMismatch as error:
+        return error.cases, [str(error)]
+
+
+def reporting_controls():
+    from unittest.mock import patch
+    module = sys.modules[__name__]
+    with patch.object(module, 'run', return_value=7):
+        assert predecessor_cases() == (7, [])
+    with patch.object(module, 'run', side_effect=TransformMismatch(3, 'wrong return')):
+        assert predecessor_cases() == (3, ['wrong return'])
+    for error in (AssertionError('harness assertion'), RuntimeError('harness error')):
+        with patch.object(module, 'run', side_effect=error):
+            try:
+                predecessor_cases()
+            except type(error) as caught:
+                assert caught is error
+            else:
+                raise AssertionError('unrelated harness error reported as a mismatch')
+
+
 def boundaries():
     """Original bytes stay local; inputs cover sign/magnitude and guard edges."""
     ram = bytearray(B.X.RAM)
@@ -172,18 +206,22 @@ def run(entries=(), plant=None, predecessors=False, generated=False):
                     flags = {f: regs['flags'] >> FLAG_BIT[f] & 1 for f in FLAGS}
                     got, fl, fx, mem, outs, writes, info = m.run(B.SNIP+8,
                         (regs, flags, regs['flags'] & 0xf000, regs['ip'], []), random.Random(35), irq=False)
-                    assert not info['err'] and info['stop'] == 'compute_resume' and not outs and not info['irq'], info
-                    assert outcomes == [not generated and regs['cs'] + 0x1000 <= regs['ds'] <= 0xf000
-                                        and 8 <= regs['sp'] <= 0xfff0], (name, 'guard outcome', outcomes)
+                    if info['err'] or info['stop'] != 'compute_resume' or outs or info['irq']:
+                        raise TransformMismatch(count + 1, (name, mode, 'execution', info, outs))
+                    if outcomes != [not generated and regs['cs'] + 0x1000 <= regs['ds'] <= 0xf000
+                                    and 8 <= regs['sp'] <= 0xfff0]:
+                        raise TransformMismatch(count + 1, (name, mode, 'guard outcome', outcomes))
                     if expected is None:
-                        assert not writes and not history and m.gread(0, B.X.RAM) == ram, name
+                        if writes or history or m.gread(0, B.X.RAM) != ram:
+                            raise TransformMismatch(count + 1, (name, mode, 'refusal changed state'))
                         count += 1
                         continue
                     got.update(cs=end[0], ip=end[1])
                     actual = dict(registers=got, flags=fx | sum(fl[f] << FLAG_BIT[f] for f in FLAGS),
                                   writes=writes, history=history, ram=m.gread(0, B.X.RAM))
                     errors = O.compare(expected, actual, p.live_in[resume])
-                    assert not errors, (name, mode, errors)
+                    if errors:
+                        raise TransformMismatch(count + 1, (name, mode, errors))
                     count += 1
                 finally:
                     B.U.uc.uc_close(m.e.h)
@@ -197,6 +235,7 @@ if __name__ == '__main__':
     ap.add_argument('--sabotage', action='store_true')
     ap.add_argument('--predecessors', action='store_true')
     args = ap.parse_args()
+    reporting_controls()
     print('generated transform:', run(args.entries, generated=True), 'cases pass', flush=True)
     print('point transform:', run(args.entries, predecessors=args.predecessors), 'cases pass', flush=True)
     if args.sabotage:

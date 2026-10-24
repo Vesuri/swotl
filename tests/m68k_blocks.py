@@ -1030,8 +1030,10 @@ def main(argv=None, on_batch=None) -> int:
     n, failures = compute_entry_cases()
     count['compute predecessors'] += n
     bad += failures
-    from test_point_transform import run as point_transform_entries
-    count['point transform predecessors'] += point_transform_entries(predecessors=True)
+    from test_point_transform import predecessor_cases as point_transform_entries
+    n, failures = point_transform_entries()
+    count['point transform predecessors'] += n
+    bad += failures
     from test_point_projection import predecessor_cases as point_projection_entries
     n, failures = point_projection_entries()
     count['point projection predecessors'] += n
