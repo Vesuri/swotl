@@ -194,7 +194,7 @@ component gets a guarded copy; a profile choice, `tools/bp_regions.py`),
 a profile choice, `tools/outline_sites.py` from `build/gen/outline-sites.csv`),
 `seg-repeat.csv` (segment loads that compare first, R30; a profile choice,
 `tools/seg_repeat.py`), `irq-bounds.csv` (value bounds of variables that index
-the IRQ0 handler's accesses, I2) and `irq-ds.csv` (entries that return the
+the IRQ0 handler's accesses, and class extents, I2) and `irq-ds.csv` (entries that return the
 caller's DS where the I2 analysis cannot see it; host runs check, I3).
 
 ### Tests

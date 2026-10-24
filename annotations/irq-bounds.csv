@@ -4,3 +4,4 @@ class,variable,width,lo,hi,reason
 188A,0x180,16,0x0,0x26,"queued effect index, three words: +01F1"
 188A,0x1de,16,0x0,0x98,"voice effect index*4, nine words: sfx_start +054D"
 G,0x9c20,8,0x0,0x32,"timer slot (IRQ0 +0812 counts words 9C44h + 2i): main writes immediates 0..32h or restore a frame copy (SWOTL +0F612/+0FBA2, FLIGHT +16F98/+1707D, SWOTL +109E9/+11217); checked by the proof"
+188A,*,0,0x0,0x59f,"SPAZ data ends at the module end (link 18E4h); voice-indexed accesses whose index bound the analysis loses are clamped to it (extent rows); I3 checks every handler access"

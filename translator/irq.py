@@ -11,7 +11,8 @@ Segment classes: the SPAZ link paragraphs its relocated constants name (`188A`
 data, `1770` code), `G` (the word at 188A:0162, which SPAZ init stores), `S` (song
 segments, words of G's song table), `BDA` (the BIOS tick the BIOS chain runs,
 rt_bios_int08), `K` (the interrupted stack). Indexed offsets are ranges; loads of annotations/irq-bounds.csv variables
-take its bounds (I3's monitor checks every handler access against the footprint).
+take its bounds, and accesses of a class with an extent row (`*`) are clamped to it
+(I3's monitor checks every handler access against the footprint).
 Proved, else Violation: no interrupted register, flag or stack word is read but
 to save it (a push or its copy), every exit (IRET, or the chain to the BIOS
 handler with the frame in place) has every register, SP and the frame as on entry,
@@ -42,7 +43,7 @@ counts. Song segments (S) are only located at run time (I3). A sync access to a
 handler-written byte must lower to one 68k instruction that touches memory, no
 compute row may contain a sync access, and every main write of a bounded G
 variable must keep its irq-bounds.csv bound, else Violation.
-Output build/gen/irq-footprint.csv: kind (mem, port, if, hook, runtime, exit,
+Output build/gen/irq-footprint.csv: kind (mem, port, if, hook, runtime, exit, extent,
 stack, sync), class, first, last, access, where.
 """
 
@@ -80,7 +81,14 @@ class Violation(Exception):
 def bounds() -> dict[tuple[str, int, int], tuple[int, int]]:
     """(class, variable, width) -> (lo, hi): a load through the variable's displacement."""
     return {(r["class"], int(r["variable"], 16), int(r["width"])): (int(r["lo"], 16), int(r["hi"], 16))
-            for r in image.rows("irq-bounds.csv")}
+            for r in image.rows("irq-bounds.csv") if r["variable"] != "*"}
+
+
+def extents() -> dict[str, tuple[int, int]]:
+    """class -> (lo, hi): the offsets every handler access of the class lies in (variable
+    `*`); a wider access range is clamped and listed (extent rows; I3 checks)."""
+    return {r["class"]: (int(r["lo"], 16), int(r["hi"], 16))
+            for r in image.rows("irq-bounds.csv") if r["variable"] == "*"}
 
 
 # Segment words: (class, displacement) -> class of the segment they hold. A word
@@ -173,6 +181,7 @@ class Footprint:
     hooks: dict = field(default_factory=lambda: defaultdict(set))
     exits: dict = field(default_factory=lambda: defaultdict(set))
     runtime: dict = field(default_factory=lambda: defaultdict(set))
+    clamped: dict = field(default_factory=lambda: defaultdict(set))   # class -> sites (extents)
     depth: int = 0
     nodes: set = field(default_factory=set)
     errors: list = field(default_factory=list)
@@ -238,6 +247,7 @@ class Handler:
         u = prog.units[self.mod]
         self.code_para = u.cs[entry[1]]
         self.bounds = bounds()
+        self.extents = extents()
         self.fp = Footprint()
         self.chains = {(r["module"], int(r["offset"], 16)) for r in image.rows("indirect.csv")
                        if f"-+0x{BIOS_ENTRY:x} (isr)" in r["traced_targets"]}
@@ -436,6 +446,9 @@ class Handler:
         out = None
         for cls in sorted(seg[1]):
             for a, b in ((lo, min(hi, 0xFFFF)), (0, hi - 0x10000)) if hi > 0xFFFF else ((lo, hi),):
+                if cls in self.extents and not (self.extents[cls][0] <= a and b <= self.extents[cls][1]):
+                    self.fp.clamped[cls].add(site(n))
+                    a, b = max(a, self.extents[cls][0]), min(b, self.extents[cls][1])
                 if b >= a:
                     self.fp.mem[(cls, a, b, kind)].add(site(n))
             var = self.disp if self.disp is not None else lo
@@ -1431,6 +1444,9 @@ class Proof:
             out.append(f"runtime,{name},,,,{' '.join(sorted(sites))}")
         for name, sites in sorted(fp.exits.items()):
             out.append(f"exit,{name},,,,{' '.join(sorted(sites))}")
+        for cls, sites in sorted(fp.clamped.items()):
+            lo, hi = self.handler.extents[cls]
+            out.append(f"extent,{cls},0x{lo:04x},0x{hi:04x},rw,{' '.join(sorted(sites))}")
         for n, cls, lo, hi, kind, written in sorted(self.sync, key=lambda s: s[0]):
             out.append(f"sync,{cls},0x{lo:04x},0x{hi:04x},{kind},{site(n)}")
         return out
