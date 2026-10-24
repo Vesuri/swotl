@@ -3,11 +3,12 @@
 Enabled: the user-authorized (2026-10-21, native-plan U2)
 `SWOTL.EXE+B54B` transform pilot from `xform20`, retaining generated `B52D`
 and return checks. U3 keeps complete byte-write history. The user-authorized
-(2026-10-22, U4) projection long path at `B393` through `B4E1`, adapted from
-`xproj20`, is enabled (speed-plan §7, R36). The user-authorized (2026-10-22, U4)
-`B4E2` perspective divide from `xdiv20` is enabled (R37). It writes
-no guest memory and handles the explicit zero-denominator path; for nonzero
-denominators both original word quotients fit (DX=0, then remainder<divisor).
+(2026-10-22, U4; whole routine 2026-10-24, U10) projection `B017` with its
+divide `B4E2` is one poll-free row with four returns (speed-plan §7, F3a),
+from `xproj20`/`xdiv20` and the original's 16-bit path; it folds the earlier
+`B393` (R36) and `B4E2` (R37) rows. The divide handles the explicit
+zero-denominator path; for nonzero denominators both original word quotients
+fit (DX=0, then remainder<divisor).
 The user-authorized (2026-10-22, U6) D5DA normalization loop from
 `xpnorm20` resumes at D5F8 under U5 (R38); it writes no guest memory.
 The scenery clear at 10A2F uses a continuation endpoint (R40); the sprite
@@ -107,7 +108,6 @@ replace, arithmetic boundaries and guard-edge cases from the rendering map.
 Tests: `make t-compute-contract t-sab-compute-contract`,
 `t-point-transform t-sab-point-transform`,
 `t-point-projection t-sab-point-projection`,
-`t-perspective-divide t-sab-perspective-divide`,
 `t-point-normalise t-sab-point-normalise`, and
 `t-compute-code-writes t-sab-compute-code-writes`; the predecessor cases
 also run in `tests/m68k_blocks.py`. Generated synthetic callback bodies exercise

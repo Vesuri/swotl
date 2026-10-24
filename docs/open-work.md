@@ -37,7 +37,8 @@ speed work: [speed-plan.md](speed-plan.md).
     the bench's +0.001462% as noise. No non-deferred native candidate remains.
     U7 paused speed work; U9 (2026-10-23) resumes it under native-plan F.
     Flyby profile (speed-plan §1 F0): EMS paging takes 25% of CPU with close
-    bombers (F1 kept: c12 meter −27.72%; F2 kept: REP MOVSW by longs); ranked plan F0–F10,
+    bombers (F1 kept: c12 meter −27.72%; F2 kept: REP MOVSW by longs; F3a kept: `B017` whole,
+    meter −1.4854%); ranked plan F0–F10,
     approved under U9: native-plan F.
     User deferred expiry/advance (R47): address-reuse designs have no
     positive price (speed-plan §10).

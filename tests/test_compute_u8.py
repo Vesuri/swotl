@@ -118,7 +118,7 @@ def candidate_admission(plant=False):
     # production Program intact and disable the enabled nested hooks in this copy.
     enabled = base()
     original = copy(enabled)
-    hooks = {at(0xb393), at(0xb4e2), at(0xd5da)} & enabled.hle.keys()
+    hooks = {at(0xb017), at(0xb393), at(0xb4e2), at(0xd5da)} & enabled.hle.keys()
     original.hle = {n: row for n, row in enabled.hle.items() if n not in hooks}
     # Restore this row's original poll too: this inventory concerns the
     # original bodies, not the chosen-poll version used by the native hook.
@@ -375,10 +375,10 @@ def main():
     with patch.object(compute, 'successors', lambda p, n: p.succ[n]):
         caught('fault edge as flow', emission)
     with patch.object(compute, 'validate',
-                      lambda *a: real_validate(*a)._replace(returns=(real_validate(*a).returns[-1],))):
+                      lambda *a, **k: real_validate(*a, **k)._replace(returns=(real_validate(*a, **k).returns[-1],))):
         caught('returns dropped (poll-free)', lambda: handoff(names=('dce9',)))
     with patch.object(compute, 'validate_polled',
-                      lambda *a: real_polled(*a)._replace(returns=(real_polled(*a).returns[-1],))):
+                      lambda *a, **k: real_polled(*a, **k)._replace(returns=(real_polled(*a, **k).returns[-1],))):
         caught('returns dropped (U5)', lambda: handoff(names=('db9d',)))
     c = program('db9d')
     c.loop_heads.discard(at(0xdbad))

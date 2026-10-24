@@ -1036,10 +1036,6 @@ def main(argv=None, on_batch=None) -> int:
     n, failures = point_projection_entries()
     count['point projection predecessors'] += n
     bad += failures
-    from test_perspective_divide import predecessor_cases as perspective_divide_entries
-    n, failures = perspective_divide_entries()
-    count['perspective divide predecessors'] += n
-    bad += failures
     from test_point_normalise import predecessor_cases as point_normalise_entries
     n, failures = point_normalise_entries()
     count['point normalise predecessors'] += n

@@ -24,6 +24,7 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   R42 enables the guarded sprite packet loop with every original poll retained.
   R44 enables the guarded line pixel loops with every original poll retained.
   R48 enables guarded edge ordering and merging with exact original polls.
+  F3a replaces `B017` with its divide `B4E2` whole (folding R36 and R37).
   Paused under U7, resumed under U9 (2026-10-23): [native-plan.md](native-plan.md#f-flyby-plan).
 - **Frames fixture** (Z1, `9afe0b8`, 2026-10-23): medians 340, 340 and
   350 ms; run-median span 340–350 ms. Frames 4–11 intervals (fields):
@@ -61,6 +62,14 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   (two runs per arm): `03C2D` cycles per `03C0F` cycle (same words) 0.866,
   0.842 → 0.625, 0.583 (−29%); `03C2D` 0.88–1.17% → 0.77% of the clip.
   Evidence: `tmp/speed/f2/`.
+- **F3a measurements** (2026-10-24, `$FSUAE_ARM`): `B017` whole with `B4E2`.
+  Price (m4 meter, F2 arm): `B017`+`B4E2` generated 4.31% of the meter
+  (9,539 calls: 441 16-bit path, 9,098 32-bit; flyby mostly 16-bit). Meter
+  161,335,708 → 158,939,203 (−1.4854%; generated −6,145,705, runtime
+  +3,749,200). Bench 68,395 (68,365–68,434) → 68,332 (68,280–68,359), RAM hash
+  `951adbe5…6c63` in all six runs. Flyby, exact cycles per `B017` call (both
+  arms' captures): inclusive 1,083 → 837 (−22.7%); `D5A6` inclusive 1,522 →
+  1,249. Runtime +938 bytes. Evidence: `tmp/speed/f3/`.
 - **Flyby profile** (F0, frozen R48 build `8b46b6a5…`, 2026-10-23): attract
   demo, fields 1144–1648 after drawn frame 12, five consecutive 100-field
   captures; 142,101,991 cycles, 18 drawn frames (555 ms/frame). Drawn frames
@@ -458,6 +467,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | Z1 | post-N4 frames checkpoint: 340, 340, 350 ms; target unmet; user paused speed work (U7) | docs | measurement only |
 | F1 | EMS map: long-word page copy, exact identical-remap skip | runtime, EMS oracle | c12 meter −27.72% (m4 unchanged) |
 | F2 | REP MOVSW by longs; element order kept for CX < 4 and DI 1–3 bytes above SI | `lower.py` | −0.0067% (flyby `rep movsw` −29%) |
+| F3a | projection `B017` whole with divide `B4E2`, four returns; folds R36/R37 rows; merged long stores | runtime, compute tests | −1.4854% (bench −0.0921%) |
 
 No priced translator candidate remains. Unchanged outside authorized U5 rows (§2):
 poll points (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers

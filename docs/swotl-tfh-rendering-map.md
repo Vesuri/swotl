@@ -59,8 +59,8 @@ costs, adaptation inventory and eligibility sensitivity: [B3](#b3-candidate-pric
 |---|---|---:|---:|---:|---|---|---|
 | `B52D` | transform wrapper | 1.02% | 1,483 | 3.99 | generated wrapper retained | Admitted | Shared with `B54B`; do not add |
 | `B54B` | point transform | 6.17% | 1,483 | 24.06 | `xform20` | Enabled (N1) | 11.48–12.04 priced; measured per-call ratio below |
-| `B4E2` | perspective divide | 1.82% | 2,072 | 7.09 | `xdiv20` | Enabled (R37) | Measured per-call cost below; no frame-rate claim |
-| `B017` | projection | 2.99% | 1,036 | 11.65 | `xproj20`, long path only | B393 long path enabled (R36) | Measured per-call cost below; no frame-rate claim |
+| `B4E2` | perspective divide | 1.82% | 2,072 | 7.09 | `xdiv20` | Enabled inside `B017` (F3a) | Measured with `B017` below |
+| `B017` | projection | 2.99% | 1,036 | 11.65 | `xproj20`; 16-bit path from the original | Whole routine with `B4E2` enabled (F3a) | Measured per-call cost below; no frame-rate claim |
 | `D5A6` | normalise/project | 2.07% | 836 | 8.07 | `xpnorm20` | D5DA loop enabled (R38) | Measured per-call cost below; no frame-rate claim |
 | `B8A1` | face-facing test | 0% | 0 | 0.00 | None | Admitted; no captured calls | 0 in A3; native cost unpriced |
 | `BB70` | polygon bounds/classify | 1.33% | 177 | 5.20 | None | Admitted (U5) | Unpriced |
@@ -349,8 +349,8 @@ This is not authorization to implement or weaken admission.
 |---|---|---:|---:|
 | `B52D` | Admitted; same body saving as `B54B`, wrapper unchanged | 11.48–12.04 shared | 11.48–12.04 shared |
 | `B54B` | Admitted; priced adapter above | 11.48–12.04 | 11.48–12.04 |
-| `B4E2` | Enabled (R37); measured below | Unpriced ms/frame | Unpriced ms/frame |
-| `B017` | B393 long path enabled (R36); prefix remains generated; measured below | Unpriced ms/frame | Unpriced ms/frame |
+| `B4E2` | Enabled inside `B017` (F3a); measured below | Unpriced ms/frame | Unpriced ms/frame |
+| `B017` | Whole routine with `B4E2` enabled (F3a); measured below | Unpriced ms/frame | Unpriced ms/frame |
 | `D5A6` | D5DA loop enabled (R38) | Unpriced ms/frame | Unpriced ms/frame |
 | `B8A1` | Admitted; no improved source, no A3 calls | 0 in A3; native cost unpriced | 0 in A3; native cost unpriced |
 | `BB70` | No improved source; admitted (U5) | Unpriced | Unpriced |
@@ -373,9 +373,9 @@ Authorized `B393..B4E1` long path only, from `xproj20`; the B017 prefix,
 divides and short/special paths remain generated. Same-session target cost
 809.612 → 596.125 cycles/call (−26.3690%); m4 meter −0.2838%.
 No measured ms/frame saving is asserted. Full gate coverage green; speed-plan R36.
-With B393 enabled, whole-B017 and D5A6 admission reaches a nested hook and
-rejects. The C4 inventory describes the original unhooked bodies. R38 keeps
-the projection call outside the normalization replacement.
+Superseded by F3a (whole `B017`, below). The C4 inventory describes the
+original unhooked bodies. R38 keeps the projection call outside the
+normalization replacement.
 
 ### N1 measured calibration
 
@@ -461,6 +461,13 @@ No measured ms/frame saving claim. Evidence: `tmp/native/N2-divide/`.
 - Slave: `divu.l` + `mulu.l`. Keep quotient overflow and fault behaviour.
 
 ### Projection `B017` ↔ `2F160` (32-bit path `2F28A`)
+
+F3a (U4, U10, 2026-10-24): `B017` with `B4E2` as one poll-free row, all paths,
+four returns; the earlier `B393` (R36) and `B4E2` (R37) rows are folded in.
+Near-call return addresses, every global store and all register results
+(BP from the divide only where it reaches a return) are exact. m4 meter
+−1.4854%; flyby inclusive 1,083 → 837 cycles/call (−22.7%; native 745, hook,
+dispatch and retained return 92). Evidence: `tmp/speed/f3/`.
 
 - Two divides, rotate and combine, viewport offsets, reject out of range; several
   returns (`B15F`, `B163`, …). Scale `B4` (180) vs TFH `78` (120); SWOTL's short path

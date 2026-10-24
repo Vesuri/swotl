@@ -43,6 +43,7 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 | U6 | Approved 2026-10-22: D5A6 adapting xpnorm20; normalization loop D5DA–D5F6 → D5F8 with explicit non-return endpoint extension and U5 polls. BB70, 109D6, F290, 4DAE, BD68, D69C, FDE0 and BFD1 authorized 2026-10-22 by the remaining-candidates goal; admission, pricing and S1–S9 remain required | N4 |
 | U7 | User paused speed work 2026-10-23; resumed under U9 the same day | — |
 | U8 | Approved 2026-10-21: REP away from kept polls, divide-fault decline, multiple returns; range/unresolved flow by annotations ([extensions](native-compute.md#contract-extensions-u8), implemented by C4); routines still need U4/U6 | — |
+| U10 | Approved 2026-10-24: "Replace B52D too, go ahead with F3": F3 replaces whole geometry routines, `B52D` included (widens U2) | F3 |
 | U9 | Approved 2026-10-23: "I approve resuming the speed work and the things required to fix those top 10 bottlenecks": [F](#f-flyby-plan) F0–F10 with each step's listed needs, including F9's §2.9 exception; S1–S9 and §3 acceptance still apply | F |
 
 ## Candidate evidence
@@ -144,7 +145,7 @@ lost their gain to guards, hooks, exits and polls (R41–R47).
 | F0 | `amiga/perf_flyby.gdb`, `tools/profile_tree.py`, `tools/ab_runs.py`; re-profile after each kept step | instrument | — | — | U9 |
 | F1 | EMS map copy (`ems.c`): long-word copy, exact identical-remap skip. Done: c12 meter −27.72% (speed-plan §1); a write-back skip needs a cheap exact unmodified test | runtime | 1.8–10.3% | 1.4–8% | — |
 | F2 | `RTSVGA+3B9A` frame compare and changed-span copy. Done as a lowering: its cost is its REP instructions; REP MOVSW by longs, flyby `rep movsw` −29% (speed-plan §1). Left: `repne cmpsw` 1.0–1.4% and `repe cmpsw` 1.4–1.5% of the clip, already word/long loops; a native merging search and copy has no price yet | translator | 4.11% | 0.3% kept | — |
-| F3 | Geometry as whole routines: `B52D`+`B54B`; `D5A6`→`B017` all paths→`B4E2` | guest | 4.57% generated | 2.3–3.0% | scope (U2 kept `B52D` generated) |
+| F3 | Geometry as whole routines: `B52D`+`B54B`; `D5A6`→`B017` all paths→`B4E2`. `B017` whole with `B4E2` done (folds the `B393` and `B4E2` rows): meter −1.4854%, flyby cycles/call −22.7% (speed-plan §1). `D5A6` stays a separate row: `B017` is also called directly (~15% of calls) and nested hooks reject | guest | 4.57% generated | 2.3–3.0% | U10 |
 | F4 | FM synthesis inner loop in asm, bit-exact to the C | platform | 10.97% | 3.3–5.5% | user only if output changes |
 | F5 | `BFD1` rasterizer, one scope (annotate unresolved callee flow) | guest | 7.58% | 3.0–4.2% | scope; deferred R46/R47 scopes |
 | F6 | Terrain `FDE0`+`F290`+`EA74`, scope ends before the PLINK call | guest | 7.09% | 2.5–3.5% | lift deferrals; `EA74` authorization |
