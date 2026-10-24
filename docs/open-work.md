@@ -82,8 +82,6 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Amiga platform
 
-18. Framework copy declares `getVBR`, `isLongFrame`, `isBlitterBusy`,
-    `blitterWait` without bodies; supply C++ bodies before the first blit.
 28. `make test-amiga AMIGA_MILESTONE=m2-choose-side` (plain fixture) ends
     `SWOTL_MILESTONE_WRONG_HANDOFF`, already at 1020874; m2 passes in
     `test-amiga-replay`.
