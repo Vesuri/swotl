@@ -91,6 +91,13 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   `188A:00C8` (handler slot arrays) → `irq-sync.csv`, sync 206. Songs 0–37 (21 seen),
   none in the EMS frame; FRONTEND `+0EBE5` reuses a stopped song's buffer (writes after
   its last read). Host run time +28% (m3 12.0 → 15.4 s).
+- I4 (2026-10-24, evidence `tmp/irq/I4/`). IRQ0 with a guest handler runs through
+  `rt_irq_async` (sync mode, from `rt_irq`): private stack `B000:8000` down, sentinel
+  CS:IP `B000:8000`, 68k registers, state block and `rt_r` restored; other vectors keep
+  `deliver`. References unchanged; host runs match with the reference's frames in the
+  masked dead stack; the private stack (`host_run.py` `IRQ_STACK`, 200h below
+  `B8000h`) is no machine memory (the reference reads FFh there). Meter m4 +239,209
+  model cycles (+0.1553%), runtime only (saves around each tick); generated +0.
 - Guest memory backs 1 MiB + HMA (`RT_GUEST_BYTES`); host runs compare RAM from the
   environment MCB to A0000h with dead stack masked (open-work 24).
 

@@ -2,11 +2,13 @@
 
 Checks every guest memory access of a host run against I2's footprint
 (build/gen/irq-footprint.csv):
-- inside a delivered IRQ0 handler (deliver_guest from rt_irq to rt_irq_back),
-  every access, generated or runtime, lies in the footprint for its kind: the
+- inside a delivered IRQ0 handler (deliver_guest from rt_irq_async to
+  rt_irq_async_back), which starts on the private stack (runtime.h
+  RT_IRQ_SS:RT_IRQ_SP below its frame), every access, generated or runtime,
+  lies in the footprint for its kind: the
   fixed classes (paragraphs at run time: SPAZ's link paragraphs + the load
   segment, G = the word at 188A:0162, BDA), a song segment of G's table (S,
-  reads), or the interrupted stack from the frame down by the proved depth (K);
+  reads), or the handler's stack from the frame down by the proved depth (K);
 - in main code, an access that meets the footprint (a read of a handler-written
   byte, a write of a handler-accessed byte) comes from a sync instruction whose
   row covers the address, runs with guest IF clear, or from a runtime service
@@ -38,6 +40,7 @@ LIMIT = 20
 # Runtime code that runs as an interrupt handler, not main code: the BIOS tick
 # (IRQ0 while IVT 08h is the BIOS's, and the end of SPAZ's chain)
 INTERRUPT_SIDE = {"bios_tick"}
+PRIVATE_STACK = (0xB000, 0x8000 - 6)   # runtime.h RT_IRQ_SS:RT_IRQ_SP, frame pushed
 
 
 class Monitor:
@@ -67,7 +70,7 @@ class Monitor:
         named = sorted((a, n) for n, a in host.syms.items())
         self.sym_at = [a for a, _ in named]
         self.sym_name = [n for _, n in named]
-        self.back = host.syms["rt_irq_back"]
+        self.back = host.syms["rt_irq_async_back"]
         self.loadseg = None
         self.g = None
         self.mask = None
@@ -142,12 +145,15 @@ class Monitor:
 
     # -- events from host_run -------------------------------------------------
     def deliver(self):
-        """deliver_guest reached: an IRQ0 delivery when it returns to rt_irq_back."""
+        """deliver_guest reached: an IRQ0 delivery when it returns to rt_irq_async_back."""
         if self.h.u32(self.h.r("a7")) != self.back:
             return
         if self.dirty:
             self.layout()
         g = self.h.guest_regs(8)
+        if (g["ss"], g["sp"]) != PRIVATE_STACK:
+            self.fail(f"handler entered on {g['ss']:04X}:{g['sp']:04X}, not the private stack "
+                      f"(tick {self.tick})")
         top = g["ss"] * 16 + g["sp"]
         self.k = (top - self.depth, top + 5)
         cs, ip = (int.from_bytes(self.h.mem(self.h.syms[n], 2), "big")

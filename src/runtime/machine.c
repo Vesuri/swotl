@@ -369,10 +369,11 @@ static void irq_settle(void)
     }
 }
 
-/* Posted interrupts in order until one runs a guest handler (returned as
- * rt_int_c does, the flags settled with its IF = 0: the handler's IRET
- * re-arms G_IRQ when more are posted, and the glue polls again) or none is
- * left. */
+/* Posted interrupts in order until one runs a guest handler or none is
+ * left. IRQ0 with a guest handler returns 1 (rt_entry.s rt_irq_async runs it
+ * on the private stack, the interrupted state restored after it); another
+ * returns as rt_int_c does, the flags settled with its IF = 0: the handler's
+ * IRET re-arms G_IRQ when more are posted, and the glue polls again. */
 uint32_t rt_irq_c(uint32_t d6, uint32_t ip)
 {
     uint16_t cs = (uint16_t)(d6 >> 16);
@@ -388,6 +389,10 @@ uint32_t rt_irq_c(uint32_t d6, uint32_t ip)
             bench_post();
         }
         uint8_t vector = irq & 0x7f;
+        if (vector == 8 && guest_vector(vector)) {
+            irq_settle();
+            return 1;               /* rt_irq_async (I4) */
+        }
         if (guest_vector(vector)) {
             uint32_t frame = deliver(vector, cs, (uint16_t)ip);
             irq_settle();
@@ -414,6 +419,23 @@ uint32_t rt_irq_c(uint32_t d6, uint32_t ip)
     }
     irq_settle();
     return 0;
+}
+
+/* IRQ0 entry (rt_irq_async, I4): G_SS:rt_r.sp is the private stack; the
+ * frame with the sentinel CS:IP and the interrupted flags, IF and TF clear
+ * (G_IRQ with them), the handler at rt_deliver_*. */
+uint8_t rt_irq_saved[RT_STATE_BYTES + sizeof(struct rt_regs)];
+
+void rt_irq0_enter(void)
+{
+    deliver(8, RT_IRQ_SS, RT_IRQ_SP);
+    G_IRQ = 0;
+}
+
+/* After the restore: re-arm from what is posted (runtime.h). */
+void rt_irq0_leave(void)
+{
+    *(volatile uint8_t *)&G_IRQ = G_IF && rt_irq_pending;
 }
 
 /* jmp far to the BIOS INT 08h entry: the tick, then the handler's IRET from

@@ -12,8 +12,8 @@ Checked against the DOSBox-X reference run of that milestone
   service call or hardware interrupt that the guest did not write afterwards (DOSBox-X's own code
   and the interrupt frame's FLAGS word leave other values there, open-work 24),
   and the FLAGS images of annotations/flags.csv PUSHFs until rewritten;
-- every machine byte outside COMPARE that generated code read holds the
-  reference value.
+- every machine byte outside COMPARE (and the IRQ0 handler's private stack)
+  that generated code read holds the reference value.
 With --amiga DIR, the same checks run on the A1200 model's capture
 (amiga/milestone.gdb.in: regs.txt, state.bin, ram.bin, dac.bin), masked by
 this host run's dead-stack set, and the shown frame (plane0-7.bin, bytes per
@@ -96,6 +96,9 @@ COMPARE = [(0x07C90, 0xA0000)]
 # Chained mode 13h: guest A0000h+a is DOSBox-X vram[((a & ~3) << 2) | (a & 3)]
 # (tools/snap_png.py); the whole 64 KiB window is compared with the DAC.
 FRAME = (0xA0000, 0xB0000)
+# The IRQ0 handler's private stack (runtime.h RT_IRQ_SS:RT_IRQ_SP down, I4): runtime
+# state, no machine bytes; its depth is the footprint's (tests/irq_monitor.py checks).
+IRQ_STACK = (0xB8000 - 0x200, 0xB8000)
 REGS = ("ax", "cx", "dx", "bx", "sp", "bp", "si", "di")
 DEAD_STACK = 0x60
 TABLE = REPO / "reference/milestones.csv"  # --table: another table in that format
@@ -220,7 +223,9 @@ SABOTAGE = {
     "dac": "one DAC gun off at each DAC change",
     "vram": "graphics driver stores to video memory not marked (rt_vram_mark returns at once)",
     "far": "every dispatch row near-only (rt_dispatch_far must stop, R14e)",
-    "sp": "rt_irq delivers with the guest SP from before the frame (its SP reload dropped)",
+    "irq-stack": "rt_irq_async runs the IRQ0 handler on the interrupted stack (private SS:SP not set, I4)",
+    "irq-state": "rt_irq_async restores no state block after the handler (I4)",
+    "irq-sentinel": "rt_irq_async expects another sentinel CS:IP than its frame holds (I4)",
     "keyon": "rt_out8 counts no AdLib key-on edge (its addq dropped)",
     "sfx_start": "rt_hle_sfx_start records no effect id (its move.b dropped)",
     "irq-main": "FLIGHT +0123B reads 9BCA instead of 813C (undeclared main read, I3)",
@@ -228,7 +233,8 @@ SABOTAGE = {
 }
 # Plants a milestone other than --milestone exercises (the guest's first
 # hardware interrupt handler runs after m1b-logo).
-SABOTAGE_AT = {"missing-file": "c83-program-disk-prompt", "sp": "m2-choose-side", "keyon": "m2-choose-side", "sfx_start": "c6-flight-keys",
+SABOTAGE_AT = {"missing-file": "c83-program-disk-prompt", "keyon": "m2-choose-side", "sfx_start": "c6-flight-keys",
+               "irq-stack": "m2-choose-side", "irq-state": "m2-choose-side", "irq-sentinel": "m2-choose-side",
                "irq-main": "m3-demo-flight", "irq-handler": "m2-choose-side",
                "mouse-motion": "c9-mouse-menu",
                "mouse-buttons": "c9-mouse-menu"}
@@ -328,11 +334,20 @@ class Host:
         self.music_masked: set[int] = set()
         if sabotage == "vram":
             e.write(self.syms["rt_vram_mark"], b"\x4e\x75")  # rts
-        if sabotage == "sp":    # eori.w #$7fff,d4 after rt_irq_c -> nop; nop
-            a = self.syms["rt_irq"]
-            code = e.read(a, self.syms["rt_irq_back"] - a)
-            k = code.index(bytes.fromhex("0a447fff"))
-            e.write(a + k - 6, bytes.fromhex("4e71") * 5)     # move.w rt_r+8,d4 too
+        if sabotage in ("irq-stack", "irq-state", "irq-sentinel"):
+            a = self.syms["rt_irq_async"]
+            code = e.read(a, self.syms["rt_irq_async_back"] + 0x40 - a)
+            if sabotage == "irq-stack":     # move.w #$b000,G_SS(a6); move.w #$8000,rt_r+8 -> nops
+                k = code.index(bytes.fromhex("3d7cb0000003"))
+                e.write(a + k, bytes.fromhex("4e71") * 3)
+                k = code.index(bytes.fromhex("33fc8000"))
+                e.write(a + k, bytes.fromhex("4e71") * 4)
+            elif sabotage == "irq-state":   # move.l (a0)+,d16(a6) x4 after the handler -> nops
+                k = code.index(bytes.fromhex("2d580001"))
+                e.write(a + k, bytes.fromhex("4e71") * 8)
+            else:                           # move.l #$b0008000,d7 -> #$b0008002
+                k = code.index(bytes.fromhex("2e3cb0008000"))
+                e.write(a + k + 2, bytes.fromhex("b0008002"))
         if sabotage == "keyon":  # addq.b #1,(a0,d7.w) -> nop; nop
             a = self.syms["rt_out8"]
             code = e.read(a, 0x60)
@@ -482,7 +497,7 @@ class Host:
             self.irq.returned()
 
         e.hook_range(U.HOOK_CODE, irq_deliver, self.syms["deliver_guest"], self.syms["deliver_guest"])
-        e.hook_range(U.HOOK_CODE, irq_back, self.syms["rt_irq_back"], self.syms["rt_irq_back"])
+        e.hook_range(U.HOOK_CODE, irq_back, self.syms["rt_irq_async_back"], self.syms["rt_irq_async_back"])
 
         # memory watch from the guest entry on (rt_start's own writes are not watched)
         self.in_service = False
@@ -991,7 +1006,7 @@ def milestone_script(name: str) -> dict:
 def machine_ranges() -> list[tuple[int, int]]:
     """Guest memory outside COMPARE."""
     out, at = [], 0
-    for lo, hi in sorted(COMPARE + [FRAME]):
+    for lo, hi in sorted(COMPARE + [FRAME, IRQ_STACK]):
         out.append((at, lo))
         at = hi
     return [(lo, hi) for lo, hi in out + [(at, GUEST_BYTES)] if lo < hi]

@@ -292,8 +292,11 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   `G_IRQ` only, and `sti`, `__set_flags` (POPF, IRET) and
   `rt_set_flags_word` re-arm it from `rt_irq_pending` when they set IF
   (checked in the 68020 differential and `host_run.py rearm_problems`;
-  sabotage plants). With guest IF set posted interrupts run in order: a guest handler (`annotations/entries.csv`) on a pushed
-  frame, else the BIOS one (INT 08h ticks; INT 09h takes the next
+  sabotage plants). With guest IF set posted interrupts run in order: IRQ0's guest
+  handler (`annotations/entries.csv`) through `rt_irq_async` on the private guest
+  stack `B000:8000` down (frame with the sentinel CS:IP `B000:8000` its IRET must pop;
+  68k registers, state block and `rt_r` restored after it, irq-plan I4), another
+  guest handler on a pushed frame, else the BIOS one (INT 08h ticks; INT 09h takes the next
   `rt_key_ring` event, a set 1 scan code with break bit and E0 flag, as
   DOSBox-X's IRQ1 handler does: its scan-code table, shift and lock flags,
   words like `48E0`/`xxF0` in the buffer, which DOS AH=08h converts as its

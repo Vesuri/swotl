@@ -12,6 +12,8 @@ G_DS	equ	1
 	xdef	rt_int
 	xdef	rt_irq
 	xdef	rt_irq_back
+	xdef	rt_irq_async
+	xdef	rt_irq_async_back
 	xdef	rt_exit
 	xdef	rt_exit_guest
 	xdef	rt_bios_int08
@@ -65,6 +67,9 @@ G_DS	equ	1
 	xref	rt_music_skip
 	xref	rt_sfx_id
 	xref	rt_sfx_starts
+	xref	rt_irq0_enter
+	xref	rt_irq0_leave
+	xref	rt_irq_saved
 
 	ifd SWOTL_REPLAY
 	xref rt_replay_enter,rt_replay_return
@@ -154,8 +159,9 @@ rt_exit_guest:
 	rts
 
 ; Poll point with G_IRQ set (D8): d6 = CS << 16, d7 = IP of the loop head.
-; Posted interrupts run in order: a guest handler on the frame C pushed, then
-; the next; BIOS handlers in C.
+; Posted interrupts run in order: IRQ0's guest handler through rt_irq_async,
+; another guest handler on the frame C pushed, then the next; BIOS handlers
+; in C.
 ; rt_irq_c changes no guest register but SP (the frame it pushes) and no
 ; segment, so only C's d0/d1/a1 are kept around it and SP reloaded (rt_r
 ; stays current for a stop's register dump).
@@ -170,9 +176,13 @@ rt_irq:
 	movem.l	(a7)+,d0-d1/a1
 	cmpa.w	#0,a0
 	beq.s	irq_done
-	move.w	rt_r+8,d4		; SP below the frame, mirrored
-	eori.w	#$7fff,d4
 	movem.l	d6-d7,-(a7)
+	cmpa.w	#1,a0
+	bne.s	.guest
+	bsr	rt_irq_async
+	bra.s	rt_irq_back
+.guest:	move.w	rt_r+8,d4		; SP below the frame, mirrored
+	eori.w	#$7fff,d4
 	move.l	a0,d7
 	bsr	deliver_guest		; the guest handler, IRET checked
 rt_irq_back:				; back at the poll point (host run: next interrupt)
@@ -180,6 +190,48 @@ rt_irq_back:				; back at the poll point (host run: next interrupt)
 	tst.b	G_IRQ(a6)
 	bne.s	rt_irq			; more posted at this poll point
 irq_done:	rts
+
+; IRQ0 (D8, docs/irq-plan.md I4): the guest handler of IVT 08h on the private
+; guest stack IRQ_SS:IRQ_SP (runtime.h RT_IRQ_SS/RT_IRQ_SP) below a frame whose
+; CS:IP is the sentinel its IRET (or the BIOS chain's) must pop; the 68k
+; registers, the state block and rt_r are saved around it and restored, so
+; the interrupted stack is not touched. Sync mode: from rt_irq at a poll point
+; (guest registers live, flags in the state block).
+IRQ_SS	equ	$b000
+IRQ_SP	equ	$8000
+rt_irq_async:
+	movem.l	d0-d7/a0-a5,-(a7)
+	bsr	save_regs
+	lea	rt_irq_saved,a0		; state block, then rt_r
+	move.l	1(a6),(a0)+
+	move.l	5(a6),(a0)+
+	move.l	9(a6),(a0)+
+	move.l	13(a6),(a0)+
+	lea	rt_r,a1
+	move.l	(a1)+,(a0)+
+	move.l	(a1)+,(a0)+
+	move.l	(a1)+,(a0)+
+	move.l	(a1)+,(a0)+
+	move.w	#IRQ_SS,G_SS(a6)	; the private stack
+	move.w	#IRQ_SP,rt_r+8
+	jsr	rt_irq0_enter		; frame, IF = TF = 0, the handler at rt_deliver_*
+	bsr	load_regs
+	move.l	#IRQ_SS<<16|IRQ_SP,d7	; the sentinel
+	bsr	deliver_guest		; the guest handler, IRET checked
+rt_irq_async_back:			; (host run: the handler returned)
+	lea	rt_irq_saved,a0
+	move.l	(a0)+,1(a6)
+	move.l	(a0)+,5(a6)
+	move.l	(a0)+,9(a6)
+	move.l	(a0)+,13(a6)
+	lea	rt_r,a1
+	move.l	(a0)+,(a1)+
+	move.l	(a0)+,(a1)+
+	move.l	(a0)+,(a1)+
+	move.l	(a0)+,(a1)+
+	jsr	rt_irq0_leave		; G_IRQ re-armed from what is posted
+	movem.l	(a7)+,d0-d7/a0-a5
+	rts
 
 ; The BIOS INT 08h handler, reached by a guest handler chaining to the vector
 ; it replaced (jmp far): the tick, then IRET; d7.l = popped CS:IP for the

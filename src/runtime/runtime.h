@@ -159,6 +159,14 @@ extern volatile uint8_t rt_irq_tail;
 extern volatile uint8_t rt_irq_pending;
 #define RT_RAISE_IRQ() (rt_irq_pending = 1, *(volatile uint8_t *)&G_IRQ = 1)
 void rt_bios_int08(void);
+/* IRQ0 entry (rt_entry.s rt_irq_async, docs/irq-plan.md I4): the guest handler
+ * of IVT 08h runs on a private guest stack, below a frame whose CS:IP is this
+ * sentinel (B000:8000 down: backed, outside the compared RAM, unused by the
+ * reference in mode 13h); the interrupted registers, state block and rt_r are
+ * restored after it. rt_entry.s IRQ_SS/IRQ_SP. */
+#define RT_IRQ_SS 0xb000
+#define RT_IRQ_SP 0x8000
+extern uint8_t rt_irq_saved[RT_STATE_BYTES + sizeof(struct rt_regs)];
 
 /* Frame bench (docs/speed-plan.md M2): set by the platform at startup, never
  * in release or fixture runs. PIT ticks then follow guest progress instead
