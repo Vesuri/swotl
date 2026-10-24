@@ -58,14 +58,16 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
 - **RC1** L18 exception: SPAZ's IRQ0 handler runs in Amiga interrupt context, admitted by
   I2's proof and I3's monitor. Other guest handlers (faults) stay in the main thread;
   unknown vectors still stop.
-- **RC2** Loop-head poll points go; sync points replace them (I8). Delivery timing changes
-  (production asynchronous, tests at sync points); the PIT rate does not. Only IRQ0
+- **RC2** Production generated code has no poll checks (I8); sync points are delivery
+  addresses for the test harness, the reference and diagnostic builds. Delivery timing
+  changes (production asynchronous, tests at sync points); the PIT rate does not. Only IRQ0
   remains a guest interrupt. Supersedes speed-plan §2.3/§2.9's poll and delivery-order
   limits for these steps.
 - **RC3** References are re-recorded with the sync set (I8) and whenever it changes, with
   old/new `polls=` fingerprints in the commit. Fixtures and tolerances stay.
 - **RC4** Keyboard and mouse are read at the vertical blank; no keyboard interrupt. The
-  BIOS keyboard state is updated at sync points (services included).
+  BIOS keyboard state is updated at service entry in production and at sync points in
+  tests (services are sync points).
 - **RC5** U3 write histories, the U5 poll contract (sync sites, latency bound) and exact
   native polling retire at I9: nothing can observe a native row's intermediate state.
   Rows compare registers, live and control flags and all RAM at entry, exits and returns,
@@ -76,15 +78,25 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
 
 ## Target
 
-- **Sync points** (`poll-points.csv` keeps its name and format): main-code instructions
-  that may access the handler footprint (I2) and software `int` sites, each with today's
-  poll form before it; IF 0→1 (`sti` after its one-instruction shadow, POPF and IRET
-  through `__set_flags`, `rt_set_flags_word`) delivers pending interrupts at once. Loop
-  heads have none.
+- **No checks in production code.** Async delivery needs none: the CIA interrupt
+  delivers every tick; ticks deferred by guest IF = 0 are delivered by the runtime's
+  IF 0→1 paths (`sti` after its one-instruction shadow, POPF and IRET through
+  `__set_flags`, `rt_set_flags_word`); wait loops on `813C` see the interrupt's store.
+- **Sync points** (`poll-points.csv` keeps its name and format) are addresses, not code:
+  main-code instructions that may access the handler footprint (I2) and software `int`
+  sites, minus accesses that only run with guest IF = 0 (they can never deliver), plus
+  IF 0→1. Between two sync points a tick commutes with all main code, so tests deliver
+  at the next one. Delivered by: the host run (Unicorn code hooks at the addresses), the
+  reference (gate opens there), diagnostic builds (a check emitted only in those builds,
+  next to the existing replay hooks; or gdb breakpoints) and the bench (a diagnostic-style
+  build, or ticks at services plus a runtime spin detector; chosen in I8 by bench
+  stability).
 - **Modes** (runtime): *sync* (host runs, replays, bench, diagnostic builds) delivers
   posted interrupts at the next sync point, as the reference does; *async* (production)
-  runs the handler from the CIA-B interrupt when guest IF is set and none is running, else
-  counts it pending for IF 0→1 or the next sync point. Generated code is the same in both.
+  runs the handler from the CIA-B interrupt when guest IF is set and none is running,
+  else counts it pending for IF 0→1. Production runs the generated code the tests ran,
+  minus the diagnostic hooks; its async path is exercised by I6's stress mode, not by
+  lockstep.
 - **Handler entry** `rt_irq_async`: save the 68k registers, state block, `rt_r` and the
   runtime scratch on the handler path; a6 = TOP; SS:SP on a private guest stack
   (candidate `B000:8000` down: backed, outside compared RAM; confirm the reference never
@@ -102,7 +114,8 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   the outermost driver return (`rt_video_publish`). VBI order stays L17.
 - **Keyboard:** the vertical blank reads CIA-A SDR, handshakes (~85 µs SPMODE output),
   maps through `Input.cpp`'s table, repeats as now and fills `rt_key_ring`;
-  `rt_keyboard_irq` drains it at sync points with IF set. ICR is read-to-clear and shared
+  `rt_keyboard_irq` drains it with IF set at service entry (production) or at sync
+  points (tests). ICR is read-to-clear and shared
   with `ciaa.resource`: sample SP through the resource or keep a minimal SP read, decided
   on FS-UAE in I7. Keys pressed during I/O windows (Exec's VERTB) must arrive.
 - **Mouse:** unchanged. IRQ12: the reference stops delivering it, or the port keeps
@@ -166,9 +179,12 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   `monitor key` press/release (also during an I/O window), typematic repeat,
   `test-amiga-replay`.
 - **I8 Sync points** (translator, reference, tools; references re-recorded).
-  - Translator: polls only at sync points and `int` sites; IF 0→1 delivers at once;
-    `poll-points.csv` holds the sync set; key events drain at sync points with IF set
-    (IRQ1 is no longer a port interrupt).
+  - Translator: no poll checks in production builds (loop heads and stubs go); diagnostic
+    builds emit a check at each sync point; IF 0→1 delivers at once; `poll-points.csv`
+    holds the sync set; key events drain as in Target (IRQ1 is no longer a port
+    interrupt).
+  - Host run: delivers recorded interrupts through Unicorn code hooks at sync addresses
+    (visit counts as today's poll visits); bench delivery as in Target.
   - Reference patch: gate open before sync points and after IF 0→1; IRQ0 edges counted
     while it is closed and delivered in order at the next opening; IRQ1 at sync points;
     IRQ12 decided.
