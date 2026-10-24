@@ -209,13 +209,24 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   overlap rejects (I2). Retired tests and plants get poll-free equivalents. Checks:
   `t-compute-*` with sabotage, each row's native differential, `test-host-all`, replays;
   meter and bench per row group.
-- **I10 Close.** Docs: translator-design D8, amiga-arch interrupts and L18, native-compute
+- **I10 Re-open native rows** (user 2026-10-24: do them as soon as I9 allows), each by
+  native-plan S1–S9, priced without polls or histories, in price order:
+  - Deferred for the poll contract itself: F3's `D5A6` prefix (poll-set change and
+    re-recording), `BB70` (R39: seven kept sync sites); F9 in O(1) (poll visits and
+    re-recording; still needs the user's speed-plan §2.9 delay-loop decision).
+  - Deferred for no positive price under exact polls and address reuse (exits and
+    handoffs remain, so re-price first): `FDE0` cache loops (R45), `BD68` edge loops
+    (R43), `F290` tile selection (R41), `109D6` vertex loops.
+  - Exact-poll rows rebuilt poll-free: `BFD1` (F5, with R46/R47 inside it), `4DAE`
+    packet loop (R42), `D69C` pixel loops (R44), SPAZ delay loops (F9).
+  - Not affected: `B8A1` (no calls in the workload).
+- **I11 Close.** Docs: translator-design D8, amiga-arch interrupts and L18, native-compute
   poll sections, pc-reference-loop `--polls`, speed-plan §1/§7, native-plan F re-priced
   under RC5; open-work 43 removed; frames checkpoint.
 
 Order: I2 and I3 before any behaviour change. I5 and I6 before I8: production must not
 depend on sync points for ticks, audio or presents (in flight one may come only once a
-frame). I8 and I9 adjacent. I7 is independent (platform only). Acceptance: speed-plan §3
+frame). I8 and I9 adjacent, then I10. I7 is independent (platform only). Acceptance: speed-plan §3
 for I4, I8 and I9; D5 bench for I5 and I7; I6 by frames fixture and flyby A/B (the bench
 stays in sync mode); fidelity tradeoffs go to the user.
 

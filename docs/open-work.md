@@ -75,6 +75,8 @@ speed work: [speed-plan.md](speed-plan.md).
     2026-10-24 with its rule changes): SPAZ's IRQ0 handler from the CIA-B
     interrupt, keyboard and mouse at the vertical blank, sync points for
     lockstep, native rows poll-free (U3/U5 retire). Next: I1 (measure).
+    The deferred natives it unblocks (D5A6 prefix, BB70, F9 O(1), FDE0, BD68,
+    F290, 109D6; exact-poll rows rebuilt) are done at its I10.
 
 ## Amiga platform
 
