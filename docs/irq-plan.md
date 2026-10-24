@@ -213,7 +213,7 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   native-plan S1–S9, priced without polls or histories, in price order:
   - Deferred for the poll contract itself: F3's `D5A6` prefix (poll-set change and
     re-recording), `BB70` (R39: seven kept sync sites); F9 in O(1) (poll visits and
-    re-recording; still needs the user's speed-plan §2.9 delay-loop decision).
+    re-recording; speed-plan §2.9 delay-loop exception approved by the user 2026-10-24).
   - Deferred for no positive price under exact polls and address reuse (exits and
     handoffs remain, so re-price first): `FDE0` cache loops (R45), `BD68` edge loops
     (R43), `F290` tile selection (R41), `109D6` vertex loops.

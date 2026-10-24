@@ -280,7 +280,9 @@ Breaking any of these voids the step, whatever it measures.
    return checks (exceptions: native-plan U5 polls of a U6-authorized routine,
    with its references re-recorded; [irq-plan](irq-plan.md)'s sync points and
    asynchronous IRQ0, user 2026-10-24, RC2); shortening the guest's own delay loops
-   (SPAZ OPL waits are guest semantics); a double buffer or copper display;
+   (SPAZ OPL waits are guest semantics; exception, user 2026-10-24: F9's
+   delay loops in O(1) with an exact final state once irq-plan I9 has landed);
+   a double buffer or copper display;
    Chip-only memory (19). Exception: the deterministic frame bench (§4,
    user 2026-10-08) posts PIT ticks on a fixed schedule in its own runtime
    mode, as an instrument only.
