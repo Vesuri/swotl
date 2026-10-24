@@ -303,6 +303,9 @@ U5 above remains unchanged:
   tail-jumps to a translator-generated trampoline: original CS:IP, existing
   rt_irq path, then RTS to the callback's caller with an explicit after-poll
   resume result. Dispatch resumes after the original poll, never its entry.
+  A native entered by a generated hook starts below the poll's execution
+  alias (`*_native_np`): the hook already executed the poll point, and the
+  host counts each alias pass as one execution (F5: lost IRQ otherwise).
   Guest state changed by a handler is neither restored nor reused from a
   native cache; any new callback invocation rechecks its guards.
 - Diagnostic builds tail-hand off every native poll to a generated trampoline

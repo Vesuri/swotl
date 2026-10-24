@@ -181,22 +181,26 @@ def native(entries=False, plant=None, predecessor="direct", wide=False):
     return total
 
 
-def handoffs():
+def handoffs(plant=None):
     p=native_program();work=ROOT/'tmp/line-pixels-native';work.mkdir(exist_ok=True)
     implementation=(ROOT/'src/runtime/compute_line.s').read_text()
+    if plant=='resume':
+        old='bne.s line_right_resume'
+        if old not in implementation:raise ValueError('missing plant template: '+plant)
+        implementation=implementation.replace(old,'bne.s line_right_step')
     count=0
     for (first,end),service,poll in zip(SCOPES,('line_right','line_left'),(0xd92d,0xd95f)):
         lab=emit.label('SWOTL.EXE',poll)
         source=[equates(),f'rt_irq equ ${B.STUB_AT["rt_irq"]:x}',p.native_poll_text(),
-                f'\torg ${B.SNIP:x}',f'\tdc.l done,{lab}_native_poll',
+                f'\torg ${B.SNIP:x}',f'\tdc.l done,{lab}_native_poll,{lab}_native_np',
                 '\tmoveq #0,d7','entry:',f'\tmove.l #${B.LOADSEG+0x49b:x},d6',
                 f'\tjsr rt_hle_{service}','\tcmp.l #2,d7','\tbne done',
                 '\tmoveq #1,d7','\tbra entry','done:','\tnop',implementation]
         for pl in (0xd92d,0xd95f):
             source+=emit.native_poll_stub(emit.label('SWOTL.EXE',pl),pl-0x49b0,
                                          f'${B.LOADSEG+0x49b:x}',2)
-        binary=B.D.assemble('\n'.join(source),work/f'{service}-handoff.bin')
-        done,poll_pc=(int.from_bytes(binary[k:k+4],'big') for k in (0,4))
+        binary=B.D.assemble('\n'.join(source),work/f'{service}-handoff-{plant}.bin')
+        done,poll_pc,np_pc=(int.from_bytes(binary[k:k+4],'big') for k in (0,4,8))
         _,ram,regs=list(synthetic(first))[6]
         prefix=O.run(ram,regs,(regs['cs'],end-0x49b0),stops=((regs['cs'],poll-0x49b0),))
         assert prefix['at']==(regs['cs'],poll-0x49b0)
@@ -209,12 +213,15 @@ def handoffs():
                                      for a in prefix['history'].keys()|expected['history'].keys()}
                 expected['writes']|=prefix['writes']
             else:expected=dict(prefix,registers={k:v for k,v in changed.items() if k!='flags'},flags=changed['flags'])
-            m=B.D.M68k(ram,B.STUB_AT);m.irq_calls=[];visits=[]
+            m=B.D.M68k(ram,B.STUB_AT);m.irq_calls=[];visits=[];events=[]
             @B.U.CODE_CB
             def interrupt(h,address,size,user):
+                if address==np_pc:events.append('np')
                 if address==poll_pc:
+                    events.append('poll')
                     visits.append(address);m.e.write(B.D.STATE+8,b'\1');m.e.write(B.D.PENDING,b'\1')
                 elif address==B.STUB_AT['rt_irq']:
+                    events.append('irq')
                     m.e.reg_write(B.U.M68K['d5'],changed['bp']^0x7fff)
                     m.e.reg_write(B.U.M68K['a5'],changed['di'])
                     for seg,reg,off in (('ds','a3',0),('es','a1',4)):
@@ -223,9 +230,14 @@ def handoffs():
             try:
                 m.e.write(B.SNIP,binary);m.extra_stops={done:'done'};m.e.hook(B.U.HOOK_CODE,interrupt)
                 history=O.watch_native(m);flags={f:regs['flags']>>FLAG_BIT[f]&1 for f in FLAGS}
-                got,fl,fx,mem,outs,writes,info=m.run(B.SNIP+8,
+                got,fl,fx,mem,outs,writes,info=m.run(B.SNIP+12,
                     (regs,flags,regs['flags']&0xf000,regs['ip'],[]),random.Random(41),irq=False)
                 assert not info['err'] and not outs and info['stop']=='done',(mode,info)
+                # Exact-once visits: an execution alias follows its own visit,
+                # never the visit that handed off (the re-entry starts below it).
+                for k,event in enumerate(events):
+                    if event=='np' and (k==0 or events[k-1]!='poll'):
+                        raise LineMismatch((service,mode,'duplicate visit',events[max(0,k-3):k+1]))
                 assert len(visits)==len(m.irq_calls)==1,(mode,visits,m.irq_calls)
                 assert info['a7']==B.D.STACK-0x100,(mode,'stack')
                 assert m.r('d7')==(1 if admitted(changed) else 0),(mode,'result')
@@ -265,6 +277,9 @@ if __name__=='__main__':
             try:native(plant=plant)
             except LineMismatch as error:print('line pixels:',plant,'caught:',error,flush=True)
             else:raise AssertionError(plant+' escaped')
+        try:handoffs(plant='resume')
+        except LineMismatch as error:print('line pixels: resume',' caught:',error,flush=True)
+        else:raise AssertionError('resume escaped')
         try:generated(plant=True)
         except LineMismatch as error:print('line pixels: missing generated pixel caught:',error,flush=True)
         else:raise AssertionError('missing generated pixel escaped')
