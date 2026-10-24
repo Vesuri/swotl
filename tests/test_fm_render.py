@@ -118,8 +118,14 @@ def main():
                 ('attenuation threshold', '((uint32_t)att << 3)', '(((uint32_t)att + 1) << 3)'),
                 ('silent half', '(p & 0x200) ? 0x1000 : c2', '(p & 0x200) ? 0 : c2'),
                 ('carrier lookup', 'return carrier_wave[wf][p & 0x3ff];',
-                 'return carrier_wave[wf][p & 0x3ff] ^ 64;')):
-            assert old in source, f'missing {name} plant'
+                 'return carrier_wave[wf][p & 0x3ff] ^ 64;'),
+                ('modulator sign', '^ (uint16_t)((int16_t)w >> 15)', '^ (uint16_t)(w >> 15)'),
+                ('modulator level', 'linear_exp + ((uint32_t)matt << 3)', 'linear_exp + ((uint32_t)matt << 2)'),
+                ('feedback settle', 'render_run(dst, FB_SETTLE, bytes, wm, lm, cw, ic, im, fb, 0);',
+                 'render_run(dst, 0, bytes, wm, lm, cw, ic, im, fb, 0);'),
+                ('additive feedback', 'render_run(dst, FB_SETTLE, bytes, wm, lm, cw, ic, im, fb, 1);',
+                 'render_run(dst, FB_SETTLE, bytes, wm, lm, cw, ic, im, fb, 0);')):
+            assert source.count(old) == 1, f'missing {name} plant'
             try:
                 checks(source.replace(old, new))
             except AssertionError as e:

@@ -79,6 +79,17 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   in all 16; user 2026-10-24: "16 lines is noise. Accepted." Flyby, exact
   cycles per `B52D` call: 820 → 629 (−23.3%).
   Evidence: `tmp/speed/f3/`.
+- **F4 measurements** (2026-10-24, `$FSUAE_ARM`): FM loop cache and render
+  loop, same slots, pages and samples (`t-fm-cache`, `t-fm-render`). Flyby,
+  exact cycles per call: `fm_field` inclusive 31,380 → 23,719 (−24.4%; 10.75%
+  → 8.11% of the clip), `render` 23,194 → 13,546, `loop_for` 9,667 → 5,224.
+  Bench, 5 interleaved runs per arm: medians 68,307 → 68,445 (+0.20%), spans
+  68,290–68,354 and 68,397–68,482, RAM hash `951adbe5…6c63` in all. Frames
+  4–11 render no loops: there only FM code placement counts (`eg_advance`
+  unchanged, +4–9% per call) and frame 3 comes ~3 fields earlier; generated
+  code moves 0x434 bytes; with it padded back to the base mod 256 the bench is
+  still +0.12%. After frame 12 the guest executes +0.9% instructions per 100
+  fields. User 2026-10-24: bench accepted as noise. Evidence: `tmp/speed/f4/`.
 - **Flyby profile** (F0, frozen R48 build `8b46b6a5…`, 2026-10-23): attract
   demo, fields 1144–1648 after drawn frame 12, five consecutive 100-field
   captures; 142,101,991 cycles, 18 drawn frames (555 ms/frame). Drawn frames
@@ -478,6 +489,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | F2 | REP MOVSW by longs; element order kept for CX < 4 and DI 1–3 bytes above SI | `lower.py` | −0.0067% (flyby `rep movsw` −29%) |
 | F3a | projection `B017` whole with divide `B4E2`, four returns; folds R36/R37 rows; merged long stores | runtime, compute tests | −1.4854% (bench −0.0921%) |
 | F3b | transform `B52D` whole with `B54B`; wrapper pushes stored, SI/DI/BP restored | runtime, compute tests | −1.5848% (bench +0.025%, user accepts as noise) |
+| F4 | FM loop cache: split key/stamp arrays, first-free hint, freed-range refit; render loop per feedback/connection | Amiga platform, FM tests | outside meter (flyby `fm_field` −24.4%/call; bench +0.20%, user accepts as noise) |
 
 No priced translator candidate remains. Unchanged outside authorized U5 rows (§2):
 poll points (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers

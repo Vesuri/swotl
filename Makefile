@@ -109,7 +109,7 @@ t-fm: build/tools/fm_check
 # Isolated audio changes: original-derived sound checks and their plants.
 .PHONY: gates-audio
 gates-audio:
-	@$(MAKE) -s -k -j$(JOBS) t-fm t-fm-quality t-fm-render t-fm-envelope t-fm-allocation t-fm-phase t-tfh t-audio t-sab-fm t-sab-fm-quality t-sab-fm-render t-sab-fm-envelope t-sab-fm-allocation t-sab-fm-phase t-sab-tfh t-sab-audio
+	@$(MAKE) -s -k -j$(JOBS) t-fm t-fm-quality t-fm-render t-fm-envelope t-fm-allocation t-fm-cache t-fm-phase t-tfh t-audio t-sab-fm t-sab-fm-quality t-sab-fm-render t-sab-fm-envelope t-sab-fm-allocation t-sab-fm-cache t-sab-fm-phase t-sab-tfh t-sab-audio
 
 t-fm-quality:
 	$(call RUN,fm-quality,$(PYTHON) tests/test_fm_quality.py)
@@ -121,6 +121,10 @@ t-fm-phase:
 	$(call RUN,fm-phase,$(PYTHON) tests/test_fm_phase.py)
 t-sab-fm-phase:
 	$(call RUN,sabotage-fm-phase,$(PYTHON) tests/test_fm_phase.py --sabotage)
+t-fm-cache:
+	$(call RUN,fm-cache,$(PYTHON) tests/test_fm_cache.py)
+t-sab-fm-cache:
+	$(call RUN,sabotage-fm-cache,$(PYTHON) tests/test_fm_cache.py --sabotage)
 t-fm-allocation:
 	$(call RUN,fm-allocation,$(PYTHON) tests/test_fm_allocation.py)
 t-sab-fm-allocation:
@@ -177,7 +181,7 @@ test-x86:
 	$(PYTHON) tests/x86_diff.py
 
 test-sabotage: host
-	@$(MAKE) -s -k -j$(JOBS) t-sab-ems t-sab-edge-ordering t-sab-priority-search t-sab-line-pixels t-sab-sprite-packet t-sab-compute-exact-polls t-sab-replay-run-isolation t-sab-amiga-file-sharing t-sab-compute-reentry t-sab-scenery t-sab-compute-multi-endpoint t-sab-compute-code-writes t-sab-point-projection t-sab-point-normalise t-sab-polygon-classify t-sab-compute-endpoint t-sab-point-transform t-sab-compute-contract t-sab-compute-polls t-sab-compute-u8 t-sab-far-return-protocol t-sab-jump-fusion t-sab-block-boundary t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-cell-cache t-sab-replay-hooks t-sab-replay-events t-sab-host-replay-visits t-sab-rep-replay t-sab-rep-lowering t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence t-sab-fm t-sab-fm-quality t-sab-fm-render t-sab-fm-envelope t-sab-fm-allocation t-sab-fm-phase t-sab-tfh t-sab-sound-hooks t-sab-audio t-sab-load-image t-sab-host-launch t-sab-keyboard-prefix t-sab-interrupt-frame-mask t-sab-dosbox-retf t-sab-dos-search t-sab-dos-sda t-sab-machine-vectors t-sab-oracle-boundary t-sab-oracle-exception-writes t-sab-helper-branches t-sab-block-assembly t-sab-key-release t-sab-key-chords t-sab-replay-chords t-sab-fixture-inputs t-sab-joystick
+	@$(MAKE) -s -k -j$(JOBS) t-sab-ems t-sab-edge-ordering t-sab-priority-search t-sab-line-pixels t-sab-sprite-packet t-sab-compute-exact-polls t-sab-replay-run-isolation t-sab-amiga-file-sharing t-sab-compute-reentry t-sab-scenery t-sab-compute-multi-endpoint t-sab-compute-code-writes t-sab-point-projection t-sab-point-normalise t-sab-polygon-classify t-sab-compute-endpoint t-sab-point-transform t-sab-compute-contract t-sab-compute-polls t-sab-compute-u8 t-sab-far-return-protocol t-sab-jump-fusion t-sab-block-boundary t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-cell-cache t-sab-replay-hooks t-sab-replay-events t-sab-host-replay-visits t-sab-rep-replay t-sab-rep-lowering t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence t-sab-fm t-sab-fm-quality t-sab-fm-render t-sab-fm-envelope t-sab-fm-allocation t-sab-fm-cache t-sab-fm-phase t-sab-tfh t-sab-sound-hooks t-sab-audio t-sab-load-image t-sab-host-launch t-sab-keyboard-prefix t-sab-interrupt-frame-mask t-sab-dosbox-retf t-sab-dos-search t-sab-dos-sda t-sab-machine-vectors t-sab-oracle-boundary t-sab-oracle-exception-writes t-sab-helper-branches t-sab-block-assembly t-sab-key-release t-sab-key-chords t-sab-replay-chords t-sab-fixture-inputs t-sab-joystick
 
 test-m68k:
 	$(PYTHON) tests/m68k_diff.py
@@ -195,7 +199,7 @@ RUN = @mkdir -p tmp/test; if $(2) > tmp/test/$(1).log 2>&1; then echo "ok    $(1
 	else echo "FAIL  $(1) (tmp/test/$(1).log)"; tail -n 15 tmp/test/$(1).log; exit 1; fi
 SHARDS = forms.0/4 forms.1/4 forms.2/4 forms.3/4 space.0/1 boundary.0/1 blocks.0/1
 TESTS = t-ems t-edge-ordering t-priority-search t-line-pixels t-sprite-packet t-compute-exact-polls t-replay-run-isolation t-amiga-file-sharing t-compute-reentry t-scenery t-compute-multi-endpoint t-polygon-classify t-compute-endpoint t-point-normalise t-compute-code-writes t-point-projection t-point-transform t-compute-contract t-compute-polls t-compute-u8 t-far-return-protocol t-jump-fusion t-gate-runner t-block-boundary t-joystick t-rep-replay t-rep-lowering t-host-replay-visits t-fixture-inputs t-key-chords t-replay-chords t-key-release t-oracle-boundary t-oracle-exception-writes t-helper-branches t-block-assembly t-dos-sda t-dos-search t-machine-vectors t-interrupt-frame-mask t-keyboard-prefix t-host-launch t-load-image t-align-convergence t-replay-hooks t-replay-events t-file-dates t-mouse-irq t-display-queue t-display-palette t-amiga-input t-smc-flow t-cell-cache t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
-	t-blocks t-guards t-fm t-fm-quality t-fm-render t-fm-envelope t-fm-allocation t-fm-phase t-tfh t-sound-hooks t-audio $(HOST_MILESTONES:%=t-host-%)
+	t-blocks t-guards t-fm t-fm-quality t-fm-render t-fm-envelope t-fm-allocation t-fm-cache t-fm-phase t-tfh t-sound-hooks t-audio $(HOST_MILESTONES:%=t-host-%)
 
 test: host
 	@$(MAKE) -s -k -j$(JOBS) $(TESTS)

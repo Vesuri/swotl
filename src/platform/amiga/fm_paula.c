@@ -116,8 +116,6 @@ struct op {
 };
 
 struct entry {
-    uint32_t key;
-    uint32_t used;                  /* field stamp */
     uint16_t page, pages;
 };
 
@@ -127,6 +125,9 @@ static int8_t voice_ch[FM_VOICES] = {-1, -1, -1, -1};
 static int8_t *pool;
 static uint16_t pool_pages;
 static uint8_t page_used[256];
+static uint16_t first_free;         /* lowest free page, pool_pages if none */
+/* cache slots: keys and field stamps apart for short scans */
+static uint32_t cache_key[CACHE], cache_used[CACHE];
 static struct entry cache[CACHE];
 static uint32_t stamp;
 static const int8_t *noise[2];
@@ -319,6 +320,42 @@ static uint8_t repeats(uint8_t wfc, uint8_t wfm, uint8_t mc, uint8_t mm, uint8_t
     return a;
 }
 
+/* One sample of render: op_out of the modulator through `lm` (linear_exp
+ * from its attenuation on: the level stays below 0x1fff, 0x1000 + 511 * 8, so
+ * the clamp never applies) and of the carrier at full level. */
+#define RENDER_SAMPLE(fb, cnt) do { \
+        if (fb) { \
+            fbmod = (int16_t)((prev1 + prev2) >> (9 - (fb))); \
+        } \
+        w = wm[(uint16_t)((pm >> 6) + fbmod) & 0x3ff]; \
+        m = (int16_t)(lm[w & 0x7fff] ^ (uint16_t)((int16_t)w >> 15)); \
+        prev2 = prev1; \
+        prev1 = m; \
+        c = cw[(uint16_t)((pc >> 6) + ((cnt) ? 0 : m)) & 0x3ff]; \
+        if (cnt) { \
+            c = (int16_t)((c + m) >> 1); \
+        } \
+        pc += ic; \
+        pm += im; \
+    } while (0)
+
+/* render's samples for feedback `fb` and connection `cnt` (constants where
+ * inlined): `settle` discarded, then `bytes` stored. */
+static inline __attribute__((always_inline)) void render_run(int8_t *dst, uint16_t settle, uint16_t bytes,
+    const uint16_t *wm, const uint16_t *lm, const int16_t *cw, uint32_t ic, uint32_t im, uint8_t fb, uint8_t cnt)
+{
+    uint32_t pc = 0, pm = 0;
+    int16_t prev1 = 0, prev2 = 0, fbmod = 0, m, c;
+    uint16_t i, w;
+    for (i = 0; i < settle; ++i) {
+        RENDER_SAMPLE(fb, cnt);
+    }
+    for (i = 0; i < bytes; ++i) {
+        RENDER_SAMPLE(fb, cnt);
+        *dst++ = (int8_t)(c >> 5);
+    }
+}
+
 /* Render key fields: wf_c 0-1, wf_m 2-3, mult_c 4-7, mult_m 8-11, fb 12-14,
  * cnt 15, modulator level 16-24 (0.1875 dB units), log2 samples per period 25-28.
  * The phase steps by the loop's fraction of a period. */
@@ -331,27 +368,20 @@ static __attribute__((noinline)) void render(int8_t *dst, uint32_t key, uint16_t
     uint16_t matt = mq, spp = (uint16_t)(1u << ((key >> 25) & 15));
     /* phase in cycles, 16.16; >> 6 the chip's 10 bits */
     uint32_t ic = ((uint32_t)mt[mc] << 16) / g / spp, im = ((uint32_t)mt[mm] << 16) / g / spp;
-    uint32_t pc = 0, pm = 0;
-    int16_t prev1 = 0, prev2 = 0, fbmod = 0, m, c;
-    uint16_t i, settle = fb ? FB_SETTLE : 0;
+    const uint16_t *wm = wave[wfm], *lm = linear_exp + ((uint32_t)matt << 3);
+    const int16_t *cw = carrier_wave[wfc];
     /* Keep synthesis phase across timbre changes; do not rotate each loop. */
     ++fm_renders;
-    for (i = 0; i < settle + bytes; ++i) {
+    if (cnt) {
         if (fb) {
-            fbmod = (int16_t)((prev1 + prev2) >> (9 - fb));
+            render_run(dst, FB_SETTLE, bytes, wm, lm, cw, ic, im, fb, 1);
+        } else {
+            render_run(dst, 0, bytes, wm, lm, cw, ic, im, 0, 1);
         }
-        m = op_out(wfm, (uint16_t)((pm >> 6) + fbmod), matt);
-        prev2 = prev1;
-        prev1 = m;
-        c = op_out(wfc, (uint16_t)((pc >> 6) + (cnt ? 0 : m)), 0);
-        if (cnt) {
-            c = (int16_t)((c + m) >> 1);
-        }
-        pc += ic;
-        pm += im;
-        if (i >= settle) {
-            *dst++ = (int8_t)(c >> 5);
-        }
+    } else if (fb) {
+        render_run(dst, FB_SETTLE, bytes, wm, lm, cw, ic, im, fb, 0);
+    } else {
+        render_run(dst, 0, bytes, wm, lm, cw, ic, im, 0, 0);
     }
 }
 
@@ -395,6 +425,8 @@ void fm_init(int8_t *p, uint32_t bytes)
     for (i = 0; i < 2 * NOISE_BYTES / FM_POOL_PAGE; ++i) {
         page_used[i] = 1;
     }
+    for (first_free = 0; first_free < pool_pages && page_used[first_free]; ++first_free) {
+    }
     for (i = 0; i < 9; ++i) last_keyon[i] = 0;
     fm_renders = 0;
     for (i = 0; i < 18; ++i) {
@@ -407,64 +439,96 @@ void fm_init(int8_t *p, uint32_t bytes)
         memo[i].key = 0;
     }
     for (i = 0; i < CACHE; ++i) {
-        cache[i].key = 0;
+        cache_key[i] = 0;
     }
     stamp = 2;
 }
 
+#define NO_FIT 0xffffu
+
+/* First page p in from .. to - 1 on the `pages` grid (from on it) with pages
+ * p .. p + pages - 1 free and inside the pool; NO_FIT when none. */
+static uint16_t fit_from(uint16_t from, uint16_t to, uint16_t pages)
+{
+    uint16_t p, k;
+    for (p = from; p < to && p + pages <= pool_pages; p = (uint16_t)(p + pages)) {
+        for (k = 0; k < pages && !page_used[p + k]; ++k) {
+        }
+        if (k == pages) {
+            return p;
+        }
+    }
+    return NO_FIT;
+}
+
 /* Cache slot of `key` (`bytes` long), rendered on a miss when `render_ok`;
  * -1 when not, or when every page is held by the loops of this or the last
- * field. Slots stay put (a voice keeps its slot's index). */
+ * field. Slots stay put (a voice keeps its slot's index). The loop takes the
+ * first free run on the `pages` grid; until a run and a slot are free, the
+ * least recently used loop of an earlier field goes (lowest slot on a tie).
+ * The first empty slot holds it, else the first evicted. */
 static int16_t loop_for(uint32_t key, uint16_t bytes, int render_ok)
 {
-    uint16_t pages = (uint16_t)((bytes + FM_POOL_PAGE - 1) / FM_POOL_PAGE), i, p, k;
+    uint16_t pages = (uint16_t)((bytes + FM_POOL_PAGE - 1) / FM_POOL_PAGE), i, p, q, k, a, n;
+    uint32_t oldest;
     int16_t slot = -1;
     for (i = 0; i < CACHE; ++i) {
-        if (cache[i].key == key) {
-            cache[i].used = stamp;
+        if (cache_key[i] == key) {
+            cache_used[i] = stamp;
             return (int16_t)i;
-        }
-        if (!cache[i].key && slot < 0) {
-            slot = (int16_t)i;
         }
     }
     if (!render_ok) {
         return -1;
     }
-    for (;;) {
-        for (p = 0; p + pages <= pool_pages; p = (uint16_t)(p + pages)) {
-            for (k = 0; k < pages && !page_used[p + k]; ++k) {
-            }
-            if (k == pages) {
-                break;
-            }
-        }
-        if (p + pages <= pool_pages && slot >= 0) {
+    for (i = 0; i < CACHE; ++i) {
+        if (!cache_key[i]) {
+            slot = (int16_t)i;
             break;
         }
+    }
+    /* grid runs wholly below the first free page are held */
+    p = fit_from((uint16_t)(first_free - first_free % pages), pool_pages, pages);
+    while (p == NO_FIT || slot < 0) {
         /* evict the least recently used loop no voice may still play */
         k = CACHE;
+        oldest = stamp - 1;
         for (i = 0; i < CACHE; ++i) {
-            if (cache[i].key && cache[i].used + 1 < stamp && (k == CACHE || cache[i].used < cache[k].used)) {
+            if (cache_used[i] < oldest && cache_key[i]) {
+                oldest = cache_used[i];
                 k = i;
             }
         }
         if (k == CACHE) {
             return -1;
         }
-        for (i = 0; i < cache[k].pages; ++i) {
-            page_used[cache[k].page + i] = 0;
+        a = cache[k].page;
+        n = cache[k].pages;
+        for (i = 0; i < n; ++i) {
+            page_used[a + i] = 0;
         }
-        cache[k].key = 0;
+        if (a < first_free) {
+            first_free = a;
+        }
+        cache_key[k] = 0;
         if (slot < 0) {
             slot = (int16_t)k;
+        }
+        /* only grid runs meeting the freed pages, before the old fit, gain */
+        q = fit_from((uint16_t)(a - a % pages), p < a + n ? p : (uint16_t)(a + n), pages);
+        if (q != NO_FIT) {
+            p = q;
         }
     }
     for (k = 0; k < pages; ++k) {
         page_used[p + k] = 1;
     }
-    cache[slot].key = key;
-    cache[slot].used = stamp;
+    if (p == first_free) {
+        for (first_free = (uint16_t)(p + pages); first_free < pool_pages && page_used[first_free]; ++first_free) {
+        }
+    }
+    cache_key[slot] = key;
+    cache_used[slot] = stamp;
     cache[slot].page = p;
     cache[slot].pages = pages;
     render(pool + p * FM_POOL_PAGE, key, bytes);
@@ -531,7 +595,7 @@ static void voice_cmd(struct fm_voice *v, uint8_t i, const uint8_t *opl, int8_t 
         }
         if (m->x == x) {
             if (m->slot >= 0) {
-                cache[m->slot].used = stamp;
+                cache_used[m->slot] = stamp;
             }
             m->stamp = stamp;
             v->loop = m->loop;

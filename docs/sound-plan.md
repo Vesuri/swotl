@@ -65,7 +65,9 @@ Music stays enabled through the FM re-hoster in both effect modes.
   canonical loop phase and pitch-change overflow. `t-fm-render`, `t-fm-phase`,
   `t-fm-envelope` and `t-fm-allocation` (each with a plant) check exact operator
   samples, bounds, ≤ 0.375 dB rounding error, voice continuity and TFH
-  reservations. `make gates-audio` runs every sound check and plant.
+  reservations; `t-fm-cache` (plants) checks loop-cache slots and pages
+  against a model of the original rule. `make gates-audio` runs every sound
+  check and plant.
 - Paula backend: `src/platform/amiga/Audio.cpp`. `fm_field` in
   `plat_service` (main program, once a vertical blank); the vertical blank
   stages the commands: DMA on, silence volume 0, loop changes latched at
