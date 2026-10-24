@@ -76,7 +76,8 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   Meter 158,939,203 → 156,420,369 (−1.5848%; generated −2,262,443, runtime
   −256,391). Bench, 8 interleaved runs per arm: medians 68,333 → 68,350
   (+0.025%), spans 68,275–68,371 and 68,307–68,389, RAM hash `951adbe5…6c63`
-  in all 16. Flyby, exact cycles per `B52D` call: 820 → 629 (−23.3%).
+  in all 16; user 2026-10-24: "16 lines is noise. Accepted." Flyby, exact
+  cycles per `B52D` call: 820 → 629 (−23.3%).
   Evidence: `tmp/speed/f3/`.
 - **Flyby profile** (F0, frozen R48 build `8b46b6a5…`, 2026-10-23): attract
   demo, fields 1144–1648 after drawn frame 12, five consecutive 100-field
@@ -476,7 +477,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | F1 | EMS map: long-word page copy, exact identical-remap skip | runtime, EMS oracle | c12 meter −27.72% (m4 unchanged) |
 | F2 | REP MOVSW by longs; element order kept for CX < 4 and DI 1–3 bytes above SI | `lower.py` | −0.0067% (flyby `rep movsw` −29%) |
 | F3a | projection `B017` whole with divide `B4E2`, four returns; folds R36/R37 rows; merged long stores | runtime, compute tests | −1.4854% (bench −0.0921%) |
-| F3b | transform `B52D` whole with `B54B`; wrapper pushes stored, SI/DI/BP restored | runtime, compute tests | −1.5848% (bench +0.025%, spans overlap) |
+| F3b | transform `B52D` whole with `B54B`; wrapper pushes stored, SI/DI/BP restored | runtime, compute tests | −1.5848% (bench +0.025%, user accepts as noise) |
 
 No priced translator candidate remains. Unchanged outside authorized U5 rows (§2):
 poll points (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
