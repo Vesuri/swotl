@@ -282,7 +282,7 @@ Breaking any of these voids the step, whatever it measures.
   actual code payload; do not infer a frames-fixture gain from the bench.
 - **Code growth** only with lower model cycles (D2), or lower bench cycles
   for work covered by D5. Stop and ask before
-  the payload exceeds 1,325,164 bytes by more than 25% (open-work 19).
+  the payload exceeds 1,325,164 bytes by more than 25% (slave ExpMem margin, [whdload.md](whdload.md) Memory).
 - **FS-UAE check** after every third kept step and after any memory-model,
   cell-walk or layout step: a bench run (§4) per arm with a capture; the meter's Δ must have the
   sign of `ab_labels.py`'s mix-adjusted Δ over the changed labels. D5 exempts

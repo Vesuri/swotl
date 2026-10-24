@@ -89,6 +89,7 @@ AmigaXDev's docs (edit them there, then `make share`); this repo keeps what is s
   translator `make gen`, `make test` (G2 lint, decoder, x86 and 68020
   differentials, block differential, G1, host run), `make test-sabotage`;
   runtime on host / A1200 model `make test-host` (`test-host-all`: m1–m7, the
-  coverage scenarios, music skip), `make test-amiga`; audio `make gates-audio`; full
+  coverage scenarios, music skip), `make test-amiga`; audio `make gates-audio`;
+  WHDLoad slave `make whdload`, `make test-whdload`; full
   suite `make gates` (select relevant gates as above); `SetPatch` from
   `$SETPATCH`. Facts: `docs/source-inventory.md`.

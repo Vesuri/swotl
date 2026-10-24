@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-all test-amiga test-amiga-replay test-amiga-restore amiga amiga-release smoke smoke-release size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-all test-amiga test-amiga-replay test-amiga-restore amiga amiga-release smoke smoke-release whdload test-whdload size clean
 
 PYTHON ?= python3
 # AmigaXDev's shared Python package (amigaxdev.dos.mz_info).
@@ -42,6 +42,8 @@ help:
 	@echo "  make amiga   build amiga/out/Swotl.exe"
 	@echo "  make amiga-release  build and verify separate stripped amiga/out/Swotl-release.exe"
 	@echo "  make smoke-release  boot the stripped executable under FS-UAE"
+	@echo "  make whdload        assemble the WHDLoad slaves into build/whdload/"
+	@echo "  make test-whdload   run the slaves under WHDLoad: smoke, boot, load, game FM and TFH"
 	@echo "  make size    account for code, data, symbols and relocations in the executable"
 	@echo "  make smoke   boot it under FS-UAE + GDB and check the takeover runs"
 	@echo "  make clean   remove Amiga build output"
@@ -548,6 +550,15 @@ amiga-release: amiga
 
 smoke-release: amiga-release
 	. amiga/env.sh && amiga/debug.sh "" "$(CURDIR)/amiga/diag_smoke.gdb" "$(CURDIR)/amiga/out/Swotl-release.exe" | grep -q '^SWOTL_SMOKE_OK'
+
+whdload:
+	$(MAKE) -C whdload all test smoke boot-test load-test memfree
+
+# tools/test_whdload.py: Kickstart 3.1 A1200 + RTB, WHDLoad, ref/ and TFH_RSC.
+test-whdload: whdload amiga-release
+	. amiga/env.sh && for m in smoke boot load; do $(PYTHON) tools/test_whdload.py --mode $$m || exit 1; done
+	. amiga/env.sh && $(PYTHON) tools/test_whdload.py --mode run
+	. amiga/env.sh && $(PYTHON) tools/test_whdload.py --mode run --tfh
 
 size: amiga
 	$(PYTHON) tools/hunk_size.py amiga/out/Swotl.exe

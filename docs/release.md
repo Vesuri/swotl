@@ -30,7 +30,8 @@ records remain and every loadable record matches `Swotl.exe`, including
 relocations and allocation headers. The debug executable and ELF remain
 unchanged; perf continues to use them. `make smoke-release` boots the separate
 artifact using the same smoke fixture and emulator options. This target builds
-an executable only; packaging below remains planned.
+an executable only; packaging below remains planned. The slave
+([whdload.md](whdload.md)) loads this stripped executable as `data/Swotl`.
 
 ## Make targets (Slicks shape)
 

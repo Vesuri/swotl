@@ -1,7 +1,8 @@
 # WHDLoad slave — design rules
 
-Lessons from the sibling slaves, with SWOTL's planned use. `[PLAN]` = SWOTL
-intent, not measured. Provenance: `Sl` Slicks, `Ve` Vette, `Rv` Revs, `Po`
+Lessons from the sibling slaves, with SWOTL's use. Source:
+`whdload/SwotlSlave.s` (`make whdload` → `build/whdload/`); test:
+`tools/test_whdload.py` (`make test-whdload`). Provenance: `Sl` Slicks, `Ve` Vette, `Rv` Revs, `Po`
 Pokeri, `RoF` Rescue on Fractalus (each project's `docs/whdload*.md` and
 `whdload/*.s`; the merged rules are in AmigaXDev `docs/playbooks/new-port-playbook.md` §13), `SDK` `~/.local/share/amiga/WHDLoad` (`Src/sources/whdload/kick.readme`,
 `Docs/en/{howto,opt,cache}.html`). Release packaging: [release.md](release.md).
@@ -15,7 +16,7 @@ Pokeri, `RoF` Rescue on Fractalus (each project's `docs/whdload*.md` and
 | Rejected alternatives: game-side OS shim (forks startup, unvalidatable), fake exec in slave (struct fragility in asm) | RoF §0 |
 | `kick31.s` + `kickfs.s` for 3.x/AGA targets; `kick13.s` only if exe is 1.3-clean (saves 256 KiB ROM image) | Sl, Ve, Po / RoF, Rv |
 | Assemble SDK `kick31.s`/`kickfs.s`/`segtracker.s` from `$(WHDLOAD)/Src/sources` (vendor only patched copies; AmigaXDev `docs/projects.md`); never ship SDK binaries | Rv, Sl |
-| **[PLAN]** SWOTL: `kick31.s` kickemu, Kickstart 3.1 + RTB user-supplied (kick40068.A1200 / kick40068.A4000 / kick40063.A600) | Sl, Po |
+| SWOTL: `kick31.s` kickemu, Kickstart 3.1 + RTB user-supplied (kick40068.A1200 / kick40068.A4000 / kick40063.A600) | Sl, Po |
 
 ## Header symbols and flags (newest = Slicks/Pokeri)
 
@@ -36,7 +37,8 @@ Pokeri, `RoF` Rescue on Fractalus (each project's `docs/whdload*.md` and
 | `slv_keyexit = $59` (F10) | default quit; pick another key if game uses F10 (Rv: keypad `*`; Po: Help `$5f`) | Sl, Rv, Po |
 | `slv_info` | "Amiga port by Vesuri", version line, quit-key line | Sl |
 | `$VER: <Name>.slave x.yy (dd.mm.yyyy)` | literal, bumped by hand → byte-identical rebuilds | RoF §5, Sl |
-| **[PLAN]** SWOTL: Slicks set verbatim; check whether game uses F10 before choosing `slv_keyexit` (open-work 20) | — |
+| SWOTL: Slicks set verbatim; `slv_keyexit = $5f` (Help): Amiga F10 reaches the game as PC F10, Help has no entry in `src/platform/amiga/Input.cpp`'s key table | — |
+| SWOTL `slv_config "C1:B:Their Finest Hour sound effects;"`: Custom1 selects the argument line, `TFH` or empty, set with `SetArgStr` and passed to the entry; the exe needs no hook | Sl, Ve |
 
 ## `_bootdos` sequence (Slicks, newest)
 
@@ -69,7 +71,7 @@ Pokeri, `RoF` Rescue on Fractalus (each project's `docs/whdload*.md` and
 | Size from measurement: `MEMFREE = $200` tune slave (largest free chunk at `$200` chip / `$204` fast, sampled only at AllocMem) or gdb free-list walk | RoF §2, Rv, Po |
 | Enhanced/optional paths need their own measurement (RoF: 52 KiB chip left → silent bitmap alloc failure) | RoF §1 |
 | Checker asserts exact slave chip/exp sizes so drift is caught | Po |
-| **[PLAN]** SWOTL: Fast RAM is required (D15: code + guest RAM exceed 2 MiB Chip), so the slave needs ExpMem; size it from measurement under kickemu (open-work 19), noting BaseMem is uncached by default (Caches) | — |
+| SWOTL: `CHIPMEMSIZE = $200000`, `FASTMEMSIZE = $600000` (D15: code + guest RAM + EMS exceed 2 MiB Chip). MemFree slave, A1200/68020 + 8 MiB Fast, 3,000 fields (attract run into flight), 2026-10-24: lowest largest free Fast 602,904 bytes (FM and TFH), Chip 1,846,264 (FM) / 1,738,960 (TFH). Host needs 8 MiB Fast | — |
 
 ## Caches (68020)
 
@@ -116,6 +118,7 @@ Pokeri, `RoF` Rescue on Fractalus (each project's `docs/whdload*.md` and
 | Dump tools: waiting-task inspector, planar-buffer decoder from real dump (not reference images) | Ve, Sl |
 | `FILELOG` on 68000 can outlast timeouts (LoadSeg's many small reads) | Rv |
 | Harness: isolated `tmp/whdload-test-*` fixture per run, kill only own emulator, `--no-preload` variant, 4 MiB Fast default | Ve, Sl |
+| SWOTL harness: `--mode run` ends by `TIMEOUT` + `COREDUMP` (reported as "DEBUG caused" at the CIA-A event count); oracles: original SWOTL.EXE/RTSVGA.OVL blocks in guest RAM (byte-reversed), TFH PCM in Chip only with `--tfh`. The quit key needs a Lua FS-UAE to press; not tested headlessly | Rv |
 | Headless emulator mechanics: [headless-fsuae.md](headless-fsuae.md) | — |
 
 ## Common failures
@@ -123,6 +126,7 @@ Pokeri, `RoF` Rescue on Fractalus (each project's `docs/whdload*.md` and
 | Symptom | Cause | Prov |
 |---|---|---|
 | Hang at start, nothing visible | `pr_HomeDir` 0 → hidden PROGDIR requester | Ve |
+| LoadSeg never returns | unstripped exe: symbol hunks read in small pieces through kickfs (SWOTL: 165k symbols); install the `elf2hunk -s` exe | SWOTL |
 | Corrupt fast free list / weird crashes | SDK `STACKSIZE` A600 patch | Ve |
 | `_program_err` | `slv_CurrentDir` vs Installer `#sub-dir` disagree on where exe lives | RoF §5 |
 | Error requester on save | `WHDLF_NoError` + full/write-protected drawer | RoF §6 |
