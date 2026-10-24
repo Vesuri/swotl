@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import uc as U  # noqa: E402
 import joystick_replay
+import irq_monitor
 from translator import compute, emit, image  # noqa: E402
 from tools import fixture_inputs
 
@@ -222,10 +223,13 @@ SABOTAGE = {
     "sp": "rt_irq delivers with the guest SP from before the frame (its SP reload dropped)",
     "keyon": "rt_out8 counts no AdLib key-on edge (its addq dropped)",
     "sfx_start": "rt_hle_sfx_start records no effect id (its move.b dropped)",
+    "irq-main": "FLIGHT +0123B reads 9BCA instead of 813C (undeclared main read, I3)",
+    "irq-handler": "the IRQ0 handler's inc of 9BCA writes 9DC0 (outside the footprint, I3)",
 }
 # Plants a milestone other than --milestone exercises (the guest's first
 # hardware interrupt handler runs after m1b-logo).
 SABOTAGE_AT = {"missing-file": "c83-program-disk-prompt", "sp": "m2-choose-side", "keyon": "m2-choose-side", "sfx_start": "c6-flight-keys",
+               "irq-main": "m3-demo-flight", "irq-handler": "m2-choose-side",
                "mouse-motion": "c9-mouse-menu",
                "mouse-buttons": "c9-mouse-menu"}
 
@@ -337,6 +341,16 @@ class Host:
             a = self.syms["rt_hle_sfx_start"]
             code = e.read(a, 0x20)
             e.write(a + code.index(bytes.fromhex("11867000")), bytes.fromhex("4e714e71"))
+        # I3 plants: one displacement word of a generated instruction (lower.py:
+        # guest offset o of DS/ES at d16 = 7FFFh - o - 1)
+        for plant, lab, old, new in (("irq-main", "FLT_0123B", 0x813C, 0x9BCA),
+                                     ("irq-handler", "SPZ_00804", 0x9BCA, 0x9DC0)):
+            if sabotage == plant:
+                a = self.syms[lab]
+                code = e.read(a, 8)
+                want = (0x7FFF - old - 1) & 0xFFFF
+                k = code.index(want.to_bytes(2, "big"), 2)
+                e.write(a + k, ((0x7FFF - new - 1) & 0xFFFF).to_bytes(2, "big"))
         if sabotage == "far":
             rows = int.from_bytes(e.read(self.syms["dispatch_count"], 4), "big")
             for k in range(rows):
@@ -456,6 +470,20 @@ class Host:
         for n in ("rt_irq", "rt_bios_int08"):
             e.hook_range(U.HOOK_CODE, irq_entry, self.syms[n], self.syms[n])
 
+        # I3: every guest access against the IRQ0 footprint (tests/irq_monitor.py)
+        self.irq = irq_monitor.Monitor(self, GUEST_BYTES)
+
+        @U.CODE_CB
+        def irq_deliver(h, addr, size, user):
+            self.irq.deliver()
+
+        @U.CODE_CB
+        def irq_back(h, addr, size, user):
+            self.irq.returned()
+
+        e.hook_range(U.HOOK_CODE, irq_deliver, self.syms["deliver_guest"], self.syms["deliver_guest"])
+        e.hook_range(U.HOOK_CODE, irq_back, self.syms["rt_irq_back"], self.syms["rt_irq_back"])
+
         # memory watch from the guest entry on (rt_start's own writes are not watched)
         self.in_service = False
         self.masked: set[int] = set()
@@ -463,6 +491,7 @@ class Host:
 
         @U.MEM_CB
         def write(h, kind, addr, size, value, user):
+            self.irq.write(TOP - addr - size + 1, size)    # I3 (tests/irq_monitor.py)
             span = range(TOP - addr - size + 1, TOP - addr + 1)
             if self.dead_flags is not None and self.dead_flags in span:
                 self.masked.update(span)
@@ -488,10 +517,17 @@ class Host:
             for a in {self.syms[x] for x in (lab, lab + "_bp") if x in self.syms}:  # R6 copy
                 e.hook_range(U.HOOK_CODE, dead_pushf, a, a)
 
+        machine = bytearray(GUEST_BYTES)
+        for lo, hi in machine_ranges():
+            machine[lo:hi] = b"\1" * (hi - lo)
+
         @U.MEM_CB
         def read(h, kind, addr, size, value, user):
-            if not self.in_service and self.code[0] <= self.r("pc") < self.code[1]:
-                self.machine_reads.update(range(TOP - addr - size + 1, TOP - addr + 1))
+            lin = TOP - addr - size + 1
+            self.irq.read(lin, size)    # I3 (tests/irq_monitor.py)
+            if (machine[lin] or machine[lin + size - 1]) and not self.in_service \
+                    and self.code[0] <= self.r("pc") < self.code[1]:
+                self.machine_reads.update(b for b in range(lin, lin + size) if machine[b])
             return True
 
         @U.CODE_CB
@@ -510,8 +546,7 @@ class Host:
                 a = TOP - (0x8120 + 0x82)
                 self.e.write(a, bytes([self.mem(a, 1)[0] ^ 0x20]))
             self.e.hook_range(U.HOOK_MEM_WRITE, write, TOP - GUEST_BYTES + 1, TOP)
-            for lo, hi in machine_ranges():
-                self.e.hook_range(U.HOOK_MEM_READ, read, TOP - hi + 1, TOP - lo)
+            self.e.hook_range(U.HOOK_MEM_READ, read, TOP - GUEST_BYTES + 1, TOP)
 
         # generated code: from the first guest label to program.s's data after
         # the modules (the runtime's own reads, e.g. the BIOS tick, are not the
@@ -1254,6 +1289,8 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
                 h.music_masked |= set(range(max(lo, lo + SPAZ_DATA - off), hi))
     if h.display_miss:
         problems.append(h.display_miss)
+    problems += h.irq.finish(REPO / "tmp/test" / f"irq-monitor-{milestone}{'-' + sabotage if sabotage else ''}"
+                                                 f"{'-music-skip' if music_skip else ''}.json")
     if h.stopped_at == label:
         problems += check_opl(h, trace, not music_skip)
         problems += check_sfx(h)

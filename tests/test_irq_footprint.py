@@ -84,6 +84,7 @@ def check(proof):
     sync = {(n, cls, lo) for n, cls, lo, *_ in proof.sync}
     for n in TICK_READERS:
         assert (n, 'G', 0x813c) in sync, n
+    assert (('SWOTL.EXE', 0x455c), '188A', 0) in sync   # irq-sync.csv
     csv = ROOT / 'build/gen/irq-footprint.csv'
     if csv.exists():
         want = csv.read_text().splitlines()[1:]

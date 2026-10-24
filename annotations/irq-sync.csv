@@ -1,0 +1,2 @@
+module,offset,class,first,last,access,reason
+SWOTL.EXE,0x455c,188A,0x0000,0x059f,r,"string routine 042B:02A0 reached by the fall-through of the tick wait 042B:0290 (no return; FRONTEND +06891 waits C8h ticks): the stacked count and the word above it (SPAZ's DS in the host runs) make the far string pointer 188A:00C8, in the handler's slot arrays (I3, c38 c39 c46 c47 c48 c64)"

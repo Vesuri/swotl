@@ -194,8 +194,9 @@ component gets a guarded copy; a profile choice, `tools/bp_regions.py`),
 a profile choice, `tools/outline_sites.py` from `build/gen/outline-sites.csv`),
 `seg-repeat.csv` (segment loads that compare first, R30; a profile choice,
 `tools/seg_repeat.py`), `irq-bounds.csv` (value bounds of variables that index
-the IRQ0 handler's accesses, and class extents, I2) and `irq-ds.csv` (entries that return the
-caller's DS where the I2 analysis cannot see it; host runs check, I3).
+the IRQ0 handler's accesses, and class extents, I2), `irq-ds.csv` (entries that return the
+caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-sync.csv`
+(monitored accesses the I3 monitor found meeting the footprint: sync for the declared span).
 
 ### Tests
 
@@ -236,8 +237,11 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3).
   and RAM (environment MCB to A0000h) vs the snapshot, dead stack masked
   (below SS:SP at a service, and the FLAGS image of an `annotations/flags.csv`
   PUSHF, until the guest rewrites it); at m1b-logo the A0000h window and the
-  DAC; machine bytes the guest read hold reference values. `make
-  test-amiga`: the same at m1b-logo on the A1200 model (FS-UAE,
+  DAC; machine bytes the guest read hold reference values; every guest
+  access against the IRQ0 footprint (`tests/irq_monitor.py`, irq-plan I3:
+  handler accesses inside it, main accesses meeting it only from sync
+  instructions, IF clear or services; record `tmp/test/irq-monitor-<run>.json`).
+  `make test-amiga`: the same at m1b-logo on the A1200 model (FS-UAE,
   `amiga/milestone.gdb.in`), plus the shown screen (bitplanes, colour
   table) decoded against the reference framebuffer and DAC.
 - Amiga replay (`make test-amiga-replay`, also in `make gates`): separate

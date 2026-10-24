@@ -81,6 +81,16 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   memory access; disjoint 16,432, masked 22, monitored 26,284, not reached 1,085.
   `irq-ds.csv`: `__heap_search` and the cell walk driver `+EA74` return the caller's
   DS unseen. Generated bodies unchanged; `make gen` +13 s.
+- I3 (2026-10-24, evidence `tmp/irq/I3/`, records `tmp/test/irq-monitor-*.json`).
+  `test-host-all` (102 runs, 802,362 ticks): handler accesses all inside the footprint
+  (handler entry `1F92:058C`, G `43CDh`); main accesses meeting it from 117 sync sites
+  (with `+0455C` below), 41 IF-clear SPAZ sites, and services: DOS reads (SPAZ's image `1770`/`188A` at load,
+  BDA time) and the BIOS tick. One monitored site met it: SWOTL `+0455C`, the string
+  routine `042B:02A0` reached by the fall-through of the tick wait `042B:0290` (no
+  return; FRONTEND `+06891`), whose stacked C8h and the word above it point at
+  `188A:00C8` (handler slot arrays) → `irq-sync.csv`, sync 206. Songs 0–37 (21 seen),
+  none in the EMS frame; FRONTEND `+0EBE5` reuses a stopped song's buffer (writes after
+  its last read). Host run time +28% (m3 12.0 → 15.4 s).
 - Guest memory backs 1 MiB + HMA (`RT_GUEST_BYTES`); host runs compare RAM from the
   environment MCB to A0000h with dead stack masked (open-work 24).
 

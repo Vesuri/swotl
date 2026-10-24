@@ -38,8 +38,9 @@ or STI shadow in every context: no delivery before it), disjoint (known address
 outside the footprint), sync (may meet it: a read of a handler-written byte, a
 write of a handler-accessed byte, a handler port; an indexed access whose
 displacement lies in a footprint interval of its segment) or monitored (segment or
-offset unknown, or not reached; host runs check them, I3); the worst context
-counts. Song segments (S) are only located at run time (I3). A sync access to a
+offset unknown, or not reached; host runs check them, I3; annotations/irq-sync.csv
+declares the ones they found meeting it: sync for the declared span); the worst
+context counts. Song segments (S) are only located at run time (I3). A sync access to a
 handler-written byte must lower to one 68k instruction that touches memory, no
 compute row may contain a sync access, and every main write of a bounded G
 variable must keep its irq-bounds.csv bound, else Violation.
@@ -89,6 +90,16 @@ def extents() -> dict[str, tuple[int, int]]:
     `*`); a wider access range is clamped and listed (extent rows; I3 checks)."""
     return {r["class"]: (int(r["lo"], 16), int(r["hi"], 16))
             for r in image.rows("irq-bounds.csv") if r["variable"] == "*"}
+
+
+def declared_sync() -> dict[tuple[str, int], list[tuple[str, int, int, str]]]:
+    """(module, offset) -> [(class, first, last, access)]: monitored accesses that the
+    host runs found meeting the footprint (irq-sync.csv, I3); sync for that span."""
+    out = defaultdict(list)
+    for r in image.rows("irq-sync.csv"):
+        out[(r["module"], int(r["offset"], 16))].append(
+            (r["class"], int(r["first"], 16), int(r["last"], 16), r["access"]))
+    return dict(out)
 
 
 # Segment words: (class, displacement) -> class of the segment they hold. A word
@@ -1259,6 +1270,7 @@ class Proof:
         self.written, self.accessed = written, accessed
         self.counts = Counter()
         self.sync = set()
+        declared = declared_sync()
         prog = self.prog
         for mod, u in prog.units.items():
             for off, i in u.insns.items():
@@ -1278,7 +1290,17 @@ class Proof:
                     self.counts["masked (IF = 0)"] += 1
                     continue
                 found = {self.classify_insn(n, i, st, acc) for st in live}
+                if n in declared:
+                    if "monitored" not in found:
+                        self.errors.append(f"irq-sync.csv: {site(n)} is no monitored access ({found})")
+                    for cls, lo, hi, kind in declared.pop(n):
+                        para = paras.get(cls)
+                        w_hit = para is not None and self.meets(para * 16 + lo, para * 16 + hi, written)
+                        self.sync.add((n, cls, lo, hi, kind, bool(w_hit)))
+                    found = {"sync"}
                 self.counts[min(found, key=RANK.index)] += 1
+        for n in declared:
+            self.errors.append(f"irq-sync.csv: {site(n)} is not reached")
         self.check_atomic()
         self.check_rows()
         self.check_bounds()
@@ -1303,14 +1325,20 @@ class Proof:
                 continue
             size = m.width // 8 if m.width != 32 else 4
             if m.base or m.index:
-                lo = seg * 16 + m.disp
-                hits = [s for s in self.accessed if s[0] <= lo <= s[1]]
+                # indexed: sync when its displacement lies in a footprint span; the
+                # row covers the spans it may reach (I3 checks the address)
+                at = seg * 16 + m.disp
+                hits = [s for s in self.accessed if s[0] <= at <= s[1]]
                 if not hits:
                     out = "monitored" if out != "sync" else out
                     continue
-                lo, hi = lo, lo + size - 1
-            else:
-                lo, hi = seg * 16 + m.disp, seg * 16 + m.disp + size - 1
+                w_hit = [s for s in self.written if s[0] <= at <= s[1]]
+                if ("r" in kind and w_hit) or "w" in kind:
+                    for s in hits if "w" in kind else w_hit:
+                        self.sync.add((n, s[2], s[3], s[3] + s[1] - s[0], kind, bool(w_hit)))
+                    return "sync"
+                continue
+            lo, hi = seg * 16 + m.disp, seg * 16 + m.disp + size - 1
             w_hit = self.meets(lo, hi, self.written)
             a_hit = self.meets(lo, hi, self.accessed)
             if ("r" in kind and w_hit) or ("w" in kind and a_hit):
@@ -1447,7 +1475,7 @@ class Proof:
         for cls, sites in sorted(fp.clamped.items()):
             lo, hi = self.handler.extents[cls]
             out.append(f"extent,{cls},0x{lo:04x},0x{hi:04x},rw,{' '.join(sorted(sites))}")
-        for n, cls, lo, hi, kind, written in sorted(self.sync, key=lambda s: s[0]):
+        for n, cls, lo, hi, kind, written in sorted(self.sync):
             out.append(f"sync,{cls},0x{lo:04x},0x{hi:04x},{kind},{site(n)}")
         return out
 
