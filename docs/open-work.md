@@ -45,7 +45,8 @@ speed work: [speed-plan.md](speed-plan.md).
     The user deferred R46 priority searches: no-slowdown acceptance remained unproved.
     Its removed prototype subsequently failed c13/c27 endpoint checks at
     IRQ 1634 / C32D; investigate before any revival (logs: `tmp/native/N4-raster/`).
-    Deferred by the user: N2 `B8A1` (no calls in m4/c13/c27), N4 `BB70`
+    Deferred by the user: F3's `D5A6` prefix (2026-10-24; poll-set change and
+    reference re-recording for ~0.5% of the flyby), N2 `B8A1` (no calls in m4/c13/c27), N4 `BB70`
     (sync-preserving design has no positive price), `109D6` vertex loops
     (initial guarded adapter exceeded its budget), `F290` (narrow
     tile-selection adapter has no positive price, R41), `BD68` (edge-loop
