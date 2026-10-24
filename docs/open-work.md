@@ -95,7 +95,10 @@ speed work: [speed-plan.md](speed-plan.md).
     (68040, TC=8000, CACR=8000, JIT off) runs 3,000 fields to TIMEOUT.
 39. Workbench start (L84): without a CLI, take the WBStartup message before
     opening dos.library and reply it last under `Forbid`; return 20 when a start
-    fails (`src/main.cpp` returns 0; the gcc8 `_start` does neither).
+    fails (`src/main.cpp` returns 0; the gcc8 `_start` does neither). Read the
+    options from the icon's tooltypes (user 2026-10-25): icon.library
+    `GetDiskObject` on the WBArg's lock and name, `FindToolType` for the same
+    keywords as item 44's template, `FreeDiskObject`.
 40. LED filter (L69): left as booted (on, ~5 kHz low-pass); the original AdLib
     output has none. Turn it off at takeover, restore it on exit.
 41. `alignas(4)` on even-sized globals of 4 bytes or more, with a link audit
