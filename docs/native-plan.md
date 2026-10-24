@@ -153,7 +153,7 @@ lost their gain to guards, hooks, exits and polls (R41–R47).
 | F6 | Terrain `FDE0`+`F290`+`EA74`, scope ends before the PLINK call | guest | 7.09% | 2.5–3.5% | lift deferrals; `EA74` authorization |
 | F7 | `109D6` whole, native geometry called directly, DOS call a generated exit | guest | 5.0% | 2.0–2.8% | lift deferral; scope |
 | F8 | Sprite decoder `4D7D`/`4DAE` incl. `call dx` dispatch | guest | 3.9–14.8% | 1.6–7% | scope |
-| F9 | SPAZ OPL write `0CEE`: delay loop in O(1), exact final state | guest | 2.67% | ~2.4% | user: §2.9 out of bounds |
+| F9 | SPAZ OPL write `0CEE` delay loops. Done with every iteration, poll and stack store kept: meter −1.4996%, flyby `0CEE` −36.4%/call (speed-plan §1). O(1): irq-plan I10 | guest | 2.67% | ~2.4% kept ~1.0% | U9 |
 | F10 | Present/C2P reusing `3B9A`'s changed spans | platform | 5.22% | 1.0–1.5% | none (D5 bench) |
 
 Next: `FLIGHT+1538C` object drawing (1.1–1.6%), `FLIGHT+0A8D2` AI scan (~1.5%).

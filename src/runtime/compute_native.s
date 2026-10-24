@@ -12,3 +12,7 @@
 	ifd NATIVE_rt_hle_rasterize
 	include "compute_raster.s"
 	endif
+
+	ifd NATIVE_rt_hle_opl_wait_index
+	include "compute_opl.s"
+	endif

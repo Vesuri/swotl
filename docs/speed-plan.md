@@ -102,6 +102,19 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   code moves 0x434 bytes; with it padded back to the base mod 256 the bench is
   still +0.12%. After frame 12 the guest executes +0.9% instructions per 100
   fields. User 2026-10-24: bench accepted as noise. Evidence: `tmp/speed/f4/`.
+- **F9 measurements** (2026-10-24, `$FSUAE_ARM`, clean worktree arms at
+  `184414d`): SPAZ OPL delay loops `D03..D05` and `D0F..D15` as exact-poll
+  rows: every iteration, poll visit and stack-slot store kept (loop count
+  unchanged, no §2.9 shortening); the PUSH/POP reloads and SP updates go.
+  Meter m4 156,392,185 → 154,046,871 (−1.4996%; generated −5,117,342,
+  runtime +2,772,028; code +150 generated, +76 runtime bytes); 568,080 fewer
+  guest instructions. Bench, 5 interleaved runs per arm: medians 68,387 →
+  68,425 (+0.056%, D8 noise: meter −1.5%), spans 68,339–68,431 and
+  68,341–68,451, RAM hash `951adbe5…6c63` in all 10. Flyby: `0CEE`
+  inclusive 1,840 → 1,171 cycles/call (−36.4%; 2.83% → 1.82% of the clip),
+  callers `07CC` 2,762 → 2,160, `0A8B` 21,118 → 13,737. O(1) loops (§2.9
+  exception) follow irq-plan I9, at I10.
+  Evidence: `tmp/speed/f9/`, `tmp/native/F9/`.
 - **F5 measurements** (2026-10-24, `$FSUAE_ARM`, clean worktree arms at
   `4d4272d`): `BFD1` scanline loop `C000..C42C` one exact-poll row, guest
   calls as continuation exits; folds R48. Meter m4 156,420,369 → 156,394,228
@@ -529,6 +542,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | F4 | FM loop cache: split key/stamp arrays, first-free hint, freed-range refit; render loop per feedback/connection | Amiga platform, FM tests | outside meter (flyby `fm_field` −24.4%/call; bench +0.20%, user accepts as noise) |
 | ZF3 | post-F3/F4 frames checkpoint: 330, 300, 300 ms against pre-F3 360, 350, 360 (no overlap); target unmet | docs | measurement only |
 | F5 | `BFD1` whole, exact polls, guest calls as exits; folds R48. Price (S2, flyby `130bd18`): 575,524 inclusive cycles/call, self 260,523 + ordering 86,293; clear 0.80% of the clip stays (long stores, U3); replaceable ~300K/call; estimate −45–60% of it, 1.5–2.5% of the clip | runtime, translator, compute tests | −0.0167% (bench −0.044%, flyby `BFD1` −2.1%/call) |
+| F9 | SPAZ OPL delay loops as exact-poll rows, every iteration, poll and store kept | runtime, annotations, `test_opl_delay` | −1.4996% (bench +0.056%, D8; flyby `0CEE` −36.4%/call) |
 
 No priced translator candidate remains. Unchanged outside authorized U5 rows (§2):
 poll points (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers

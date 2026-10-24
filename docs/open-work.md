@@ -38,7 +38,8 @@ speed work: [speed-plan.md](speed-plan.md).
     bombers (F1 kept: c12 meter −27.72%; F2 kept: REP MOVSW by longs; F3a kept: `B017` whole,
     meter −1.4854%; F3b kept: `B52D` whole, meter −1.5848%, bench +0.025% accepted by the user as noise; F4 kept:
     FM cache and render loop, flyby `fm_field` −24.4%/call, bench +0.20% accepted by the user as noise; F5 kept:
-    `BFD1` scanline loop, meter −0.0167%, flyby `BFD1` −2.1%/call); ranked plan F0–F10,
+    `BFD1` scanline loop, meter −0.0167%, flyby `BFD1` −2.1%/call; F9 kept: SPAZ
+    OPL delay loops, meter −1.4996%, flyby `0CEE` −36.4%/call); ranked plan F0–F10,
     approved under U9: native-plan F.
     F5 covers the R46 priority searches and R47 expiry/advance inside the
     whole `BFD1` row.

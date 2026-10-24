@@ -17,6 +17,8 @@ at D92A and D95C use the same exact-poll contract (R44),
 retaining generated clipping, shared callees and returns. BFD1's scanline
 loop from C000 is one exact-poll row (F5, folds R48's ordering row): `end`
 C42C, its guest calls and epilogue continuation exits (`hle.csv` `exits`).
+SPAZ's OPL delay loops `D03` and `D0F` are exact-poll rows keeping every
+iteration, poll visit and stack store (F9).
 Remaining candidates and user deferrals: open-work 14b. Admission, pricing
 and S1–S9 remain required. [irq-plan](irq-plan.md) I9 retires U3 write
 histories, the U5 poll contract and exact native polling (RC5, user 2026-10-24).
