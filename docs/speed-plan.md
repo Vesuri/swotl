@@ -280,6 +280,11 @@ Breaking any of these voids the step, whatever it measures.
   lower fixed-work 68020 bench cycles, with identical final guest RAM, all relevant
   fidelity gates green and no slowdown. Report the unchanged meter and
   actual code payload; do not infer a frames-fixture gain from the bench.
+- **Bench noise (D8):** a bench median at most +0.25% above the base
+  (layout-scale; F4's code move gave +0.20%) is noise, not a slowdown,
+  when the step is generally faster (meter lower, or the flyby lowers the
+  changed work per call) and final guest RAM is identical. Report it; ask
+  only above +0.25% or when nothing general improves.
 - **Code growth** only with lower model cycles (D2), or lower bench cycles
   for work covered by D5. Stop and ask before
   the payload exceeds 1,325,164 bytes by more than 25% (slave ExpMem margin, [whdload.md](whdload.md) Memory).
@@ -533,6 +538,8 @@ items left.
 - **D7 (2026-10-14).** R19 flag-word packing rejected (§10). Trap flag:
   TF = 1 stops loudly at POPF/IRET, no single-step delivery
   (translator-design.md).
+- **D8 (2026-10-24).** The bench stays frames 4–11 (static opening view).
+  Tiny bench regressions count as noise when general performance improves (§3).
 - Native replacement: [native-plan.md](native-plan.md); each routine needs the user's
   authorization (§2.2).
 

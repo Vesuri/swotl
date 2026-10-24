@@ -62,7 +62,7 @@ speed work: [speed-plan.md](speed-plan.md).
     Bench acceptance for platform/layout work (D5) and a later palette window
     (D6) are approved. Fidelity gates and no slowdown remain mandatory except
     the specific R20/R35 tradeoffs and R36/R40/R48/F3b/F4 bench differences accepted by
-    the user as noise (speed-plan §7). Z1 leaves the target unmet; plan F is next.
+    the user as noise (speed-plan §7) and D8's tiny bench regressions (speed-plan §3). Z1 leaves the target unmet; plan F is next.
 14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`
     `Harness`: each byte drew from a fresh generator with the same seed).
     A random background is stronger but changes every corpus case; needs
