@@ -205,7 +205,7 @@ JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc)
 RUN = @mkdir -p tmp/test; if $(2) > tmp/test/$(1).log 2>&1; then echo "ok    $(1)"; \
 	else echo "FAIL  $(1) (tmp/test/$(1).log)"; tail -n 15 tmp/test/$(1).log; exit 1; fi
 SHARDS = forms.0/4 forms.1/4 forms.2/4 forms.3/4 space.0/1 boundary.0/1 blocks.0/1
-TESTS = t-ems t-rasterize t-opl-delay t-irq-footprint t-priority-search t-line-pixels t-sprite-packet t-compute-exact-polls t-replay-run-isolation t-amiga-file-sharing t-compute-reentry t-scenery t-compute-multi-endpoint t-polygon-classify t-compute-endpoint t-point-normalise t-compute-code-writes t-point-projection t-point-transform t-compute-contract t-compute-polls t-compute-u8 t-far-return-protocol t-jump-fusion t-gate-runner t-block-boundary t-joystick t-rep-replay t-rep-lowering t-host-replay-visits t-fixture-inputs t-key-chords t-replay-chords t-key-release t-oracle-boundary t-oracle-exception-writes t-helper-branches t-block-assembly t-dos-sda t-dos-search t-machine-vectors t-interrupt-frame-mask t-keyboard-prefix t-host-launch t-load-image t-align-convergence t-replay-hooks t-replay-events t-file-dates t-mouse-irq t-display-queue t-display-palette t-amiga-input t-smc-flow t-cell-cache t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
+TESTS = t-ems t-rasterize t-opl-delay t-irq-footprint t-priority-search t-line-pixels t-sprite-packet t-compute-exact-polls t-replay-run-isolation t-amiga-file-sharing t-compute-reentry t-scenery t-compute-multi-endpoint t-polygon-classify t-compute-endpoint t-point-normalise t-compute-code-writes t-point-projection t-point-transform t-compute-contract t-compute-polls t-compute-u8 t-far-return-protocol t-jump-fusion t-gate-runner t-block-boundary t-joystick t-rep-replay t-rep-lowering t-host-replay-visits t-fixture-inputs t-key-chords t-replay-chords t-key-release t-oracle-boundary t-oracle-exception-writes t-helper-branches t-block-assembly t-dos-sda t-dos-search t-machine-vectors t-interrupt-frame-mask t-keyboard-prefix t-host-launch t-load-image t-align-convergence t-replay-hooks t-replay-events t-file-dates t-mouse-irq t-irq-in-service t-display-queue t-display-palette t-amiga-input t-smc-flow t-cell-cache t-align t-next-branch t-dosbox-retf t-reglive t-compact t-byteorder-entries t-carry-entries t-hunk-size t-profile-tools t-cost-tools t-lint t-decode $(subst /,-of-,$(SHARDS:%=t-x86-%)) $(subst /,-of-,$(SHARDS:%=t-m68k-%)) \
 	t-blocks t-guards t-fm t-fm-quality t-fm-render t-fm-envelope t-fm-allocation t-fm-cache t-fm-phase t-tfh t-sound-hooks t-audio $(HOST_MILESTONES:%=t-host-%)
 
 test: host
@@ -408,6 +408,8 @@ t-sab-file-dates:
 	$(call RUN,sabotage-file-dates,$(PYTHON) tests/test_file_dates.py --sabotage)
 t-mouse-irq:
 	$(call RUN,mouse-irq,$(PYTHON) tests/test_mouse_irq.py)
+t-irq-in-service:
+	$(call RUN,irq-in-service,$(PYTHON) tests/test_irq_in_service.py)
 t-reglive:
 	$(call RUN,reglive,$(PYTHON) tests/test_reglive.py)
 t-smc-flow:

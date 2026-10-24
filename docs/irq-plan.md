@@ -98,6 +98,11 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   masked dead stack; the private stack (`host_run.py` `IRQ_STACK`, 200h below
   `B8000h`) is no machine memory (the reference reads FFh there). Meter m4 +239,209
   model cycles (+0.1553%), runtime only (saves around each tick); generated +0.
+  In service: no posted interrupt is taken from `rt_irq0_enter` to `rt_irq0_leave`
+  (the PIC holds IRQ0 and IRQ1 until the EOI). SPAZ's handler reaches an STI
+  (SPAZ+05AD, via SPAZ+0DA7) before its EOI (SPAZ+0A80); on FS-UAE a tick posted meanwhile
+  re-entered `rt_irq_async`, overwrote `rt_irq_saved` and resumed main code with SS
+  `B000` (`test-amiga-restore`, display audits). Check `t-irq-in-service`.
 - Guest memory backs 1 MiB + HMA (`RT_GUEST_BYTES`); host runs compare RAM from the
   environment MCB to A0000h with dead stack masked (open-work 24).
 

@@ -295,7 +295,8 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   sabotage plants). With guest IF set posted interrupts run in order: IRQ0's guest
   handler (`annotations/entries.csv`) through `rt_irq_async` on the private guest
   stack `B000:8000` down (frame with the sentinel CS:IP `B000:8000` its IRET must pop;
-  68k registers, state block and `rt_r` restored after it, irq-plan I4), another
+  68k registers, state block and `rt_r` restored after it; nothing posted is taken
+  until it returns, the PIC's in-service IRQ0, irq-plan I4), another
   guest handler on a pushed frame, else the BIOS one (INT 08h ticks; INT 09h takes the next
   `rt_key_ring` event, a set 1 scan code with break bit and E0 flag, as
   DOSBox-X's IRQ1 handler does: its scan-code table, shift and lock flags,
