@@ -23,7 +23,7 @@ and compares both with the DOSBox-X reference (`tests/host_run.py --amiga`).
 A replacement publication or missing success marker fails.
 
 `make test-amiga-restore` exits through the game menu (E), then checks
-ActiView, the VERTB vector triple, DMACONR and INTENAR against their saved
+ActiView, the VERTB and SOFTINT vector triples, DMACONR and INTENAR against their saved
 values. `amiga_restore_status == 31` means all checks passed. The fixture
 requires its success marker; a debugger disconnect is a failure.
 

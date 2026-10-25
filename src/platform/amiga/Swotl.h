@@ -25,6 +25,8 @@ public:
 
     // Called from the VERTB vector (interrupt context, 50 Hz PAL).
     void verticalBlank();
+    // Called from the SOFTINT vector after each vertical blank (the field task).
+    void field();
 
     // DOS calls between these get the OS's interrupts and multitasking back;
     // the display stays. Nest; no-ops outside the takeover.
@@ -42,6 +44,8 @@ public:
 private:
     void takeOver();
     void handBack();
+    void takeVectors();
+    void restoreVectors();
     uint16_t restoreStatus() const;
 
     uint16_t beginDisplayUpdate();
@@ -51,6 +55,7 @@ private:
     struct View* oldActiView;
     uint32_t* oldCopperList;
     struct IntVector oldVerticalBlankVector;
+    struct IntVector oldSoftwareVector;
     uint16_t oldEnabledDMAChannels;
     uint16_t oldEnabledInterrupts;
     uint32_t ioFrames;

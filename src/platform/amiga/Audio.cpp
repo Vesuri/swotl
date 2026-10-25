@@ -110,10 +110,23 @@ void Audio::handBack()
 void Audio::service()
 {
     if (!running) return;
+    // The OPL state between two ticks' writes (docs/irq-plan.md I5): the
+    // field task runs at interrupt level, the tick masked for the copy.
+    typedef uint32_t __attribute__((may_alias)) Long;
+    static uint8_t opl[256] __attribute__((aligned(4)));
+    static uint8_t keyon[9], id[TFH_SLOTS], starts[TFH_SLOTS];
+    Disable();
+    for (uint16_t k = 0; k < 256; k += 4) *(Long*)(opl + k) = *(const Long*)(rt_opl + k);
+    for (uint16_t k = 0; k < 9; ++k) keyon[k] = rt_opl_keyon[k];
+    for (uint16_t k = 0; k < TFH_SLOTS; ++k) {
+        id[k] = rt_sfx_id[k];
+        starts[k] = rt_sfx_starts[k];
+    }
+    Enable();
     struct fm_voice v[FM_VOICES];
     struct fm_voice t[TFH_SLOTS];
-    uint16_t mask = tfhChip ? tfh_field(rt_opl, rt_sfx_id, rt_sfx_starts, t) : 0;
-    fm_field(rt_opl, rt_opl_keyon, mask, v);
+    uint16_t mask = tfhChip ? tfh_field(opl, id, starts, t) : 0;
+    fm_field(opl, keyon, mask, v);
     for (uint16_t k = 0; k < TFH_SLOTS; ++k) {
         if (mask & (7u << (3 * k))) v[k] = t[k];
     }

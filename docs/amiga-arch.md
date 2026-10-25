@@ -46,9 +46,9 @@ DanceDiverse3 set (`Palette24Bit`, `setPalette24Bit`) is kept for it.
 5. **Take over** in SL's order (L2, L3), VERTB vector (L10), keyboard ICR (L72), `Forbid`
    (L6).
 6. **Run.** The translated program runs on its own stack (`amiga_guest_run`); posted
-   interrupts and due presents are taken at its poll points (D8, D9). Disk access only
+   interrupts are taken at its poll points (D8); the field task presents (D9). Disk access only
    inside I/O windows (L7). SWOTL: every DOS call of `amiga_platform.c` is one window
-   (`Swotl::beginIO`/`endIO`): Exec's VERTB vector, saved INTENA and DISK|BLITTER DMA
+   (`Swotl::beginIO`/`endIO`): Exec's VERTB and SOFTINT vectors, saved INTENA and DISK|BLITTER DMA
    back, `Permit`; the copper display and the keyboard interrupt stay; fields the OS
    serves are added from `GfxBase->VBCounter`.
 7. **Return** in SL/VT's order (L4), then pending saves, frees, `releaseBlitterQueue`
@@ -59,7 +59,8 @@ DanceDiverse3 set (`Palette24Bit`, `setPalette24Bit`) is kept for it.
 
 | Source | Owner | Content |
 | --- | --- | --- |
-| Level 3 VERTB | taken-over Exec vector | clear INTREQ (L11) → display publication (L17, L25–27) → field counter → mouse and typematic repeat (L77, L79–80) → Paula staging (L62–63) → present due (D9) |
+| Level 3 VERTB | taken-over Exec vector | clear INTREQ (L11) → display publication (L17, L25–27) → field counter → mouse and typematic repeat (L77, L79–80) → Paula staging (L62–63) → request SOFTINT |
+| Level 1 SOFTINT | taken-over Exec vector | field task ([irq-plan](irq-plan.md) I5): clear INTREQ → key script, `fm_field` on an OPL snapshot taken under `Disable` → the due present (D9) unless a driver call or the main thread's present or video BIOS call runs (`video.c` busy) |
 | Level 2 PORTS | Exec chain | keyboard via `ciaa.resource` (L13, L72) |
 | Level 6 EXTER | Exec chain | PIT via a `ciab.resource` timer, posts vector 08h (`amiga_platform.c`; none under `BENCH`) |
 | Level 3 BLIT | masked | unless the framework blitter queue is adopted (L14) |

@@ -266,7 +266,8 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   `rt_vdrv_depth`; the outermost return publishes the frame
   (`rt_vdrv_return`). A published frame's changed rows go to `plat_present`
   as 32-pixel-aligned rectangles at the first vertical blank after it
-  (`rt_present_due`) while no driver call runs; mode set marks the whole
+  (`rt_present_due`; Amiga: the field task, host: the next poll) while no
+  driver call and no main-thread present or video BIOS call runs; mode set marks the whole
   frame; DAC block sets go to `plat_palette` at once. No frame is read to
   find changes. Amiga (machine taken over, `Swotl.cpp`): an 8-plane copper
   display (framework `CopperList`/`Bitmap`), Kalms `c2p1x1_8_c5_bm` per
@@ -278,7 +279,9 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   lines below 8; a late VBI defers the handoff. `amiga_bitmap` and
   `amiga_colours` describe the handed-off frame. Checked by the host run
   (every guest A0000h store lies in the next present's rectangles; sabotage
-  `vram`), `tests/test_display_queue.py` (inheritance and queue races), and
+  `vram`), `tests/test_display_queue.py` (inheritance and queue races; production
+  `video.c` with the field task interrupting driver calls, presents and video BIOS
+  calls, plants), and
   `amiga/display_audit.sh` (40 handoffs against published guest snapshots
   and DAC, no conversion into the shown bitmap, zero late handoffs).
 - Interrupts (D8; [irq-plan](irq-plan.md) removes poll checks from production code:

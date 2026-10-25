@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Production Paula backend: sample ownership, zero-volume attack, Chip lifetime.
-Mock MMIO and command producers; the sample/FM cores have independent gates.
+"""Production Paula backend: sample ownership, zero-volume attack, Chip lifetime,
+the field's OPL snapshot (taken with interrupts disabled; a tick when they
+return must not reach it). Mock MMIO and command producers; the sample/FM
+cores have independent gates.
 """
 from pathlib import Path
 import subprocess
@@ -43,7 +45,9 @@ void *AllocMem(uint32_t n, uint32_t flags) {
 void FreeMem(void *p, uint32_t n) {
     assert(allocations.at(p) == n); allocations.erase(p); free(p);
 }
-void Disable() {} void Enable() {}
+static uint8_t snapshot;     // rt_opl[B0] when interrupts were last disabled
+void Disable() { snapshot = rt_opl[0xb0]; }
+void Enable() { rt_opl[0xb0] ^= 0x20; }     // a tick as soon as they return
 static int8_t pcm[16], fmPCM[16];
 static unsigned field;
 extern "C" {
@@ -52,12 +56,14 @@ uint32_t fm_renders;
 void fm_init(int8_t *, uint32_t) {}
 uint32_t tfh_chip_bytes(const uint8_t *, uint32_t) { return 212; }
 int tfh_init(const uint8_t *, uint32_t, int8_t *) { return 0; }
-uint16_t tfh_field(const uint8_t *, const uint8_t *, const uint8_t *, fm_voice *v) {
+uint16_t tfh_field(const uint8_t *opl, const uint8_t *, const uint8_t *, fm_voice *v) {
+    assert(opl != rt_opl && opl[0xb0] == snapshot);
     v[0] = {pcm + (field ? 4 : 0), (uint16_t)(field ? 12 : 16), 800,
             (uint8_t)(field > 1 ? 4 : 0), (uint8_t)!field, -1};
     ++field; return 7;
 }
-void fm_field(const uint8_t *, const uint8_t *, uint16_t mask, fm_voice *v) {
+void fm_field(const uint8_t *opl, const uint8_t *keyon, uint16_t mask, fm_voice *v) {
+    assert(opl != rt_opl && keyon != rt_opl_keyon && opl[0xb0] == snapshot);
     assert(mask == 7);
     for (int k = 0; k < 4; ++k) v[k] = {fmPCM, 16, 200, 16, 0, (int8_t)(3+k)};
 }
@@ -88,7 +94,7 @@ int main() {
 '''
 
 
-def run(plant=False):
+def run(plant=None):
     with tempfile.TemporaryDirectory(prefix='swotl-audio-') as tmp:
         root = Path(tmp)
         for name, text in HEADERS.items():
@@ -99,17 +105,25 @@ def run(plant=False):
             (root / name).write_text((SRC / name).read_text())
         source = (SRC / 'Audio.cpp').read_text()
         if plant:
-            needle = 'if (muted || !v.loop)'
+            needle, fault = PLANTS[plant]
             assert needle in source
-            source = source.replace(needle, 'if (muted || !v.loop || !v.volume)')
+            source = source.replace(needle, fault)
         (root / 'Audio.cpp').write_text(source)
         (root / 'test.cpp').write_text(HARNESS)
         exe = root / 'test'
         subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror', '-I', str(root), str(root / 'test.cpp'), '-o', str(exe)], check=True)
         result = subprocess.run([str(exe)], capture_output=True)
-        assert bool(result.returncode) == plant, result.stderr.decode()
-        print('Audio: silent-attack sabotage caught' if plant else 'Audio: sample merge, silent attack restart and Chip release: ok')
+        assert bool(result.returncode) == bool(plant), result.stderr.decode()
+        print(f'Audio: {plant} sabotage caught' if plant else
+              'Audio: sample merge, silent attack restart, Chip release and OPL snapshot: ok')
 
+
+PLANTS = {'silent-attack': ('if (muted || !v.loop)', 'if (muted || !v.loop || !v.volume)'),
+          'live-opl': ('fm_field(opl, keyon, mask, v)', 'fm_field(rt_opl, rt_opl_keyon, mask, v)')}
 
 if __name__ == '__main__':
-    run('--sabotage' in sys.argv)
+    if '--sabotage' in sys.argv:
+        for name in PLANTS:
+            run(name)
+    else:
+        run()

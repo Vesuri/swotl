@@ -275,8 +275,9 @@ void plat_timer_rate(uint32_t divisor)
  * for a screen that is polling rather than for a time the host load moves;
  * keys a-z 0-9 enter esc space or $hex raw codes, mouse buttons lmb rmb,
  * mouse motion mx+N mx-N my+N my-N counts; shot and quit call
- * amiga_script_mark for a debugger fixture): fed from the main program at
- * each vertical blank into the keyboard and mouse paths of Input.cpp; a key
+ * amiga_script_mark for a debugger fixture; unknown names are logged at the
+ * start and skipped): fed from the field task at each vertical blank into
+ * the keyboard and mouse paths of Input.cpp; a key
  * is released 5 frames after it is pressed, a button once the guest has
  * also read the mouse twice (buttons are polled levels, keys reach the BIOS
  * buffer). */
@@ -340,6 +341,36 @@ static int raw_of(const char *name, int n)
     return -1;
 }
 
+static int motion(const char *name, int n)
+{
+    return n > 3 && name[0] == 'm' && (name[1] == 'x' || name[1] == 'y') &&
+           (name[2] == '+' || name[2] == '-');
+}
+
+static int known(const char *name, int n)
+{
+    return motion(name, n) || named(name, n, "shot") || named(name, n, "quit") ||
+           raw_of(name, n) >= 0;
+}
+
+/* At the start (main program): the field task cannot log. */
+static void key_script_check(void)
+{
+    for (const char *p = key_script; p && *p > ' ';) {
+        while (*p > ' ' && *p != ',' && *p != ':') {
+            ++p;
+        }
+        const char *name = *p == ':' ? ++p : p;
+        while (*p > ' ' && *p != ',') {
+            ++p;
+        }
+        if (!known(name, (int)(p - name))) {
+            plat_log("SWOTL KEYS: unknown key");
+        }
+        p += *p == ',';
+    }
+}
+
 static void key_script_step(void)
 {
     if (key_up >= 0 && amiga_frames >= key_up_frame && amiga_mouse_reads >= key_up_reads) {
@@ -366,8 +397,7 @@ static void key_script_step(void)
     }
     int n = (int)(p - name);
     key_script = *p == ',' ? p + 1 : p;
-    if (n > 3 && name[0] == 'm' && (name[1] == 'x' || name[1] == 'y') &&
-        (name[2] == '+' || name[2] == '-')) {
+    if (motion(name, n)) {
         WORD v = 0;
         for (int k = 3; k < n; ++k) {
             v = (WORD)(v * 10 + name[k] - '0');
@@ -382,7 +412,6 @@ static void key_script_step(void)
     }
     int code = raw_of(name, n);
     if (code < 0) {
-        plat_log("SWOTL KEYS: unknown key");
         return;
     }
     script_event(code, 0);
@@ -458,6 +487,7 @@ int amiga_guest_open(void)
             rt_music_skip = 0;      /* diagnostic: music records start their songs */
         }
     }
+    key_script_check();
     if (tfh) load_tfh();
     else plat_log("SWOTL sound FM");
     /* Guest RAM, the state block below it and the EMS store after it; Fast RAM

@@ -33,9 +33,10 @@ extern struct GfxBase* GfxBase;
 
 #define DMA_ALL (DMAF_ALL | DMAF_MASTER | DMAF_BLITHOG)
 
-// The interrupts the takeover runs on: our VERTB vector, Exec's PORTS chain
-// (keyboard through ciaa.resource, L13) and EXTER (the PIT on a CIA-B timer).
-#define TAKEOVER_INTERRUPTS (INTF_INTEN | INTF_VERTB | INTF_PORTS | INTF_EXTER)
+// The interrupts the takeover runs on: our VERTB and SOFTINT vectors (the field
+// task), Exec's PORTS chain (keyboard through ciaa.resource, L13) and EXTER (the
+// PIT on a CIA-B timer).
+#define TAKEOVER_INTERRUPTS (INTF_INTEN | INTF_VERTB | INTF_SOFTINT | INTF_PORTS | INTF_EXTER)
 
 // The frame as shown (tests/host_run.py --amiga and amiga/display_audit.gdb
 // read them back through the GDB fixture): the bitplanes, and the colour
@@ -43,7 +44,7 @@ extern struct GfxBase* GfxBase;
 extern "C" {
 struct BitMap amiga_bitmap;
 uint32_t amiga_colours[1 + 256 * 3 + 1];
-// Restore bits: inactive, ActiView, VERTB triple, DMA, INTENA; all set = 31.
+// Restore bits: inactive, ActiView, VERTB and SOFTINT triples, DMA, INTENA; all set = 31.
 volatile uint16_t amiga_restore_status = 0;
 uint32_t amiga_chip_free = 0, amiga_chip_largest = 0;
 volatile uint32_t amiga_frames = 0;    // vertical blanks since the takeover (debug fixtures)
@@ -92,7 +93,7 @@ static uint16_t beamLine() {
 Swotl* Swotl::application = 0;
 Swotl* Swotl::active = 0;
 
-static struct Interrupt vbiInterrupt;
+static struct Interrupt vbiInterrupt, fieldInterrupt;
 
 // Owns the level-3 VERTB vector, so it acknowledges INTREQ itself (L11).
 static uint32_t vbiHandler()
@@ -102,6 +103,50 @@ static uint32_t vbiHandler()
         Swotl::active->verticalBlank();
     }
     return 0;
+}
+
+// The field task (docs/irq-plan.md I5): our level-1 SOFTINT vector, requested by
+// each vertical blank. The platform's per-field work and the due present run
+// here, off the guest's poll path, below every hardware interrupt. Owns the
+// vector, so it acknowledges INTREQ itself (L11).
+static uint32_t fieldHandler()
+{
+    AmigaHardware::clearInterruptRequests(INTF_SOFTINT);
+    if (Swotl::active) {
+        Swotl::active->field();
+    }
+    return 0;
+}
+
+void Swotl::field()
+{
+    rt_video_refresh();
+}
+
+static bool sameVector(const struct IntVector& a, const struct IntVector& b)
+{
+    return a.iv_Data == b.iv_Data && a.iv_Code == b.iv_Code && a.iv_Node == b.iv_Node;
+}
+
+// Our VERTB and SOFTINT vectors (call under Disable).
+void Swotl::takeVectors()
+{
+    struct IntVector* vector = &SysBase->IntVects[INTB_VERTB];
+    vector->iv_Data = 0;
+    vector->iv_Code = (void (*)())vbiHandler;
+    vector->iv_Node = &vbiInterrupt.is_Node;
+    vector = &SysBase->IntVects[INTB_SOFTINT];
+    vector->iv_Data = 0;
+    vector->iv_Code = (void (*)())fieldHandler;
+    vector->iv_Node = &fieldInterrupt.is_Node;
+}
+
+// Exec's (call under Disable). The callers then request SOFTINT once: a cause
+// queued while the vector was ours still reaches Exec's dispatch.
+void Swotl::restoreVectors()
+{
+    SysBase->IntVects[INTB_VERTB] = oldVerticalBlankVector;
+    SysBase->IntVects[INTB_SOFTINT] = oldSoftwareVector;
 }
 
 Swotl::Swotl() :
@@ -218,18 +263,22 @@ void Swotl::takeOver()
         *spriteData++ = 0;
     }
 
-    // Own the VERTB vector rather than joining exec's server chain (L10).
+    // Own the VERTB and SOFTINT vectors rather than joining exec's server chain
+    // or soft-interrupt queue (L10).
     vbiInterrupt.is_Node.ln_Type = NT_INTERRUPT;
     vbiInterrupt.is_Node.ln_Pri = 127;
     vbiInterrupt.is_Node.ln_Name = (char*)"SWOTL VBI";
     vbiInterrupt.is_Data = 0;
     vbiInterrupt.is_Code = (void (*)())vbiHandler;
-    struct IntVector* vector = &SysBase->IntVects[INTB_VERTB];
+    fieldInterrupt.is_Node.ln_Type = NT_INTERRUPT;
+    fieldInterrupt.is_Node.ln_Pri = 0;
+    fieldInterrupt.is_Node.ln_Name = (char*)"SWOTL field";
+    fieldInterrupt.is_Data = 0;
+    fieldInterrupt.is_Code = (void (*)())fieldHandler;
     Disable();
-    oldVerticalBlankVector = *vector;
-    vector->iv_Data = 0;
-    vector->iv_Code = (void (*)())vbiHandler;
-    vector->iv_Node = &vbiInterrupt.is_Node;
+    oldVerticalBlankVector = SysBase->IntVects[INTB_VERTB];
+    oldSoftwareVector = SysBase->IntVects[INTB_SOFTINT];
+    takeVectors();
     Enable();
     vectorTaken = true;
     active = this;
@@ -258,7 +307,7 @@ void Swotl::handBack()
     AmigaHardware::setDMAChannels(DMAF_MASTER | DMAF_COPPER, true);
     if (vectorTaken) {
         Disable();
-        SysBase->IntVects[INTB_VERTB] = oldVerticalBlankVector;
+        restoreVectors();
         Enable();
         vectorTaken = false;
     }
@@ -266,6 +315,7 @@ void Swotl::handBack()
     AmigaHardware::setDMAChannels(DMA_ALL, false);
     AmigaHardware::setDMAChannels(oldEnabledDMAChannels & DMA_ALL, true);
     AmigaHardware::clearInterruptRequests(INTF_ALL);
+    *intreqPointer = INTF_SETCLR | INTF_SOFTINT;    // Exec's queue (restoreVectors)
     AmigaHardware::setInterrupts(INTF_ALL, false);
     AmigaHardware::setInterrupts(oldEnabledInterrupts & INTF_ALL, true);
     Permit();
@@ -279,7 +329,6 @@ void Swotl::handBack()
 // OS has processed the restored view, while our saved state still exists.
 uint16_t Swotl::restoreStatus() const
 {
-    const struct IntVector* vector = &SysBase->IntVects[INTB_VERTB];
     uint16_t status = 0;
     if (!active && !vectorTaken) {
         status |= 1;
@@ -287,9 +336,8 @@ uint16_t Swotl::restoreStatus() const
     if (GfxBase->ActiView == oldActiView) {
         status |= 2;
     }
-    if (vector->iv_Data == oldVerticalBlankVector.iv_Data &&
-        vector->iv_Code == oldVerticalBlankVector.iv_Code &&
-        vector->iv_Node == oldVerticalBlankVector.iv_Node) {
+    if (sameVector(SysBase->IntVects[INTB_VERTB], oldVerticalBlankVector) &&
+        sameVector(SysBase->IntVects[INTB_SOFTINT], oldSoftwareVector)) {
         status |= 4;
     }
     if ((AmigaHardware::enabledDMAChannels() & DMA_ALL) ==
@@ -303,8 +351,8 @@ uint16_t Swotl::restoreStatus() const
     return status;
 }
 
-// Each vertical blank: the mouse and typematic repeat, and a published frame
-// is due (D9); the runtime presents its changed rows at the next poll point.
+// Each vertical blank: the mouse and typematic repeat, then the field task
+// (a published frame is due, D9).
 void Swotl::verticalBlank()
 {
     // Publish first. A delayed VBI must leave the completed buffer queued,
@@ -331,12 +379,11 @@ void Swotl::verticalBlank()
     ++amiga_frames;
     Input::verticalBlank();
     Audio::verticalBlank();
-    rt_present_due = 1;
-    RT_RAISE_IRQ();
+    *intreqPointer = INTF_SETCLR | INTF_SOFTINT;
 }
 
-// Hand back interrupts and multitasking, not the display (L7): Exec's VERTB
-// vector, the saved INTENA and DISK|BLITTER DMA; our copper list and
+// Hand back interrupts and multitasking, not the display (L7): Exec's VERTB and SOFTINT
+// vectors, the saved INTENA and DISK|BLITTER DMA; our copper list and
 // LoadView(NULL) stay, and so does the keyboard interrupt (keys typed during
 // the window still reach the game). The vertical blanks the OS serves are
 // counted from graphics.library's own counter.
@@ -348,7 +395,8 @@ void Swotl::beginIO()
     Audio::mute(true);
     Disable();
     AmigaHardware::setInterrupts(INTF_ALL, false);
-    SysBase->IntVects[INTB_VERTB] = oldVerticalBlankVector;
+    restoreVectors();
+    *intreqPointer = INTF_SETCLR | INTF_SOFTINT;    // Exec's queue; no field work in the window
     ioFrames = GfxBase->VBCounter;
     AmigaHardware::setDMAChannels(oldEnabledDMAChannels & (DMAF_DISK | DMAF_BLITTER), true);
     AmigaHardware::setInterrupts(oldEnabledInterrupts & INTF_ALL, true);
@@ -364,10 +412,7 @@ void Swotl::endIO()
     Forbid();
     Disable();
     AmigaHardware::setInterrupts(INTF_ALL, false);
-    struct IntVector* vector = &SysBase->IntVects[INTB_VERTB];
-    vector->iv_Data = 0;
-    vector->iv_Code = (void (*)())vbiHandler;
-    vector->iv_Node = &vbiInterrupt.is_Node;
+    takeVectors();
     uint32_t fields = GfxBase->VBCounter - ioFrames;
     amiga_frames += fields;
     amiga_io_frames += fields;

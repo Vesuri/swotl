@@ -137,12 +137,16 @@ extern uint16_t rt_entry_cs, rt_entry_ip;
 void rt_int21(uint16_t cs, uint16_t ip);
 void rt_int10(void);
 extern uint8_t rt_dac[768];      /* video.c: 6-bit R, G, B */
-/* video.c: set to 1 by the platform (with RT_RAISE_IRQ) at each vertical blank;
- * a published frame's changed rows are presented at the next poll point
- * outside the graphics driver, or when the driver returns (D9); 2: due,
- * the platform's per-blank work done */
+/* video.c: set to 1 (with RT_RAISE_IRQ) at each vertical blank by a platform
+ * without a field task (rt_video_refresh at the next poll point; the host);
+ * a published frame's changed rows are presented outside the graphics
+ * driver, or when the driver returns (D9); 2: due, the platform's per-blank
+ * work done */
 extern volatile uint8_t rt_present_due;
 void rt_video_refresh(void);
+/* Where a field task may interrupt the display path: empty; a test seam
+ * (tests/test_display_queue.py runs the field task there). */
+#define RT_FIELD_POINT() ((void)0)
 void rt_int67(void);
 void rt_dos_init(void);
 void rt_dos_close(void);

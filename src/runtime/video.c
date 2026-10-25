@@ -4,7 +4,9 @@
  * (rt_vram_mark); a frame is published when the outermost call into the
  * driver returns, and its changed rows are presented at the first vertical
  * blank after that (rt_present_due) while no driver call runs. DAC block
- * sets reach the platform at once, as on the VGA. */
+ * sets reach the platform at once, as on the VGA. The vertical blank's work
+ * runs at a poll point or in the platform's field task (an interrupt,
+ * docs/irq-plan.md I5); `busy` keeps it off the main thread's display path. */
 #include "runtime.h"
 #include "platform.h"
 
@@ -88,9 +90,19 @@ uint16_t rt_vram_top = 200, rt_vram_bottom = 0;
 uint16_t rt_vdrv_depth;          /* calls into the graphics driver in progress */
 static uint8_t published;        /* a driver call that changed rows has returned */
 volatile uint8_t rt_present_due;
+static volatile uint8_t busy;    /* the main thread presents or sets the video mode or DAC */
 static struct plat_rect rects[200];
 /* Persistent guest-order pixels, plus 32 bytes of Kalms C2P lookahead. */
 static uint32_t frame[16000 + 8];
+
+/* The display path's memory accesses stay inside busy (a compiler barrier on
+ * each side). */
+static inline void set_busy(uint8_t on)
+{
+    __asm__ volatile("" ::: "memory");
+    busy = on;
+    __asm__ volatile("" ::: "memory");
+}
 
 void rt_vram_stray(void)
 {
@@ -113,6 +125,7 @@ static void present(void)
 {
     int32_t n = 0;
     for (int r = rt_vram_top; r < rt_vram_bottom; ++r) {
+        RT_FIELD_POINT();
         struct vram_row *row = &rt_vram_rows[r];
         if (!row->hi) {
             continue;
@@ -148,14 +161,15 @@ static void present(void)
     }
 }
 
-/* At a poll point after a vertical blank (rt_present_due 1): the platform's
- * own work once, then the frame if published; otherwise it stays due (2)
- * for the next publish. */
+/* After a vertical blank, at a poll point (rt_present_due 1) or in the field
+ * task: the platform's own work once, then the frame if published and the
+ * main thread is outside the driver and the display path; otherwise it stays
+ * due (2) for the next publish. */
 void rt_video_refresh(void)
 {
     plat_service();
     rt_present_due = 2;
-    if (published && !rt_vdrv_depth) {
+    if (published && !rt_vdrv_depth && !busy) {
         present();
     }
 }
@@ -163,10 +177,12 @@ void rt_video_refresh(void)
 /* rt_vdrv_return: the outermost driver call returned with rows changed. */
 void rt_video_publish(void)
 {
+    set_busy(1);
     published = 1;
     if (rt_present_due) {
         present();
     }
+    set_busy(0);
 }
 
 static void dac_block(int set)
@@ -186,6 +202,7 @@ static void dac_block(int set)
 
 void rt_int10(void)
 {
+    set_busy(1);
     switch (AH(rt_r.ax)) {
     case 0x00:
         set_mode();
@@ -209,4 +226,5 @@ void rt_int10(void)
     default:
         rt_unsupported("video BIOS function", 0x10, 0, 0);
     }
+    set_busy(0);
 }

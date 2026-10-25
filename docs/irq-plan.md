@@ -103,6 +103,15 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   (SPAZ+05AD, via SPAZ+0DA7) before its EOI (SPAZ+0A80); on FS-UAE a tick posted meanwhile
   re-entered `rt_irq_async`, overwrote `rt_irq_saved` and resumed main code with SS
   `B000` (`test-amiga-restore`, display audits). Check `t-irq-in-service`.
+- I5 (2026-10-25, evidence `tmp/irq/I5b/`). The vertical blank requests SOFTINT; our
+  level-1 vector (owned like VERTB, both triples in the restore check and the I/O
+  windows) runs `rt_video_refresh`: `plat_service`, then the present unless a driver
+  call runs or `busy` (`rt_video_publish`, `rt_int10`). Amiga polls no longer call it
+  (`rt_present_due` stays below 1). `Audio::service` copies `rt_opl`, key-on counts and
+  the effect slots under `Disable` and synthesises from the copy. Key scripts skip
+  unknown names at the interrupt (logged at startup). D5 bench (3 runs per arm, base
+  `115d6f0`): median 68,431 → 68,395 (−0.053%), RAM hash equal; display audits 40
+  captures, 0 late (68030, 68040).
 - Guest memory backs 1 MiB + HMA (`RT_GUEST_BYTES`); host runs compare RAM from the
   environment MCB to A0000h with dead stack masked (open-work 24).
 

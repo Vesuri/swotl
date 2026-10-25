@@ -69,7 +69,7 @@ Music stays enabled through the FM re-hoster in both effect modes.
   against a model of the original rule. `make gates-audio` runs every sound
   check and plant.
 - Paula backend: `src/platform/amiga/Audio.cpp`. `fm_field` in
-  `plat_service` (main program, once a vertical blank); the vertical blank
+  `plat_service` (the field task, once a vertical blank, on an OPL snapshot); the vertical blank
   stages the commands: DMA on, silence volume 0, loop changes latched at
   the loop's end, a key-on restarts its channel (DMA off, the outgoing
   period's countdown waited out, ≤ 16 lines; Revs, Rescue on Fractalus);

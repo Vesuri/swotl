@@ -19,7 +19,7 @@ public:
     static void takeOver();
     static void handBack();
 
-    // Main program at a vertical blank (plat_service): the next commands.
+    // The field task after a vertical blank (plat_service): the next commands.
     static void service();
     // Vertical blank: the commands on Paula.
     static void verticalBlank();

@@ -76,8 +76,8 @@ speed work: [speed-plan.md](speed-plan.md).
     2026-10-24 with its rule changes): SPAZ's IRQ0 handler from the CIA-B
     interrupt, keyboard and mouse at the vertical blank, sync points for
     lockstep, native rows poll-free (U3/U5 retire). I1 measured, I2 proved,
-    I3 monitored, I4 private-stack entry (irq-plan Facts). Next: I5 (field
-    task).
+    I3 monitored, I4 private-stack entry, I5 field task (irq-plan Facts).
+    Next: F10 (native-plan F), then I6 (asynchronous IRQ0).
     The deferred natives it unblocks (D5A6 prefix, BB70, F9 O(1), FDE0, BD68,
     F290, 109D6; exact-poll rows rebuilt) are done at its I10.
 
