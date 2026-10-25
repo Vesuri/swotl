@@ -299,7 +299,12 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   handler (`annotations/entries.csv`) through `rt_irq_async` on the private guest
   stack `B000:8000` down (frame with the sentinel CS:IP `B000:8000` its IRET must pop;
   68k registers, state block and `rt_r` restored after it; nothing posted is taken
-  until it returns, the PIC's in-service IRQ0, irq-plan I4), another
+  until it returns, the PIC's in-service IRQ0, irq-plan I4; on the Amiga the CIA-B
+  tick runs it at once through `rt_irq_interrupt` when `rt_irq0_ready`: IF set, none
+  running, no runtime service (`rt_irq_mask`) or main-thread OPL index/data pair
+  (`rt_opl_pair`), nothing posted, not `BENCH`; a stop raised in it unwinds through
+  `rt_irq_abort` and is raised at the next poll; host runs inject recorded ticks
+  the same way with `host_run.py --stress SEED`, `tests/irq_stress.py`, I6), another
   guest handler on a pushed frame, else the BIOS one (INT 08h ticks; INT 09h takes the next
   `rt_key_ring` event, a set 1 scan code with break bit and E0 flag, as
   DOSBox-X's IRQ1 handler does: its scan-code table, shift and lock flags,

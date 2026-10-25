@@ -73,6 +73,13 @@ commands
     printf "HANDOFF serial=%u line=%u late=%u\n", $queued, amiga_display_line, amiga_display_late
     set $k = $k + 1
     if $k == 40
+      printf "TICKS posted=%u async=%u runs=%u bios=%u pending=%u\n", amiga_ticks, amiga_ticks_async, rt_irq0_runs, rt_irq0_bios, (unsigned char)(rt_irq_tail - irq_head)
+      set $handled = rt_irq0_runs + rt_irq0_bios
+      if amiga_ticks < $handled || amiga_ticks > $handled + (unsigned char)(rt_irq_tail - irq_head) || amiga_ticks_async == 0
+        printf "DISPLAY_AUDIT_TICKS posted ticks not handled, or none run at once\n"
+        detach
+        quit 1
+      end
       printf "DISPLAY_AUDIT_OK captures=%u conversions=%u\n", $k, $conversions
       detach
       quit 0

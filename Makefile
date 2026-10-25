@@ -188,7 +188,7 @@ test-x86:
 	$(PYTHON) tests/x86_diff.py
 
 test-sabotage: host
-	@$(MAKE) -s -k -j$(JOBS) t-sab-ems t-sab-rasterize t-sab-opl-delay t-sab-irq-footprint t-sab-priority-search t-sab-line-pixels t-sab-sprite-packet t-sab-compute-exact-polls t-sab-replay-run-isolation t-sab-amiga-file-sharing t-sab-compute-reentry t-sab-scenery t-sab-compute-multi-endpoint t-sab-compute-code-writes t-sab-point-projection t-sab-point-normalise t-sab-polygon-classify t-sab-compute-endpoint t-sab-point-transform t-sab-compute-contract t-sab-compute-polls t-sab-compute-u8 t-sab-far-return-protocol t-sab-jump-fusion t-sab-block-boundary t-sab-x86 t-sab-m68k t-sab-host t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-cell-cache t-sab-replay-hooks t-sab-replay-events t-sab-host-replay-visits t-sab-rep-replay t-sab-rep-lowering t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence t-sab-fm t-sab-fm-quality t-sab-fm-render t-sab-fm-envelope t-sab-fm-allocation t-sab-fm-cache t-sab-fm-phase t-sab-tfh t-sab-sound-hooks t-sab-audio t-sab-load-image t-sab-host-launch t-sab-keyboard-prefix t-sab-interrupt-frame-mask t-sab-dosbox-retf t-sab-dos-search t-sab-dos-sda t-sab-machine-vectors t-sab-oracle-boundary t-sab-oracle-exception-writes t-sab-helper-branches t-sab-block-assembly t-sab-key-release t-sab-key-chords t-sab-replay-chords t-sab-fixture-inputs t-sab-joystick
+	@$(MAKE) -s -k -j$(JOBS) t-sab-ems t-sab-rasterize t-sab-opl-delay t-sab-irq-footprint t-sab-priority-search t-sab-line-pixels t-sab-sprite-packet t-sab-compute-exact-polls t-sab-replay-run-isolation t-sab-amiga-file-sharing t-sab-compute-reentry t-sab-scenery t-sab-compute-multi-endpoint t-sab-compute-code-writes t-sab-point-projection t-sab-point-normalise t-sab-polygon-classify t-sab-compute-endpoint t-sab-point-transform t-sab-compute-contract t-sab-compute-polls t-sab-compute-u8 t-sab-far-return-protocol t-sab-jump-fusion t-sab-block-boundary t-sab-x86 t-sab-m68k t-sab-host t-sab-irq-stress t-sab-carry-entries t-sab-align t-sab-next-branch t-sab-amiga-input t-sab-display-queue t-sab-display-palette t-sab-file-dates t-sab-cell-cache t-sab-replay-hooks t-sab-replay-events t-sab-host-replay-visits t-sab-rep-replay t-sab-rep-lowering t-sab-profile-tools t-sab-cost-tools t-sab-align-convergence t-sab-fm t-sab-fm-quality t-sab-fm-render t-sab-fm-envelope t-sab-fm-allocation t-sab-fm-cache t-sab-fm-phase t-sab-tfh t-sab-sound-hooks t-sab-audio t-sab-load-image t-sab-host-launch t-sab-keyboard-prefix t-sab-interrupt-frame-mask t-sab-dosbox-retf t-sab-dos-search t-sab-dos-sda t-sab-machine-vectors t-sab-oracle-boundary t-sab-oracle-exception-writes t-sab-helper-branches t-sab-block-assembly t-sab-key-release t-sab-key-chords t-sab-replay-chords t-sab-fixture-inputs t-sab-joystick
 
 test-m68k:
 	$(PYTHON) tests/m68k_diff.py
@@ -452,6 +452,14 @@ t-sab-m68k:
 	$(call RUN,sabotage-m68k,$(PYTHON) tests/m68k_sabotage.py)
 t-sab-host:
 	$(call RUN,sabotage-host,$(PYTHON) tests/host_run.py --sabotage --milestone m1b-logo)
+# I6 stress mode (tests/irq_stress.py): recorded ticks injected asynchronously, seeds 1 and 2
+IRQ_STRESS = m2-choose-side m4-demo-frames c13-me262-gunnery c27-campaign-flight
+t-irq-stress-%:
+	$(call RUN,irq-stress-$*,for s in 1 2; do $(PYTHON) tests/host_run.py $(if $(filter c%,$*),--table reference/coverage.csv) --milestone $* --stress $$s --timeout 4800 || exit 1; done)
+t-sab-irq-stress:
+	$(call RUN,sabotage-irq-stress,$(PYTHON) tests/host_run.py --sabotage --stress 1 --milestone m3-demo-flight)
+test-irq-stress: host
+	@$(MAKE) -s -k -j$(JOBS) $(IRQ_STRESS:%=t-irq-stress-%) t-sab-irq-stress
 
 # Host image: the generated program and the runtime for tests/host_run.py.
 # The shared toolchain (amiga/env.sh sets both; these are its defaults).

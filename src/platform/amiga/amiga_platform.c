@@ -10,6 +10,7 @@
 #include <exec/memory.h>
 #include <dos/dos.h>
 #include <hardware/cia.h>
+#include <hardware/intbits.h>
 #include <resources/cia.h>
 #include "runtime.h"
 #include "platform.h"
@@ -206,15 +207,35 @@ int32_t plat_dir_entry(const char *dir, uint32_t index, char *name, struct plat_
 
 /* PIT channel 0 on a CIA-B timer (D8): one CIA period per PIT period, the
  * latch scaled from the PIT clock (1193182 Hz) to the PAL E-clock (709379 Hz,
- * 35469/59659 within 1e-5); the interrupt only posts vector 08h, the guest
- * handler runs at the next poll point. */
+ * 35469/59659 within 1e-5). The interrupt runs the guest handler at once when
+ * the runtime allows it (docs/irq-plan.md I6), with EXTER acknowledged and
+ * the mask lowered to 2 so the vertical blank preempts a long tick (a nested
+ * tick is posted); else it posts vector 08h for the next poll point. Replay
+ * builds post only (deliveries at the recorded polls). */
 #define CIAB ((volatile struct CIA *)0xbfd000)
 static struct Library *cia_base = 0;
 static struct Interrupt cia_interrupt;
 static WORD cia_bit = -1;
 
+/* CIA ticks, and of them those run at once (fixtures: amiga/display_audit.gdb). */
+volatile ULONG amiga_ticks = 0, amiga_ticks_async = 0;
+
 static ULONG cia_tick(void)
 {
+    ++amiga_ticks;
+#ifndef SWOTL_REPLAY
+    if (rt_irq0_ready()) {
+        UWORD sr;
+        rt_irq0_running = 1;
+        ++amiga_ticks_async;
+        *(volatile UWORD *)0xdff09c = INTF_EXTER;
+        __asm__ volatile("move.w %%sr,%0" : "=d"(sr) : : "memory");
+        __asm__ volatile("move.w %0,%%sr" : : "d"((UWORD)((sr & ~0x0700) | 0x0200)) : "memory");
+        rt_irq_interrupt();
+        __asm__ volatile("move.w %0,%%sr" : : "d"(sr) : "memory");
+        return 0;
+    }
+#endif
     rt_irq_ring[rt_irq_tail % RT_IRQ_RING] = 8;
     ++rt_irq_tail;
     RT_RAISE_IRQ();

@@ -14,6 +14,8 @@ G_DS	equ	1
 	xdef	rt_irq_back
 	xdef	rt_irq_async
 	xdef	rt_irq_async_back
+	xdef	rt_irq_interrupt,rt_irq_interrupt_back
+	xdef	rt_irq_abort
 	xdef	rt_exit
 	xdef	rt_exit_guest
 	xdef	rt_bios_int08
@@ -70,6 +72,10 @@ G_DS	equ	1
 	xref	rt_irq0_enter
 	xref	rt_irq0_leave
 	xref	rt_irq_saved
+	xref	rt_irq0_running
+	xref	rt_irq_mask
+	xref	rt_opl_pair
+	xref	rt_irq_interrupting
 
 	ifd SWOTL_REPLAY
 	xref rt_replay_enter,rt_replay_return
@@ -126,12 +132,14 @@ rt_int:
 	ifd SWOTL_REPLAY
 	jsr rt_replay_enter
 	endif
+	addq.b	#1,rt_irq_mask		; services hold the CIA tick (machine.c)
 	bsr	save_regs
 	move.l	d7,-(a7)
 	move.l	d6,-(a7)
 	jsr	rt_int_c
 	addq.l	#8,a7
 deliver_or_return:
+	subq.b	#1,rt_irq_mask
 	move.l	d0,-(a7)
 	bsr	load_regs
 	move.l	(a7)+,d7
@@ -166,6 +174,7 @@ rt_exit_guest:
 ; segment, so only C's d0/d1/a1 are kept around it and SP reloaded (rt_r
 ; stays current for a stop's register dump).
 rt_irq:
+	addq.b	#1,rt_irq_mask
 	bsr	save_regs
 	movem.l	d0-d1/a1,-(a7)
 	move.l	d7,-(a7)
@@ -181,7 +190,8 @@ rt_irq:
 	bne.s	.guest
 	bsr	rt_irq_async
 	bra.s	rt_irq_back
-.guest:	move.w	rt_r+8,d4		; SP below the frame, mirrored
+.guest:	subq.b	#1,rt_irq_mask
+	move.w	rt_r+8,d4		; SP below the frame, mirrored
 	eori.w	#$7fff,d4
 	move.l	a0,d7
 	bsr	deliver_guest		; the guest handler, IRET checked
@@ -189,7 +199,10 @@ rt_irq_back:				; back at the poll point (host run: next interrupt)
 	movem.l	(a7)+,d6-d7
 	tst.b	G_IRQ(a6)
 	bne.s	rt_irq			; more posted at this poll point
-irq_done:	rts
+	rts
+irq_done:
+	subq.b	#1,rt_irq_mask
+	rts
 
 ; IRQ0 (D8, docs/irq-plan.md I4): the guest handler of IVT 08h on the private
 ; guest stack IRQ_SS:IRQ_SP (runtime.h RT_IRQ_SS/RT_IRQ_SP) below a frame whose
@@ -200,6 +213,8 @@ irq_done:	rts
 IRQ_SS	equ	$b000
 IRQ_SP	equ	$8000
 rt_irq_async:
+	st	rt_irq0_running		; before anything is saved (the CIA tick)
+	subq.b	#1,rt_irq_mask		; rt_irq's
 	movem.l	d0-d7/a0-a5,-(a7)
 	bsr	save_regs
 	lea	rt_irq_saved,a0		; state block, then rt_r
@@ -219,6 +234,7 @@ rt_irq_async:
 	move.l	#IRQ_SS<<16|IRQ_SP,d7	; the sentinel
 	bsr	deliver_guest		; the guest handler, IRET checked
 rt_irq_async_back:			; (host run: the handler returned)
+irq_restore:
 	lea	rt_irq_saved,a0
 	move.l	(a0)+,1(a6)
 	move.l	(a0)+,5(a6)
@@ -232,6 +248,55 @@ rt_irq_async_back:			; (host run: the handler returned)
 	jsr	rt_irq0_leave		; G_IRQ re-armed from what is posted
 	movem.l	(a7)+,d0-d7/a0-a5
 	rts
+
+; Async mode (I6): the CIA tick's interrupt runs the handler at once when
+; rt_irq0_ready allows it, over whatever ran (generated code, a native row,
+; the field task): no guest registers are live in 68k registers to save
+; into rt_r, which is kept as it is; the handler reads interrupted registers
+; only to save them (I2). The SS base is the private stack's; the handler
+; loads DS and ES before it uses them. C calling convention.
+rt_irq_interrupt:
+	movem.l	d2-d7/a2-a6,-(a7)
+	movea.l	rt_guest,a6
+	st	rt_irq0_running
+	st	rt_irq_interrupting
+	pea	irq_interrupt_back(pc)	; irq_restore returns here
+	movem.l	d0-d7/a0-a5,-(a7)	; the frame irq_restore pops
+	move.l	a7,irq_interrupt_sp
+	lea	rt_irq_saved,a0
+	move.l	1(a6),(a0)+
+	move.l	5(a6),(a0)+
+	move.l	9(a6),(a0)+
+	move.l	13(a6),(a0)+
+	lea	rt_r,a1
+	move.l	(a1)+,(a0)+
+	move.l	(a1)+,(a0)+
+	move.l	(a1)+,(a0)+
+	move.l	(a1)+,(a0)+
+	move.w	#IRQ_SS,G_SS(a6)
+	move.w	#IRQ_SP,rt_r+8
+	jsr	rt_irq0_enter
+	lea	rt_r,a0
+	movem.w	(a0),d0-d5/a4-a5
+	eori.w	#$7fff,d4
+	eori.w	#$7fff,d5
+	lea	-$7fff-IRQ_SS*16(a6),a2
+	move.l	#IRQ_SS<<16|IRQ_SP,d7
+	bsr	deliver_guest
+rt_irq_interrupt_back:			; (host run: the handler returned)
+	bra	irq_restore
+irq_interrupt_back:
+	sf	rt_irq_interrupting
+	movem.l	(a7)+,d2-d7/a2-a6
+	rts
+
+; A stop inside the interrupt's handler run (machine.c rt_stop): back to
+; rt_irq_interrupt's frame, the interrupted state restored; the stop is raised
+; again at the next poll.
+rt_irq_abort:
+	movea.l	irq_interrupt_sp,a7
+	movea.l	rt_guest,a6
+	bra	irq_restore
 
 ; The BIOS INT 08h handler, reached by a guest handler chaining to the vector
 ; it replaced (jmp far): the tick, then IRET; d7.l = popped CS:IP for the
@@ -247,6 +312,7 @@ rt_bios_int08:
 ; Divide error: d6 = CS << 16 | 0, d7 = IP of the faulting instruction; the
 ; generated code re-executes it after the guest INT 00h handler returns.
 rt_fault:
+	addq.b	#1,rt_irq_mask
 	bsr	save_regs
 	move.l	d7,-(a7)
 	move.l	d6,-(a7)
@@ -296,9 +362,11 @@ rt_in16:
 	movem.l	d0-d1/a1,-(a7)
 	pea	16.w
 port_in:
+	addq.b	#1,rt_irq_mask
 	move.l	d7,-(a7)
 	jsr	rt_port_in
 	addq.l	#8,a7
+	subq.b	#1,rt_irq_mask
 	move.l	d0,d6
 	movem.l	(a7)+,d0-d1/a1
 	rts
@@ -317,8 +385,16 @@ rt_out8:
 	rts
 .opl_index:
 	move.b	d6,rt_opl_index
+	tst.b	rt_irq0_running
+	bne.s	.opl_handler
+	st	rt_opl_pair		; the main thread's pair holds the CIA tick
+.opl_handler:
 	rts
 .opl_data:
+	tst.b	rt_irq0_running
+	bne.s	.opl_pair_done
+	sf	rt_opl_pair
+.opl_pair_done:
 	lea	rt_opl,a0
 	moveq	#0,d7
 	move.b	rt_opl_index,d7
@@ -344,10 +420,12 @@ rt_out16:
 	movem.l	d0-d1/a1,-(a7)
 	pea	16.w
 port_out:
+	addq.b	#1,rt_irq_mask
 	move.l	d6,-(a7)
 	move.l	d7,-(a7)
 	jsr	rt_port_out
 	lea	12(a7),a7
+	subq.b	#1,rt_irq_mask
 	movem.l	(a7)+,d0-d1/a1
 	rts
 
@@ -361,11 +439,13 @@ rt_dispatch_far:	; stops at a row no far transfer may enter
 	movem.l	d0-d1/a1,-(a7)
 	moveq	#1,d0
 dispatch:
+	addq.b	#1,rt_irq_mask		; rt_lookup's cache
 	move.l	d0,-(a7)
 	move.l	d7,-(a7)
 	move.l	d6,-(a7)
 	jsr	rt_lookup
 	lea	12(a7),a7
+	subq.b	#1,rt_irq_mask
 	movea.l	d0,a0
 	movem.l	(a7)+,d0-d1/a1
 	jmp	(a0)
@@ -552,3 +632,8 @@ rt_vdrv_return:
 
 ; Authorized compute callbacks share the generated ABI above.
 	include "compute_transform.s"
+
+	section	.bss,bss
+	cnop	0,4
+irq_interrupt_sp:
+	ds.l	1

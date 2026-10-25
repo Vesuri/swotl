@@ -62,13 +62,14 @@ DanceDiverse3 set (`Palette24Bit`, `setPalette24Bit`) is kept for it.
 | Level 3 VERTB | taken-over Exec vector | clear INTREQ (L11) → display publication (L17, L25–27) → field counter → mouse and typematic repeat (L77, L79–80) → Paula staging (L62–63) → request SOFTINT |
 | Level 1 SOFTINT | taken-over Exec vector | field task ([irq-plan](irq-plan.md) I5): clear INTREQ → key script, `fm_field` on an OPL snapshot taken under `Disable` → the due present (D9) unless a driver call or the main thread's present or video BIOS call runs (`video.c` busy) |
 | Level 2 PORTS | Exec chain | keyboard via `ciaa.resource` (L13, L72) |
-| Level 6 EXTER | Exec chain | PIT via a `ciab.resource` timer, posts vector 08h (`amiga_platform.c`; none under `BENCH`) |
+| Level 6 EXTER | Exec chain | PIT via a `ciab.resource` timer (`amiga_platform.c`): SPAZ's handler at once through `rt_irq_interrupt` when `rt_irq0_ready` ([irq-plan](irq-plan.md) I6), EXTER acknowledged and the mask lowered to 2 so the vertical blank preempts it; else posts vector 08h (always under `BENCH`) |
 | Level 3 BLIT | masked | unless the framework blitter queue is adopted (L14) |
 | Others | Exec | untouched; restored masks on exit |
 
-The original's timer (INT 08h) and keyboard (INT 09h) handlers do not run in Amiga
-interrupt context (L18). [irq-plan](irq-plan.md) moves SPAZ's handler into the CIA-B
-interrupt (RC1, L18 exception) and keyboard reading into the vertical blank (RC4). The CIA handlers post vectors to `rt_irq_ring` (keys to
+The original's keyboard (INT 09h) handler does not run in Amiga interrupt context
+(L18). SPAZ's timer handler runs in the CIA-B interrupt (RC1, L18 exception, irq-plan I6);
+[irq-plan](irq-plan.md) moves keyboard reading into the vertical blank (RC4). A tick the
+interrupt cannot run, and the keyboard's events, go to `rt_irq_ring` (keys to
 `rt_key_ring`); the guest's or the runtime's BIOS handler runs at the next poll point with
 guest IF set ([translator-design.md](translator-design.md) D8). Shared rings are guarded
 by `Disable`/`Enable` (L20).

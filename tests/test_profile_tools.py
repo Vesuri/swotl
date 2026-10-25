@@ -427,14 +427,37 @@ class IrqProfile(unittest.TestCase):
              (0x504, 1, 0xFFC), (0x506, 1, 0xFFC), (0x114, 1, 0x1000)]
     SECOND = [(0x104, 1, 0x1000), (0x108, 1, 0x1000)]
 
-    def run_profile(self):
+    # I6: a CIA tick that runs the handler at interrupt level (rt_irq_interrupt
+    # > deliver_guest > SPAZ, supervisor stack; an IRQ transition marker before
+    # deliver_guest and a branch back to its start open nothing), then two that post and the next poll delivers both in user mode
+    # (in order).
+    ASYNC = [(0x100, 2, 0x1000), (0x800, 1, 0x200100), (0x840, 2, 0x2000FC), (P.IRQ_MARKER, 1, 0x2000F8),
+             (0x520, 3, 0x2000F8),
+             (0x600, 5, 0x2000F4), (0x530, 1, 0x2000F8), (0x844, 1, 0x2000FC), (0x840, 1, 0x2000FC), (0x802, 1, 0x200100),
+             (0x104, 1, 0x1000), (0x108, 1, 0x1000), (0x800, 1, 0x200100), (0x10c, 1, 0x1000),
+             (0x800, 1, 0x200100), (0x110, 1, 0x1000), (0x500, 2, 0xFFC), (0x520, 4, 0xFF8),
+             (0x530, 1, 0xFF8), (0x504, 1, 0xFFC), (0x500, 1, 0xFFC), (0x520, 3, 0xFF8),
+             (0x506, 1, 0xFFC), (0x114, 1, 0x1000)]
+    DIS = IRQ_DIS + "".join(f"{a:08x} <{n}>:\n" + "".join(f"    {pc:x}:\t4e71           \tnop\n" for pc in body) + "\n"
+                            for a, n, body in ((0x800, "cia_tick", (0x800, 0x802)),
+                                               (0x840, "rt_irq_interrupt", (0x840, 0x844))))
+
+    def run_profile(self, fields=None, dis=IRQ_DIS):
         p = M.Program.__new__(M.Program)
-        syms = [(int(l[:8], 16), l[10:-2]) for l in IRQ_DIS.splitlines() if l.endswith(">:")]
-        p.init(IRQ_DIS, syms, set())
+        syms = [(int(l[:8], 16), l[10:-2]) for l in dis.splitlines() if l.endswith(">:")]
+        p.init(dis, syms, set())
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp, "p.bin")
-            capture(path, [self.FIRST, self.SECOND])
+            capture(path, fields or [self.FIRST, self.SECOND])
             return I.analyse(p, [path])
+
+    def test_interrupt_level(self):
+        d = self.run_profile([self.ASYNC], self.DIS)
+        s = {n: (v["calls"], v["total"], v["depth"]) for n, v in d["interrupt_scopes"].items() if v["calls"]}
+        self.assertEqual(s, {"rt_irq_interrupt": (1, 13, 8), "deliver_guest": (1, 9, 4)})
+        self.assertEqual(d["scopes"]["deliver_guest"]["calls"], 2)
+        t = d["tick_latency"]
+        self.assertEqual((t["ticks"], t["unmatched"], t["total"], t["max"]), (3, 0, 28, 13))
 
     def test_scopes_depth_and_polls(self):
         d = self.run_profile()
@@ -482,7 +505,10 @@ if __name__ == "__main__":
                 ("tail call not opened", "name in TAIL and a7 == prev", "False"),
                 ("supervisor records charged", "or pc == P.IRQ_MARKER:", "and False:"),
                 ("depth not tracked", "s[3] = min(s[3], a7)", "pass"),
-                ("nested delivery counted as net", "if k >= inner:", "if True:")):
+                ("nested delivery counted as net", "if k >= inner:", "if True:"),
+                ("interrupt scope opened without a call", "a7 == iprev - 4", "True"),
+                ("tick latency from the wrong tick", "posted.pop(0)", "posted.pop()"),
+                ("marker taken as an interrupt record", "and pc != P.IRQ_MARKER:", ":")):
             source = inspect.getsource(I.analyse)
             broken = source.replace(old, new)
             assert broken != source, name

@@ -163,6 +163,14 @@ extern volatile uint8_t rt_irq_tail;
 extern volatile uint8_t rt_irq_pending;
 #define RT_RAISE_IRQ() (rt_irq_pending = 1, *(volatile uint8_t *)&G_IRQ = 1)
 void rt_bios_int08(void);
+/* Async IRQ0 (docs/irq-plan.md I6): the platform's tick interrupt calls
+ * rt_irq_interrupt (rt_entry.s) when rt_irq0_ready, else posts vector 08h.
+ * rt_irq0_running: a handler runs (either entry); rt_irq_mask: runtime services
+ * in progress; rt_opl_pair: the main thread's OPL index/data pair is open. */
+extern volatile uint8_t rt_irq0_running, rt_irq_mask, rt_opl_pair, rt_irq_interrupting;
+int rt_irq0_ready(void);
+void rt_irq_interrupt(void);
+void rt_irq_abort(void) __attribute__((noreturn));
 /* IRQ0 entry (rt_entry.s rt_irq_async, docs/irq-plan.md I4): the guest handler
  * of IVT 08h runs on a private guest stack, below a frame whose CS:IP is this
  * sentinel (B000:8000 down: backed, outside the compared RAM, unused by the

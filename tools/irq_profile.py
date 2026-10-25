@@ -17,6 +17,14 @@ symbol) and closes at the first user-mode record with A7 above it. Supervisor-st
 records (hardware interrupts) are counted in the total only. Net figures
 exclude nested rt_irq scopes (a poll inside a guest handler delivering the
 next interrupt or running the field work).
+
+Interrupt level (I6): the same scopes and rt_irq_interrupt (the CIA tick's
+handler run) over supervisor-stack records (IRQ transition markers excluded),
+opened at their symbol with A7
+four below the previous supervisor record and closed at a record above or the
+next user-mode one (a preempting vertical blank is inside the scope). Tick
+latency: from each cia_tick record to the next deliver_guest scope opened in
+either mode (post to run), first in first out.
 """
 import argparse
 import json
@@ -30,6 +38,7 @@ import profile_tree as T
 SCOPES = ("rt_irq", "deliver_guest", "rt_video_refresh", "plat_service", "present",
           "plat_present", "fm_field")
 TAIL = ("present",)     # reached by bra.l from rt_video_refresh and rt_video_publish
+INTERRUPT = SCOPES + ("rt_irq_interrupt",)   # the last one: I6 builds only
 
 
 def pct(values, q):
@@ -43,6 +52,21 @@ def analyse(prog, captures):
     if missing:
         raise SystemExit(f"scope symbols missing from the ELF: {missing}")
     starts = {prog.by_name[n]: n for n in SCOPES}
+    istarts = {prog.by_name[n]: n for n in INTERRUPT if n in prog.by_name}
+    tick = prog.by_name.get("cia_tick")
+    icalls = {n: [] for n in istarts.values()}
+    idepth, posted, latency = Counter(), [], []
+    istack, iprev = [], None       # [name, entry a7, accumulated, lowest a7]
+
+    def iclose(above):
+        while istack and (above is None or above > istack[-1][1]):
+            name, entry, acc, low = istack.pop()
+            icalls[name].append(acc)
+            idepth[name] = max(idepth[name], entry - low)
+
+    def opened(name):
+        if name == "deliver_guest" and posted:
+            latency.append(total - posted.pop(0))
     polls = {pc: prog.cls[pc] for pc in prog.polls}
     total = fields = 0
     poll_cost, poll_tests = Counter(), Counter()
@@ -59,8 +83,22 @@ def analyse(prog, captures):
                 if pc in polls:
                     poll_cost[polls[pc]] += cost
                     poll_tests[polls[pc]] += prog.mn[pc] == M.POLL_TEST
+                if pc == tick:
+                    posted.append(total)
+                if T.SUPERVISOR[0] <= a7 < T.SUPERVISOR[1] and pc != P.IRQ_MARKER:
+                    iclose(a7)
+                    name = istarts.get(pc)
+                    if name and iprev is not None and a7 == iprev - 4:
+                        istack.append([name, a7, 0, a7])
+                        opened(name)
+                    for s in istack:
+                        s[2] += cost
+                        s[3] = min(s[3], a7)
+                    iprev = a7
                 if T.SUPERVISOR[0] <= a7 < T.SUPERVISOR[1] or pc == P.IRQ_MARKER:
                     continue
+                iclose(None)
+                iprev = None
                 while stack and a7 > stack[-1][1]:
                     name, entry, acc, low, acc_net, low_net = stack.pop()
                     calls[name].append(acc)
@@ -71,6 +109,7 @@ def analyse(prog, captures):
                 if name and prev is not None and (a7 == prev - 4 or (
                         name in TAIL and a7 == prev and prog.symbol(prev_pc) != name)):
                     stack.append([name, a7, 0, a7, 0, a7])
+                    opened(name)
                 inner = max((k for k, s in enumerate(stack) if s[0] == "rt_irq"), default=0)
                 for k, s in enumerate(stack):
                     s[2] += cost
@@ -86,7 +125,13 @@ def analyse(prog, captures):
                                 net_total=sum(net[n]), net_max=max(net[n], default=0),
                                 net_p99=pct(net[n], 99),
                                 net_depth=net_depth[n]) for n, v in calls.items()},
-                open_scopes=[[s[0], s[2]] for s in stack])
+                open_scopes=[[s[0], s[2]] for s in stack],
+                interrupt_scopes={n: dict(calls=len(v), total=sum(v), max=max(v, default=0),
+                                          p50=pct(v, 50), p99=pct(v, 99), depth=idepth[n])
+                                  for n, v in icalls.items()},
+                tick_latency=dict(ticks=len(latency), unmatched=len(posted), total=sum(latency),
+                                  p50=pct(latency, 50), p99=pct(latency, 99),
+                                  max=max(latency, default=0)))
 
 
 def report(d):
@@ -104,6 +149,15 @@ def report(d):
         print(f"{n:<16} {s['calls']:>7} {100 * s['total'] / total:6.2f}% {s['total'] / k:>7,.0f} "
               f"{s['p50']:>7,} {s['p99']:>7,} {s['max']:>8,} {s['depth']:>6} | "
               f"{s['net_total'] / k:>7,.0f} {s['net_p99']:>7,} {s['net_max']:>8,} {s['net_depth']:>6}")
+    print("interrupt level    calls   share    mean     p50     p99      max  depth")
+    for n, s in d["interrupt_scopes"].items():
+        k = max(s["calls"], 1)
+        print(f"{n:<16} {s['calls']:>7} {100 * s['total'] / total:6.2f}% {s['total'] / k:>7,.0f} "
+              f"{s['p50']:>7,} {s['p99']:>7,} {s['max']:>8,} {s['depth']:>6}")
+    t = d["tick_latency"]
+    print(f"tick latency (cia_tick to deliver_guest): {t['ticks']} ticks, mean "
+          f"{t['total'] / max(t['ticks'], 1):,.0f}, p50 {t['p50']:,}, p99 {t['p99']:,}, max {t['max']:,} "
+          f"units; {t['unmatched']} unmatched")
 
 
 def main():

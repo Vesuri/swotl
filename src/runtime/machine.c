@@ -352,12 +352,23 @@ static void bios_tick(void)
     wr32(BIOS_TICKS, t);
 }
 
-/* IRQ0's handler runs (rt_irq0_enter to rt_irq0_leave): the PIC holds IRQ0
- * and the lower IRQ1 in service until its EOI, so nothing posted is taken,
- * though SPAZ's handler sets IF before its EOI (an STI at SPAZ+05AD); the
- * single rt_irq_saved could not hold a nested entry. Held to the handler's
- * return: its EOI (SPAZ+0A80) precedes the IRET by register pops. */
-static uint8_t irq0_in_service;
+/* IRQ0's handler runs (rt_irq_async / rt_irq_interrupt entry to
+ * rt_irq0_leave): the PIC holds IRQ0 and the lower IRQ1 in service until its
+ * EOI, so nothing posted is taken, though SPAZ's handler sets IF before its
+ * EOI (an STI at SPAZ+05AD); the single rt_irq_saved could not hold a nested
+ * entry. Held to the handler's return: its EOI (SPAZ+0A80) precedes the IRET
+ * by register pops. */
+volatile uint8_t rt_irq0_running;
+/* Runtime services in progress (rt_entry.s entries); rt_opl_pair: the main
+ * thread wrote the OPL index and not yet the data. Either holds the CIA tick
+ * pending (docs/irq-plan.md I6). */
+volatile uint8_t rt_irq_mask, rt_opl_pair;
+volatile uint8_t rt_irq_interrupting;    /* inside rt_irq_interrupt (rt_stop) */
+/* IRQ0 deliveries: guest handler runs (both entries) and BIOS ticks, for
+ * fixtures comparing them with the ticks the platform posted or ran. */
+volatile uint32_t rt_irq0_runs, rt_irq0_bios;
+static const char *irq_stop_what;   /* a stop raised inside rt_irq_interrupt */
+static uint32_t irq_stop_a, irq_stop_b;
 
 /* G_IRQ and rt_irq_pending from what is left: cleared before the ring is
  * read (a post in between raises both again); with IF = 0 nothing is taken,
@@ -369,7 +380,7 @@ static void irq_settle(void)
     rt_irq_pending = 0;
     if (irq_head != rt_irq_tail || bench_watching) {
         rt_irq_pending = 1;
-        *irq = G_IF && !irq0_in_service;
+        *irq = G_IF && !rt_irq0_running;
     }
     if (rt_present_due == 1) {      /* a vertical blank since rt_irq_c's check */
         RT_RAISE_IRQ();
@@ -384,13 +395,16 @@ static void irq_settle(void)
 uint32_t rt_irq_c(uint32_t d6, uint32_t ip)
 {
     uint16_t cs = (uint16_t)(d6 >> 16);
+    if (irq_stop_what) {
+        rt_stop(irq_stop_what, irq_stop_a, irq_stop_b);
+    }
     if (rt_present_due == 1) {
         rt_video_refresh();
     }
     if (bench_watching && G_IF) {
         bench_poll((d6 & 0xffff0000) | (uint16_t)ip);
     }
-    while (G_IF && !irq0_in_service && irq_head != rt_irq_tail) {
+    while (G_IF && !rt_irq0_running && irq_head != rt_irq_tail) {
         uint8_t irq = rt_irq_ring[irq_head++ % RT_IRQ_RING];
         if (bench_due) {
             bench_post();
@@ -423,6 +437,7 @@ uint32_t rt_irq_c(uint32_t d6, uint32_t ip)
                            vector, cs, (uint16_t)ip);
         }
         bios_tick();
+        ++rt_irq0_bios;
     }
     irq_settle();
     return 0;
@@ -437,13 +452,24 @@ void rt_irq0_enter(void)
 {
     deliver(8, RT_IRQ_SS, RT_IRQ_SP);
     G_IRQ = 0;
-    irq0_in_service = 1;
+    rt_irq0_running = 1;
+    ++rt_irq0_runs;
+}
+
+/* Async mode (I6): may the CIA tick's interrupt run IRQ0's guest handler at
+ * once? IF set, no handler running, no runtime service or OPL index/data pair
+ * of the main thread in progress, nothing posted before it, and a guest
+ * vector; else the tick is posted for the next poll. */
+int rt_irq0_ready(void)
+{
+    return G_IF && !rt_irq0_running && !rt_irq_mask && !rt_opl_pair &&
+           irq_head == rt_irq_tail && !rt_bench && guest_vector(8);
 }
 
 /* After the restore: re-arm from what is posted (runtime.h). */
 void rt_irq0_leave(void)
 {
-    irq0_in_service = 0;
+    rt_irq0_running = 0;
     *(volatile uint8_t *)&G_IRQ = G_IF && rt_irq_pending;
 }
 
@@ -580,6 +606,15 @@ void rt_log_hex(const char *label, uint32_t v)
 
 void rt_stop(const char *what, uint32_t a, uint32_t b)
 {
+    if (rt_irq_interrupting && !irq_stop_what) {
+        /* No log or exit at interrupt level: the next poll raises it. */
+        irq_stop_what = what;
+        irq_stop_a = a;
+        irq_stop_b = b;
+        rt_irq_pending = 1;
+        rt_irq_interrupting = 0;
+        rt_irq_abort();
+    }
     char line[160], *p = put_str(line, "SWOTL_STOP ");
     p = put_str(p, what);
     *p++ = ' ';

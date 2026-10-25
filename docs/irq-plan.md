@@ -112,6 +112,29 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   unknown names at the interrupt (logged at startup). D5 bench (3 runs per arm, base
   `115d6f0`): median 68,431 → 68,395 (−0.053%), RAM hash equal; display audits 40
   captures, 0 late (68030, 68040).
+- I6 (2026-10-25, evidence `tmp/irq/I6/`). The CIA-B tick runs SPAZ's handler through
+  `rt_irq_interrupt` when `rt_irq0_ready`: IF set, none running, `rt_irq_mask` clear
+  (taken by services, faults, polls, ports, dispatch), `rt_opl_pair` clear (a main OPL
+  index without its data write), nothing posted, not `BENCH`; EXTER acknowledged and SR
+  lowered to 2, so the vertical blank preempts a long tick and a tick during the
+  handler posts. Else it posts as before. A stop at interrupt level returns through
+  `rt_irq_abort` and is raised at the next poll. Display audits: 40 captures, 0 late;
+  ticks posted = handler runs + BIOS ticks: 68030 27,585 = 27,551 + 34 (93.9% at the
+  interrupt), 68040 24,988 = 24,955 + 33 (93.8%). Host stress (`tests/irq_stress.py`,
+  `make test-irq-stress`): a recorded lone IRQ0 is injected through `rt_irq_interrupt`
+  1–400 68k instructions after its visit, or before the next sync access, CLI/POPF,
+  runtime entry, script step or recorded interrupt; seeds 1 and 2 match the reference
+  on m2, m4, c13, c27 (seed 1: 3,220 / 3,115 / 18,084 / 11,253 ticks; 2,731 / 1,856 /
+  15,535 / 8,845 at the drawn instruction). Ticks the reference took inside a main OPL
+  pair (4 / 4 / 46 / 64) post (production holds them to the data write, a legal PC
+  timing). Plant `irq-async-state` (no state block saved) fails stress, passes sync.
+  Unicorn 2 loses the lazy CCR on a PC write in a hook or an SR read through the API: the
+  harness stops in the hook and restarts at a stub that saves CCR itself. Frames A/B
+  (3 runs, base `dc28e3d`): median 320 ms (310–320) → 300 ms (300–300). Flyby (500
+  fields): tick latency (`cia_tick` to its `deliver_guest`) mean 26,262 → 2,614 units,
+  p99 552,934 → 21,491; handler mean 2,184 → 2,280; 2,339 of 2,370 ticks at the
+  interrupt, `rt_irq_interrupt` mean 3,845 with entry and exit, supervisor stack 280
+  bytes; ms/frame equal (454.5). Meter m4 +43,558 model cycles (+0.0282%), runtime only.
 - Guest memory backs 1 MiB + HMA (`RT_GUEST_BYTES`); host runs compare RAM from the
   environment MCB to A0000h with dead stack masked (open-work 24).
 

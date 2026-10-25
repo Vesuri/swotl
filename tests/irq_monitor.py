@@ -2,8 +2,8 @@
 
 Checks every guest memory access of a host run against I2's footprint
 (build/gen/irq-footprint.csv):
-- inside a delivered IRQ0 handler (deliver_guest from rt_irq_async to
-  rt_irq_async_back), which starts on the private stack (runtime.h
+- inside a delivered IRQ0 handler (deliver_guest from rt_irq_async or
+  rt_irq_interrupt to its back label), which starts on the private stack (runtime.h
   RT_IRQ_SS:RT_IRQ_SP below its frame), every access, generated or runtime,
   lies in the footprint for its kind: the
   fixed classes (paragraphs at run time: SPAZ's link paragraphs + the load
@@ -70,7 +70,8 @@ class Monitor:
         named = sorted((a, n) for n, a in host.syms.items())
         self.sym_at = [a for a, _ in named]
         self.sym_name = [n for _, n in named]
-        self.back = host.syms["rt_irq_async_back"]
+        self.backs = {host.syms[n] for n in ("rt_irq_async_back", "rt_irq_interrupt_back")
+                      if n in host.syms}   # the second: I6 builds
         self.loadseg = None
         self.g = None
         self.mask = None
@@ -145,8 +146,9 @@ class Monitor:
 
     # -- events from host_run -------------------------------------------------
     def deliver(self):
-        """deliver_guest reached: an IRQ0 delivery when it returns to rt_irq_async_back."""
-        if self.h.u32(self.h.r("a7")) != self.back:
+        """deliver_guest reached: an IRQ0 delivery when it returns to rt_irq_async_back
+        (sync) or rt_irq_interrupt_back (async, I6)."""
+        if self.h.u32(self.h.r("a7")) not in self.backs:
             return
         if self.dirty:
             self.layout()

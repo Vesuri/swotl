@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import uc as U  # noqa: E402
 import joystick_replay
 import irq_monitor
+import irq_stress
 from translator import compute, emit, image  # noqa: E402
 from tools import fixture_inputs
 
@@ -231,6 +232,10 @@ SABOTAGE = {
     "irq-main": "FLIGHT +0123B reads 9BCA instead of 813C (undeclared main read, I3)",
     "irq-handler": "the IRQ0 handler's inc of 9BCA writes 9DC0 (outside the footprint, I3)",
 }
+# Plants only an asynchronous tick shows (--sabotage --stress SEED, I6)
+STRESS_SABOTAGE = {
+    "irq-async-state": "rt_irq_interrupt saves no state block (restores a stale one, I6)",
+}
 # Plants a milestone other than --milestone exercises (the guest's first
 # hardware interrupt handler runs after m1b-logo).
 SABOTAGE_AT = {"missing-file": "c83-program-disk-prompt", "keyon": "m2-choose-side", "sfx_start": "c6-flight-keys",
@@ -279,8 +284,10 @@ class MemFile:
 
 
 class Host:
+    stress = None   # tests/irq_stress.py (also for hosts built without __init__)
+
     def __init__(self, ref_root: Path, sabotage: str | None = None, music_skip: bool = False,
-                 elf: Path | None = None):
+                 elf: Path | None = None, stress: int | None = None):
         self.launch = ""
         self.root = ref_root
         self.file_clock = None
@@ -291,6 +298,8 @@ class Host:
         self.frame_writer = functions["push_frame"]
         e = self.e = U.Engine(U.ARCH_M68K, U.MODE_BIG_ENDIAN, U.CPU_M68K_M68020)
         e.map(0, MEM)
+        # I6: recorded ticks injected asynchronously (tests/irq_stress.py)
+        self.stress = irq_stress.Stress(self, stress) if stress is not None else None
         for vaddr, data, memsz in segs:
             e.write(vaddr, data + bytes(memsz - len(data)))
         self.entry = entry
@@ -348,9 +357,13 @@ class Host:
             else:                           # move.l #$b0008000,d7 -> #$b0008002
                 k = code.index(bytes.fromhex("2e3cb0008000"))
                 e.write(a + k + 2, bytes.fromhex("b0008002"))
+        if sabotage == "irq-async-state":   # move.l d16(a6),(a0)+ x4 -> nops
+            a = self.syms["rt_irq_interrupt"]
+            code = e.read(a, self.syms["rt_irq_abort"] - a)
+            e.write(a + code.index(bytes.fromhex("20ee0001")), bytes.fromhex("4e71") * 8)
         if sabotage == "keyon":  # addq.b #1,(a0,d7.w) -> nop; nop
             a = self.syms["rt_out8"]
-            code = e.read(a, 0x60)
+            code = e.read(a, 0x100)
             e.write(a + code.index(bytes.fromhex("52307000")), bytes.fromhex("4e714e71"))
         if sabotage == "sfx_start":  # move.b d6,(a0,d7.w) -> nop; nop
             a = self.syms["rt_hle_sfx_start"]
@@ -391,6 +404,7 @@ class Host:
         # a service returns when the runtime glue's rts goes back to the
         # address after its jsr rt_int (static hooks: Unicorn retranslates
         # on every hook change)
+        @self.unbounded
         @U.CODE_CB
         def ret_hit(h, addr, size, user):
             if self.pending and self.u32(self.r("a7")) == self.pending[-1]:
@@ -497,7 +511,9 @@ class Host:
             self.irq.returned()
 
         e.hook_range(U.HOOK_CODE, irq_deliver, self.syms["deliver_guest"], self.syms["deliver_guest"])
-        e.hook_range(U.HOOK_CODE, irq_back, self.syms["rt_irq_async_back"], self.syms["rt_irq_async_back"])
+        for n in ("rt_irq_async_back", "rt_irq_interrupt_back"):   # the second: I6 builds
+            if n in self.syms:
+                e.hook_range(U.HOOK_CODE, irq_back, self.syms[n], self.syms[n])
 
         # memory watch from the guest entry on (rt_start's own writes are not watched)
         self.in_service = False
@@ -521,6 +537,7 @@ class Host:
 
         # The FLAGS image of an annotations/flags.csv PUSHF is dead by that
         # annotation; its word below SS:SP is masked until the guest rewrites it.
+        @self.unbounded
         @U.CODE_CB
         def dead_pushf(h, addr, size, user):
             g = self.guest_regs(0)
@@ -572,6 +589,14 @@ class Host:
         self.watching = False
         a = self.syms["rt_run_guest"]
         e.hook_range(U.HOOK_CODE, guest_start, a, a)
+        if self.stress:
+            self.stress.setup(irq_monitor.FOOTPRINT, REPO / "build/gen")
+
+    def unbounded(self, cb):
+        """A code hook that does not end a stress window (tests/irq_stress.py)."""
+        if self.stress:
+            self.stress.free.add(id(cb))
+        return cb
 
     def r(self, name: str) -> int:
         return self.e.reg_read(U.M68K[name])
@@ -818,6 +843,7 @@ class Host:
                 self.halted = True
                 self.e.stop()
 
+        @self.unbounded
         @U.CODE_CB
         def poll(h, addr, size, user):
             try:
@@ -838,7 +864,16 @@ class Host:
             if n > svc and not self.irq_lost:
                 self.irq_lost = f"reference irq #{self.irq_i} at {lab} svc={svc} hits={hits} " \
                                 f"not reached (service events {n})"
+            if n == svc and here == lab and self.stress and self.stress.pending(addr):
+                return  # the armed tick (its visits) first; this poll runs again after it
             if n != svc or here != lab or self.visits.get(here, 0) != hits:
+                return
+            if self.stress and self.stress.eligible(self.irqs, self.irq_i):
+                self.irq_i += 1
+                g = self.guest_regs(0)  # the reference's frame went below SS:SP here
+                top = g["ss"] * 16 + g["sp"]
+                self.masked.update(range(top - DEAD_STACK, top))
+                self.stress.arm(addr)
                 return
             post_group(self.r("a7"))
 
@@ -890,6 +925,7 @@ class Host:
             if lab + "_np" not in self.syms:
                 raise ValueError(f"missing replay execution continuation: {lab}")
 
+        @self.unbounded
         @U.CODE_CB
         def executed(h, addr, size, user):
             n = len(self.services)
@@ -967,7 +1003,14 @@ class Host:
         self.e.reg_write(U.M68K["sr"], 0x2700)
         self.e.reg_write(U.M68K["a7"], STACK_TOP)
         self.halted = False
+        deadline = time.monotonic() + timeout
         err = self.e.start(self.entry, 0xFFFFFFFF, timeout_us=timeout * 1_000_000)
+        # stress mode: stops to arm or inject a tick (tests/irq_stress.py)
+        while not err and self.stress and (begin := self.stress.resume()) is not None:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                break
+            err = self.e.start(begin, 0xFFFFFFFF, timeout_us=int(left * 1_000_000))
         if err:
             print(f"unicorn error {U.uc.uc_strerror(err).decode()} pc={self.r('pc'):x}")
             self.exit = -1
@@ -1142,6 +1185,8 @@ def main(argv=None) -> int:
                     help="each planted runtime fault (SABOTAGE) must fail the check")
     ap.add_argument("--music-skip", action="store_true",
                     help="HLE music_skip on: song starts skipped, SPAZ's data not compared")
+    ap.add_argument("--stress", type=int, metavar="SEED",
+                    help="I6: recorded ticks injected asynchronously (tests/irq_stress.py)")
     args = ap.parse_args(argv)
     if args.table:
         global TABLE
@@ -1151,14 +1196,19 @@ def main(argv=None) -> int:
         return 0
     if args.sabotage:
         missed = []
-        for name, what in SABOTAGE.items():
-            problems = check(SABOTAGE_AT.get(name, args.milestone), args.timeout, None, name)
+        plants = SABOTAGE if args.stress is None else STRESS_SABOTAGE
+        for name, what in plants.items():
+            problems = check(SABOTAGE_AT.get(name, args.milestone), args.timeout, None, name,
+                             stress=args.stress)
             print(f"sabotage {name:5} ({what}): {len(problems)} problems")
             if not problems:
                 missed.append(name)
         print("not caught: " + ", ".join(missed) if missed else "all sabotages caught")
         return 1 if missed else 0
-    problems = check(args.milestone, args.timeout, args.amiga, None, args.music_skip, args.sound_log)
+    if args.stress is not None and (args.music_skip or args.amiga):
+        ap.error("--stress runs alone")
+    problems = check(args.milestone, args.timeout, args.amiga, None, args.music_skip, args.sound_log,
+                     stress=args.stress)
     for p in problems:
         print(p)
     print(f"host run to {args.milestone}: {'ok' if not problems else 'FAIL'}")
@@ -1249,7 +1299,7 @@ def reference_clocks(trace):
 
 def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None,
           music_skip: bool = False, sound_log: Path | None = None,
-          trace: Path | None = None) -> list[str]:
+          trace: Path | None = None, stress: int | None = None) -> list[str]:
     class args:  # noqa: N801
         pass
     args.milestone, args.timeout, args.amiga = milestone, timeout, amiga
@@ -1267,7 +1317,7 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
     joystick_header = joystick_replay.c_header(joystick) if joystick else None
     diagnostic_elf = rep_replay.host_image(rep.labels if rep else [], joystick_header) if rep or joystick else None
     script["rep"] = rep
-    h = Host(image.M.REF, sabotage, music_skip, elf=diagnostic_elf)
+    h = Host(image.M.REF, sabotage, music_skip, elf=diagnostic_elf, stress=stress)
     h.deleted.update(("TARGETS.DEF",) if sabotage == "missing-file" else script["missing_files"])
     h.calendar_date, h.file_clock = reference_clocks(trace)
     label = script["snapshots"][-1][0]
@@ -1292,6 +1342,12 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
         problems.append('unconsumed joystick recording')
     if h.irq_lost:
         problems.append(h.irq_lost)
+    if h.stress:
+        print(h.stress.summary())
+        if h.stress.problem:
+            problems.append(h.stress.problem)
+        if not h.stress.drawn:
+            problems.append("irq stress: no tick injected at a drawn instruction")
     if music_skip:
         print(f"music skip: {h.skips} song starts skipped, {h.moved} interrupts moved to the "
               f"next poll point")
