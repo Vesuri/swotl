@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Exercise production Input.cpp through its CIA vector and MMIO registers.
+"""Exercise production Input.cpp through its ciaa.resource calls and MMIO registers.
 
 The fake registers model hardware values, not Input::key/moveMouse calls.
-This is handler coverage, not emulator interrupt-routing or physical input
-validation. --sabotage proves the assertions catch decode and wrap faults.
+The keyboard is read at the vertical blank from ciaa.resource's SP flag with
+the SP interrupt disabled (docs/irq-plan.md I7). This is handler coverage, not
+emulator interrupt-routing or physical input validation. --sabotage proves the
+assertions catch decode, wrap, flag and mask faults.
 """
 import argparse
 from pathlib import Path
@@ -24,12 +26,13 @@ void Disable(); void Enable();
 Library *OpenResource(CONST_STRPTR);
 ''',
     'proto/cia.h': '''#include <proto/exec.h>
-Interrupt *AddICRVector(Library *, int, Interrupt *);
-void RemICRVector(Library *, int, Interrupt *);
+short AbleICR(Library *, long);
+short SetICR(Library *, long);
 ''',
     'exec/interrupts.h': '#include <proto/exec.h>\n',
     'hardware/cia.h': '#define CIACRAF_SPMODE 0x40\n',
-    'resources/cia.h': '#define CIAANAME "ciaa.resource"\n#define CIAICRB_SP 3\n',
+    'resources/cia.h': '#define CIAANAME "ciaa.resource"\n#define CIAICRF_SP 0x08\n'
+                       '#define CIAICRF_SETCLR 0x80\n',
     'runtime.h': '''#pragma once
 #include <stdint.h>
 #define RT_KEY_E0 0x100
@@ -73,27 +76,32 @@ unsigned rt_key_tail, rt_irq_tail, raises;
 volatile uint8_t sdr, cra, pra = 255;
 volatile uint16_t joy, pot = 65535, potgo = 65535;
 static Library resource;
-static Interrupt oldHandler, *owner = &oldHandler;
+static unsigned enabled = 0x0c, icr = 0x08;   // keyboard.device's SP on, a stale byte
 static int depth;
 void Disable() { ++depth; }
 void Enable() { assert(depth > 0); --depth; }
 Library *OpenResource(CONST_STRPTR) { return &resource; }
-Interrupt *AddICRVector(Library *, int bit, Interrupt *handler) {
-    assert(bit == 3);
-    if (owner) return owner;
-    owner = handler;
-    return nullptr;
+short AbleICR(Library *r, long mask) {
+    assert(r == &resource);
+    unsigned old = enabled;
+    enabled = mask & 0x80 ? enabled | (mask & 0x1f) : enabled & ~mask;
+    return old;
 }
-void RemICRVector(Library *, int bit, Interrupt *handler) {
-    assert(bit == 3 && owner == handler);
-    owner = nullptr;
+short SetICR(Library *r, long mask) {
+    assert(r == &resource && !(mask & 0x80));
+    unsigned old = icr;
+    icr &= ~mask;
+    return old;
 }
 static void edge(unsigned wire, unsigned scan, unsigned irq) {
     unsigned k = rt_key_tail, i = rt_irq_tail;
     sdr = wire;
     cra = 0x81;
-    reinterpret_cast<uint32_t (*)()>(owner->is_Code)();
-    assert(cra == 0x81 && depth == 0);
+    Input::verticalBlank();        // no byte flagged: none read
+    assert(rt_key_tail == k && cra == 0x81);
+    icr |= 0x08;
+    Input::verticalBlank();
+    assert(cra == 0x81 && depth == 0 && !(icr & 0x08));
     assert(rt_key_tail == k + 1 && rt_irq_tail == i + 1);
     assert(rt_key_ring[k % RT_KEY_RING] == scan);
     assert(rt_irq_ring[i % RT_IRQ_RING] == irq);
@@ -112,7 +120,7 @@ static void mouse(unsigned counters, unsigned buttons, int dx, int dy) {
 int main() {
     joy = 0xfafa;
     assert(Input::begin());
-    assert(owner && owner != &oldHandler && potgo == 0);
+    assert(enabled == 0x04 && icr == 0 && potgo == 0);
     // Amiga serial wire bytes: inverted rotate-left raw code, including up.
     // Return (44/C4), left arrow (4F/CF), shift (60/E0).
     edge(0x77, 0x1c, 9); edge(0x76, 0x9c, 0x89);
@@ -127,8 +135,9 @@ int main() {
     joy = 0x0002; Input::verticalBlank();
     int32_t x, y;
     assert(plat_mouse(&x, &y) == 7 && x == 4 && y == 4);
+    icr = 0x08;
     Input::end();
-    assert(owner == &oldHandler && depth == 0);
+    assert(enabled == 0x0c && icr == 0 && depth == 0);
     puts("Amiga input register paths: ok");
 }
 '''
@@ -162,6 +171,10 @@ if __name__ == '__main__':
         for old, new in [('(code >> 1) | (code << 7)', '(code << 1) | (code >> 7)'),
                          ('(int8_t)(x - mouseCounterX)', '(int16_t)(x - mouseCounterX)'),
                          ('isRightMouseButtonPressed() ? 2 : 0', 'isRightMouseButtonPressed() ? 4 : 0'),
-                         ('AddICRVector(ciaaBase, CIAICRB_SP, savedKeyboardInterrupt);', '(void)savedKeyboardInterrupt;')]:
+                         ('    SetICR(ciaaBase, CIAICRF_SP);\n    uint8_t code', '    uint8_t code'),
+                         ('    AbleICR(ciaaBase, CIAICRF_SP);\n', ''),
+                         ('!(SetICR(ciaaBase, 0) & CIAICRF_SP)', 'false'),
+                         ('    SetICR(ciaaBase, CIAICRF_SP);\n    return true;', '    return true;'),
+                         ('AbleICR(ciaaBase, CIAICRF_SETCLR | CIAICRF_SP);', '(void)spEnabled;')]:
             assert source.count(old) == 1
             run(source.replace(old, new), False)

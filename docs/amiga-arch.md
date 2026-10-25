@@ -43,14 +43,14 @@ DanceDiverse3 set (`Palette24Bit`, `setPalette24Bit`) is kept for it.
    guest's own files later, through I/O windows.
 4. **Build.** Bitmaps, copper lists and palettes completely, then publish them to the ISR
    (L15).
-5. **Take over** in SL's order (L2, L3), VERTB vector (L10), keyboard ICR (L72), `Forbid`
-   (L6).
+5. **Take over** in SL's order (L2, L3), VERTB vector (L10), keyboard SP off in CIA-A's
+   ICR mask (L72, irq-plan I7), `Forbid` (L6).
 6. **Run.** The translated program runs on its own stack (`amiga_guest_run`); posted
    interrupts are taken at its poll points (D8); the field task presents (D9). Disk access only
    inside I/O windows (L7). SWOTL: every DOS call of `amiga_platform.c` is one window
    (`Swotl::beginIO`/`endIO`): Exec's VERTB and SOFTINT vectors, saved INTENA and DISK|BLITTER DMA
-   back, `Permit`; the copper display and the keyboard interrupt stay; fields the OS
-   serves are added from `GfxBase->VBCounter`.
+   back, `Permit`; the copper display stays, a VERTB server reads the keyboard; fields the
+   OS serves are added from `GfxBase->VBCounter`.
 7. **Return** in SL/VT's order (L4), then pending saves, frees, `releaseBlitterQueue`
    (L50), library closes (the Workbench reply, L84: open-work 39). A readable-state restore check runs in
    the harness (L5).
@@ -59,16 +59,16 @@ DanceDiverse3 set (`Palette24Bit`, `setPalette24Bit`) is kept for it.
 
 | Source | Owner | Content |
 | --- | --- | --- |
-| Level 3 VERTB | taken-over Exec vector | clear INTREQ (L11) → display publication (L17, L25–27) → field counter → mouse and typematic repeat (L77, L79–80) → Paula staging (L62–63) → request SOFTINT |
+| Level 3 VERTB | taken-over Exec vector | clear INTREQ (L11) → display publication (L17, L25–27) → field counter → keyboard byte if `ciaa.resource` flags SP ([irq-plan](irq-plan.md) I7) → mouse and typematic repeat (L77, L79–80) → Paula staging (L62–63) → request SOFTINT |
 | Level 1 SOFTINT | taken-over Exec vector | field task ([irq-plan](irq-plan.md) I5): clear INTREQ → key script, `fm_field` on an OPL snapshot taken under `Disable` → the due present (D9) unless a driver call or the main thread's present or video BIOS call runs (`video.c` busy) |
-| Level 2 PORTS | Exec chain | keyboard via `ciaa.resource` (L13, L72) |
+| Level 2 PORTS | Exec chain | `ciaa.resource` for the OS's CIA-A sources (L13); keyboard SP disabled (I7) |
 | Level 6 EXTER | Exec chain | PIT via a `ciab.resource` timer (`amiga_platform.c`): SPAZ's handler at once through `rt_irq_interrupt` when `rt_irq0_ready` ([irq-plan](irq-plan.md) I6), EXTER acknowledged and the mask lowered to 2 so the vertical blank preempts it; else posts vector 08h (always under `BENCH`) |
 | Level 3 BLIT | masked | unless the framework blitter queue is adopted (L14) |
 | Others | Exec | untouched; restored masks on exit |
 
 The original's keyboard (INT 09h) handler does not run in Amiga interrupt context
 (L18). SPAZ's timer handler runs in the CIA-B interrupt (RC1, L18 exception, irq-plan I6);
-[irq-plan](irq-plan.md) moves keyboard reading into the vertical blank (RC4). A tick the
+the keyboard is read at the vertical blank (RC4, irq-plan I7). A tick the
 interrupt cannot run, and the keyboard's events, go to `rt_irq_ring` (keys to
 `rt_key_ring`); the guest's or the runtime's BIOS handler runs at the next poll point with
 guest IF set ([translator-design.md](translator-design.md) D8). Shared rings are guarded
@@ -118,9 +118,9 @@ per period (L44). Publication never feeds back into simulation; missed slots are
 
 ## Input
 
-The CIA-A keyboard handler (L72) maps each raw key edge through one table to a PC set 1
-make/break code and posts it to `rt_key_ring` with vector 09h; unmapped codes are counted
-(`amiga_unmapped_keys`, L76). Presses stay pending until the original reads them (L75);
+The vertical blank's keyboard read (L72; in I/O windows a VERTB server) maps each raw key
+edge through one table to a PC set 1 make/break code and posts it to `rt_key_ring` with
+vector 09h; unmapped codes are counted (`amiga_unmapped_keys`, L76). Presses stay pending until the original reads them (L75);
 typematic repeat runs in the VBI (L77). The mouse (port 0) is sampled once per VBI
 (L79–80); its deltas feed the runtime's INT 33h driver (`plat_mouse`). No Amiga joystick:
 port `201h` answers as the reference's absent one (`src/runtime/ports.c`).
@@ -145,6 +145,7 @@ link audit) not applied (open-work 41). Exact flags: [toolchain.md](toolchain.md
 | --- | --- | --- |
 | Restore status | OS view, vector, DMA and INTENA restored | `make test-amiga-restore` |
 | Beam watch | zero late display handoffs; no conversion into the shown bitmap | `amiga/display_audit.sh` |
+| Keyboard | `monitor key` edges read by the I/O windows' VERTB server and the takeover VBI, typematic 1 + 7 in 61 fields | `make test-amiga-keyboard` |
 | Audio VBI spills | Paula work stays in blanking | none here; Slicks `g_slicks_audio_vbi_spills` |
 | C2P store verifier | converters write only final, correct plane words | none here; Slicks `tools/verify_planar_writes.sh` |
 | Allocation audit | zero outstanding blocks, repeat launch, low-Chip failure | none here; Slicks `tools/memory_audit.py` |

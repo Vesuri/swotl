@@ -36,7 +36,7 @@ def load_site(symbol, address):
     i, match = hits[0]
     return str(int(ins[i+1][0], 16)-base), '$' + match[1]
 text = Path('amiga/hardware_input.gdb.in').read_text()
-for prefix, symbol, address in [('SDR', '_ZL15keyboardHandlerv', 'bfec01'),
+for prefix, symbol, address in [('SDR', '_ZN5Input8keyboardEv', 'bfec01'),
                                 ('JOY', '_ZN5Input13verticalBlankEv', 'dff00a')]:
     offset, register = load_site(symbol, address)
     text = text.replace('@' + prefix + '_OFFSET@', offset)

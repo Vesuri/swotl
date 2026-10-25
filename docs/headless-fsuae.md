@@ -47,6 +47,11 @@ registers immediately after hardware loads; the debugger cannot read CIA
 registers directly. Load sites are derived from the current executable.
 This proves emulated register routing, not physical A1200 input.
 
+`make test-amiga-keyboard` (`amiga/keyboard_check.sh`) presses Left Shift through
+`monitor key`: toggled at the I/O windows' VERTB server until that server has read a
+make and a break, then held 60 fields with the machine taken over (5–9 makes, then
+the break). It fails on `rt_stop` or by field 500 without the window edges.
+
 `bash amiga/display_audit.sh` captures 40 actual handoffs over the attract
 sequence. It compares pixels with guest RAM captured at publication, checks
 palette values and conversion targets, and rejects late copper switches.

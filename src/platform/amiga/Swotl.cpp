@@ -34,8 +34,9 @@ extern struct GfxBase* GfxBase;
 #define DMA_ALL (DMAF_ALL | DMAF_MASTER | DMAF_BLITHOG)
 
 // The interrupts the takeover runs on: our VERTB and SOFTINT vectors (the field
-// task), Exec's PORTS chain (keyboard through ciaa.resource, L13) and EXTER (the
-// PIT on a CIA-B timer).
+// task; the keyboard is read at the vertical blank, docs/irq-plan.md I7), Exec's
+// PORTS chain (ciaa.resource for the OS's CIA-A sources, L13) and EXTER (the PIT
+// on a CIA-B timer).
 #define TAKEOVER_INTERRUPTS (INTF_INTEN | INTF_VERTB | INTF_SOFTINT | INTF_PORTS | INTF_EXTER)
 
 // The frame as shown (tests/host_run.py --amiga and amiga/display_audit.gdb
@@ -93,7 +94,7 @@ static uint16_t beamLine() {
 Swotl* Swotl::application = 0;
 Swotl* Swotl::active = 0;
 
-static struct Interrupt vbiInterrupt, fieldInterrupt;
+static struct Interrupt vbiInterrupt, fieldInterrupt, ioKeyboardInterrupt;
 
 // Owns the level-3 VERTB vector, so it acknowledges INTREQ itself (L11).
 static uint32_t vbiHandler()
@@ -115,6 +116,14 @@ static uint32_t fieldHandler()
     if (Swotl::active) {
         Swotl::active->field();
     }
+    return 0;
+}
+
+// The keyboard in I/O windows, where Exec owns the VERTB vector: a server on its
+// chain (Z set: the rest of the chain runs).
+static uint32_t ioKeyboardServer()
+{
+    Input::keyboard();
     return 0;
 }
 
@@ -384,8 +393,8 @@ void Swotl::verticalBlank()
 
 // Hand back interrupts and multitasking, not the display (L7): Exec's VERTB and SOFTINT
 // vectors, the saved INTENA and DISK|BLITTER DMA; our copper list and
-// LoadView(NULL) stay, and so does the keyboard interrupt (keys typed during
-// the window still reach the game). The vertical blanks the OS serves are
+// LoadView(NULL) stay, and the keyboard is read from a VERTB server (keys typed
+// during the window still reach the game). The vertical blanks the OS serves are
 // counted from graphics.library's own counter.
 void Swotl::beginIO()
 {
@@ -400,6 +409,12 @@ void Swotl::beginIO()
     ioFrames = GfxBase->VBCounter;
     AmigaHardware::setDMAChannels(oldEnabledDMAChannels & (DMAF_DISK | DMAF_BLITTER), true);
     AmigaHardware::setInterrupts(oldEnabledInterrupts & INTF_ALL, true);
+    ioKeyboardInterrupt.is_Node.ln_Type = NT_INTERRUPT;
+    ioKeyboardInterrupt.is_Node.ln_Pri = 0;
+    ioKeyboardInterrupt.is_Node.ln_Name = (char*)"SWOTL keyboard";
+    ioKeyboardInterrupt.is_Data = 0;
+    ioKeyboardInterrupt.is_Code = (void (*)())ioKeyboardServer;
+    AddIntServer(INTB_VERTB, &ioKeyboardInterrupt);
     Enable();
     Permit();
 }
@@ -410,6 +425,7 @@ void Swotl::endIO()
         return;
     }
     Forbid();
+    RemIntServer(INTB_VERTB, &ioKeyboardInterrupt);
     Disable();
     AmigaHardware::setInterrupts(INTF_ALL, false);
     takeVectors();

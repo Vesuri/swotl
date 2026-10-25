@@ -90,7 +90,7 @@ AmigaXDev's docs (edit them there, then `make share`); this repo keeps what is s
   translator `make gen`, `make test` (G2 lint, decoder, x86 and 68020
   differentials, block differential, G1, host run), `make test-sabotage`;
   runtime on host / A1200 model `make test-host` (`test-host-all`: m1–m7, the
-  coverage scenarios, music skip), `make test-amiga`; IRQ0 stress `make
+  coverage scenarios, music skip), `make test-amiga`, `make test-amiga-keyboard`; IRQ0 stress `make
   test-irq-stress` (irq-plan I6); audio `make gates-audio`;
   WHDLoad slave `make whdload`, `make test-whdload`; release `make release`,
   `make test-install-data`, `make test-release-installer`; full

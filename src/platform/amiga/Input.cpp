@@ -41,8 +41,7 @@ volatile uint32_t amiga_unmapped_keys = 0;  // raw keys with no PC scan code
 }
 
 static struct Library* ciaaBase = 0;
-static struct Interrupt keyboardInterrupt;
-static struct Interrupt* savedKeyboardInterrupt = 0;
+static bool spEnabled = false;
 static uint8_t repeatKey = 0xff;
 static uint16_t repeatDelay = 0;
 static uint16_t repeatPhase = 0;
@@ -89,10 +88,17 @@ void Input::key(uint8_t raw, bool up)
     Enable();
 }
 
-// CIA-A serial port: code = ROR(~SDR, 1); the handshake holds SPMODE output
-// for about 85 us (L72).
-static uint32_t keyboardHandler()
+// CIA-A serial port, read at the vertical blank (docs/irq-plan.md I7): SP stays
+// disabled in the ICR mask, so no keyboard interrupt runs; ciaa.resource's copy
+// of the ICR flags shows a byte. The keyboard waits for the handshake (143 ms)
+// before its next byte, so one byte per field loses none. code = ROR(~SDR, 1);
+// the handshake holds SPMODE output for about 85 us (L72).
+void Input::keyboard()
 {
+    if (!ciaaBase || !(SetICR(ciaaBase, 0) & CIAICRF_SP)) {
+        return;
+    }
+    SetICR(ciaaBase, CIAICRF_SP);
     uint8_t code = (uint8_t)~*ciaasdrPointer;
     *ciaacraPointer |= CIACRAF_SPMODE;
     for (volatile uint16_t delay = 0; delay < 200; ++delay) {
@@ -100,7 +106,6 @@ static uint32_t keyboardHandler()
     *ciaacraPointer &= (uint8_t)~CIACRAF_SPMODE;
     code = (uint8_t)((code >> 1) | (code << 7));
     Input::key((uint8_t)(code & 0x7f), (code & 0x80) != 0);
-    return 0;
 }
 
 bool Input::begin()
@@ -121,16 +126,10 @@ bool Input::begin()
     if (!ciaaBase) {
         return false;
     }
-    keyboardInterrupt.is_Node.ln_Type = NT_INTERRUPT;
-    keyboardInterrupt.is_Node.ln_Pri = 0;
-    keyboardInterrupt.is_Node.ln_Name = (char*)"SWOTL keyboard";
-    keyboardInterrupt.is_Data = 0;
-    keyboardInterrupt.is_Code = (void (*)())keyboardHandler;
-    savedKeyboardInterrupt = AddICRVector(ciaaBase, CIAICRB_SP, &keyboardInterrupt);
-    if (savedKeyboardInterrupt) {
-        RemICRVector(ciaaBase, CIAICRB_SP, savedKeyboardInterrupt);
-        AddICRVector(ciaaBase, CIAICRB_SP, &keyboardInterrupt);
-    }
+    // keyboard.device's SP interrupt off; a byte it left is dropped.
+    spEnabled = (AbleICR(ciaaBase, 0) & CIAICRF_SP) != 0;
+    AbleICR(ciaaBase, CIAICRF_SP);
+    SetICR(ciaaBase, CIAICRF_SP);
     return true;
 }
 
@@ -139,10 +138,9 @@ void Input::end()
     if (!ciaaBase) {
         return;
     }
-    RemICRVector(ciaaBase, CIAICRB_SP, &keyboardInterrupt);
-    if (savedKeyboardInterrupt) {
-        AddICRVector(ciaaBase, CIAICRB_SP, savedKeyboardInterrupt);
-        savedKeyboardInterrupt = 0;
+    SetICR(ciaaBase, CIAICRF_SP);
+    if (spEnabled) {
+        AbleICR(ciaaBase, CIAICRF_SETCLR | CIAICRF_SP);
     }
     ciaaBase = 0;
 }
@@ -154,6 +152,7 @@ void Input::verticalBlank()
 #ifdef SWOTL_REPLAY
     return;
 #endif
+    keyboard();
     uint16_t counters = *joy0datPointer;
     uint8_t x = (uint8_t)counters, y = (uint8_t)(counters >> 8);
     uint8_t buttons = (uint8_t)((AmigaHardware::isLeftMouseButtonPressed() ? 1 : 0) |

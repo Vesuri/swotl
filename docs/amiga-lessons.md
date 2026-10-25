@@ -271,6 +271,9 @@ them here. Structure for this port: [amiga-arch.md](amiga-arch.md). Elsewhere:
 72. **Keyboard: CIA-A SP via `AddICRVector`; if it returns the owner, remove theirs, add
     yours, restore on exit.** Code = `ROR(~SDR,1)`; handshake holds SPMODE output ~85 µs. —
     *SL `keyboard_begin`/`keyboard_handler`; RV `docs/amiga-lessons.md`*
+    SWOTL (irq-plan I7) has no keyboard interrupt: `AbleICR` disables SP, the vertical blank
+    samples it with `SetICR(0)` and clears it (never read ICR directly); the keyboard
+    waits for the handshake (143 ms) before its next byte, so a byte per field loses none.
 73. **Clear modifier state at takeover.** — releases while the OS owned the keyboard never
     reach you. — *SL `keyboard_begin`*
 74. **Keep a level map and an edge queue/latch.** A level poll misses taps shorter than its

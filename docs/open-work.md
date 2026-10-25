@@ -58,7 +58,7 @@ speed work: [speed-plan.md](speed-plan.md).
     waive admission, pricing, exactness, validation or contract decisions.
     Bench acceptance for platform/layout work (D5) and a later palette window
     (D6) are approved. Fidelity gates and no slowdown remain mandatory except
-    the specific R20/R35 tradeoffs and R36/R40/R48/F3b/F4 bench differences accepted by
+    the specific R20/R35 tradeoffs and R36/R40/R48/F3b/F4 and irq-plan I7 (+0.117%) bench differences accepted by
     the user as noise (speed-plan §7) and D8's tiny bench regressions (speed-plan §3). Z1 leaves the target unmet; plan F is next.
     Guest native steps after irq-plan I9 are priced without polls or write
     histories (open-work 43, RC5).
@@ -76,9 +76,9 @@ speed work: [speed-plan.md](speed-plan.md).
     2026-10-24 with its rule changes): SPAZ's IRQ0 handler from the CIA-B
     interrupt, keyboard and mouse at the vertical blank, sync points for
     lockstep, native rows poll-free (U3/U5 retire). I1 measured, I2 proved,
-    I3 monitored, I4 private-stack entry, I5 field task, I6 asynchronous IRQ0
-    (irq-plan Facts). Next: I7 (keyboard at the vertical blank); F10 skipped by the
-    user (2026-10-25).
+    I3 monitored, I4 private-stack entry, I5 field task, I6 asynchronous IRQ0, I7
+    keyboard at the vertical blank (irq-plan Facts). Next: I8 (sync points); F10
+    skipped by the user (2026-10-25).
     The deferred natives it unblocks (D5A6 prefix, BB70, F9 O(1), FDE0, BD68,
     F290, 109D6; exact-poll rows rebuilt) are done at its I10.
 

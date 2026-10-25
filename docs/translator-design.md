@@ -321,7 +321,7 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   these recorded interrupts; `test_mouse_irq.py` checks the IVT/IF edges.
   The platform posts vectors to `rt_irq_ring` (08h tick,
   09h/89h key make/break): Amiga a CIA-B timer per PIT period
-  (`plat_timer_rate`) and the CIA-A keyboard interrupt (`Input.cpp`: raw
+  (`plat_timer_rate`) and the CIA-A keyboard read at the vertical blank (`Input.cpp`: raw
   key -> scan code, PC typematic repeat from the vertical blank; diagnostic
   argument `KEYS=when:key,...` feeds keys, `lmb`/`rmb` and `mx±N`/`my±N`
   into the same paths at a frame or `pN`, N

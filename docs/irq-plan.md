@@ -135,6 +135,21 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   p99 552,934 → 21,491; handler mean 2,184 → 2,280; 2,339 of 2,370 ticks at the
   interrupt, `rt_irq_interrupt` mean 3,845 with entry and exit, supervisor stack 280
   bytes; ms/frame equal (454.5). Meter m4 +43,558 model cycles (+0.0282%), runtime only.
+- I7 (2026-10-25, evidence `tmp/irq/I7/`). No keyboard interrupt: `Input::begin` disables
+  CIA-A SP with `AbleICR` (keyboard.device's vector stays registered, never runs) and
+  clears a stale byte; each vertical blank samples SP with `SetICR(0)`, clears it, reads
+  SDR and handshakes; `Input::end` restores the enable. I/O windows read it from a VERTB
+  server on Exec's chain. WHDLoad's QuitKey needs no keyboard interrupt (whdload.doc
+  `ws_keyexit`: checked on every interrupt with a moved VBR); untested, as before.
+  `make test-amiga-keyboard` (FS-UAE `monitor key`): 2 edges read
+  by the window server (40 toggles, field 59), held 61 fields → 8 makes then the break;
+  plants (server on COPER, SP left enabled) fail. D5 bench (3 runs, base I6): median
+  68,366 → 68,446 (+0.117%, ranges 68,361–68,383 / 68,427–68,448), RAM hash equal;
+  layout is not the cause (a 100-byte pad arm: 68,363); one CIA access per field
+  (`Input::keyboard` 0.04% of the profile). An unchanged-SDR prefilter before
+  `SetICR` gave no gain (68,450) and was dropped. Bench cost accepted by the user
+  (2026-10-25). Display audits 40 captures, 0 late
+  (68030, 68040).
 - Guest memory backs 1 MiB + HMA (`RT_GUEST_BYTES`); host runs compare RAM from the
   environment MCB to A0000h with dead stack masked (open-work 24).
 
@@ -200,9 +215,9 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
 - **Keyboard:** the vertical blank reads CIA-A SDR, handshakes (~85 µs SPMODE output),
   maps through `Input.cpp`'s table, repeats as now and fills `rt_key_ring`;
   `rt_keyboard_irq` drains it with IF set at service entry (production) or at sync
-  points (tests). ICR is read-to-clear and shared
-  with `ciaa.resource`: sample SP through the resource or keep a minimal SP read, decided
-  on FS-UAE in I7. Keys pressed during I/O windows (Exec's VERTB) must arrive.
+  points (tests). ICR is read-to-clear and shared with `ciaa.resource`: SP is disabled
+  with `AbleICR` and sampled with `SetICR` (I7). Keys pressed during I/O windows (Exec's
+  VERTB) arrive through a VERTB server.
 - **Mouse:** unchanged. IRQ12: the reference stops delivering it, or the port keeps
   skipping it (I8, by the re-recorded RAM).
 
@@ -325,5 +340,4 @@ stays in sync mode); fidelity tradeoffs go to the user.
 - Ticks during I/O windows run translated SPAZ while the OS is active; the path makes no
   OS calls.
 - Song data in the EMS page frame would need tick-masked map copies (I3 decides).
-- Keyboard ICR sharing with `ciaa.resource` (I7).
 - The D16 cell walk and SMC lie outside the handler footprint (I2 confirms).
