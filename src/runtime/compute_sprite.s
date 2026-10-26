@@ -1,5 +1,5 @@
-; Sprite packet to spans. U6 authorization 2026-10-22; exact polling
-; authorized 2026-10-23. SWOTL x86 is the oracle; no imported TFH bytes.
+; Sprite packet to spans. U6 authorization 2026-10-22; poll-free since
+; irq-plan I9. SWOTL x86 is the oracle; no imported TFH bytes.
 ; Every table read and output write stays in original order, including
 ; tables overlapped by the output. Declines leave all guest state unchanged.
 
@@ -51,11 +51,7 @@ sprite_packet_body:
 	subq.l #4,a0
 	adda.w ($7791,a3),a5
 	subq.w #1,($776f,a3)
-	beq.s sprite_packet_done
-	; No private stack: pending delivery abandons this invocation. Re-entry
-	; rechecks all guards and reconstructs a0 from the handler's guest state.
-	rt_hle_sprite_packet_poll_0
-	bra.s sprite_packet_body
+	bne.s sprite_packet_body
 sprite_packet_done:
 	moveq #1,d7
 	rts

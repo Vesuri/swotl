@@ -39,7 +39,7 @@ The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 | U2 | Approved 2026-10-21: transform pilot at `B54B` from `xform20`; retain generated `B52D` wrapper and return checks | — |
 | U3 | Confirmed 2026-10-21: keep every byte's complete write history, SMC/display bookkeeping and all other state checks; write histories retire at [irq-plan](irq-plan.md) I9 (U12) | — |
 | U4 | Approved 2026-10-22: `SWOTL.EXE+B017`, adapting the slave’s `xproj20`, by S1–S9. B4E2 adapting `xdiv20` authorized 2026-10-22; B8A1 authorized then deferred 2026-10-22: no calls in the acceptance workload; the `B393` long-path hook returning at `B4E1` is approved | N2 |
-| U5 | Approved 2026-10-21: chosen polls (removed interior polls, return poll, optional sync sites), up to one PIT period of interrupt delay in a native routine, affected references re-recorded per row ([contract](native-compute.md#poll-contract-u5), implemented by C3); retires at [irq-plan](irq-plan.md) I9 (U12) | — |
+| U5 | Approved 2026-10-21: chosen polls (removed interior polls, return poll, optional sync sites), up to one PIT period of interrupt delay in a native routine, affected references re-recorded per row (implemented by C3); retired at [irq-plan](irq-plan.md) I9 (U12) | — |
 | U6 | Approved 2026-10-22: D5A6 adapting xpnorm20; normalization loop D5DA–D5F6 → D5F8 with explicit non-return endpoint extension and U5 polls. BB70, 109D6, F290, 4DAE, BD68, D69C, FDE0 and BFD1 authorized 2026-10-22 by the remaining-candidates goal; admission, pricing and S1–S9 remain required | N4 |
 | U7 | User paused speed work 2026-10-23; resumed under U9 the same day | — |
 | U8 | Approved 2026-10-21: REP away from kept polls, divide-fault decline, multiple returns; range/unresolved flow by annotations ([extensions](native-compute.md#contract-extensions-u8), implemented by C4); routines still need U4/U6 | — |
@@ -84,9 +84,9 @@ explicit unpriced savings; do not invent a native price for them.
 
 ## C. Contract for routines with polls and loops
 
-Contracts: [U5](native-compute.md#poll-contract-u5) (`hle.csv` `polls`;
-`t-compute-polls`) and [U8](native-compute.md#contract-extensions-u8) (`end`;
-`t-compute-u8`), implemented. Admission on the candidates (C4,
+Contracts: U5 (`hle.csv` `polls`; retired at irq-plan I9 by RC5 for
+[poll-free loop rows](native-compute.md#loops-and-the-sync-set-rc5)) and
+[U8](native-compute.md#contract-extensions-u8) (`end`; `t-compute-u8`), implemented. Admission on the candidates (C4,
 [inventory](swotl-tfh-rendering-map.md#compute-admission-inventory)): `D5A6`
 (its poll removed) and `BB70` admit structurally
 under U5 on their original unhooked bodies. Structural admission alone does not
@@ -122,8 +122,8 @@ the replacement before the call) or annotations, with its routine.
   User deferred expiry/advance on 2026-10-23 (R47): address-reuse
   designs have no positive price. R48 keeps ordering C0C2 → C1C2 with
   exact original polls; measurements: speed-plan §1.
-  The 4DAE packet loop uses the approved exact-poll contract
-  ([native-compute.md](native-compute.md#exact-native-polling-user-2026-10-23));
+  The 4DAE packet loop used the approved exact-poll contract (poll-free since
+  irq-plan I9);
   broader sprite decoding and dispatch remain generated.
   `BD68` deferred by the user 2026-10-23: its approved exact-poll edge-loop
   scopes have no positive price under the initial address-reuse design (R43).

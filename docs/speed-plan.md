@@ -587,8 +587,8 @@ less. Against the same-session pre-F3 arm (350–360 ms) the ranges do not
 overlap: F3+F4 is an established frame-rate gain. The user
 resumed speed work under U9 on 2026-10-23: plan F in native-plan.
 No priced translator candidate remains (§7). N1, N2’s B393 projection and B4E2 divide,
-and N4’s D5DA normalization loop, scenery clear, sprite packet loop and line pixel loops are kept; F5's whole `BFD1` scanline loop replaces R48's ordering row. The U5 poll contract is implemented
-([native-compute.md](native-compute.md#poll-contract-u5)), and the U8
+and N4’s D5DA normalization loop, scenery clear, sprite packet loop and line pixel loops are kept; F5's whole `BFD1` scanline loop replaces R48's ordering row. Rows are poll-free since irq-plan I9
+([native-compute.md](native-compute.md#loops-and-the-sync-set-rc5); U5 retired), with the U8
 extensions (C4). Active candidates and user deferrals: open-work 14b and
 [native-plan.md](native-plan.md).
 

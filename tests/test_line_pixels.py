@@ -1,4 +1,6 @@
-"""D69C pixel-loop coverage; original x86 is the oracle."""
+"""D69C pixel-loop coverage; original x86 is the oracle (RC5: registers, live
+flags, all RAM and code/VRAM write addresses at the endpoint; poll-free since
+irq-plan I9)."""
 from pathlib import Path
 import argparse
 import random
@@ -13,7 +15,6 @@ from tools import compute_oracle as O
 from translator import emit, image
 from translator.support import equates
 from translator.ir import FLAGS, FLAG_BIT
-emit.Program.polled_rows = True  # the exact/U5-poll rows, dormant in the game until I9 (irq-plan I8)
 
 SCOPES = ((0xd92a, 0xd93d), (0xd95c, 0xd96f))
 
@@ -93,20 +94,25 @@ def generated(entries=False, plant=False, wide=False):
             try:
                 m.load(binary)
                 m.extra_stops={addresses[emit.label('SWOTL.EXE', end)]:'endpoint'}
-                history=O.watch_native(m)
+                O.watch_native(m)
                 flags={f:regs['flags']>>FLAG_BIT[f]&1 for f in FLAGS}
                 got, fl, fx, mem, outs, writes, info=m.run(addresses[emit.label('SWOTL.EXE', first)],
                     (regs,flags,regs['flags']&0xf000,regs['ip'],[]),random.Random(41),irq=False)
                 assert not info['err'] and not outs and not info['irq'] and info['stop']=='endpoint',(name,info)
                 got.update(cs=expected['at'][0],ip=expected['at'][1])
                 actual=dict(registers=got,flags=fx|sum(fl[f]<<FLAG_BIT[f] for f in FLAGS),
-                            writes=writes,history=history,ram=m.gread(0,B.X.RAM))
-                errors=O.compare(expected,actual,p.live_in[('SWOTL.EXE',end)])
+                            writes=writes,ram=m.gread(0,B.X.RAM))
+                errors=O.compare(expected,actual,p.live_in[('SWOTL.EXE',end)],code(p))
                 if errors: raise LineMismatch((name,errors))
                 total+=1
             finally:
                 B.U.uc.uc_close(m.e.h)
     return total
+
+
+@lru_cache(maxsize=None)
+def code(p):
+    return O.code_addresses(p, B.LOADSEG)
 
 
 @lru_cache(maxsize=1)
@@ -115,7 +121,7 @@ def native_program():
     rows=[]
     for (first,end),name,last in zip(SCOPES,('line_right','line_left'),(0xd93b,0xd96d)):
         rows.append(dict(module='SWOTL.EXE',first=hex(first),last=hex(last),
-                         service=name,args='',kind='compute',polls='exact',
+                         service=name,args='',kind='compute',
                          resume='continue',reason='authorized line differential',oracle=__file__))
     existing={int(r['first'],16) for r in original('hle.csv') if r['module']=='SWOTL.EXE'}
     with patch.object(image,'rows',lambda name:original(name)+
@@ -131,26 +137,24 @@ def native(entries=False, plant=None, predecessor="direct", wide=False):
     implementation=(ROOT/'src/runtime/compute_line.s').read_text()
     templates={'store':('move.b d3,0(a1,d7.w)','nop'),
                'carry':('bcc.s line_right_no_row','bra.s line_right_no_row'),
-               'code-window':('bcs.s line_right_decline','nop')}
+               'code-window':('bcs.s line_right_decline','nop'),
+               'count':('addq.w #1,d1\n\tbra.s line_right_store','bra.s line_right_store'),
+               'decline':('line_right_decline:\n\tmoveq #0,d7','line_right_decline:\n\taddq.w #1,d1\n\tmoveq #0,d7')}
     if plant:
         old,new=templates[plant]
         if old not in implementation:raise ValueError('missing plant template: '+plant)
         implementation=implementation.replace(old,new)
     total=0
-    for (first,end),service,poll in zip(SCOPES,('line_right','line_left'),(0xd92d,0xd95f)):
+    for (first,end),service in zip(SCOPES,('line_right','line_left')):
         prefix={'direct':[], 'jump':['\tbra entry'],
                 'call':['\tbsr entry','\tbra done'],
                 'taken':['\tcmp.w d0,d0','\tbeq entry','\tillegal'],
                 'fall':['\tcmp.w d0,d0','\tbne done'],
                 'indirect':['\tlea entry,a0','\tjmp (a0)'],
                 'return':['\tpea entry','\trts']}[predecessor]
-        source=[equates(),f'rt_irq equ ${B.STUB_AT["rt_irq"]:x}',p.native_poll_text(),
-                f'\torg ${B.SNIP:x}','\tdc.l done',*prefix,'entry:',
-                f'\tmove.l #${B.LOADSEG+0x49b:x},d6','\tmoveq #0,d7',
+        source=[equates(),f'\torg ${B.SNIP:x}','\tdc.l done',*prefix,'entry:',
+                f'\tmove.l #${B.LOADSEG+0x49b:x},d6',
                 f'\tjsr rt_hle_{service}','\trts' if predecessor=='call' else '\tbra done','done:','\tnop',implementation]
-        for pl in (0xd92d,0xd95f):
-            source += emit.native_poll_stub(emit.label('SWOTL.EXE',pl),pl-0x49b0,
-                                           f'${B.LOADSEG+0x49b:x}',2)
         binary=B.D.assemble('\n'.join(source),work/f'{service}-{plant}.bin')
         cases=list(wide_cases(first)) if wide else list(synthetic(first))+list(guard_cases(first))+(list(captured(first)) if entries else [])
         for name,ram,regs in cases:
@@ -158,7 +162,7 @@ def native(entries=False, plant=None, predecessor="direct", wide=False):
             m=B.D.M68k(ram,B.STUB_AT)
             try:
                 m.e.write(B.SNIP,binary);m.extra_stops={int.from_bytes(binary[:4],'big'):'done'}
-                history=O.watch_native(m)
+                O.watch_native(m)
                 flags={f:regs['flags']>>FLAG_BIT[f]&1 for f in FLAGS}
                 got,fl,fx,mem,outs,writes,info=m.run(B.SNIP+4,
                     (regs,flags,regs['flags']&0xf000,regs['ip'],[]),random.Random(41),irq=False)
@@ -168,88 +172,18 @@ def native(entries=False, plant=None, predecessor="direct", wide=False):
                     errors=[]
                     if m.r('d7')!=0:errors.append('guard accepted')
                     if any(got[k]!=v for k,v in regs.items() if k in got):errors.append('decline registers')
-                    if writes or history or m.gread(0,B.X.RAM)!=ram:errors.append('decline memory')
+                    if writes or m.gread(0,B.X.RAM)!=ram:errors.append('decline memory')
                     if 2|fx|sum(fl[f]<<FLAG_BIT[f] for f in FLAGS)!=regs['flags']:errors.append('decline flags')
                 else:
                     got.update(cs=expected['at'][0],ip=expected['at'][1])
                     actual=dict(registers=got,flags=fx|sum(fl[f]<<FLAG_BIT[f] for f in FLAGS),
-                                writes=writes,history=history,ram=m.gread(0,B.X.RAM))
-                    errors=O.compare(expected,actual,p.live_in[('SWOTL.EXE',end)])
+                                writes=writes,ram=m.gread(0,B.X.RAM))
+                    errors=O.compare(expected,actual,p.live_in[('SWOTL.EXE',end)],code(p))
                     if m.r('d7')!=1:errors.append('unexpected decline')
                 if errors:raise LineMismatch((name,errors))
                 total+=1
             finally:B.U.uc.uc_close(m.e.h)
     return total
-
-
-def handoffs(plant=None):
-    p=native_program();work=ROOT/'tmp/line-pixels-native';work.mkdir(exist_ok=True)
-    implementation=(ROOT/'src/runtime/compute_line.s').read_text()
-    if plant=='resume':
-        old='bne.s line_right_resume'
-        if old not in implementation:raise ValueError('missing plant template: '+plant)
-        implementation=implementation.replace(old,'bne.s line_right_step')
-    count=0
-    for (first,end),service,poll in zip(SCOPES,('line_right','line_left'),(0xd92d,0xd95f)):
-        lab=emit.label('SWOTL.EXE',poll)
-        source=[equates(),f'rt_irq equ ${B.STUB_AT["rt_irq"]:x}',p.native_poll_text(),
-                f'\torg ${B.SNIP:x}',f'\tdc.l done,{lab}_native_poll,{lab}_native_np',
-                '\tmoveq #0,d7','entry:',f'\tmove.l #${B.LOADSEG+0x49b:x},d6',
-                f'\tjsr rt_hle_{service}','\tcmp.l #2,d7','\tbne done',
-                '\tmoveq #1,d7','\tbra entry','done:','\tnop',implementation]
-        for pl in (0xd92d,0xd95f):
-            source+=emit.native_poll_stub(emit.label('SWOTL.EXE',pl),pl-0x49b0,
-                                         f'${B.LOADSEG+0x49b:x}',2)
-        binary=B.D.assemble('\n'.join(source),work/f'{service}-handoff-{plant}.bin')
-        done,poll_pc,np_pc=(int.from_bytes(binary[k:k+4],'big') for k in (0,4,8))
-        _,ram,regs=list(synthetic(first))[6]
-        prefix=O.run(ram,regs,(regs['cs'],end-0x49b0),stops=((regs['cs'],poll-0x49b0),))
-        assert prefix['at']==(regs['cs'],poll-0x49b0)
-        for mode in ('bp','di','ds','decline-es'):
-            changed=dict(prefix['registers'],cs=regs['cs'],ip=poll-0x49b0,flags=prefix['flags'])
-            changed[{'bp':'bp','di':'di','ds':'ds','decline-es':'es'}[mode]]={'bp':0xffff,'di':0xffff,'ds':0x5100,'decline-es':0x9001}[mode]
-            if admitted(changed):
-                expected=O.run(prefix['ram'],changed,(regs['cs'],end-0x49b0))
-                expected['history']={a:prefix['history'].get(a,[])+expected['history'].get(a,[])
-                                     for a in prefix['history'].keys()|expected['history'].keys()}
-                expected['writes']|=prefix['writes']
-            else:expected=dict(prefix,registers={k:v for k,v in changed.items() if k!='flags'},flags=changed['flags'])
-            m=B.D.M68k(ram,B.STUB_AT);m.irq_calls=[];visits=[];events=[]
-            @B.U.CODE_CB
-            def interrupt(h,address,size,user):
-                if address==np_pc:events.append('np')
-                if address==poll_pc:
-                    events.append('poll')
-                    visits.append(address);m.e.write(B.D.STATE+8,b'\1');m.e.write(B.D.PENDING,b'\1')
-                elif address==B.STUB_AT['rt_irq']:
-                    events.append('irq')
-                    m.e.reg_write(B.U.M68K['d5'],changed['bp']^0x7fff)
-                    m.e.reg_write(B.U.M68K['a5'],changed['di'])
-                    for seg,reg,off in (('ds','a3',0),('es','a1',4)):
-                        m.e.reg_write(B.U.M68K[reg],B.D.TOP-changed[seg]*16-0x7fff)
-                        m.e.write(B.D.STATE+off,changed[seg].to_bytes(2,'big'))
-            try:
-                m.e.write(B.SNIP,binary);m.extra_stops={done:'done'};m.e.hook(B.U.HOOK_CODE,interrupt)
-                history=O.watch_native(m);flags={f:regs['flags']>>FLAG_BIT[f]&1 for f in FLAGS}
-                got,fl,fx,mem,outs,writes,info=m.run(B.SNIP+12,
-                    (regs,flags,regs['flags']&0xf000,regs['ip'],[]),random.Random(41),irq=False)
-                assert not info['err'] and not outs and info['stop']=='done',(mode,info)
-                # Exact-once visits: an execution alias follows its own visit,
-                # never the visit that handed off (the re-entry starts below it).
-                for k,event in enumerate(events):
-                    if event=='np' and (k==0 or events[k-1]!='poll'):
-                        raise LineMismatch((service,mode,'duplicate visit',events[max(0,k-3):k+1]))
-                assert len(visits)==len(m.irq_calls)==1,(mode,visits,m.irq_calls)
-                assert info['a7']==B.D.STACK-0x100,(mode,'stack')
-                assert m.r('d7')==(1 if admitted(changed) else 0),(mode,'result')
-                got.update(cs=expected['at'][0],ip=expected['at'][1])
-                actual=dict(registers=got,flags=fx|sum(fl[f]<<FLAG_BIT[f] for f in FLAGS),
-                            writes=writes,history=history,ram=m.gread(0,B.X.RAM))
-                errors=O.compare(expected,actual,p.live_in[('SWOTL.EXE',end)])
-                if errors:raise LineMismatch((service,mode,errors))
-                count+=1
-            finally:B.U.uc.uc_close(m.e.h)
-    return count
 
 
 def predecessor_cases():
@@ -272,15 +206,11 @@ if __name__=='__main__':
     for predecessor in PREDECESSORS if args.predecessors else ('direct',):
         print('line pixels:',predecessor,native(args.entries,predecessor=predecessor),'native cases pass',flush=True)
     print('line pixels:',native(wide=True),'full-counter native cases pass',flush=True)
-    print('line pixels:',handoffs(),'handler handoff cases pass',flush=True)
     if args.sabotage:
-        for plant in ('store','carry','code-window'):
+        for plant in ('store','carry','code-window','count','decline'):
             try:native(plant=plant)
             except LineMismatch as error:print('line pixels:',plant,'caught:',error,flush=True)
             else:raise AssertionError(plant+' escaped')
-        try:handoffs(plant='resume')
-        except LineMismatch as error:print('line pixels: resume',' caught:',error,flush=True)
-        else:raise AssertionError('resume escaped')
         try:generated(plant=True)
         except LineMismatch as error:print('line pixels: missing generated pixel caught:',error,flush=True)
         else:raise AssertionError('missing generated pixel escaped')

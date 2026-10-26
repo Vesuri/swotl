@@ -26,7 +26,7 @@ def check():
             assert reject and str(error) == 'oracle self-modifying code entry', (name, error)
         else:
             assert not reject, (name, 'self-modification was admitted')
-            assert result['history'] == {0x30100: [0x90]}
+            assert result['writes'] == {0x30100} and result['ram'][0x30100] == 0x90
     return len(cases)
 
 

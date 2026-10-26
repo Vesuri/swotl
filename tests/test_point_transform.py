@@ -114,10 +114,13 @@ def run(entries=(), plant=None, predecessors=False, generated=False):
     if plant == 'missing-store':
         assert '\tmove.w \\3,(\\4,a3)' in callback
         callback = callback.replace('\tmove.w \\3,(\\4,a3)', '')
-    elif plant == 'duplicate-store':
+    elif plant == 'vram-write':
+        # RC5: besides RAM only the code/VRAM written-address set is observed:
+        # a VRAM byte rewritten with its own value leaves RAM equal.
         store = '\tmove.w \\3,(\\4,a3)'
         assert store in callback
-        callback = callback.replace(store, store + '\n' + store)
+        vram = B.D.TOP - 0xa0000    # guest A000:0000 on the host (reversed RAM)
+        callback = callback.replace(store, f'\tmove.b ${vram:x},${vram:x}\n' + store)
     elif plant == 'decline-state':
         callback = callback.replace('.decline:\n', '.decline:\n\tmove.w #1,d0\n')
     elif plant == 'guard':
@@ -200,7 +203,7 @@ def run(entries=(), plant=None, predecessors=False, generated=False):
                     m.load(binary)
                     m.e.write(B.SNIP, code)
                     m.e.hook_range(B.U.HOOK_CODE, result, before_at, result_at)
-                    history = O.watch_native(m)
+                    O.watch_native(m)
                     stop_at = result_at + 2 if expected is None else addresses[emit.label(*resume)]
                     m.extra_stops = {stop_at: 'compute_resume'}
                     flags = {f: regs['flags'] >> FLAG_BIT[f] & 1 for f in FLAGS}
@@ -212,13 +215,13 @@ def run(entries=(), plant=None, predecessors=False, generated=False):
                                     and 8 <= regs['sp'] <= 0xfff0]:
                         raise TransformMismatch(count + 1, (name, mode, 'guard outcome', outcomes))
                     if expected is None:
-                        if writes or history or m.gread(0, B.X.RAM) != ram:
+                        if writes or m.gread(0, B.X.RAM) != ram:
                             raise TransformMismatch(count + 1, (name, mode, 'refusal changed state'))
                         count += 1
                         continue
                     got.update(cs=end[0], ip=end[1])
                     actual = dict(registers=got, flags=fx | sum(fl[f] << FLAG_BIT[f] for f in FLAGS),
-                                  writes=writes, history=history, ram=m.gread(0, B.X.RAM))
+                                  writes=writes, ram=m.gread(0, B.X.RAM))
                     errors = O.compare(expected, actual, p.live_in[resume])
                     if errors:
                         raise TransformMismatch(count + 1, (name, mode, errors))
@@ -239,7 +242,7 @@ if __name__ == '__main__':
     print('generated transform:', run(args.entries, generated=True), 'cases pass', flush=True)
     print('point transform:', run(args.entries, predecessors=args.predecessors), 'cases pass', flush=True)
     if args.sabotage:
-        for plant in ('missing-store', 'duplicate-store', 'decline-state', 'guard', 'overlap-guard', 'sign',
+        for plant in ('missing-store', 'vram-write', 'decline-state', 'guard', 'overlap-guard', 'sign',
                       'register', 'frame-guard', 'missing-push', 'restore'):
             try:
                 run(plant=plant)

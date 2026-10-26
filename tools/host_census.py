@@ -28,7 +28,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import host_run  # noqa: E402
 from host_run import REPO, TOP, Host, U, image, milestone_script, reference_inputs  # noqa: E402
-from translator.compute import poll_aliases
 
 LABEL = re.compile(r"^[A-Z]+_[0-9A-F]{5}$")
 REP = re.compile(r"; [0-9A-F]{4}:[0-9A-F]{4} rep[a-z]* (movs|stos|cmps|scas|lods|ins|outs)[bwd]?$")
@@ -69,7 +68,6 @@ def main():
     trace = REPO / f"tmp/pc-runs/ref-{args.milestone}/trace"
     script["irqs"], script["releases"] = reference_inputs(trace)
     h = Host(image.M.REF, None)
-    native_polls = poll_aliases(h.syms)
     state = dict(open=args.whole, frames=0)
     hooks = []              # keep the ctypes callbacks alive
 
@@ -97,8 +95,6 @@ def main():
             if state["open"]:
                 counts[lab] += 1
         code(h.syms[lab], hit)
-        if lab in native_polls:
-            code(native_polls[lab][0], hit)
 
     cx, execs, elems, hist = {}, Counter(), Counter(), {}
     if args.strops:

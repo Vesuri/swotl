@@ -1,4 +1,4 @@
-"""Authorized point normalization: original x86 vs xpnorm20 adapter."""
+"""Authorized point normalization: original x86 vs xpnorm20 adapter (poll-free, RC5)."""
 import argparse
 from functools import lru_cache
 import random
@@ -55,7 +55,7 @@ def cache_reporting_control():
     from unittest.mock import patch
     module = sys.modules[__name__]
     try:
-        with patch.object(emit, 'Program') as make_program, patch.object(compute, 'validate_polled'), \
+        with patch.object(emit, 'Program') as make_program, patch.object(compute, 'validate'), \
                 patch.object(B, 'program_image', return_value=(b'', {})), \
                 patch.object(module, 'run', side_effect=lambda **kw: (program(), 7)[1]):
             assert predecessor_cases() == (7, [])
@@ -91,7 +91,7 @@ def boundaries():
 def program():
     p = emit.Program()
     node, resume = ('SWOTL.EXE', 0xd5da), ('SWOTL.EXE', 0xd5f8)
-    compute.validate_polled(p, node, resume, endpoint=True)
+    compute.validate(p, node, resume, endpoint=True)
     cache = ROOT/'tmp/point-normalise'
     cache.mkdir(exist_ok=True)
     binary, addresses = B.program_image(p, cache)
@@ -100,6 +100,11 @@ def program():
 
 def run(entries=(), plant=None, predecessors=False, generated=False, broken=False):
     p, node, resume, cache, binary, addresses = program()
+    # the hle.csv row, re-proved: a continuation endpoint; its loop head D5DA
+    # left the sync set and is a resume after the endpoint
+    region = compute.validate(p, node, resume, endpoint=True)
+    assert p.compute_bodies[node] == region and region.loops == (node,), region
+    assert node not in p.loop_heads and p.compute_resumes[node] == [resume, node]
     callback = (ROOT/'src/runtime/compute_normalise.s').read_text() if not generated and not broken else ''
     if broken:
         callback = 'rt_hle_point_normalise:\n\tmoveq #1,d7\n\trts\n'
@@ -111,8 +116,8 @@ def run(entries=(), plant=None, predecessors=False, generated=False, broken=Fals
         callback = callback.replace('eori.w #$7fff,d5', 'moveq #0,d5')
     elif plant == 'axis':
         callback = callback.replace('lsr.l d7,d1', 'nop')
-    elif plant == 'resume':
-        callback = callback.replace('moveq #1,d7', 'moveq #2,d7')
+    elif plant == 'resume':     # no resume 3 (D5F8, then the loop head D5DA)
+        callback = callback.replace('moveq #1,d7', 'moveq #3,d7')
     cases = list(boundaries())
     for path in entries:
         ram, regs = O.load_entry(path)
@@ -120,21 +125,21 @@ def run(entries=(), plant=None, predecessors=False, generated=False, broken=Fals
     # Every legal predecessor reaches the same compute ABI; its own guest
     # stack effects remain in the generated caller and return protocol.
     modes = ('direct','jump','call','taken','fall','indirect','return') if predecessors else ('direct',)
-    count, longest = 0, 0.0
+    count = 0
     with tempfile.TemporaryDirectory(prefix='point-normalise-', dir=cache) as scratch:
         for mode in modes:
             intro = {'direct': [], 'jump':['\tbra entry'], 'call':['\tbsr entry','\tjmp T_END'],
                      'taken':['\tcmp.w d0,d0','\tbeq entry','\tillegal'],
                      'fall':['\tcmp.w d0,d0','\tbne T_END'],
                      'indirect':['\tlea entry,a0','\tjmp (a0)'], 'return':['\tpea entry','\trts']}[mode]
-            hook = compute.polled_hook('rt_hle_point_normalise', 0, 'handled_dispatch', '$cbd')
+            hook = compute.hook('rt_hle_point_normalise', 'handled_dispatch', '$cbd')
             source = [equates(), f'T_END equ ${B.D.STUB_AT["T_END"]:x}',
                       f'rt_stop_unknown equ ${B.STUB_AT["rt_stop_unknown"]:x}',
                       f'\torg ${B.SNIP:x}', '\tdc.l before_call,result']
-            source += intro + ['entry:'] + hook[:2] + ['before_call:', hook[2], 'result:'] + hook[3:]
+            source += intro + ['entry:'] + hook[:1] + ['before_call:', hook[1], 'result:'] + hook[2:]
             source += [f'\tjmp ${addresses[emit.label(*node)]:x}']
-            source += compute.polled_dispatch('handled_dispatch',
-                [f'${addresses[emit.label(*resume)]:x}'], '$8c2a') + [callback]
+            source += compute.resume_dispatch('handled_dispatch',
+                [f'${addresses[emit.label(*r)]:x}' for r in p.compute_resumes[node]], '$8c2a') + [callback]
             code = B.D.assemble('\n'.join(source), Path(scratch)/'callback.bin')
             before_at = int.from_bytes(code[:4], 'big')
             result_at = int.from_bytes(code[4:8], 'big')
@@ -162,8 +167,7 @@ def run(entries=(), plant=None, predecessors=False, generated=False, broken=Fals
                     m.load(binary)
                     m.e.write(B.SNIP, code)
                     m.e.hook_range(B.U.HOOK_CODE, result, before_at, result_at)
-                    history = O.watch_native(m)
-                    latency = O.PollGaps(m, binary)
+                    O.watch_native(m)
                     stop_at = addresses[emit.label(*resume)]
                     m.extra_stops = {stop_at: 'compute_resume'}
                     flags = {f: regs['flags'] >> FLAG_BIT[f] & 1 for f in FLAGS}
@@ -175,17 +179,13 @@ def run(entries=(), plant=None, predecessors=False, generated=False, broken=Fals
                         raise NormaliseMismatch(count + 1, (name, mode, 'guard outcome', outcomes))
                     got.update(cs=end[0], ip=end[1])
                     actual = dict(registers=got, flags=fx | sum(fl[f] << FLAG_BIT[f] for f in FLAGS),
-                                  writes=writes, history=history, ram=m.gread(0, B.X.RAM))
+                                  writes=writes, ram=m.gread(0, B.X.RAM))
                     errors = O.compare(expected, actual, p.live_in[resume])
                     if errors:
                         raise NormaliseMismatch(count + 1, (name, mode, errors))
-                    longest = max(longest, latency.longest())
-                    if latency.longest() > O.PIT_PERIOD_CYCLES:
-                        raise NormaliseMismatch(count + 1, (name, mode, "latency", latency.longest()))
                     count += 1
                 finally:
                     B.U.uc.uc_close(m.e.h)
-    print("normalise latency:", "generated" if generated else "native", longest, "model cycles", flush=True)
     return count
 
 

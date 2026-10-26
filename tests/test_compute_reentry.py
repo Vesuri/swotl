@@ -9,7 +9,6 @@ sys.path[:0] = [str(ROOT), str(ROOT / 'tests')]
 from translator import emit, region
 import m68k_diff as D
 import uc as U
-emit.Program.polled_rows = True  # the exact/U5-poll rows, dormant in the game until I9 (irq-plan I8)
 
 NODE = ('SWOTL.EXE', 0x10a53)
 PREDECESSORS = {
@@ -89,25 +88,24 @@ def guards():
 def emission():
     p = emit.Program()
     root = ('SWOTL.EXE',0x10a2f)
-    assert NODE in p.polled_resumes[root]
+    assert p.compute_bodies[root].returns == (NODE,) and root not in p.compute_resumes
     lines, _ = p.module_text(root[0])
     for entry in (emit.label(*root),emit.copy_label(*root)):
-        tag = entry+'_cr0'
-        dispatch = lines.index(entry+'_cx:')
-        assert '\tjmp '+tag in lines[dispatch:dispatch+5], 'native dispatch bypasses guard'
+        tag = entry+'_cr'
+        at = lines.index(next(line for line in lines if line.startswith(entry+':')))
+        assert '\tbne '+tag in lines[at:at+6], 'native resume bypasses guard'
         guard_at = lines.index(tag+':')
         body = lines[guard_at+1:guard_at+6]
         assert sum('cmp.w' in line for line in body)==2
         assert sum(emit.label(*NODE) in line and '_bp' not in line for line in body)==2
         assert any(emit.copy_label(*NODE) in line for line in body)
-    # Re-entry reaches the existing poll, never its no-poll alias; an IRQ
-    # still leaves the copy because its handler may have changed BP again.
+    # RC5: the return is no poll point (no U5 return poll); re-entry lands on
+    # the instruction itself in both arms.
+    assert NODE not in p.loop_heads
     for lab in (emit.label(*NODE),emit.copy_label(*NODE)):
         at = next(i for i,line in enumerate(lines) if line.startswith(lab+':'))
-        assert lines[at+1:at+1+len(emit.poll(lab))] == emit.poll(lab)
-    irq = lines.index(emit.copy_label(*NODE)+'_irq:')
-    assert '\tbra '+emit.label(*NODE)+'_np' in lines[irq:irq+20]
-    return 5
+        assert not any('G_IRQ' in line for line in lines[at+1:at+4]), 'poll at a compute return'
+    return 4
 
 
 if __name__ == '__main__':
@@ -125,6 +123,6 @@ if __name__ == '__main__':
                           lambda self,node,tag,cold:emit.label(*node)):
             try: emission()
             except AssertionError as error:
-                assert 'dispatch bypasses guard' in str(error), error
+                assert 'resume bypasses guard' in str(error), error
                 print('compute re-entry: bypassed routing caught',flush=True)
             else: raise AssertionError('bypassed routing escaped')

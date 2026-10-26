@@ -1426,7 +1426,9 @@ class Proof:
                                            f"bound {lo:#x}..{hi:#x} (immediate or frame-copy restore)")
 
     def check_rows(self):
+        """No compute row's range or proved body (callees included) holds a sync access."""
         syncs = {n for n, *_ in self.sync}
+        bodies = getattr(self.prog, "compute_bodies", {})
         for row in sorted(self.compute_rows):
             resume = self.prog.hle.get(row, ((None, None), None))[0]
             mod, first = row
@@ -1434,9 +1436,11 @@ class Proof:
             end = self.prog.compute_end.get(row)
             last = max(o for o in u.insns if o < resume[1]) if resume[1] else first
             hi = max(last, end or 0)
-            for off in u.insns:
-                if first <= off <= hi and (mod, off) in syncs:
-                    self.errors.append(f"compute row {site(row)} contains sync access {site((mod, off))}")
+            nodes = {(mod, off) for off in u.insns if first <= off <= hi}
+            if row in bodies:
+                nodes |= bodies[row].body
+            for n in sorted(nodes & syncs):
+                self.errors.append(f"compute row {site(row)} contains sync access {site(n)}")
 
     def sync_points(self) -> dict:
         """I8 sync points, (module, offset) -> kind: where tests and the reference

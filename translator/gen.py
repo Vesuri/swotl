@@ -170,7 +170,8 @@ def generate(out: Path, program: emit.Program | None = None) -> tuple[dict[str, 
         write(out, f, f.removesuffix(".s"), ("\n".join(texts[f]) + "\n").encode())
     write(out, "support.s", SUPPORT, support.HELPERS.encode())
     write(out, "program.s", PROGRAM, (support.equates() + prog.program_text(files)).encode())
-    write(out, "native_polls.i", PROGRAM, (support.equates() + prog.native_poll_text()).encode())
+    # the state-block equates for the native compute rows (compute_native.s)
+    write(out, "equates.i", PROGRAM, support.equates().encode())
     # D8/I8 sync points for the reference tracer (SWOTL_POLLS): DOSBox-X takes
     # hardware interrupts only there, so the host can replay them exactly
     (out / POLLS).write_text("module,offset,kind\n" + "".join(

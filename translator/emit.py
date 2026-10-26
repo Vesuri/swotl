@@ -110,21 +110,6 @@ def poll_stub(lab: str, ip: int, cs: str, always: bool = False, loop: bool = Fal
     return stub if always else ["\tifd SWOTL_SYNC", *stub, "\tendif"]
 
 
-def native_poll_stub(lab: str, ip: int, cs: str, result: int,
-                     diagnostic: int | None = None) -> list[str]:
-    """Tail handoff: discard no guest state and return to the callback caller."""
-    tail = lab + '_native_irq'
-    lines = [f'\txdef {tail}', tail + ':']
-    if diagnostic is not None:
-        lines += [f'\tpea {diagnostic}.w', '\tjsr rt_replay_point',
-                  '\tlea 4(sp),sp', '\ttst.b G_IRQ(a6)', f'\tbeq {tail}_done']
-    lines += [f'\tmove.l #{hx(ip)},d7', f'\tmove.l #({cs})<<16,d6',
-              '\tjsr rt_irq', tail + '_done:',
-              (f'\tmoveq #{result},d7' if result <= 127 else f'\tmove.l #{result},d7'),
-              '\trts']
-    return lines
-
-
 # A return check's mismatch branch (lower.return_check) targets a module-local
 # trampoline, so vasm can encode it as bne.s/bne.w instead of bne.l to the
 # runtime (speed-plan R5). The lowering emits RM; module_text names the
@@ -315,10 +300,7 @@ def cs_expr(cs: int) -> str:
 
 class Program:
     hle: dict = {}   # (mod, first) -> ((mod, resume), service); set from hle.csv
-    sync_poll_first = True  # U5: a sync site's visit precedes its hook (sabotage turns it off)
-    polled_rows = False     # I8: compute rows with polls stay generated until I9 (irq-plan); tests: on
-    polled_resumes: dict = {}  # U5/U8 hook -> its resumes (returns, sync sites); set in __init__
-    polled_entry: dict = {}    # U5/U8 hook -> its d7 entry index (0 first, k sync site k)
+    compute_resumes: dict = {}  # compute hook -> its resumes (returns, root loop heads); set in __init__
 
     def __init__(self, units: dict[str, cfg.Unit] | None = None, components: bool = True,
                  diagnostic_hooks: dict[tuple[str, int], int] | None = None,
@@ -362,14 +344,10 @@ class Program:
         self.hle: dict[tuple[str, int], tuple[tuple[str, int], str]] = {}
         self.hle_args: dict[tuple[str, int], list[str]] = {}
         self.compute_rows: set[tuple[str, int]] = set()
-        self.sync_sites: dict[tuple[str, int], tuple] = {}  # U5 rows: first -> sync sites
         self.compute_end: dict[tuple[str, int], int] = {}   # U8: range end past the return
         self.compute_endpoints: set[tuple[str, int]] = set()
         self.compute_exits: dict[tuple[str, int], tuple] = {}
-        self.exact_rows: set[tuple[str, int]] = set()
         for r in image.rows("hle.csv"):
-            if r.get("polls") and not self.polled_rows:
-                continue
             mod, first, last = r["module"], int(r["first"], 16), int(r["last"], 16)
             u = self.units[mod]
             resume = last + u.insns[last].size if last in u.insns else None
@@ -380,13 +358,15 @@ class Program:
             if len(args) > 2 or any(a not in GREG or a in MIRROR for a in args):
                 raise LowerError(f"hle.csv: {mod}+{first:05X} args {args}: two plain word registers at most")
             self.hle_args[(mod, first)] = args
+            if r.get('polls'):
+                raise LowerError('hle.csv: polls retired at irq-plan I9 (RC5): rows are poll-free')
             kind = r.get('kind') or 'hook'
             continuation = r.get('resume') or ''
             if continuation not in {'', 'continue'}:
                 raise LowerError('hle.csv: resume must be empty or continue')
             if continuation:
-                if kind != 'compute' or not r.get('polls'):
-                    raise LowerError('hle.csv: continuation needs a polled compute row')
+                if kind != 'compute':
+                    raise LowerError('hle.csv: continuation needs a compute row')
                 self.compute_endpoints.add((mod, first))
             if r.get('exits'):
                 if not continuation:
@@ -406,18 +386,8 @@ class Program:
                 self.compute_rows.add((mod, first))
                 if r.get('end'):    # U8: the routine's code continues past the return
                     self.compute_end[(mod, first)] = int(r['end'], 16)
-                polls = (r.get('polls') or '').split()
-                if polls == ['exact']:
-                    self.exact_rows.add((mod, first))
-                elif polls:   # U5: 'return' and the sync sites' offsets
-                    if polls[0] != 'return':
-                        raise LowerError(f"hle.csv: {mod}+{first:05X} polls must start with 'return'")
-                    sites = tuple((mod, int(x, 16)) for x in polls[1:])
-                    if any(o not in u.insns for _, o in sites):
-                        raise LowerError(f"hle.csv: {mod}+{first:05X} sync site is no instruction")
-                    self.sync_sites[(mod, first)] = sites
-            elif r.get('polls') or r.get('end'):
-                raise LowerError(f"hle.csv: {mod}+{first:05X} polls/end need kind compute")
+            elif r.get('end'):
+                raise LowerError(f"hle.csv: {mod}+{first:05X} end needs kind compute")
         int0 = [r for r in image.rows("runtime.csv") if r["name"] == "__cintDIV"]
         self.int0 = (int0[0]["module"], int(int0[0]["offset"], 16)) if int0 else None
         # D16: self-modified regions, each lowered as one cell walk
@@ -437,10 +407,7 @@ class Program:
                  if self.node_insn(n).op not in ("call", "callf")
                  for s in ss if isinstance(s, tuple) and s not in (RET, UNKNOWN, SMC)
                  and s[0] == n[0] and s[1] <= n[1]}
-        if self.polled_rows:   # tests of the dormant rows: the pre-I8 poll set, the loop heads
-            self.sync = dict.fromkeys(loops, "loop")
-        else:
-            self.sync = {**dict.fromkeys(loops, "loop"), **self.sync}
+        self.sync = {**dict.fromkeys(loops, "loop"), **self.sync}
         missing = [n for n in self.sync if n not in self.succ]
         if missing:
             raise LowerError(f"sync point is no reached instruction: {missing[:4]} (rerun make gen)")
@@ -452,49 +419,22 @@ class Program:
         self.ccr_only: dict = {}    # label -> live flags only the CCR holds there (R14d)
         self.ret_of: dict = {}
         self.returns()
-        self.compute_bodies = {n: compute.validate_exact(self, n, self.hle[n][0],
-                                                          self.compute_end.get(n),
-                                                          n in self.compute_endpoints,
-                                                          self.compute_exits.get(n, ()))
-                               if n in self.exact_rows else
-                               compute.validate_polled(self, n, self.hle[n][0], self.sync_sites[n],
-                                                          self.compute_end.get(n),
-                                                          *((True,) if n in self.compute_endpoints else ()),
-                                                          **({"exits": self.compute_exits[n]} if n in self.compute_exits else {}))
-                               if n in self.sync_sites else
-                               compute.validate(self, n, self.hle[n][0], self.compute_end.get(n))
+        self.compute_bodies = {n: compute.validate(self, n, self.hle[n][0], self.compute_end.get(n),
+                                                    n in self.compute_endpoints,
+                                                    self.compute_exits.get(n, ()))
                                for n in self.compute_rows}
-        # U5: each row's chosen polls replace the polls reachable only through it
-        # (both arms); its returns and sync sites are polls. Sync sites are hook
-        # entries too, and every hook may resume at a return or a sync site.
-        # U8: every root return is a resume; a poll-free row with several returns
-        # dispatches on d7 like a U5 row, without polls.
-        self.polled_resumes: dict[tuple[str, int], list] = {}
-        self.polled_entry: dict[tuple[str, int], int] = {}
-        self.exact_entries: dict[tuple[str, int], tuple[str, int]] = {}
+        # RC5: nothing observes a row's intermediate state, so the loop heads in
+        # its body leave the sync set (RC3: the references are recorded without
+        # them). U8: every root return or endpoint is a resume; a native may
+        # also continue at a root loop head. A row with several dispatches on d7.
+        self.compute_resumes: dict[tuple[str, int], list] = {}
         for n, row in self.compute_bodies.items():
-            if n in self.exact_rows:
-                entries = (n, *(s for s in row.sync if s != n))
-                for k, h in enumerate(entries):
-                    self.exact_entries[h] = n
-                    self.hle[h] = self.hle[n]
-                    self.hle_args[h] = []
-                    self.polled_resumes[h] = [*row.returns, *row.sync]
-                    self.polled_entry[h] = k
-                self.compute_rows |= set(entries)
-                continue
-            sites = self.sync_sites.get(n)
-            if sites is None:
-                if len(row.returns) > 1:
-                    self.polled_resumes[n], self.polled_entry[n] = list(row.returns), 0
-                continue
-            self.loop_heads = (self.loop_heads - row.removed) | set(sites) | set(row.returns)
-            for s in sites:
-                self.hle[s] = self.hle[n]
-                self.hle_args[s] = []
-            for k, h in enumerate((n, *sites)):
-                self.polled_resumes[h], self.polled_entry[h] = [*row.returns, *sites], k
-            self.compute_rows |= set(sites)
+            for h in row.body & loops:
+                if self.sync.get(h) == "loop":
+                    del self.sync[h]
+            if len(row.returns) + len(row.loops) > 1:
+                self.compute_resumes[n] = [*row.returns, *row.loops]
+        self.loop_heads = set(self.sync)
         self.liveness()
         self.leaders = self.find_leaders()
         for mod, off in self.diagnostic_hooks:
@@ -507,7 +447,7 @@ class Program:
         for n, (resume, _) in self.hle.items():
             self.leaders |= {n, resume}
         self.hle_resumes = {resume for resume, _ in self.hle.values()}
-        for resumes in self.polled_resumes.values():
+        for resumes in self.compute_resumes.values():
             self.leaders |= set(resumes)
             self.hle_resumes |= set(resumes)
         self.components(components)
@@ -704,7 +644,7 @@ class Program:
                     new = (new - ALL) | out | self.live_out.get(self.saves[n], set())
                 if n in self.hle:   # the hook may skip to the resume instruction
                     new |= self.live_in[self.hle[n][0]]
-                for r in self.polled_resumes.get(n, ()):
+                for r in self.compute_resumes.get(n, ()):
                     new |= self.live_in[r]
                 self.live_out[n] = out
                 if new != self.live_in[n]:
@@ -835,42 +775,6 @@ class Program:
                   for cs, ip, oid, far, lab in rows]
         lines += ["\tsection\t.bss,bss"] + data
         return "\n".join(lines) + "\n"
-
-    def native_poll_text(self) -> str:
-        """Native code includes generated macros, never guest CS:IP constants.
-
-        Every expansion exports a visit and execution alias. The matching
-        generated trampoline is a tail target, not a callable subroutine.
-        """
-        lines = ['; Generated exact native poll protocol. No private stack at a poll.']
-        for root in sorted(self.exact_rows):
-            _, service = self.hle[root]
-            lines += [f'NATIVE_{service} equ 1']
-            for k, site in enumerate(self.compute_bodies[root].sync):
-                lab = label(*site)
-                lines += [f'{service}_poll_{k} macro',
-                          f'\txdef {lab}_native_poll,{lab}_native_np',
-                          f'\txref {lab}_native_irq', f'{lab}_native_poll:']
-                if site in self.diagnostic_hooks:
-                    lines += [f'\tbra.l {lab}_native_irq']
-                else:
-                    lines += ['\ttst.b G_IRQ(a6)', f'\tbne.l {lab}_native_irq']
-                lines += [f'{lab}_native_np:', '\tendm']
-                lines += [f'{service}_poll_{k}_tail macro',
-                          f'\txref {lab}_native_irq',
-                          f'\tjmp {lab}_native_irq', '\tendm']
-                # A caller may place a JMP to the same generated tail nearby.
-                # This optional form keeps the hot branch short, without a
-                # private stack frame or changing either poll alias.
-                lines += [f'{service}_poll_{k}_local macro',
-                          f'\txdef {lab}_native_poll,{lab}_native_np',
-                          f'\txref {lab}_native_irq', f'{lab}_native_poll:']
-                if site in self.diagnostic_hooks:
-                    lines += ['\tbra.s \\1']
-                else:
-                    lines += ['\ttst.b G_IRQ(a6)', '\tbne.s \\1']
-                lines += [f'{lab}_native_np:', '\tendm']
-        return '\n'.join(lines) + '\n'
 
     def near_walks(self, mod: str, off: int) -> set[tuple[int, int]]:
         """Walks reachable by a near indirect transfer. An incomplete target census
@@ -1027,28 +931,13 @@ class Program:
                     lines += ["\ttst.l (sp)+", f"\tbne {label(mod, o)}_np"]
                 else:
                     lines.append("\tlea 4(sp),sp")
-            polled = self.polled_resumes.get((mod, o))
-            # U5 sync site: the visit (poll) precedes re-entering the callback
-            exact = self.exact_entries.get((mod, o))
-            early = polled and (mod, o) in self.loop_heads and (exact or self.sync_poll_first)
-            if early:
-                visit(o)
-            if polled:
+            resumes = self.compute_resumes.get((mod, o))
+            if resumes:
                 _, service = self.hle[(mod, o)]
-                entry = self.polled_entry[(mod, o)]
-                lines += compute.polled_hook(service, entry, f"{lab(mod, o)}_cx", cs_expr(u.cs[o]))
-                after = set(self.compute_bodies[exact].sync) if exact else set()
-                targets = [label(*x) + '_np' if x in after else
-                           self.compute_resume(x, f"{lab(mod, o)}_cr{k}", stubs)
-                           for k, x in enumerate(polled)]
-                stubs += compute.polled_dispatch(f"{lab(mod, o)}_cx", targets,
-                                                 hx(u.ip_of(o)))
-                if exact and (mod, o) in after and comp is None:
-                    # Called by tail jump: rt_irq sees the same stack depth as
-                    # a native poll visit; RTS abandons the callback directly.
-                    stubs += native_poll_stub(label(mod, o), u.ip_of(o), cs_expr(u.cs[o]),
-                                              polled.index((mod, o)) + 1,
-                                              self.diagnostic_hooks.get((mod, o)))
+                lines += compute.hook(service, f"{lab(mod, o)}_cx", cs_expr(u.cs[o]))
+                targets = [self.compute_resume(x, f"{lab(mod, o)}_cr{k}", stubs)
+                           for k, x in enumerate(resumes)]
+                stubs += compute.resume_dispatch(f"{lab(mod, o)}_cx", targets, hx(u.ip_of(o)))
                 stats["HLE hook"] += 1
             elif (mod, o) in self.hle:
                 resume, service = self.hle[(mod, o)]
@@ -1061,7 +950,7 @@ class Program:
                 stats["HLE hook"] += 1
             if ((mod, o) in self.hle or (mod, o) in self.hle_resumes) and lw.ccr_only:
                 raise LowerError(f"{mod}+{o:05X}: HLE hook where the CCR holds live flags")
-            if (mod, o) in self.loop_heads and not early:
+            if (mod, o) in self.loop_heads:
                 visit(o)
             lines.extend(lw.out)
             stubs += lw.cold

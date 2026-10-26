@@ -1,12 +1,9 @@
-; D69C pixel loops, U6 authorization 2026-10-22.
-; Exact-poll scopes approved 2026-10-23. Original x86 is the oracle.
-; Scratch d6 holds real BP, d7 the wrapping reversed DI index.
-; Guest BP and DI are exact at every original poll; no private stack.
-; Ordinary memory guards decline unchanged. No guest loads are hoisted.
+; D69C pixel loops, U6 authorization 2026-10-22; poll-free since irq-plan I9.
+; Original x86 is the oracle. Scratch d6 holds real BP, d7 the wrapping
+; reversed DI index. Ordinary memory guards decline unchanged.
 
 	xdef rt_hle_line_right
 rt_hle_line_right:
-	movea.l d7,a0
 	moveq #0,d7
 	move.w G_ES(a6),d7
 	cmp.w #$9000,d7
@@ -20,15 +17,10 @@ rt_hle_line_right:
 	eori.w #$7fff,d6
 	move.w #$7fff,d7
 	sub.w a5,d7
-	tst.l a0
-	bne.s line_right_resume
 	addq.w #1,d1
 	bra.s line_right_store
-line_right_poll:
-	rt_hle_line_right_poll_0
 line_right_step:
 	addq.w #1,a5
-line_right_step_1:
 	subq.w #1,d7
 	add.w ($5adb,a3),d6
 	bcc.s line_right_no_row
@@ -40,21 +32,15 @@ line_right_no_row:
 line_right_store:
 	move.b d3,0(a1,d7.w)
 	subq.w #1,d1
-	bne.s line_right_poll
+	bne.s line_right_step
 	moveq #1,d7
 	rts
 line_right_decline:
 	moveq #0,d7
 	rts
-; Resume starts below the poll's execution alias (*_native_np): the
-; generated hook already executed the poll point.
-line_right_resume:
-	addq.w #1,a5
-	bra.s line_right_step_1
 
 	xdef rt_hle_line_left
 rt_hle_line_left:
-	movea.l d7,a0
 	moveq #0,d7
 	move.w G_ES(a6),d7
 	cmp.w #$9000,d7
@@ -68,15 +54,10 @@ rt_hle_line_left:
 	eori.w #$7fff,d6
 	move.w #$7fff,d7
 	sub.w a5,d7
-	tst.l a0
-	bne.s line_left_resume
 	addq.w #1,d1
 	bra.s line_left_store
-line_left_poll:
-	rt_hle_line_left_poll_0
 line_left_step:
 	subq.w #1,a5
-line_left_step_1:
 	addq.w #1,d7
 	add.w ($5adb,a3),d6
 	bcc.s line_left_no_row
@@ -88,14 +69,9 @@ line_left_no_row:
 line_left_store:
 	move.b d3,0(a1,d7.w)
 	subq.w #1,d1
-	bne.s line_left_poll
+	bne.s line_left_step
 	moveq #1,d7
 	rts
 line_left_decline:
 	moveq #0,d7
 	rts
-; Resume starts below the poll's execution alias (*_native_np): the
-; generated hook already executed the poll point.
-line_left_resume:
-	subq.w #1,a5
-	bra.s line_left_step_1

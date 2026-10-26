@@ -197,7 +197,7 @@ class Program:
         for a in mn:
             self.cls[a] = self.classify(a, platform)
         # Interrupt poll tests (irq-plan I1): `tst.b G_IRQ(a6)` and the bne
-        # after it, in generated code (emit.poll) and native rows alike.
+        # after it (emit.poll).
         self.polls = set()
         for i in range(len(self.addrs) - 1):
             a, b = int(self.addrs[i]), int(self.addrs[i + 1])

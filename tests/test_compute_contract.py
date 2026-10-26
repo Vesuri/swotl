@@ -8,7 +8,6 @@ from translator import compute
 from translator.decode import decode
 from translator.lower import LowerError
 from translator import emit  # noqa: E402
-emit.Program.polled_rows = True  # the exact/U5-poll rows, dormant in the game until I9 (irq-plan I8)
 
 
 def differential(plant=None):
@@ -37,6 +36,7 @@ def differential(plant=None):
                 sp=0x400, bp=0xfffe, si=0x2345, di=0x6789,
                 es=0x3000, cs=0x2000, ss=0x4000, ds=0x5000,
                 ip=0x100, flags=0x7203)
+    code = frozenset(range(0x20100, 0x20100 + len(raw) + 1))
     count = 0
     with tempfile.TemporaryDirectory(prefix='compute-contract-') as scratch:
         work = Path(scratch)
@@ -54,13 +54,16 @@ def differential(plant=None):
                     callback.insert(-2, '\tmove.w #0,d2')
                 elif plant == 'lost-flag' and handled:
                     callback.insert(-2, '\teori.b #1,G_FL+1(a6)')
-                elif plant in {'lost-store', 'duplicate-store'} and handled:
+                elif plant == 'lost-store' and handled:
                     store = '\tmove.w d0,-1(a3,d7.w)'
                     assert store in callback, 'plant must reach the store template'
-                    if plant == 'lost-store':
-                        callback.remove(store)
-                    else:
-                        callback.insert(callback.index(store), store)
+                    callback.remove(store)
+                elif plant in {'vram-store', 'code-store'} and handled:
+                    # RC5: a rewrite of a byte's own value leaves RAM unchanged;
+                    # only the code/VRAM written-address sets see it.
+                    linear = 0xa0000 if plant == 'vram-store' else 0x20100
+                    callback[-2:-2] = ['\tmove.l a0,-(sp)', f'\tlea (-${linear:x},a6),a0',
+                                       '\tmove.b (a0),(a0)', '\tmove.l (sp)+,a0']
                 intro = {'direct': [], 'jump': ['\tbra entry'],
                          'call': ['\tbsr entry', '\tjmp T_END'],
                          'taken': ['\tcmp.w d0,d0', '\tbeq entry', '\tillegal'],
@@ -91,15 +94,15 @@ def differential(plant=None):
                         m = D.M68k(saved_ram, stubs, services)
                         try:
                             m.load(binary)
-                            history = O.watch_native(m)
+                            O.watch_native(m)
                             got, fl, fx, mem, outs, writes, info = m.run(D.CODE,
                                 (regs, flags, regs['flags'] & 0xf000, regs['ip'], []),
                                 random.Random(33), irq=False)
                             assert not outs and not info['err'] and info['stop'] == 'T_END', info
                             got.update(cs=end[0], ip=end[1])
                             actual = dict(registers=got, flags=fx | sum(fl[f] << FLAG_BIT[f] for f in FLAGS),
-                                          writes=writes, history=history, ram=m.gread(0, D.X.RAM))
-                            errors = O.compare(expected, actual, STATUS)
+                                          writes=writes, ram=m.gread(0, D.X.RAM))
+                            errors = O.compare(expected, actual, STATUS, code)
                             assert not errors, (handled, predecessor, offset, carry, errors)
                             assert not info['irq']
                             assert info['segbase'] == {a: D.TOP - got[s] * 16 - 0x7fff
@@ -131,9 +134,17 @@ def graph():
 
 def check(validate):
     p, n, insns = graph()
-    assert validate(p, n[0], n[2]) == ({n[0], n[1]}, (n[2],))
-    assert validate(p, n[3], n[2]) == ({n[3], n[4], n[5], n[1]}, (n[2],))
+    assert validate(p, n[0], n[2])[:2] == ({n[0], n[1]}, (n[2],))
+    assert validate(p, n[3], n[2])[:2] == ({n[3], n[4], n[5], n[1]}, (n[2],))
     count = 2
+    # RC5: loops are admitted; a root loop head is a resume, a callee's is not
+    p, n, insns = graph()
+    p.succ[n[1]] = [n[2], n[3]]
+    p.loops = {n[3], n[4]}
+    p.succ[n[4]] = [n[5], n[4]]
+    row = validate(p, n[3], n[2])
+    assert row.body == {n[3], n[4], n[5], n[1]} and row.loops == (n[3],)
+    count += 1
     # U8: an early return in the range is another resume; a REP off the poll
     # set is compute; the divide-fault edge is a decline edge; `end` widens
     # the range past the return (compiled C's out-of-line loop bodies)
@@ -151,17 +162,18 @@ def check(validate):
     p.succ[n[1]] = [n[8]]
     assert n[8] in validate(p, n[3], n[2], 26).body
     count += 4
-    for defect in ('poll', 'callee-poll', 'unknown', 'cycle', 'early-return-outside',
+    for defect in ('sync-access', 'callee-sync', 'unknown', 'recursion', 'early-return-outside',
                    'wrong-resume', 'io', 'interrupt', 'flags-control',
                    'nested-hook', 'manager', 'empty-successors', 'outside-range',
-                   'empty-body', 'rep-poll', 'diagnostic', 'ss-write',
+                   'empty-body', 'rep-diagnostic', 'diagnostic', 'ss-write',
                    'fault-edge-not-divide', 'fault-edge-not-int0', 'end-before-resume'):
         p, n, insns = graph()
         first, resume, end = n[3], n[2], None
-        if defect == 'poll': p.loop_heads.add(n[1])
-        elif defect == 'callee-poll': p.loop_heads.add(n[4])
+        # I2: a row meeting the handler footprint (a non-loop sync point) rejects
+        if defect == 'sync-access': p.sync = {n[1]: 'access'}
+        elif defect == 'callee-sync': p.sync = {n[4]: 'access'}
         elif defect == 'unknown': p.succ[n[4]] = ['unknown']
-        elif defect == 'cycle': p.succ[n[4]] = [n[3]]
+        elif defect == 'recursion': p.succ[n[4]] = [n[3]]
         elif defect == 'early-return-outside': resume = n[7]   # n[2] lies past it
         elif defect == 'wrong-resume': resume = n[1]
         elif defect == 'io': insns[n[4]] = decode(b'\xee', 0)
@@ -172,9 +184,9 @@ def check(validate):
         elif defect == 'empty-successors': p.succ[n[4]] = []
         elif defect == 'outside-range': p.succ[n[1]] = [n[8]]
         elif defect == 'empty-body': first = resume
-        elif defect == 'rep-poll':
+        elif defect == 'rep-diagnostic':   # a REP slice hook (replays) inside the body
             insns[n[4]] = decode(bytes.fromhex('f3aa'), 0)
-            p.loop_heads.add(n[4])
+            p.diagnostic_reps = {n[4]: 1}
         elif defect == 'fault-edge-not-divide': p.succ[n[1]], p.int0 = [n[2], n[8]], n[8]
         elif defect == 'fault-edge-not-int0':
             insns[n[1]] = decode(bytes.fromhex('f7f1'), 0)
@@ -191,7 +203,7 @@ def check(validate):
     return count
 
 
-def emission(plant=False, missing_sync=False, repeat_poll=False):
+def emission(plant=False, missing_resume=False, kept_loop=False):
     """A temporary row in memory checks real Program integration, never hle.csv."""
     from unittest.mock import patch
     from translator import emit, image
@@ -217,69 +229,48 @@ def emission(plant=False, missing_sync=False, repeat_poll=False):
     other_last = next(o for o, i in u.insns.items() if o + i.size == other_resume[1])
     other_row = dict(row, first=hex(other[1]), last=hex(other_last),
                      service='contract_test_other')
-    # Keep sync-entry coexistence coverage even with no production sync row.
-    sync_root = ('SWOTL.EXE', 0xbb70)
-    sync_sites = tuple(('SWOTL.EXE', o) for o in
-                      (0xbbac, 0xbbb3, 0xbc55, 0xbc73, 0xbcc4, 0xbd14, 0xbd44))
-    sync_row = dict(row, first='0xBB70', last='0xBD66',
-                    service='contract_test_sync',
-                    polls='return ' + ' '.join(hex(n[1]) for n in sync_sites))
-    # Exact polls resume after the visit; retain this control without a
-    # production row by adding an independent temporary pixel-loop row.
-    exact_root = ('SWOTL.EXE', 0xd92a)
-    exact_site = ('SWOTL.EXE', 0xd92d)
-    exact_row = dict(row, first='0xD92A', last='0xD93B',
-                     service='contract_test_exact', polls='exact', resume='continue')
+    # RC5: a row with loops (BB70, R39's former sync sites) is poll-free; its
+    # loop heads leave the sync set and are resumes after the return.
+    loop_root = ('SWOTL.EXE', 0xbb70)
+    loop_heads = tuple(('SWOTL.EXE', o) for o in
+                       (0xbbac, 0xbbb3, 0xbc55, 0xbc73, 0xbcc4, 0xbd14, 0xbd44))
+    loop_row = dict(row, first='0xBB70', last='0xBD66', service='contract_test_loops')
     def rows(name):
-        extra = [] if exact_root in p.compute_rows else [exact_row]
-        return original(name) + ([row, other_row, sync_row] + extra if name == 'hle.csv' else [])
+        return original(name) + ([row, other_row, loop_row] if name == 'hle.csv' else [])
 
-    with patch.object(image, 'rows', rows):
+    real = compute.validate
+    def validate(prog, n, *args, **kwargs):
+        got = real(prog, n, *args, **kwargs)
+        return got._replace(body=got.body - set(got.loops)) if kept_loop and n == loop_root else got
+    with patch.object(image, 'rows', rows), patch.object(compute, 'validate', validate):
         candidate = emit.Program(units=p.units)
+        if missing_resume:
+            candidate.compute_resumes[loop_root].pop()
         lines, _ = candidate.module_text(first[0])
     if plant:
         candidate.compute_rows.remove(other)
-    assert candidate.compute_rows == p.compute_rows | {first, other, sync_root, exact_root, exact_site} | set(sync_sites)
-    sync_entries = candidate.compute_rows - candidate.compute_bodies.keys()
-    if missing_sync:
-        assert sync_entries, 'missing-sync plant requires an enabled sync entry'
-        candidate.polled_entry.pop(sorted(sync_entries)[0])
+    assert candidate.compute_rows == p.compute_rows | {first, other, loop_root}
     for existing in p.compute_rows - {first, other}:
         assert candidate.hle[existing] == p.hle[existing]
         assert existing in candidate.leaders
-        assert candidate.polled_entry.get(existing) == p.polled_entry.get(existing)
-        assert candidate.polled_resumes.get(existing) == p.polled_resumes.get(existing)
+        assert candidate.compute_resumes.get(existing) == p.compute_resumes.get(existing)
     for existing in p.compute_bodies.keys() - {first, other}:
         assert candidate.compute_bodies[existing] == p.compute_bodies[existing]
-    assert tuple(candidate.compute_bodies[sync_root].sync) == sync_sites
-    for entry, site in enumerate((sync_root, *sync_sites)):
-        assert candidate.polled_entry.get(site) == entry
-        assert candidate.polled_resumes.get(site) == [('SWOTL.EXE', 0xbd67), *sync_sites]
-    exact_checked = 0
-    planted = False
-    for site in sorted(sync_entries):
-        targets = candidate.polled_resumes[site]
-        assert set(targets) <= candidate.leaders
-        root = candidate.exact_entries.get(site)
-        after_poll = set(candidate.compute_bodies[root].sync) if root else set()
-        names = [emit.label(*target) + ('_np' if target in after_poll else '')
-                 for target in targets]
-        exact_checked += bool(after_poll)
-        dispatch = compute.polled_dispatch(f'{emit.label(*site)}_cx',
-            names, emit.hx(u.ip_of(site[1])))
-        start = lines.index(dispatch[0])
-        if repeat_poll and after_poll and not planted:
-            target = next(target for target in targets if target in after_poll)
-            # The after-poll target, as a chain jmp or a table offset.
-            old = emit.label(*target) + '_np'
-            offset = next(k for k, line in enumerate(dispatch)
-                          if line.split()[-1].split('-')[0] == old)
-            assert lines[start + offset] == dispatch[offset]
-            lines[start + offset] = dispatch[offset].replace(old, emit.label(*target))
-            planted = True
-        assert lines[start:start + len(dispatch)] == dispatch
-    assert exact_checked, 'exact-poll positive control missing'
-    assert not repeat_poll or planted, 'repeat-poll plant did not run'
+    rows_loops = candidate.compute_bodies[loop_root]
+    assert rows_loops.loops == loop_heads and rows_loops.returns == (('SWOTL.EXE', 0xbd67),)
+    assert set(loop_heads) <= p.loop_heads, 'control needs sync-set loop heads'
+    assert not set(loop_heads) & candidate.loop_heads, 'body loop head kept in the sync set'
+    assert candidate.loop_heads == p.loop_heads - rows_loops.body, 'sync set changed elsewhere'
+    targets = [('SWOTL.EXE', 0xbd67), *loop_heads]
+    assert set(targets) <= candidate.leaders
+    dispatch = compute.resume_dispatch(f'{emit.label(*loop_root)}_cx',
+        [emit.label(*t) for t in targets], emit.hx(u.ip_of(loop_root[1])))
+    start = lines.index(dispatch[0])
+    assert lines[start:start + len(dispatch)] == dispatch, 'resume dispatch'
+    loop_hook = compute.hook('rt_hle_contract_test_loops', dispatch[0][:-1],
+                             emit.cs_expr(u.cs[loop_root[1]]))
+    loop_start = lines.index('\tjsr rt_hle_contract_test_loops') - 1
+    assert lines[loop_start:loop_start + len(loop_hook)] == loop_hook
     assert other in candidate.leaders and other_resume in candidate.leaders
     assert candidate.compute_bodies[other] == compute.validate(p, other, other_resume)
     other_hook = compute.hook('rt_hle_contract_test_other', emit.label(*other_resume),
@@ -288,12 +279,12 @@ def emission(plant=False, missing_sync=False, repeat_poll=False):
     assert lines[other_start:other_start + len(other_hook)] == other_hook
     assert first in candidate.leaders and resume in candidate.leaders
     assert candidate.compute_bodies[first] == compute.validate(p, first, resume)
-    assert first not in candidate.polled_resumes, 'one return keeps the legacy hook'
+    assert first not in candidate.compute_resumes, 'one return keeps the plain hook'
     hook = compute.hook('rt_hle_contract_test_only', emit.label(*resume), emit.cs_expr(u.cs[first[1]]))
     start = lines.index('\tjsr rt_hle_contract_test_only') - 1
     assert lines[start:start + len(hook)] == hook
     assert any(line.startswith(emit.label(*resume) + ':') for line in lines)
-    return 9
+    return 11
 
 
 def captured_memory():
@@ -333,7 +324,7 @@ def captured_memory():
                 m = D.M68k(saved)
                 try:
                     m.load(binary)
-                    history = O.watch_native(m)
+                    O.watch_native(m)
                     flags = {f: regs['flags'] >> FLAG_BIT[f] & 1 for f in FLAGS}
                     got, fl, fx, mem, outs, writes, info = m.run(D.CODE,
                         (regs, flags, 0, regs['ip'], []), random.Random(33), irq=False)
@@ -345,7 +336,7 @@ def captured_memory():
                         got.update(cs=regs['cs'], ip=info['d7'])
                         actual = dict(registers=got,
                             flags=fx | sum(fl[f] << FLAG_BIT[f] for f in FLAGS),
-                            writes=writes, history=history, ram=m.gread(0, D.X.RAM))
+                            writes=writes, ram=m.gread(0, D.X.RAM))
                         assert not O.compare(expected, actual, FLAGS)
                         if op == '8b07':
                             assert got['ax'] == 0x1234
@@ -370,29 +361,29 @@ def main():
         else:
             raise AssertionError('lost independent compute row escaped')
         try:
-            emission(missing_sync=True)
+            emission(missing_resume=True)
         except AssertionError:
-            print('compute emission: lost sync entry caught')
+            print('compute emission: lost loop-head resume caught')
         else:
-            raise AssertionError('lost sync compute entry escaped')
+            raise AssertionError('lost loop-head resume escaped')
         try:
-            emission(repeat_poll=True)
+            emission(kept_loop=True)
         except AssertionError:
-            print('compute emission: repeated exact poll caught')
+            print('compute emission: body loop head kept in the sync set caught')
         else:
-            raise AssertionError('repeated exact poll escaped')
+            raise AssertionError('kept body loop head escaped')
         original = compute.forbidden
         compute.forbidden = lambda p, n: False
         try:
             check(compute.validate)
         except AssertionError:
-            print('compute contract: removed poll/effect admission guard caught')
+            print('compute contract: removed sync/effect admission guard caught')
         else:
             raise AssertionError('missing admission guard escaped')
         finally:
             compute.forbidden = original
-        for plant in ('wrong-arm', 'word-result', 'lost-register', 'lost-store', 'duplicate-store',
-                      'lost-flag', 'legacy-fallback'):
+        for plant in ('wrong-arm', 'word-result', 'lost-register', 'lost-store', 'vram-store',
+                      'code-store', 'lost-flag', 'legacy-fallback'):
             try:
                 differential(plant)
             except AssertionError:

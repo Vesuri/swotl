@@ -185,6 +185,21 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   read at 3220 (c62, c63); the per-song window flagged it. Chosen by the user. Stress
   windows also end at a sync point's continuation (`_np`, `_bp_np`, `_native_np`): a tick
   recorded at an `access` poll ran past its write of `9C20` (m2 seed 1, ticks 113/114).
+- I9: one poll-free proof (`compute.validate`: loops, callees, several returns,
+  continuation exits; resumes are the returns/endpoints, then the root loop heads); the
+  eight rows return. Their 19 body loop heads leave the sync set (2,391 points: 206
+  access, 104 int, 11 clear, 12 if, 2,058 loop); `polls=` `76bd1cb483ad50d3` →
+  `a8595a6631599363`, 94 references re-recorded (m2, m4, c7, c81, c84 repeat exactly).
+  c7's attract demo no longer took the HIGH view call (`+EC5B`) before 6.15G gated
+  instructions (349M before): re-scripted by the user's decision to c32's keys, ungated
+  205,330,776 / gated 205,330,758 instructions to `+EC60`, VRAM equal. BFD1's C1E2/C3DF
+  wrap resumes are not reached from a C000 entry (were via poll re-entry): untested
+  until its I10 rebuild. Meter m4: 160,124,683 → 150,903,197 model cycles (−5.76%; guest
+  instructions 14,233,376 → 11,026,510; generated in the row bodies before → after: BFD1
+  16.8M → 4.8M, OPL 5.4M → 0.03M, sprite 3.6M → 0.17M, normalise 3.0M → 0.22M, line
+  1.6M → 0.02M, scenery 0.6M → 0.06M). Bench (sync image, 3 runs, base I8): median
+  68,850 → 68,875 lines (+0.036%, ranges 68,848–68,850 / 68,859–68,878; RAM hash
+  unchanged). Frames (production, 3 runs): median 320 ms (310–340) → 300 ms (290–300).
 - Guest memory backs 1 MiB + HMA (`RT_GUEST_BYTES`); host runs compare RAM from the
   environment MCB to A0000h with dead stack masked (open-work 24).
 
@@ -349,7 +364,7 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   rows re-enabled with their natives' G_IRQ tests and trampolines removed; footprint
   overlap rejects (I2). Loop heads in a re-enabled row's body leave the sync set
   (`emit.Program`; references re-recorded, RC3). Retired tests and plants get poll-free
-  equivalents (until then `Program.polled_rows` keeps them on the pre-I8 loop heads). Checks:
+  equivalents. Checks:
   `t-compute-*` with sabotage, each row's native differential, `test-host-all`, replays;
   meter and bench per row group.
 - **I10 Re-open native rows** (user 2026-10-24: do them as soon as I9 allows), each by

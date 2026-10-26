@@ -1,6 +1,8 @@
-"""Original x86's next U5 boundary versus the native classifier's handoff.
+"""Original x86 at the classifier's first root loop head versus the generated code.
 
-An equal final result cannot substitute for visits at kept interrupt points.
+RC5: a native may continue at a root loop head (a resume after the return),
+so the generated code must arrive there in the original's state; an equal final
+result alone would not show that.
 """
 import random
 import tempfile
@@ -16,7 +18,8 @@ def run(broken=False):
     p = program()[0]
     node = ('SWOTL.EXE', 0xbb70)
     row = p.compute_bodies[node]
-    resumes = (*row.returns, *row.sync)
+    resumes = p.compute_resumes[node]
+    assert resumes == [*row.returns, *row.loops]
     unit = p.units[node[0]]
     cache = ROOT / 'tmp/polygon-classify-sync'
     cache.mkdir(exist_ok=True)
@@ -26,14 +29,14 @@ def run(broken=False):
     with tempfile.TemporaryDirectory(prefix='handoff-', dir=cache) as scratch:
         for name, ram, regs in list(boundaries())[:11]:
             stops = {(regs['cs'], unit.ip_of(n[1])): n for n in resumes}
-            expected = O.run(ram, regs, (regs['cs'], unit.ip_of(row.resume[1])),
-                             stops=stops)
+            expected = O.run(ram, regs, (regs['cs'], unit.ip_of(row.returns[0][1])),
+                             returns=stops)
             destination = stops[expected['at']]
             source = [equates(), f'\torg ${B.SNIP:x}',
                       f'rt_stop_unknown equ ${B.STUB_AT["rt_stop_unknown"]:x}']
-            source += compute.polled_hook('rt_hle_polygon_classify', 0, 'handled', '$cbd')
+            source += compute.hook('rt_hle_polygon_classify', 'handled', '$cbd')
             source += [f'\tjmp ${addresses[emit.label(*node)]:x}']
-            source += compute.polled_dispatch('handled',
+            source += compute.resume_dispatch('handled',
                 [f'${addresses[emit.label(*n)]:x}' for n in resumes], '$71c0')
             source += [callback]
             code = B.D.assemble('\n'.join(source), Path(scratch) / 'callback.bin')
@@ -41,19 +44,19 @@ def run(broken=False):
             try:
                 m.load(binary)
                 m.e.write(B.SNIP, code)
-                history = O.watch_native(m)
+                O.watch_native(m)
                 m.extra_stops = {addresses[emit.label(*n)]: str(n) for n in resumes}
                 flags = {f: regs['flags'] >> FLAG_BIT[f] & 1 for f in FLAGS}
                 got, fl, fx, mem, outs, writes, info = m.run(B.SNIP,
                     (regs, flags, regs['flags'] & 0xf000, regs['ip'], []),
                     random.Random(39), irq=False)
                 assert not info['err'] and not outs and not info['irq'], info
-                assert info['stop'] == str(destination), (name, 'wrong sync handoff',
+                assert info['stop'] == str(destination), (name, 'wrong loop-head resume',
                                                           info['stop'], destination)
                 got.update(cs=expected['at'][0], ip=expected['at'][1])
                 actual = dict(registers=got, flags=fx | sum(fl[f] << FLAG_BIT[f] for f in FLAGS),
-                              writes=writes, history=history, ram=m.gread(0, B.X.RAM))
-                errors = O.compare(expected, actual, p.live_in[destination])
+                              writes=writes, ram=m.gread(0, B.X.RAM))
+                errors = O.compare(expected, actual, p.live_in[destination], O.code_addresses(p, B.LOADSEG))
                 assert not errors, (name, errors)
                 count += 1
             finally:

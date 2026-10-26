@@ -172,7 +172,7 @@ service-only release format.
 | c4-tour | U, T, 1, 1, S | tour of duty menus |
 | c5-records | U, R | combat records (CAMPAIGN) |
 | c6-flight-keys | m5 path, then 48 keys at 30-frame intervals in flight | in-flight controls, gun camera film room (REPLAY, `RP*.TMP` written) |
-| c7-demo-dispatch | no keys | attract-demo call through the eight-word table at +EC62, return at +EC60 |
+| c7-demo-dispatch | c32's keys (c1, then Space, A, 0) | HIGH view call through the eight-word table at +EC62, return at +EC60 (re-scripted at irq-plan I9: the attract demo no longer took it before 6.1G gated instructions) |
 | c8-steep-bank | m5 path, then 61 left presses | bank angle above the alternate renderer threshold; +EC17 calls the modified walk at +758E |
 | c9-mouse-menu | signed motion on both axes, each button and all buttons, releases | INT 33h motion consumption and buttons in the menu; DOS mouse IRQ12 at recorded poll points |
 | c10-campaign-weeks | U, B, S, 1, 2, name A, Enter; skip three weeks (S, Y); M, W, R | new campaign file, campaign simulation |

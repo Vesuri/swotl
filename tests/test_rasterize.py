@@ -1,10 +1,11 @@
 """BFD1 scanline rasterizer from C000 (F5): original x86 is the oracle.
 
-Each captured call runs from its BFD1 entry. The prologue and every guest call
-(continuation exits) run as original x86 to the next poll; between polls the
-x86 oracle runs segment by segment. At every original poll and exit the
-generated arm and the native (diagnostic: every poll hands off) are compared,
-and each native entry also runs undiagnosed to its exit."""
+Each captured call runs from its BFD1 entry. The prologue, every guest call
+(continuation exits) and the row's code after them run as original x86 to the
+next C000 entry, the row's only hook. From each entry the native and the
+generated arm run to the next exit and are compared with the original there
+(RC5, docs/irq-plan.md: registers, live flags, all RAM, code/VRAM write sets).
+A record pointer past FFF0h resumes at its loop head in generated code."""
 from pathlib import Path
 import argparse
 import random
@@ -21,14 +22,20 @@ from tools import compute_oracle as O
 from translator import compute, emit
 from translator.support import equates
 from translator.ir import FLAGS, FLAG_BIT
-emit.Program.polled_rows = True  # the exact/U5-poll rows, dormant in the game until I9 (irq-plan I8)
 
 CS_OFF = 0x49b0
 FIRST, RETURN = 0xc000, 0xc04a
-POLLS = (0xc000, 0xc085, 0xc0c5, 0xc0d1, 0xc11a, 0xc129, 0xc1e2, 0xc27c,
+LOOPS = (0xc000, 0xc085, 0xc0c5, 0xc0d1, 0xc11a, 0xc129, 0xc1e2, 0xc27c,
          0xc2f2, 0xc306, 0xc32d, 0xc3a4, 0xc3df)
 EXITS = (0xc02c, 0xc03a, 0xc040, 0xc043, 0xc2a5, 0xc2b3, 0xc2bd, 0xc3eb)
-RESUME = {a: k + 1 for k, a in enumerate(EXITS)} | {a: 9 + k for k, a in enumerate(POLLS)}
+# compute.resume_dispatch ids: the endpoints ascending, then the root loop heads
+RESUME = {a: k + 1 for k, a in enumerate(EXITS)} | {a: 9 + k for k, a in enumerate(LOOPS)}
+# Wrap peeks (RASTER_PEEK_*): the ES offset this test pokes, a wrapping value,
+# and every record word the loop head's peek reads
+PEEKS = {0xc0d1: (lambda r: (r['bx'] + 2) & 0xffff, 0xfff8,
+                  lambda r: (r['bx'], (r['bx'] + 2) & 0xffff)),
+         0xc1e2: (lambda r: r['si'], 0xfff4, lambda r: (r['si'],)),
+         0xc3df: (lambda r: (r['si'] + 2) & 0xffff, 0xfffa, lambda r: ((r['si'] + 2) & 0xffff,))}
 DS_WORDS = dict(w2581=0x2581, w233e=0x233e, w2531=0x2531, w2533=0x2533, w23ff=0x23ff)
 
 
@@ -135,97 +142,57 @@ def generated_image(plant=False):
 PLANTS = {'write': ('\tmove.w a5,-1(a1,d7.w)\n', '\tnop\n'),
           'index': ('\taddq.w #2,d7\t\t; 7FFFh - BX, wrapping like BX\n', '\taddq.w #1,d7\n'),
           'guard': ('\tcmp.w #$1000,d7\n', '\tcmp.w #$0,d7\n'),
-          'peek': ('\tcmp.w #$fff0,d6\n\tbhi.w \\1\n\tendm\nRASTER_PEEK_C3DF',
-                   '\tcmp.w #$fff0,d6\n\tbhi.w \\1\n\tendm\nRASTER_PEEK_C3DF'.replace('$fff0', '$ffff')),
+          'peek': ('\tcmp.w #$fff0,d7\n', '\tcmp.w #$ffff,d7\n'),
           'carry': ('\taddx.w d2,d7\n', '\tadd.w d2,d7\n'),
-          'selector': ('raster_c0d1_entry-.entry,raster_c11a_entry-.entry',
-                       'raster_c11a_entry-.entry,raster_c0d1_entry-.entry'),
-          'visit': ('dc.w raster_c000_entry-.entry,', 'dc.w raster_c000-.entry,')}
+          'resume': ('\tmoveq #RZ_C2B3,d7\n', '\tmoveq #RZ_C2BD,d7\n'),
+          'bail': ('raster_c0d1_bail:\n\tmoveq #RZ_C0D1,d7\n', 'raster_c0d1_bail:\n\tmoveq #RZ_C1E2,d7\n')}
 
 
 @lru_cache(maxsize=None)
-def native_image(diagnostic=False, plant=None, predecessor='direct'):
-    p = program()
+def native_image(plant=None, predecessor='direct'):
     source = (ROOT/'src/runtime/compute_raster.s').read_text()
-    if plant == 'poll':
-        old = '\trt_hle_rasterize_poll_7_local raster_c27c_pending\n'
-        assert source.count(old) == 1
-        lab = emit.label('SWOTL.EXE', 0xc27c)
-        source = source.replace(old, f'{lab}_native_poll:\n\tnop\n{lab}_native_np:\n')
-    elif plant:
+    if plant:
         old, new = PLANTS[plant]
         assert source.count(old) == 1, plant
         source = source.replace(old, new)
-    hooks = {('SWOTL.EXE', a): i for i, a in enumerate(POLLS)} if diagnostic else {}
-    saved = p.diagnostic_hooks
-    p.diagnostic_hooks = hooks
-    try:
-        macros = p.native_poll_text()
-    finally:
-        p.diagnostic_hooks = saved
     prefix = {'direct': [], 'jump': ['bra entry'], 'call': ['bsr entry', 'bra done'],
               'taken': ['cmp.w d0,d0', 'beq entry', 'illegal'],
               'fall': ['cmp.w d0,d0', 'bne done'], 'indirect': ['lea entry,a0', 'jmp (a0)'],
               'return': ['pea entry', 'rts']}[predecessor]
-    text = [equates(), f'rt_irq equ ${B.STUB_AT["rt_irq"]:x}', macros,
+    # d7 holds garbage on entry: the hook passes no entry index (compute.hook)
+    text = [equates(), f'rt_irq equ ${B.STUB_AT["rt_irq"]:x}',
             f'org ${B.SNIP:x}', 'dc.l done,0', *prefix, 'entry:',
-            f'move.l ${B.SNIP+4:x},d7', f'move.l #${B.LOADSEG+0x49b:x},d6',
+            'move.l #$5a5a5a5a,d7', f'move.l #${B.LOADSEG+0x49b:x},d6',
             'jsr rt_hle_rasterize', 'rts' if predecessor == 'call' else 'bra done',
             'done:', 'nop', source]
-    for k, poll in enumerate(POLLS):
-        text += emit.native_poll_stub(emit.label('SWOTL.EXE', poll), poll-CS_OFF,
-                                      f'${B.LOADSEG+0x49b:x}', RESUME[poll])
-    # Alias table at the end: each poll's visit and execution aliases.
-    text += ['cnop 0,4'] + [f'dc.l {emit.label("SWOTL.EXE", poll)}_native_{kind}'
-                            for poll in POLLS for kind in ('poll', 'np')]
     work = ROOT/f'tmp/rasterize-native-{os.getpid()}'
     work.mkdir(exist_ok=True)
     text = [('\t'+line if '\n' not in line and not line.endswith(':')
              and ' equ ' not in line and not line.startswith('\t') else line) for line in text]
-    return B.D.assemble('\n'.join(text), work/f'{diagnostic}-{plant}-{predecessor}.bin')
+    return B.D.assemble('\n'.join(text), work/f'{plant}-{predecessor}.bin')
 
 
-def actual_state(m, got, fl, fx, writes, history, at):
+def actual_state(m, got, fl, fx, writes, at):
     got.update(cs=at[0], ip=at[1])
     return dict(registers=got, flags=fx | sum(fl[f] << FLAG_BIT[f] for f in FLAGS),
-                writes=writes, history=history, ram=m.gread(0, B.X.RAM))
+                writes=writes, ram=m.gread(0, B.X.RAM))
 
 
-def aliases(binary):
-    """Address -> (poll, kind) from native_image's trailing alias table."""
-    table = binary[len(binary)-8*len(POLLS):]
-    return {int.from_bytes(table[4*k:4*k+4], 'big'): (POLLS[k//2], ('poll', 'np')[k % 2])
-            for k in range(2*len(POLLS))}
-
-
-def native_run(binary, ram, regs, selector, at, posted=False):
-    binary = binary[:4] + selector.to_bytes(4, 'big') + binary[8:]
+def native_run(binary, ram, regs, at):
+    """The native from C000; never calls rt_irq (poll-free, RC5)."""
     m = B.D.M68k(ram, B.STUB_AT)
     m.irq_calls = []
-    events = []
-    names = aliases(binary)
-
-    @B.U.CODE_CB
-    def alias(h, addr, size, user):
-        events.append(names[addr])
     try:
-        for a in names:
-            m.e.hook_range(B.U.HOOK_CODE, alias, a, a)
         m.e.write(B.SNIP, binary)
         m.extra_stops = {int.from_bytes(binary[:4], 'big'): 'done'}
-        history = O.watch_native(m)
+        O.watch_native(m)
         flags = {f: regs['flags'] >> FLAG_BIT[f] & 1 for f in FLAGS}
         got, fl, fx, mem, outs, writes, info = m.run(B.SNIP+8,
-            (regs, flags, regs['flags'] & 0xf000, regs['ip'], []), random.Random(41), irq=False,
-            posted=posted)
-        if info['err'] or outs or info['stop'] != 'done' or info['a7'] != B.D.STACK-0x100:
-            raise RasterMismatch(('native run', info))
-        # Exact-once visits: the caller's hook already executed the entry poll,
-        # so an execution alias is reached only straight from its own visit.
-        for k, (poll, kind) in enumerate(events):
-            if kind == 'np' and (k == 0 or events[k-1] != (poll, 'poll')):
-                raise RasterMismatch(('duplicate visit', hex(poll), selector, k))
-        return actual_state(m, got, fl, fx, writes, history, at), m.r('d7'), len(m.irq_calls)
+            (regs, flags, regs['flags'] & 0xf000, regs['ip'], []), random.Random(41), irq=False)
+        if info['err'] or outs or info['stop'] != 'done' or info['a7'] != B.D.STACK-0x100 \
+                or m.irq_calls:
+            raise RasterMismatch(('native run', info, m.irq_calls))
+        return actual_state(m, got, fl, fx, writes, at), m.r('d7')
     finally:
         B.U.uc.uc_close(m.e.h)
 
@@ -237,77 +204,56 @@ def generated_run(ram, regs, start, stops, plant=False):
     try:
         m.load(binary)
         m.extra_stops = {addresses[emit.label('SWOTL.EXE', a)]: f'stop-{a:x}' for a in stops}
-        history = O.watch_native(m)
+        O.watch_native(m)
         flags = {f: regs['flags'] >> FLAG_BIT[f] & 1 for f in FLAGS}
         got, fl, fx, mem, outs, writes, info = m.run(addresses[emit.label('SWOTL.EXE', start)],
             (regs, flags, regs['flags'] & 0xf000, regs['ip'], []), random.Random(41), irq=False)
         if info['err'] or outs or info['irq'] or not (info['stop'] or '').startswith('stop-'):
             raise RasterMismatch(('generated run', info))
         stop = int(info['stop'][5:], 16)
-        return actual_state(m, got, fl, fx, writes, history, (regs['cs'], stop-CS_OFF))
+        return actual_state(m, got, fl, fx, writes, (regs['cs'], stop-CS_OFF))
     finally:
         B.U.uc.uc_close(m.e.h)
 
 
+@lru_cache(maxsize=1)
+def code():
+    return O.code_addresses(program(), B.LOADSEG)
+
+
 def check(name, expected, actual, stop):
-    errors = O.compare(expected, actual, program().live_in['SWOTL.EXE', stop])
+    errors = O.compare(expected, actual, program().live_in['SWOTL.EXE', stop], code())
     if errors:
         raise RasterMismatch((name, hex(stop), errors))
 
 
-def merge(total, part):
-    """Chain segment results: union writes, concatenated byte histories."""
-    if total is None:
-        return dict(part, history={a: list(v) for a, v in part['history'].items()})
-    total = dict(total, registers=part['registers'], flags=part['flags'], undefined=part['undefined'],
-                 ram=part['ram'], at=part['at'], writes=total['writes'] | part['writes'])
-    for a, v in part['history'].items():
-        total['history'].setdefault(a, []).extend(v)
-    return total
-
-
 def chain(name, ram, regs, plant=None, generated=True, mutate=None, generated_plant=False):
-    """Walk one call. Returns the number of compared points."""
+    """Walk one call. Returns the number of compared entries."""
     cs = regs['cs']
-    polls = {(cs, a-CS_OFF) for a in POLLS}
-    stops = tuple(sorted(polls | {(cs, a-CS_OFF) for a in EXITS}))
-    regs, ram = run_to(ram, regs, polls | {(cs, RETURN-CS_OFF)})
-    diag, full = native_image(True, plant), native_image(False, plant)
+    entry = {(cs, FIRST-CS_OFF), (cs, RETURN-CS_OFF)}
+    exits = tuple((cs, a-CS_OFF) for a in EXITS)
+    regs, ram = run_to(ram, regs, entry)
+    full = native_image(plant)
     count = 0
     while regs['ip'] != RETURN-CS_OFF:
-        at = regs['ip'] + CS_OFF
         if mutate:
-            ram, regs = mutate(at, ram, regs)
-        actual_full, result_full, irqs_full = native_run(full, ram, regs, POLLS.index(at), (cs, 0))
-        accumulated = None
-        while True:     # segment by segment to the next exit
-            expected = O.run(ram, regs, (cs, RETURN-CS_OFF), limit=10**7, stops=stops)
-            stop = expected['at'][1] + CS_OFF
-            accumulated = merge(accumulated, expected)
-            actual, result, irqs = native_run(diag, ram, regs, POLLS.index(at), expected['at'])
-            if result != RESUME[stop] or irqs != int(stop in POLLS):
-                raise RasterMismatch((name, 'diagnostic', hex(at), hex(stop), result, irqs))
-            check(name+' diagnostic', expected, actual, stop)
-            # A posted interrupt: the first poll reached hands off through its tail.
-            actual, result, irqs = native_run(full, ram, regs, POLLS.index(at), expected['at'], True)
-            if result != RESUME[stop] or irqs != int(stop in POLLS):
-                raise RasterMismatch((name, 'posted', hex(at), hex(stop), result, irqs))
-            check(name+' posted', expected, actual, stop)
-            REACHED.add(stop)
-            if generated:
-                check(name+' generated', expected,
-                      generated_run(ram, regs, at, POLLS+EXITS, generated_plant), stop)
-            count += 1
-            ram = captured_ram(expected['ram'], ram)
-            regs = dict(expected['registers'], cs=cs, ip=expected['at'][1], flags=expected['flags'])
-            if stop in EXITS:
-                break
-            at = stop
-        if result_full != RESUME[stop] or irqs_full:
-            raise RasterMismatch((name, 'native', hex(stop), result_full, irqs_full))
-        actual_full['registers'].update(cs=cs, ip=accumulated['at'][1])
-        check(name+' native', accumulated, actual_full, stop)
-        regs, ram = run_to(ram, regs, polls | {(cs, RETURN-CS_OFF)})
+            ram, regs = mutate(FIRST, ram, regs)
+        expected = O.run(ram, regs, (cs, RETURN-CS_OFF), limit=10**7, returns=exits)
+        stop = expected['at'][1] + CS_OFF
+        if stop not in EXITS:
+            raise RasterMismatch((name, 'original left the row without an exit', hex(stop)))
+        actual, result = native_run(full, ram, regs, expected['at'])
+        if result != RESUME[stop]:
+            raise RasterMismatch((name, 'native', hex(stop), result))
+        check(name+' native', expected, actual, stop)
+        REACHED.add(stop)
+        if generated:
+            check(name+' generated', expected,
+                  generated_run(ram, regs, FIRST, EXITS, generated_plant), stop)
+        count += 1
+        ram = captured_ram(expected['ram'], ram)
+        regs = dict(expected['registers'], cs=cs, ip=expected['at'][1], flags=expected['flags'])
+        regs, ram = run_to(ram, regs, entry)
     return count
 
 
@@ -323,21 +269,21 @@ def head_exit(at, ram, regs):
 
 
 def decline_cases(plant=None):
-    """Guards and pointer peeks decline before any mutation."""
-    binary = native_image(False, plant)
+    """Guards decline before any mutation."""
+    binary = native_image(plant)
     name, ram, regs = next(captured())
     cs = regs['cs']
     regs, ram = run_to(ram, regs, {(cs, FIRST-CS_OFF)})
-    cases = [(seg, value, 0) for seg in ('ds', 'es', 'ss')
+    cases = [(seg, value) for seg in ('ds', 'es', 'ss')
              for value in (0, cs+0xfff, 0x9001, 0xffff)]
-    cases += [('es', regs['ss']+0xfff, 0), ('es', regs['ss']-0xfff, 0),
-              ('flags', regs['flags'] | 0x400, 0), ('flags', regs['flags'], 13)]
+    cases += [('es', regs['ss']+0xfff), ('es', regs['ss']-0xfff),
+              ('flags', regs['flags'] | 0x400)]
     count = 0
-    for key, value, selector in cases:
+    for key, value in cases:
         changed = dict(regs, **{key: value & 0xffff})
-        actual, result, irqs = native_run(binary, ram, changed, selector, (cs, regs['ip']))
-        if result or irqs or actual['writes'] or actual['history'] or actual['ram'] != ram:
-            raise RasterMismatch((key, value, selector, 'decline mutation'))
+        actual, result = native_run(binary, ram, changed, (cs, regs['ip']))
+        if result or actual['writes'] or actual['ram'] != ram:
+            raise RasterMismatch((key, value, 'decline mutation'))
         if any(actual['registers'][k] != v for k, v in changed.items() if k in actual['registers']
                and k not in ('cs', 'ip')):
             raise RasterMismatch((key, value, 'decline registers'))
@@ -345,100 +291,93 @@ def decline_cases(plant=None):
     return count
 
 
-def wrap_cases(plant=None):
-    """Record pointers past FFF0h: entry declines, an internal arrival
-    resumes at the poll. Priority searches wrap BX through 0."""
-    count = 0
-    full = native_image(False, plant)
-    name, ram, regs = next(captured())
+def first_bail(ram, regs):
+    """Original x86 from C000 to the first arrival at a peeking loop head whose
+    record word wraps (the native resumes there), or None at an exit or return.
+    Returns (head, whether it is that head's first arrival)."""
     cs = regs['cs']
-    polls = {(cs, a-CS_OFF) for a in POLLS}
-    stops = tuple(sorted(polls | {(cs, a-CS_OFF) for a in EXITS}))
-    regs, ram = run_to(ram, regs, polls)
+    stops = {(cs, a-CS_OFF) for a in (*PEEKS, *EXITS, RETURN)}
     seen = set()
-    for _ in range(4000):
-        at = regs['ip'] + CS_OFF
-        es, si, bx = regs['es']*16, regs['si'], regs['bx']
-        trial = None
-        if at == 0xc1e2 and at not in seen:
-            trial = ('c1e2', [(es+si, 0xfff4)])
-        elif at == 0xc0d1 and at not in seen:
-            trial = ('c0d1', [(es+((bx+2) & 0xffff), 0xfff8)])
-        elif at == 0xc3df and at not in seen:
-            trial = ('c3df', [(es+((si+2) & 0xffff), 0xfffa)])
-        elif at in (0xc2f2, 0xc32d) and at not in seen:
-            trial = ('bx', None)
-        if trial:
-            seen.add(at)
-            label, pokes = trial
-            if pokes:
-                changed = bytearray(ram)
-                for addr, value in pokes:
-                    changed[addr:addr+2] = value.to_bytes(2, 'little')
-                memory, state = captured_ram(changed, ram), regs
-                actual, result, irqs = native_run(full, memory, state, POLLS.index(at), (cs, regs['ip']))
-                if result or actual['writes'] or actual['ram'] != memory:
-                    raise RasterMismatch((label, 'peek decline', result))
+    while True:
+        regs, ram = run_to(ram, regs, stops)
+        head = regs['ip'] + CS_OFF
+        if head not in PEEKS:
+            return None
+        es = regs['es']*16
+        if any(int.from_bytes(ram[es+w:es+w+2], 'little') > 0xfff0 for w in PEEKS[head][2](regs)):
+            return head, head not in seen
+        seen.add(head)
+
+
+def wrap_cases(plant=None):
+    """A record pointer past FFF0h at a peeking loop head reached from C000:
+    the native resumes at the first such arrival in generated code with the
+    original's state there. From C000 the merge (C0D1) reads every active
+    record pointer before C1E2 (unless one record is active) and C1E2 every one
+    before C3DF, so the fixtures reach the C0D1 resume; the C1E2/C3DF peeks
+    were reached by re-entry at their polls (retired, RC5), as were the
+    priority searches' BX wraps through 0 (C2F2/C32D: the row sets DS:2535
+    before it reads it)."""
+    count = 0
+    full = native_image(plant)
+    need = {0xc0d1}
+    for name, ram, regs in captured():
+        cs = regs['cs']
+        entry = {(cs, FIRST-CS_OFF), (cs, RETURN-CS_OFF)}
+        exits = tuple((cs, a-CS_OFF) for a in EXITS)
+        regs, ram = run_to(ram, regs, entry)
+        while need and regs['ip'] != RETURN-CS_OFF:
+            for head in sorted(need):
+                ends = ((cs, head-CS_OFF),) + exits
+                probe = O.run(ram, regs, (cs, RETURN-CS_OFF), limit=10**7, returns=ends)
+                if probe['at'][1] + CS_OFF != head:
+                    continue
+                offset, value, _ = PEEKS[head]
+                es = probe['registers']['es']*16
+                addr = es + offset(probe['registers'])
+                # The row copies record words (the add stage's REP MOVSW), so
+                # also try the entry RAM's other copies of the arriving word.
+                word = probe['ram'][addr:addr+2]
+                segment = bytes(ram[es:es+0x10000])
+                copies = [es + k for k in range(0x10000 - 1) if segment[k:k+2] == word]
+                for poke in [addr] + [a for a in copies if a != addr][:8]:
+                    changed = bytearray(ram)
+                    changed[poke:poke+2] = value.to_bytes(2, 'little')
+                    memory = captured_ram(changed, ram)
+                    # oracle stop: the first arrival at `head` must be the first wrap
+                    if first_bail(memory, regs) == (head, True):
+                        break
+                else:
+                    continue
+                want = O.run(memory, regs, (cs, RETURN-CS_OFF), limit=10**7, returns=ends)
+                actual, result = native_run(full, memory, regs, want['at'])
+                if want['at'][1] + CS_OFF != head or result != RESUME[head]:
+                    raise RasterMismatch((name, 'wrap', hex(head), result))
+                check(f'wrap {head:x}', want, actual, head)
+                need.discard(head)
                 count += 1
-            else:
-                for value in (0x0001, 0x41f2, 0xffff, 0x8001):
-                    state = dict(regs, bx=value)
-                    expected = O.run(ram, state, (cs, RETURN-CS_OFF), limit=10**7, stops=stops)
-                    stop = expected['at'][1] + CS_OFF
-                    actual, result, irqs = native_run(native_image(True, plant), ram, state,
-                                                      POLLS.index(at), expected['at'])
-                    if result != RESUME[stop]:
-                        raise RasterMismatch(('bx wrap', hex(value), result, hex(stop)))
-                    check(f'bx wrap {value:x}', expected, actual, stop)
-                    count += 1
-        if seen >= {0xc1e2, 0xc0d1, 0xc3df, 0xc2f2, 0xc32d}:
-            break
-        expected = O.run(ram, regs, (cs, RETURN-CS_OFF), limit=10**7, stops=stops)
-        ram = captured_ram(expected['ram'], ram)
-        regs = dict(expected['registers'], cs=cs, ip=expected['at'][1], flags=expected['flags'])
-        if expected['at'][1] + CS_OFF in EXITS:
-            regs, ram = run_to(ram, regs, polls)
-    if not seen >= {0xc1e2, 0xc0d1, 0xc3df, 0xc2f2, 0xc32d}:
-        raise RasterMismatch(('wrap coverage', sorted(map(hex, seen))))
+            expected = O.run(ram, regs, (cs, RETURN-CS_OFF), limit=10**7, returns=exits)
+            ram = captured_ram(expected['ram'], ram)
+            regs = dict(expected['registers'], cs=cs, ip=expected['at'][1], flags=expected['flags'])
+            regs, ram = run_to(ram, regs, entry)
+    if need:
+        raise RasterMismatch(('wrap coverage', sorted(map(hex, need))))
     return count
-
-
-def internal_bail(plant=None):
-    """An internal arrival at C1E2 with a wrapping record resumes there."""
-    full = native_image(False, plant)
-    name, ram, regs = next(captured())
-    cs = regs['cs']
-    polls = {(cs, a-CS_OFF) for a in POLLS}
-    exits = tuple((cs, a-CS_OFF) for a in EXITS)
-    stops = tuple(sorted(polls)) + exits
-    regs, ram = run_to(ram, regs, polls)
-    for _ in range(4000):
-        at = regs['ip'] + CS_OFF
-        expected = O.run(ram, regs, (cs, RETURN-CS_OFF), limit=10**7, stops=stops)
-        stop = expected['at'][1] + CS_OFF
-        if stop == 0xc1e2 and at != 0xc1e2:
-            es, si = regs['es']*16, expected['registers']['si']
-            changed = bytearray(ram)
-            changed[es+si:es+si+2] = (0xfff4).to_bytes(2, 'little')
-            memory = captured_ram(changed, ram)
-            want = O.run(memory, regs, (cs, RETURN-CS_OFF), limit=10**7,
-                         stops=((cs, 0xc1e2-CS_OFF),) + exits)
-            actual, result, irqs = native_run(full, memory, regs, POLLS.index(at), want['at'])
-            if want['at'][1] + CS_OFF != 0xc1e2 or result != RESUME[0xc1e2] or irqs:
-                raise RasterMismatch(('internal bail', hex(at), result))
-            check('internal bail', want, actual, 0xc1e2)
-            return 1
-        ram = captured_ram(expected['ram'], ram)
-        regs = dict(expected['registers'], cs=cs, ip=expected['at'][1], flags=expected['flags'])
-        if stop in EXITS:
-            regs, ram = run_to(ram, regs, polls)
-    raise RasterMismatch('no internal arrival at C1E2')
 
 
 def dispatch_cases(plant=False):
     """The generated resume table (21 ids) on the 68k core: every id reaches
-    its own target, 0 and out-of-range ids stop loudly."""
-    lines = compute.polled_dispatch('cx', [f'target{k}' for k in range(len(RESUME))], '$1234')
+    its own target, 0 and out-of-range ids stop loudly; the native's RZ ids
+    are the row's compute_resumes."""
+    resumes = program().compute_resumes[('SWOTL.EXE', FIRST)]
+    want_ids = {r[1]: k + 1 for k, r in enumerate(resumes)}
+    if want_ids != RESUME:
+        raise RasterMismatch(('resume ids', want_ids))
+    source = (ROOT/'src/runtime/compute_raster.s').read_text()
+    for a, k in re.findall(r'^RZ_C([0-9A-F]{3})\tequ (\d+)$', source, re.M):
+        if want_ids.get(int('C' + a, 16)) != int(k):
+            raise RasterMismatch(('native resume id', a, k))
+    lines = compute.resume_dispatch('cx', [f'target{k}' for k in range(len(RESUME))], '$1234')
     if plant:
         lines = [line.replace('(cxt,pc,d7.w', '(cxt-4,pc,d7.w') for line in lines]
     text = [equates(), f'org ${B.SNIP:x}', 'dc.l done,0', f'move.l ${B.SNIP+4:x},d7',
@@ -476,13 +415,12 @@ def predecessor_cases():
     name, ram, regs = next(captured())
     cs = regs['cs']
     regs, ram = run_to(ram, regs, {(cs, FIRST-CS_OFF)})
-    stops = tuple((cs, a-CS_OFF) for a in POLLS+EXITS)
-    expected = O.run(ram, regs, (cs, RETURN-CS_OFF), limit=10**7, stops=stops)
+    exits = tuple((cs, a-CS_OFF) for a in EXITS)
+    expected = O.run(ram, regs, (cs, RETURN-CS_OFF), limit=10**7, returns=exits)
     stop = expected['at'][1] + CS_OFF
     for predecessor in ('direct', 'jump', 'call', 'taken', 'fall', 'indirect', 'return'):
         try:
-            actual, result, irqs = native_run(native_image(True, None, predecessor), ram, regs, 0,
-                                              expected['at'])
+            actual, result = native_run(native_image(None, predecessor), ram, regs, expected['at'])
             if result != RESUME[stop]:
                 raise RasterMismatch((predecessor, result))
             check(predecessor, expected, actual, stop)
@@ -498,35 +436,34 @@ def run_all(plant=None, generated=True):
         total += chain(name, ram, regs, plant, generated)
     name, ram, regs = next(captured())
     total += chain(name+'+head-exit', ram, regs, plant, False, head_exit)
-    if not plant and REACHED != set(POLLS+EXITS):
-        raise RasterMismatch(('coverage', sorted(map(hex, set(POLLS+EXITS) - REACHED))))
+    if not plant and REACHED != set(EXITS):
+        raise RasterMismatch(('coverage', sorted(map(hex, set(EXITS) - REACHED))))
     return total
 
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    for arg in ('generated', 'native', 'predecessors', 'polls', 'sabotage'):
+    for arg in ('generated', 'native', 'predecessors', 'sabotage'):
         ap.add_argument('--'+arg, action='store_true')
     args = ap.parse_args()
-    if args.native or args.generated or args.polls:
-        print('rasterize:', run_all(generated=args.generated), 'original poll/exit points pass', flush=True)
+    if args.native or args.generated:
+        print('rasterize:', run_all(generated=args.generated), 'entries pass at their exits', flush=True)
         print('rasterize:', decline_cases(), 'decline cases pass', flush=True)
         print('rasterize:', wrap_cases(), 'wrap cases pass', flush=True)
-        print('rasterize:', internal_bail(), 'internal bail-out passes', flush=True)
         print('rasterize:', dispatch_cases(), 'resume table cases pass', flush=True)
     if args.predecessors:
         n, failures = predecessor_cases()
         assert not failures, failures
         print('rasterize:', n, 'predecessor cases pass', flush=True)
     if args.sabotage:
-        for plant in ('write', 'index', 'carry', 'poll', 'selector', 'visit'):
+        for plant in ('write', 'index', 'carry', 'resume'):
             try:
                 run_all(plant, generated=False)
             except RasterMismatch as error:
                 print('caught', plant, str(error)[:200], flush=True)
             else:
                 raise AssertionError(plant+' escaped')
-        for plant, probe in (('guard', decline_cases), ('peek', wrap_cases)):
+        for plant, probe in (('guard', decline_cases), ('peek', wrap_cases), ('bail', wrap_cases)):
             try:
                 probe(plant)
             except RasterMismatch as error:

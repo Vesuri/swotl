@@ -66,28 +66,26 @@ def check_code_writes(written, fetched):
 class DivideFault(ValueError):
     """The original raised INT 00h (U8): the native must decline before any
 mutation in its segment. `state` is the original's at the faulting instruction
-(registers with its IP, FLAGS, undefined flags, RAM, write history), where the
-declined generated code enters rt_fault."""
+(registers with its IP, FLAGS, undefined flags, RAM, written addresses), where
+the declined generated code enters rt_fault."""
 
     def __init__(self, message, state):
         super().__init__(message)
         self.state = state
 
 
-def run(ram, registers, resume, limit=100000, stops=(), returns=()):
+def run(ram, registers, resume, limit=100000, returns=()):
     """Execute original bytes, stopping *before* the guest return.
 
-`stops` (U5 sync sites, CS:IP): also stop before one of them once at least one
-instruction ran, so a chain of runs visits each arrival; `at` names the stop.
-`returns` (U8): the row's other root returns, CS:IP, stopped before like
-`resume`. A divide error raises DivideFault.
+`returns` (U8): the row's other root returns or endpoints, CS:IP, stopped
+before like `resume`; `at` names the one reached. A divide error raises
+DivideFault.
 
 IR supplies only the undefined-flag mask. Unicorn supplies all expected values,
 flow and writes. Faults and external effects fail closed; their guard/fallback
 cases belong in the block differential before a compute row can be enabled.
     """
     x = X.Oracle(ram)
-    history = {}
     captured_bytes = getattr(ram, 'captured_bytes', len(ram))
     outside = []
 
@@ -98,13 +96,6 @@ cases belong in the block differential before a compute row can be enabled.
             x.e.stop()
         return True
 
-    @U.MEM_CB
-    def write(h, kind, addr, size, value, user):
-        for k in range(size):
-            history.setdefault(addr + k, []).append((value >> (8 * k)) & 0xff)
-        return True
-
-    x.e.hook(U.HOOK_MEM_WRITE, write)
     x.e.hook(U.HOOK_MEM_READ | U.HOOK_MEM_WRITE, access)
     regs = dict(registers)
     word = regs.pop('flags')
@@ -119,10 +110,8 @@ cases belong in the block differential before a compute row can be enabled.
         if memory_known(return_at, 1, captured_bytes) and ram[return_at] in (0xc2, 0xc3, 0xca, 0xcb):
             return_size = 3 if ram[return_at] in (0xc2, 0xca) else 1
             fetched.update(range(return_at, min(return_at + return_size, captured_bytes)))
-    stops = {tuple(s) for s in stops}
     try:
-        while (regs['cs'], regs['ip']) not in ends and \
-                not (count and (regs['cs'], regs['ip']) in stops):
+        while (regs['cs'], regs['ip']) not in ends:
             if count >= limit:
                 raise ValueError('oracle instruction limit before resume')
             at = regs['cs'] * 16 + regs['ip']
@@ -138,12 +127,9 @@ cases belong in the block differential before a compute row can be enabled.
             if outside:
                 raise ValueError(f'oracle access outside captured memory: {outside}')
             if ints[:1] == [0] and insn.op in ('div', 'idiv', 'aam') and not outs:
-                before = bytearray(ram[:X.RAM])
-                for addr, values in history.items():
-                    before[addr] = values[-1]
                 raise DivideFault(f'oracle divide error at {at:05x}', dict(
-                    registers=dict(case[0]), flags=word, undefined=sorted(state.undef), ram=bytes(before),
-                    history={a: list(v) for a, v in history.items()}))
+                    registers=dict(case[0]), flags=word, undefined=sorted(state.undef),
+                    ram=bytes(state.mem[:X.RAM]), writes=set(written)))
             if err or ints or outs or 'trap' in regs or insn.op == 'in':
                 raise ValueError(f'oracle external effect/fault at {at:05x}: {err, ints, outs}')
             written.update(writes)
@@ -157,14 +143,26 @@ cases belong in the block differential before a compute row can be enabled.
         if not count:
             raise ValueError('zero-instruction oracle is not coverage')
         return dict(registers=regs, flags=word, undefined=sorted(state.undef),
-                    writes=written, history=history, ram=x.e.read(0, X.RAM), instructions=count,
+                    writes=written, ram=x.e.read(0, X.RAM), instructions=count,
                     at=(regs['cs'], regs['ip']))
     finally:
         U.uc.uc_close(x.e.h)
 
 
-def compare(expected, actual, live):
-    """No register/memory ignore list. Dead/undefined *status* flags only omitted."""
+VRAM = range(0xa0000, 0xc0000)
+
+
+def code_addresses(p, loadseg):
+    """Linear addresses of every decoded guest instruction byte (compare's `code`)."""
+    return frozenset((loadseg + u.cs[o]) * 16 + u.ip_of(o) + k
+                     for u in p.units.values() for o, i in u.insns.items() for k in range(i.size))
+
+
+def compare(expected, actual, live, code=frozenset()):
+    """No register/memory ignore list. Dead/undefined *status* flags only omitted.
+
+RC5: all RAM at the resume; written-address sets only for code (`code`, linear
+addresses: SMC) and VRAM. Nothing observes the order or count of other writes."""
     errors = []
     for r, v in expected['registers'].items():
         if actual['registers'].get(r) != v:
@@ -173,19 +171,18 @@ def compare(expected, actual, live):
     mask = 0x7000 | sum(1 << FLAG_BIT[f] for f in checked)
     if (expected['flags'] ^ actual['flags']) & mask:
         errors.append('live flags')
-    if expected['writes'] != actual['writes']:
-        errors.append('write addresses')
-    if expected['history'] != actual['history']:
-        errors.append('write values/history')
+    def watched(writes):
+        return {a for a in writes if a in VRAM or a in code}
+    if watched(expected['writes']) != watched(actual['writes']):
+        errors.append('code/VRAM write addresses')
     if expected['ram'] != actual['ram']:
         errors.append('RAM')
     return errors
 
 
 def watch_native(m):
-    """Per-byte value histories tolerate only merging/reordering distinct bytes."""
+    """Stop the native run at any access outside the captured memory."""
     import m68k_diff as D
-    history = {}
     captured_bytes = getattr(m.bg, 'captured_bytes', len(m.bg))
 
     @U.MEM_CB
@@ -197,68 +194,7 @@ def watch_native(m):
                 m.e.stop()
         return True
 
-    @U.MEM_CB
-    def write(h, kind, addr, size, value, user):
-        if D.GUEST_LO <= addr and addr + size - 1 <= D.TOP:
-            for k in range(size):
-                # Low host byte is the high guest byte (reversed RAM).
-                guest = D.TOP - addr - size + 1 + k
-                history.setdefault(guest, []).append((value >> (8 * k)) & 0xff)
-        return True
-
-    m.e.hook(U.HOOK_MEM_WRITE, write)
     m.e.hook(U.HOOK_MEM_READ | U.HOOK_MEM_WRITE, access)
-    return history
-
-
-# U5 latency bound (native-compute.md): one PIT period at the game's 236.7 Hz
-# in 14.19 MHz model cycles, rounded down.
-PIT_PERIOD_CYCLES = 59_900
-
-
-class PollGaps:
-    """Model cycles between poll visits (reads of G_IRQ) on the host 68k core.
-
-    Weights are tools/cost_model.json's, without the i-cache loop discount
-    (an upper estimate); every mul/div in `image` (loaded at CODE) is charged
-    as one. `gaps` holds each
-    stretch from the start or a visit to the next visit; `open` the last one.
-    """
-    def __init__(self, m, image=b''):
-        import m68k_diff as D
-        coef = json.loads((ROOT / 'tools/cost_model.json').read_text())['coef']
-        self.gaps, self.open = [], 0.0
-        self.irq = D.TOP + 9   # G_IRQ(a6)
-        last = {'end': None}
-
-        @U.CODE_CB
-        def code(h, addr, size, user):
-            at = addr - D.CODE  # opcodes from the loaded image (no reads inside the hook)
-            op = int.from_bytes(image[at:at + 2], 'big') if 0 <= at < len(image) - 1 else 0
-            cost = size * coef['bytes']
-            if last['end'] is not None and addr != last['end']:
-                cost += coef['taken']
-            if op & 0xf1c0 in (0xc0c0, 0xc1c0, 0x80c0, 0x81c0) or op & 0xffc0 in (0x4c00, 0x4c40):
-                cost += coef['muldiv']
-            self.open += cost
-            last['end'] = addr + size
-
-        @U.MEM_CB
-        def access(h, kind, addr, size, value, user):
-            if kind == 17:  # UC_MEM_WRITE
-                self.open += coef['writes']
-                return True
-            self.open += coef['reads']
-            if addr <= self.irq < addr + size:
-                self.gaps.append(self.open)
-                self.open = 0.0
-            return True
-
-        m.e.hook(U.HOOK_CODE, code)
-        m.e.hook(U.HOOK_MEM_READ | U.HOOK_MEM_WRITE, access)
-
-    def longest(self):
-        return max(self.gaps + [self.open])
 
 
 def generated(path, module, first, cache, end=None):
@@ -275,7 +211,7 @@ def generated(path, module, first, cache, end=None):
     if node in p.compute_bodies:
         if end is not None:
             raise ValueError('declared compute row cannot extend its range')
-        region = p.compute_bodies[node]  # Program proved the row, including U5 loops
+        region = p.compute_bodies[node]  # Program proved the row
     else:
         rets, escapes = p.reach(node, {})
         if escapes or not rets:
@@ -295,7 +231,7 @@ def generated(path, module, first, cache, end=None):
     m = B.D.M68k(ram, B.STUB_AT, {p.hle[n][1] for n in p.compute_rows})
     try:
         m.load(binary)
-        history = watch_native(m)
+        watch_native(m)
         m.extra_stops = {addresses[emit.label(*r)]: 'compute_resume' if r == resume
                          else 'compute_other_return' for r in region.returns}
         flags = {f: regs['flags'] >> FLAG_BIT[f] & 1 for f in FLAGS}
@@ -305,8 +241,8 @@ def generated(path, module, first, cache, end=None):
             raise AssertionError(info)
         got.update(cs=end[0], ip=end[1])
         actual = dict(registers=got, flags=fx | sum(fl[f] << FLAG_BIT[f] for f in FLAGS),
-                      writes=writes, history=history, ram=m.gread(0, X.RAM))
-        errors = compare(expected, actual, p.live_in[resume])
+                      writes=writes, ram=m.gread(0, X.RAM))
+        errors = compare(expected, actual, p.live_in[resume], code_addresses(p, B.LOADSEG))
         if errors:
             raise AssertionError(errors)
         return expected

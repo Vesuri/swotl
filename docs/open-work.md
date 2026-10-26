@@ -27,11 +27,11 @@ speed work: [speed-plan.md](speed-plan.md).
     (ZF3, 2026-10-24, arm64) 330, 300 and 300 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
     §1, §9). The middle run needs 60 ms (20%) less; same-session pre-F3
     medians 360, 350, 360 ms do not overlap, so F3+F4 is a frame-rate gain. No priced translator candidate remains;
-    flag-word packing is rejected (speed-plan §10). The U5
-    [poll contract](native-compute.md#poll-contract-u5) (C3) and the
+    flag-word packing is rejected (speed-plan §10). The
     [U8 extensions](native-compute.md#contract-extensions-u8) (C4) are
-    implemented, as is the exact-poll contract used by R42's sprite packet loop
-    and R44's line pixel loops.
+    implemented; since irq-plan I9 every row is
+    [poll-free](native-compute.md#loops-and-the-sync-set-rc5) (U5 and exact
+    polls retired, RC5).
     N4's R48 edge ordering/merging is folded into F5's whole `BFD1` row.
     U7 paused speed work; U9 (2026-10-23) resumes it under native-plan F.
     Flyby profile (speed-plan §1 F0): EMS paging takes 25% of CPU with close
@@ -61,8 +61,7 @@ speed work: [speed-plan.md](speed-plan.md).
     the specific R20/R35 tradeoffs and R36/R40/R48/F3b/F4 and irq-plan I7 (+0.117%) bench differences accepted by
     the user as noise (speed-plan §7) and D8's tiny bench regressions (speed-plan §3). Z1 leaves the target unmet; plan F is next.
     Guest native steps after irq-plan I9 are priced without polls or write
-    histories (open-work 43, RC5). Until I9 the native rows with polls run
-    generated (irq-plan I8 Facts: meter and frames).
+    histories (open-work 43, RC5).
 14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`
     `Harness`: each byte drew from a fresh generator with the same seed).
     A random background is stronger but changes every corpus case; needs
@@ -79,8 +78,8 @@ speed work: [speed-plan.md](speed-plan.md).
     lockstep, native rows poll-free (U3/U5 retire). I1 measured, I2 proved,
     I3 monitored, I4 private-stack entry, I5 field task, I6 asynchronous IRQ0, I7
     keyboard at the vertical blank, I8 sync points with the loop heads kept (user
-    2026-10-26; irq-plan Facts). Next: I9 (the rows with polls are disabled until
-    then); F10 skipped by the user (2026-10-25).
+    2026-10-26; irq-plan Facts), I9 native rows poll-free (bench +0.036% accepted by the user
+    2026-10-26). Next: I10; F10 skipped by the user (2026-10-25).
     The deferred natives it unblocks (D5A6 prefix, BB70, F9 O(1), FDE0, BD68,
     F290, 109D6; exact-poll rows rebuilt) are done at its I10.
 

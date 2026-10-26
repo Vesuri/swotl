@@ -16,11 +16,12 @@ from tools import compute_oracle as O
 from translator import compute, emit, image
 from translator.ir import FLAGS, FLAG_BIT, STATUS
 from translator.support import equates
-emit.Program.polled_rows = True  # the exact-poll row, dormant in the game until I9 (irq-plan I8)
 
 VERTEX = ('SWOTL.EXE', 0x10c08)
 CLEAR = ('SWOTL.EXE', 0x10a2f)
-SYNC = (('SWOTL.EXE', 0x10c1d), ('SWOTL.EXE', 0x10df8))
+# Loop heads of the vertex body where cases also enter generated code (the
+# transform and projection loops); the row resumes there too (compute_resumes).
+LOOP_ENTRIES = (('SWOTL.EXE', 0x10c1d), ('SWOTL.EXE', 0x10df8))
 
 
 class SceneryMismatch(AssertionError):
@@ -58,20 +59,29 @@ def program():
     original = image.rows
     common = dict(module='SWOTL.EXE', service='point_transform', args='', kind='compute',
                   reason='test-only scenery body', oracle=__file__, resume='continue')
+    # I2: no row holds a sync access. 10CD1 and 10F0E (mov byte [9C20] before
+    # the drawing calls 10CD6 and 10F13) end the body instead of those calls.
     rows = [dict(common, first='0x10C08', last='0x1112E',
-                 polls='return 0x10C1D 0x10DF8', exits='0x10CD6 0x10F13 0x10F62 0x10F6A'),
-            dict(common, first='0x10A2F', last='0x10A51', polls='return')]
+                 exits='0x10CD1 0x10F0E 0x10F62 0x10F6A'),
+            dict(common, first='0x10A2F', last='0x10A51')]
     existing = {int(r['first'],0) for r in original('hle.csv') if r['module']=='SWOTL.EXE'}
     rows = [r for r in rows if int(r['first'],0) not in existing]
     with patch.object(image,'rows',lambda name: original(name)+(rows if name=='hle.csv' else [])):
         p = emit.Program()
     body = p.compute_bodies[VERTEX]
-    assert len(body.body) == 257 and body.sync == SYNC and not body.removed
-    assert body.returns == tuple(('SWOTL.EXE', o) for o in (0x10cd6,0x10f13,0x10f62,0x10f6a,0x11131))
+    assert set(LOOP_ENTRIES) == set(body.loops), body.loops
+    assert len(body.body) == 255, len(body.body)  # 257 less the two sync accesses
+    assert not set(body.body) & p.loop_heads, 'vertex body loop heads left in the sync set'
+    assert body.returns == tuple(('SWOTL.EXE', o) for o in (0x10cd1,0x10f0e,0x10f62,0x10f6a,0x11131))
     cache = ROOT/'tmp/scenery-differential'
     cache.mkdir(exist_ok=True)
     binary, addresses = B.program_image(p,cache)
     return p,binary,addresses
+
+
+@lru_cache(maxsize=1)
+def code():
+    return O.code_addresses(program()[0], B.LOADSEG)
 
 
 def synthetic():
@@ -157,7 +167,7 @@ def arithmetic_and_exits():
                 byte(bp-126,0)
             yield f'{role}-arithmetic-{case}',bytes(data),regs,VERTEX
 
-    # Explicitly reach every continuation and each loop/sync transition.
+    # Explicitly reach every continuation and each loop transition.
     for role, behind, count, counter, depth in (
         ('transform',0,1,0,0),
         ('transform',1,1,0,0),
@@ -193,11 +203,11 @@ def run(original_entries=False, plant=None, native_clear=False,
         cases = [case for case in cases if case[3] == (CLEAR if native_clear else VERTEX)]
     def make_callback(root,start):
         body = p.compute_bodies[root]
-        for resume in (*body.returns,*body.sync):
+        assert start == root, 'compute rows have one entry (RC5)'
+        for resume in (*body.returns,*body.loops):
             assert not (p.live_in[resume] & set(STATUS)), (resume,p.live_in[resume])
-        entry_id = 0 if start==root else 1+body.sync.index(start)
         service = 'rt_hle_scenery_clear' if root==CLEAR else 'rt_hle_scenery_vertices'
-        hook = compute.polled_hook(service,entry_id,'handled_dispatch',f'${B.LOADSEG+0x109d:x}')
+        hook = compute.hook(service,'handled_dispatch',f'${B.LOADSEG+0x109d:x}')
         source = [equates(), f'rt_stop_unknown equ ${B.STUB_AT["rt_stop_unknown"]:x}',
                   f'T_END equ ${B.D.STUB_AT["T_END"]:x}',
                   f'\torg ${B.SNIP:x}', '\tdc.l before_call,after_call']
@@ -207,10 +217,10 @@ def run(original_entries=False, plant=None, native_clear=False,
                    'fall':['\tcmp.w d0,d0','\tbne T_END'],
                    'indirect':['\tlea entry,a0','\tjmp (a0)'],
                    'return':['\tpea entry','\trts']}[predecessor] + ['entry:']
-        source += hook[:2]+['before_call:',hook[2],'after_call:']+hook[3:]
+        source += hook[:1]+['before_call:',hook[1],'after_call:']+hook[2:]
         source += [f'\tjmp ${addresses[emit.label(*start)]:x}']
-        source += compute.polled_dispatch('handled_dispatch',
-                    [f'${addresses[emit.label(*resume)]:x}' for resume in (*body.returns,*body.sync)],
+        source += compute.resume_dispatch('handled_dispatch',
+                    [f'${addresses[emit.label(*resume)]:x}' for resume in (*body.returns,*body.loops)],
                     f'${p.units[root[0]].ip_of(start[1]):x}')
         implementation = (ROOT/'src/runtime/compute_scenery.s').read_text()
         if plant == 'clear-store':
@@ -225,10 +235,9 @@ def run(original_entries=False, plant=None, native_clear=False,
         row = p.compute_bodies[root]
         unit = p.units[root[0]]
         ends = {(regs['cs'],unit.ip_of(n[1])):n for n in row.returns}
-        sync = {(regs['cs'],unit.ip_of(n[1])):n for n in row.sync}
-        expected = O.run(ram,regs,next(iter(ends)),returns=ends,stops=sync)
-        destination = {**ends,**sync}[expected['at']]
-        start = next(n for n in (root,*row.sync) if unit.ip_of(n[1])==regs['ip'])
+        expected = O.run(ram,regs,next(iter(ends)),limit=10**6,returns=ends)
+        destination = ends[expected['at']]
+        start = next(n for n in (root,*LOOP_ENTRIES) if unit.ip_of(n[1])==regs['ip'])
         if native:
             if start not in callbacks: callbacks[start] = make_callback(root,start)
             callback = callbacks[start]
@@ -239,13 +248,10 @@ def run(original_entries=False, plant=None, native_clear=False,
             labels = (emit.label(*node),) if plant == 'missing-copy' else (emit.label(*node),emit.copy_label(*node))
             return {addresses[label] for label in labels
                     if label in addresses}
-        start_aliases = aliases(start)
-        other_instructions = set().union(*(aliases(n) for n in row.body if n != start)) - start_aliases
         service = p.hle[root][1]
         stubs = {n:a for n,a in B.STUB_AT.items() if plant != 'empty-native' or n != service}
         hles = {p.hle[n][1] for n in p.compute_rows}
         m = B.D.M68k(ram,stubs,hles - ({service} if plant == 'empty-native' else set()))
-        seen = {'advanced':False}
         before, outcomes = [], []
         @B.U.CODE_CB
         def native_result(h,address,size,user):
@@ -260,24 +266,14 @@ def run(original_entries=False, plant=None, native_clear=False,
                     outcomes.append('native stack or RAM base changed')
                 if not handled and before and state != before[0]:
                     outcomes.append('decline changed state')
-        @B.U.CODE_CB
-        def entry(h,address,size,user):
-            if address in other_instructions:
-                seen['advanced'] = True
-            elif address in start_aliases and seen['advanced']:
-                m.stop = str(start)
-                B.U.uc.uc_emu_stop(h)
         try:
             m.load(binary)
             if callback:
                 m.e.write(B.SNIP,callback)
                 m.e.hook_range(B.U.HOOK_CODE,native_result,before_at,after_at)
             if plant == 'empty-native': m.e.write(B.STUB_AT[service],bytes.fromhex('7e014e75'))
-            history = O.watch_native(m)
-            latency = O.PollGaps(m,binary)
-            m.extra_stops = {address:str(n) for n in (*row.returns,*row.sync)
-                             for address in aliases(n) if address not in start_aliases}
-            m.e.hook(B.U.HOOK_CODE,entry)
+            O.watch_native(m)
+            m.extra_stops = {address:str(n) for n in row.returns for address in aliases(n)}
             flags = {f:regs['flags']>>FLAG_BIT[f]&1 for f in FLAGS}
             got,fl,fx,mem,outs,writes,info = m.run(B.SNIP+8 if callback else start_address,
                 (regs,flags,regs['flags']&0xf000,regs['ip'],[]),random.Random(40),irq=False)
@@ -287,11 +283,9 @@ def run(original_entries=False, plant=None, native_clear=False,
                 raise SceneryMismatch(count+1,(name,'wrong boundary',info['stop'],destination))
             got.update(cs=expected['at'][0],ip=expected['at'][1])
             actual = dict(registers=got,flags=fx|sum(fl[f]<<FLAG_BIT[f] for f in FLAGS),
-                          writes=writes,history=history,ram=m.gread(0,B.X.RAM))
-            errors = O.compare(expected,actual,p.live_in[destination])
+                          writes=writes,ram=m.gread(0,B.X.RAM))
+            errors = O.compare(expected,actual,p.live_in[destination],code())
             if errors: raise SceneryMismatch(count+1,(name,errors))
-            if latency.longest() > O.PIT_PERIOD_CYCLES:
-                raise SceneryMismatch(count+1,(name,'latency',latency.longest()))
             if callback:
                 admitted = (not (regs['flags']&0x400) and regs['cs']+0x1000 <= regs['ss'] <= 0x9000 and regs['bp'] >= 126)
                 if outcomes != [admitted]:
@@ -299,10 +293,10 @@ def run(original_entries=False, plant=None, native_clear=False,
             count += 1
             reached.add(destination)
             print('scenery native:' if callback else 'scenery generated:',name,predecessor,'->',hex(destination[1]),
-                  'pass; gap',round(latency.longest(),3),'model cycles',flush=True)
+                  'pass',flush=True)
         finally:
             B.U.uc.uc_close(m.e.h)
-    required = set(p.compute_bodies[VERTEX].returns) | set(SYNC) | set(p.compute_bodies[CLEAR].returns)
+    required = set(p.compute_bodies[VERTEX].returns) | set(p.compute_bodies[CLEAR].returns)
     if native_clear: required = set(p.compute_bodies[CLEAR].returns)
     assert required <= reached, ('uncovered scenery boundaries',required-reached)
     return count
@@ -329,6 +323,6 @@ if __name__=='__main__':
             try: run(plant=plant,native_clear=args.native_clear)
             except SceneryMismatch as error:
                 if plant=='missing-copy': assert 'wrong boundary' in str(error), error
-                else: assert any(x in str(error) for x in ('registers','RAM','history','writes')), error
+                else: assert any(x in str(error) for x in ('register','RAM','live flags','write addresses','guard outcome')), error
                 print('scenery:',plant,'caught',error,flush=True)
             else: raise AssertionError(plant+' escaped')

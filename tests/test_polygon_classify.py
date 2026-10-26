@@ -13,7 +13,6 @@ from tools import compute_oracle as O
 from translator import compute, emit, image
 from translator.ir import FLAGS, FLAG_BIT
 from translator.support import equates
-emit.Program.polled_rows = True  # the exact-poll row, dormant in the game until I9 (irq-plan I8)
 
 STUB_AT = dict(B.STUB_AT, rt_hle_polygon_classify=B.D.STUB + 4 * len(B.STUBS))
 
@@ -124,18 +123,19 @@ def fast_entry(ram, regs):
 
 
 def check_body(p, node, resume):
-    # Program proves the body before installing its sync-entry hooks.
+    # RC5: the root loop heads (R39's former sync sites) leave the sync set
+    # and are resumes after the return; the entry is the only hook.
     row = p.compute_bodies[node]
-    sync = tuple(('SWOTL.EXE', off) for off in
-                 (0xbbac, 0xbbb3, 0xbc55, 0xbc73, 0xbcc4, 0xbd14, 0xbd44))
+    loops = tuple(('SWOTL.EXE', off) for off in
+                  (0xbbac, 0xbbb3, 0xbc55, 0xbc73, 0xbcc4, 0xbd14, 0xbd44))
     assert row.returns == (resume,)
-    assert tuple(row.sync) == sync
+    assert tuple(row.loops) == loops
     assert node in row.body and resume not in row.body
-    assert set(sync) <= row.body
-    assert set(sync) | {resume} <= p.loop_heads
-    for entry, site in enumerate((node, *sync)):
-        assert p.polled_entry[site] == entry
-        assert p.polled_resumes[site] == [resume, *sync]
+    assert set(loops) <= row.body and set(loops) <= p.loops
+    assert not (row.body & p.loop_heads)
+    assert p.compute_resumes[node] == [resume, *loops]
+    assert set(loops) | {resume} <= p.leaders
+    assert not set(loops) & set(p.hle)
 
 
 @lru_cache(maxsize=1)
@@ -144,9 +144,8 @@ def program():
     original = image.rows
     row = dict(module='SWOTL.EXE', first='0xBB70', last='0xBD66',
                service='polygon_classify', args='', kind='compute',
-               reason='Test-only U5 body; native candidate deferred',
-               oracle='tests/test_polygon_classify.py',
-               polls='return 0xBBAC 0xBBB3 0xBC55 0xBC73 0xBCC4 0xBD14 0xBD44')
+               reason='Test-only poll-free body; native candidate deferred (irq-plan I10)',
+               oracle='tests/test_polygon_classify.py')
     with patch.object(image, 'rows', lambda name: original(name) +
                       ([row] if name == 'hle.csv' else [])):
         p = emit.Program()
@@ -171,21 +170,21 @@ def run(entries=(), predecessors=False, generated=True, broken=False):
     # Every legal predecessor reaches the same compute ABI; its own guest
     # stack effects remain in the generated caller and return protocol.
     modes = ('direct','jump','call','taken','fall','indirect','return') if predecessors else ('direct',)
-    count, longest = 0, 0.0
+    count = 0
     with tempfile.TemporaryDirectory(prefix='polygon-classify-', dir=cache) as scratch:
         for mode in modes:
             intro = {'direct': [], 'jump':['\tbra entry'], 'call':['\tbsr entry','\tjmp T_END'],
                      'taken':['\tcmp.w d0,d0','\tbeq entry','\tillegal'],
                      'fall':['\tcmp.w d0,d0','\tbne T_END'],
                      'indirect':['\tlea entry,a0','\tjmp (a0)'], 'return':['\tpea entry','\trts']}[mode]
-            hook = compute.polled_hook('rt_hle_polygon_classify', 0, 'handled_dispatch', '$cbd')
+            hook = compute.hook('rt_hle_polygon_classify', 'handled_dispatch', '$cbd')
             source = [equates(), f'T_END equ ${B.D.STUB_AT["T_END"]:x}',
                       f'rt_stop_unknown equ ${B.STUB_AT["rt_stop_unknown"]:x}',
                       f'\torg ${B.SNIP:x}', '\tdc.l before_call,result']
-            source += intro + ['entry:'] + hook[:2] + ['before_call:', hook[2], 'result:'] + hook[3:]
+            source += intro + ['entry:'] + hook[:1] + ['before_call:', hook[1], 'result:'] + hook[2:]
             source += [f'\tjmp ${addresses[emit.label(*node)]:x}']
-            source += compute.polled_dispatch('handled_dispatch',
-                [f'${addresses[emit.label(*resume)]:x}'], '$71c0') + [callback]
+            source += compute.resume_dispatch('handled_dispatch',
+                [f'${addresses[emit.label(*r)]:x}' for r in p.compute_resumes[node]], '$71c0') + [callback]
             code = B.D.assemble('\n'.join(source), Path(scratch)/'callback.bin')
             before_at = int.from_bytes(code[:4], 'big')
             result_at = int.from_bytes(code[4:8], 'big')
@@ -213,8 +212,7 @@ def run(entries=(), predecessors=False, generated=True, broken=False):
                     m.load(binary)
                     m.e.write(B.SNIP, code)
                     m.e.hook_range(B.U.HOOK_CODE, result, before_at, result_at)
-                    history = O.watch_native(m)
-                    latency = O.PollGaps(m, binary)
+                    O.watch_native(m)
                     stop_at = addresses[emit.label(*resume)]
                     m.extra_stops = {stop_at: 'compute_resume'}
                     flags = {f: regs['flags'] >> FLAG_BIT[f] & 1 for f in FLAGS}
@@ -226,17 +224,13 @@ def run(entries=(), predecessors=False, generated=True, broken=False):
                         raise ClassifyMismatch(count + 1, (name, mode, 'guard outcome', outcomes))
                     got.update(cs=end[0], ip=end[1])
                     actual = dict(registers=got, flags=fx | sum(fl[f] << FLAG_BIT[f] for f in FLAGS),
-                                  writes=writes, history=history, ram=m.gread(0, B.X.RAM))
+                                  writes=writes, ram=m.gread(0, B.X.RAM))
                     errors = O.compare(expected, actual, p.live_in[resume])
                     if errors:
                         raise ClassifyMismatch(count + 1, (name, mode, errors))
-                    longest = max(longest, latency.longest())
-                    if latency.longest() > O.PIT_PERIOD_CYCLES:
-                        raise ClassifyMismatch(count + 1, (name, mode, "latency", latency.longest()))
                     count += 1
                 finally:
                     B.U.uc.uc_close(m.e.h)
-    print("classify latency:", "generated" if generated else "native", longest, "model cycles", flush=True)
     return count
 
 
@@ -249,7 +243,7 @@ if __name__ == '__main__':
     reporting_controls()
     print('generated classify:', run(args.entries, predecessors=args.predecessors), 'cases pass', flush=True)
     from test_polygon_classify_sync import run as sync_run
-    print('classifier sync handoffs:', sync_run(), 'pass', flush=True)
+    print('classifier loop-head resumes:', sync_run(), 'pass', flush=True)
     if args.sabotage:
         try:
             run(broken=True)
@@ -260,9 +254,9 @@ if __name__ == '__main__':
         try:
             sync_run(broken=True)
         except AssertionError:
-            print('classification: skipped sync handoff caught', flush=True)
+            print('classification: skipped loop-head resume caught', flush=True)
         else:
-            raise AssertionError('skipped sync escaped')
+            raise AssertionError('skipped loop-head resume escaped')
         from unittest.mock import patch
         try:
             with patch.object(program, 'cache_clear', lambda: None):

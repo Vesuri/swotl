@@ -80,6 +80,13 @@ def program_image(p: emit.Program, cache: Path, extra: tuple = ()) -> tuple[byte
     return image_, addr
 
 
+def retf_on_device(insn, regs) -> bool:
+    """The case would take x86_diff's DOSBox RETF path (a RETF at SP >= FFFDh in
+    a multi-instruction run) with a stack word outside writable RAM (A0000h up):
+    the oracle rejects device memory by design (tests/dosbox_retf.py)."""
+    return insn.op == "retf" and regs["sp"] >= 0xFFFD and regs["ss"] * 16 + regs["sp"] + 6 > 0xA0000
+
+
 def aux_labels(p: emit.Program) -> list[str]:
     """Cell cache (D3) labels the tests reach that are no block exits: the
     exact walk, the store hooks, smc_expose and the cache data."""
@@ -798,7 +805,9 @@ def main(argv=None, on_batch=None) -> int:
         end = (copy_next if copy else text_next).get((mod, run[-1]))
         m.inside, empty = block_boundary(p, mod, run, addr, end, empty_entries, copy)
         m.extra_stops = stops = stop_names
-        for _ in range(states):
+        made = 0
+        while made < states:
+            made += 1
             regs, flags, flagsx, _ = h.state({"regs": {"cs": cs}, "ip": ip})
             # keep CX small so REP blocks stay short
             regs["cx"] &= 0x3F
@@ -815,10 +824,13 @@ def main(argv=None, on_batch=None) -> int:
             s.port_in = lambda port, w: X.port_value(port, w // 8)
             for a, d in patches:
                 h.mem[a:a + len(d)] = d
-            took = False
+            took = device = False
             oracle_steps = len(run)
             try:
                 for _k in range(len(run)):
+                    if len(run) > 1 and retf_on_device(u.insns[run[_k]], s.regs):
+                        device = True
+                        break
                     ex, _i = step(s)
                     if ex.kind in ("int", "fault"):
                         break
@@ -838,6 +850,11 @@ def main(argv=None, on_batch=None) -> int:
                 continue
             undef = set(s.undef)
             h.reset(patches, s.writes, set())
+            if device:      # redraw: outside the DOSBox RETF oracle's domain
+                assert "ss" not in (force or {}), "forced SS puts the RETF stack in device memory"
+                count["RETF device-stack redraws"] += 1
+                made -= 1
+                continue
             if took:
                 skipped["outlined path takes a jump"] += 1
                 continue

@@ -188,6 +188,9 @@ def program():
     return p, cache, binary, addresses
 
 
+VRAM_BYTE = B.D.TOP - 0xa0000     # guest A000:0000 on the host (reversed RAM)
+
+
 def run(entries=(), plant=None, predecessors=False, generated=False, broken=False):
     p, cache, binary, addresses = program()
     callback = (ROOT / 'src/runtime/compute_projection.s').read_text() if not generated and not broken else ''
@@ -197,7 +200,9 @@ def run(entries=(), plant=None, predecessors=False, generated=False, broken=Fals
         callback = f'{SERVICE}:\n\tmoveq #0,d7\n\trts\n'
     plants = {
         'missing-store': ('\tmove.l \\1,(\\2-2,a3)\n', ''),
-        'duplicate-store': ('\tmove.l \\1,(\\2-2,a3)\n', '\tmove.l \\1,(\\2-2,a3)\n\tmove.l \\1,(\\2-2,a3)\n'),
+        # RC5: only the code/VRAM written-address set is observed besides RAM:
+        # a VRAM byte rewritten with its own value leaves RAM equal.
+        'vram-write': ('\tmove.l \\1,(\\2-2,a3)\n', f'\tmove.b ${VRAM_BYTE:x},${VRAM_BYTE:x}\n\tmove.l \\1,(\\2-2,a3)\n'),
         'half-store': ('\tmove.l d3,($5d1e,a3)\n', '\tmove.w d3,($5d20,a3)\n'),
         'missing-push': ('\tmove.w #$66a7,-1(a2,d7.w)\n', ''),
         'decline-state': ('.decline:\n', '.decline:\n\tmove.w #1,d0\n'),
@@ -229,10 +234,10 @@ def run(entries=(), plant=None, predecessors=False, generated=False, broken=Fals
                      'taken': ['\tcmp.w d0,d0', '\tbeq entry', '\tillegal'],
                      'fall': ['\tcmp.w d0,d0', '\tbne T_END'],
                      'indirect': ['\tlea entry,a0', '\tjmp (a0)'], 'return': ['\tpea entry', '\trts']}[mode]
-            hook = compute.polled_hook(SERVICE, 0, 'dispatch', f'${B.LOADSEG + CS:x}')
-            dispatch = compute.polled_dispatch('dispatch', [f'${r:x}' for r in resumes], '$6667')
+            hook = compute.hook(SERVICE, 'dispatch', f'${B.LOADSEG + CS:x}')
+            dispatch = compute.resume_dispatch('dispatch', [f'${r:x}' for r in resumes], '$6667')
             source = [equates(), f'T_END equ ${B.D.STUB_AT["T_END"]:x}', f'\torg ${B.SNIP:x}', '\tdc.l before_call,result']
-            source += intro + ['entry:', *hook[:2], 'before_call:', hook[2], 'result:', *hook[3:]]
+            source += intro + ['entry:', hook[0], 'before_call:', hook[1], 'result:', *hook[2:]]
             # An unknown result stops at an illegal instruction.
             source += [f'\tjmp ${addresses[emit.label(*NODE)]:x}', *dispatch, 'rt_stop_unknown:', '\tillegal', callback]
             code = B.D.assemble('\n'.join(source), Path(scratch) / 'callback.bin')
@@ -263,7 +268,7 @@ def run(entries=(), plant=None, predecessors=False, generated=False, broken=Fals
                     m.load(binary)
                     m.e.write(B.SNIP, code)
                     m.e.hook_range(B.U.HOOK_CODE, result, before_at, result_at)
-                    history = O.watch_native(m)
+                    O.watch_native(m)
                     m.extra_stops = {a: f'return {r:05X}' for a, r in zip(resumes, RETURNS)}
                     flags = {f: regs['flags'] >> FLAG_BIT[f] & 1 for f in FLAGS}
                     got, fl, fx, mem, outs, writes, info = m.run(B.SNIP + 8,
@@ -279,7 +284,7 @@ def run(entries=(), plant=None, predecessors=False, generated=False, broken=Fals
                     seen.add(at)
                     got.update(cs=regs['cs'], ip=at - CS * 16)
                     actual = dict(registers=got, flags=fx | sum(fl[f] << FLAG_BIT[f] for f in FLAGS),
-                                  writes=writes, history=history, ram=m.gread(0, B.X.RAM))
+                                  writes=writes, ram=m.gread(0, B.X.RAM))
                     errors = O.compare(expected, actual, p.live_in[('SWOTL.EXE', at)])
                     if errors:
                         raise ProjectionMismatch(count + 1, (name, mode, errors))
@@ -315,7 +320,7 @@ if __name__ == '__main__':
             raise AssertionError('plant survived: stale-program cache')
         finally:
             program.cache_clear()
-        for plant in ('missing-store', 'duplicate-store', 'half-store', 'missing-push', 'decline-state', 'guard',
+        for plant in ('missing-store', 'vram-write', 'half-store', 'missing-push', 'decline-state', 'guard',
                       'overlap-guard', 'rounding', 'short-rounding', 'register', 'wrong-return',
                       'zero-divisor', 'limit-signed'):
             try:
