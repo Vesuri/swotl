@@ -77,6 +77,7 @@ AmigaXDev's docs (edit them there, then `make share`); this repo keeps what is s
   (interrupt delivery without polling),
   `docs/swotl-tfh-rendering-map.md`, `docs/tfh-cross-reference.md`
 - Sound: `docs/sound-plan.md`
+- Pointer: `docs/pointer-plan.md`
 - Amiga: `docs/amiga-arch.md`, `docs/amiga-lessons.md`,
   `docs/m68k-optimisation.md`, `src/platform/amiga/framework/README.md`
 - Tools: `docs/toolchain.md`, `docs/headless-fsuae.md`,

@@ -106,6 +106,11 @@ speed work: [speed-plan.md](speed-plan.md).
     FreeArgs, RDArgs), `adcd21/Reference/Amiga_Mail_Vol2/II-27/readargs.c`. Checks:
     fixtures that pass KEYS/MUSIC/BENCH, `test-whdload` FM and TFH, lower-case `tfh`.
 
+45. Hardware-sprite pointer ([pointer-plan.md](pointer-plan.md), user 2026-10-26): the
+    guest's software pointer masked out of the presented frame, an AGA sprite at the guest
+    position plus lead written at the vertical blank, on every pointer screen incl. the film
+    room; no toggle. Authorized: observe-only HLE row at tracker exit `0320:1011`. Next: P1.
+
 ## Release
 
 42. Manual pass of the Installer requesters (wording, layout) and one install
