@@ -12,6 +12,7 @@ from test_compute_polls import graph, base, text_after
 from translator import compute, emit, image
 from translator.decode import decode
 from translator.lower import LowerError
+emit.Program.polled_rows = True  # the exact/U5-poll rows, dormant in the game until I9 (irq-plan I8)
 
 
 def admission():
@@ -73,7 +74,7 @@ def emission():
     assert set.union(*(p.live_in[n] for n in ENDS)) <= p.live_in[FIRST]
     lines, _ = p.module_text(FIRST[0])
     for end in ENDS:
-        assert text_after(lines, emit.label(*end), 3) == emit.poll(emit.label(*end))
+        assert text_after(lines, emit.label(*end), len(emit.poll(''))) == emit.poll(emit.label(*end))
     dispatch = compute.polled_dispatch(emit.label(*FIRST)+'_cx',
                                       [emit.label(*n) for n in ENDS], '$1e0e')
     at = lines.index(dispatch[0])

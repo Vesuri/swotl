@@ -13,6 +13,7 @@ from tools import compute_oracle as O
 from translator import compute, emit, image
 from translator.ir import FLAGS, FLAG_BIT
 from translator.support import equates
+emit.Program.polled_rows = True  # the exact-poll row, dormant in the game until I9 (irq-plan I8)
 
 STUB_AT = dict(B.STUB_AT, rt_hle_polygon_classify=B.D.STUB + 4 * len(B.STUBS))
 

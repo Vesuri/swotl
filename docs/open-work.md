@@ -61,7 +61,8 @@ speed work: [speed-plan.md](speed-plan.md).
     the specific R20/R35 tradeoffs and R36/R40/R48/F3b/F4 and irq-plan I7 (+0.117%) bench differences accepted by
     the user as noise (speed-plan §7) and D8's tiny bench regressions (speed-plan §3). Z1 leaves the target unmet; plan F is next.
     Guest native steps after irq-plan I9 are priced without polls or write
-    histories (open-work 43, RC5).
+    histories (open-work 43, RC5). Until I9 the native rows with polls run
+    generated (irq-plan I8 Facts: meter and frames).
 14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`
     `Harness`: each byte drew from a fresh generator with the same seed).
     A random background is stronger but changes every corpus case; needs
@@ -77,8 +78,9 @@ speed work: [speed-plan.md](speed-plan.md).
     interrupt, keyboard and mouse at the vertical blank, sync points for
     lockstep, native rows poll-free (U3/U5 retire). I1 measured, I2 proved,
     I3 monitored, I4 private-stack entry, I5 field task, I6 asynchronous IRQ0, I7
-    keyboard at the vertical blank (irq-plan Facts). Next: I8 (sync points); F10
-    skipped by the user (2026-10-25).
+    keyboard at the vertical blank, I8 sync points with the loop heads kept (user
+    2026-10-26; irq-plan Facts). Next: I9 (the rows with polls are disabled until
+    then); F10 skipped by the user (2026-10-25).
     The deferred natives it unblocks (D5A6 prefix, BB70, F9 O(1), FDE0, BD68,
     F290, 109D6; exact-poll rows rebuilt) are done at its I10.
 

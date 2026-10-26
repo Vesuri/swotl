@@ -9,8 +9,10 @@
 
 An arm is a directory frozen from the current build by `freeze`: gen/
 (build/gen), swotl.elf (build/host), amiga/Swotl.elf and amiga/Swotl.exe
-(amiga/out). Build each arm's commit, then freeze it; never measure a live
-build directory.
+(amiga/out) and, when built (`make amiga-sync`), amiga-sync/ (build/amiga-sync/
+out: the sync image the bench runs, docs/irq-plan.md I8; an arm without it,
+from before I8, polls in its production image). Build each arm's commit, then
+freeze it; never measure a live build directory.
 
 Runs interleave the arms (run 1 of every arm, then run 2, ...) on the 68020
 + 8 MB Fast model (AMIGA_CPU and CPU unset), each FS-UAE on its own port.
@@ -77,12 +79,16 @@ def freeze(arm):
     (arm / "amiga").mkdir(parents=True)
     shutil.copytree(ROOT / "build/gen", arm / "gen")
     shutil.copy2(ROOT / "build/host/swotl.elf", arm / "swotl.elf")
+    sync = ROOT / "build/amiga-sync/out"
     for name in ("Swotl.elf", "Swotl.exe"):
         shutil.copy2(AMIGA / "out" / name, arm / "amiga" / name)
+        if sync.is_dir():
+            (arm / "amiga-sync").mkdir(exist_ok=True)
+            shutil.copy2(sync / name, arm / "amiga-sync" / name)
     head = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     dirty = subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain"], capture_output=True, text=True).stdout
     sums = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in (arm / "swotl.elf", arm / "amiga/Swotl.elf", arm / "amiga/Swotl.exe")}
+            for p in (arm / "swotl.elf", *sorted(arm.glob("amiga*/Swotl.*")))}
     (arm / "arm.json").write_text(json.dumps(dict(head=head, dirty=bool(dirty), sha256=sums), indent=2) + "\n")
     print(f"froze {arm} at {head}{' (dirty tree)' if dirty else ''}")
 
@@ -95,8 +101,9 @@ def run_dir(session, arm, kind, n):
     return d
 
 
-def fsuae(session, arm, d, fixture, replace, args=""):
-    """Run one gdb fixture on the arm's Amiga build; output paths moved into d."""
+def fsuae(session, arm, d, fixture, replace, args="", image="amiga"):
+    """Run one gdb fixture on the arm's Amiga build (image: amiga, or amiga-sync
+    with a fallback to amiga before I8); output paths moved into d."""
     check_tools(session)
     rel = os.path.relpath(d, AMIGA)
     text = fixture.read_text()
@@ -110,11 +117,13 @@ def fsuae(session, arm, d, fixture, replace, args=""):
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
     arm = Path(arm).resolve()
-    env.update(SWOTL_ARGS=args, SWOTL_ELF=str(arm / "amiga/Swotl.elf"), FSUAE_RUN=f"{rel}/uae",
+    if not (arm / image).is_dir():
+        image = "amiga"
+    env.update(SWOTL_ARGS=args, SWOTL_ELF=str(arm / image / "Swotl.elf"), FSUAE_RUN=f"{rel}/uae",
                DEBUG_PORT=str(port), FSUAE_PORT_PINNED="1", FSUAE_CLAIM_STRICT="1")
     with (d / "run.log").open("w") as log:
         subprocess.run(["bash", str(AMIGA / "debug.sh"), "", str(d / "fixture.gdb"),
-                        str(arm / "amiga/Swotl.exe")], env=env, stdout=log,
+                        str(arm / image / "Swotl.exe")], env=env, stdout=log,
                        stderr=subprocess.STDOUT, check=True)
     shutil.rmtree(d / "uae", ignore_errors=True)
     check_tools(session)
@@ -130,9 +139,11 @@ def tool(script, *args, out=None):
             subprocess.run(cmd, stdout=f, check=True)
 
 
-def profile(d, arm, capture, count=()):
+def profile(d, arm, capture, count=(), image="amiga"):
     extra = [x for c in count for x in ("--count", c)]
-    tool("profile_report.py", capture, Path(arm) / "amiga/Swotl.elf", "--entries", Path(arm) / "gen",
+    if not (Path(arm) / image).is_dir():
+        image = "amiga"
+    tool("profile_report.py", capture, Path(arm) / image / "Swotl.elf", "--entries", Path(arm) / "gen",
          *extra, out=d / "profile.txt")
     if not (d / "profile.txt").read_text().startswith("100 PAL fields"):
         sys.exit(f"{d}: incomplete capture")
@@ -149,8 +160,9 @@ def bench(a):
         for arm in a.arms:
             d = run_dir(a.session, arm, "bench", n)
             log = fsuae(a.session, arm, d, AMIGA / "bench_frames.gdb",
-                        {"../tmp/bench/ram.bin": "ram.bin", "../tmp/bench/frames.bin": "frames.bin"}, "BENCH")
-            profile(d, arm, d / "frames.bin")
+                        {"../tmp/bench/ram.bin": "ram.bin", "../tmp/bench/frames.bin": "frames.bin"}, "BENCH",
+                        "amiga-sync")
+            profile(d, arm, d / "frames.bin", image="amiga-sync")
             pts = {int(k): int(f) * 312 + int(line) for k, f, line in
                    re.findall(r"^FRAME (\d+) field (\d+) line (\d+)$", log, re.M)}
             lines = [pts[k] - pts[k - 1] for k in range(4, 12)]

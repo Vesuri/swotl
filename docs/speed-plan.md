@@ -396,8 +396,9 @@ lines.
   per-instruction weight still fits to 0. Recalibrate (`--calibrate CAPTURE
   ELF --write`, then `--plant-check`) at the next re-profile or when the FS-UAE
   check disagrees. `tools/ab_labels.py` serves the FS-UAE check.
-- **Bench** (`SWOTL_ARGS=BENCH ./debug.sh "" bench_frames.gdb`, same model;
-  runtime.h `rt_bench`): no CIA timer; 9 PIT ticks per 4 runtime services
+- **Bench** (`SWOTL_ARGS=BENCH ./debug.sh "" bench_frames.gdb`, same model, on the
+  sync image `make amiga-sync` since irq-plan I8: production has no poll checks and
+  refuses `BENCH`; `ab_runs.py` freezes and runs it; runtime.h `rt_bench`): no CIA timer; 9 PIT ticks per 4 runtime services
   (the flight makes 4 per frame, m4 draws a frame every 9 ticks), plus one
   per 8,956 consecutive visits to a poll point in a spin (SPAZ's rate
   calibration gets the reference count 8,956; the demo waits for a tick

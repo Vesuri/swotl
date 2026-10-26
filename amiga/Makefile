@@ -45,6 +45,14 @@ OBJECTS = obj/main.o obj/Swotl.o obj/Input.o obj/Audio.o obj/GCCRuntime.o \
 	obj/amiga_platform.o obj/tfh_paula.o obj/fm_paula.o obj/amiga_run.o obj/c2p1x1_8_c5_bm.o obj/rt_entry.o \
 	$(patsubst $(RUNTIME)/%.c,obj/rt_%.o,$(wildcard $(RUNTIME)/*.c)) obj/program.o obj/compute_projection.o obj/compute_normalise.o obj/compute_scenery.o obj/compute_native.o
 
+# Sync image (docs/irq-plan.md I8): the generated sync-point checks and the
+# runtime's sync mode (no tick at the CIA interrupt, keys as IRQ1), for the bench
+# (make amiga-sync) and every replay image. Production has neither.
+ifneq ($(SYNC)$(REPLAY),)
+CCFLAGS += -DSWOTL_SYNC
+VASMGEN += -DSWOTL_SYNC=1
+endif
+
 # Diagnostic image is built in a separate working directory by the replay test.
 ifneq ($(REPLAY),)
 CCFLAGS += -DSWOTL_REPLAY -I"$(REPLAY)"

@@ -73,7 +73,7 @@ def program_image(p: emit.Program, cache: Path, extra: tuple = ()) -> tuple[byte
     src += [f"\torg\t${D.CODE:x}", "labels:"] + [f"\tdc.l\t{x}" for x in order]
     src += body + [HELPERS] + smc_code + smc_data
     text = branch_widths("\n".join(src) + "\n")
-    key = hashlib.sha256(text.encode()).hexdigest()[:16]
+    key = hashlib.sha256((" ".join(D.ASM_DEFS) + text).encode()).hexdigest()[:16]
     out = cache / f"program-{key}.bin"
     image_ = out.read_bytes() if out.exists() else D.assemble(text, out)
     addr = {x: int.from_bytes(image_[4 * k:4 * k + 4], "big") for k, x in enumerate(order)}
@@ -106,7 +106,7 @@ def snippets(p: emit.Program, addr: dict, nodes: list, cache: Path) -> tuple[byt
         src += [f"S{k}:"] + lw.out + ["\trts"]
         cold += lw.cold
     text = "\n".join(src + cold) + "\n"
-    out = cache / f"snip-{hashlib.sha256(text.encode()).hexdigest()[:16]}.bin"
+    out = cache / f"snip-{hashlib.sha256((' '.join(D.ASM_DEFS) + text).encode()).hexdigest()[:16]}.bin"
     image_ = out.read_bytes() if out.exists() else D.assemble(text, out)
     return image_, [int.from_bytes(image_[4 * k:4 * k + 4], "big") for k in range(len(nodes))]
 
@@ -875,9 +875,10 @@ def main(argv=None, on_batch=None) -> int:
             if info["err"]:
                 diffs.append(f"68k error {info['err']} stop={stop} pc={pc:x}")
             diffs += info["irq"]
-            if posted and calls != [(cs << 16, ip)]:
+            loop = int((mod, run[0]) in p.loops)   # emit.poll_stub: d6 bit 0 at a loop head
+            if posted and calls != [(cs << 16 | loop, ip)]:
                 diffs.append(f"poll: rt_irq calls {[(hex(a), hex(b)) for a, b in calls]}, "
-                             f"want one with d6={cs << 16:x} d7={ip:x}")
+                             f"want one with d6={cs << 16 | loop:x} d7={ip:x}")
             # successor reached
             exc = ints[0] if ints else None
             live: set = set()

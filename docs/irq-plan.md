@@ -150,6 +150,41 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   `SetICR` gave no gain (68,450) and was dropped. Bench cost accepted by the user
   (2026-10-25). Display audits 40 captures, 0 late
   (68030, 68040).
+- I8 (2026-10-26, evidence `tmp/irq/I8/`). Sync set (`poll-points.csv`, 2,410 rows):
+  206 `access`, 104 `int`, 11 `clear`, 12 `if`, 2,077 `loop`. Production tests only at
+  `if` points (image 4,930,208 → 4,785,764 bytes); a tick posted while IRQ0 could not run
+  goes at the next CIA tick (`rt_irq0_take`); keys drain at service entry. Sync builds
+  (`SWOTL_SYNC`: host, replays, bench) post IRQ1 and test everywhere, so host runs deliver
+  through those checks, not Unicorn hooks; loop-head stubs set `d6` bit 0, the only
+  visits the bench's spin rule counts (SPAZ's calibration loop now also holds an `if`
+  point; its count is unchanged, `RT_BENCH_POLLS` stays). Alignment pads fit production,
+  not the sync image. IRQ12 unchanged (host skips it, the Amiga posts none). Reference
+  patch: an IRQ0 pending while deliverable (IF set, unmasked, not in service) whose next
+  edge the gate would merge is kept and raised at once at a later opening; merges the
+  ungated machine makes stay. Without loop heads (333 points) gated runs left the
+  ungated original's trajectory (m4 VRAM from frame 20, a tick merged in a ~90k-instruction
+  handler run shifted by deferral; c7's demo returned at 2.05G instructions, ungated
+  349M; c7, c81, c84 failed); with them m4 VRAM equals ungated, c7 349,303,972 vs
+  349,303,949. Hybrid chosen by the user (2026-10-26, RC3). c81 and c84 failed ungated
+  too (their damage came from the old gate's merges): re-scripted by the user's decision,
+  c81 last `my-60` at `#60` (was `#50`), c84 `4` at `#2` (was `#1`); ungated they reach
+  their endpoints at 418,940,505 / 392,713,482. 94 references re-recorded, `polls=`
+  `c1aa4a7564f96486` → `76bd1cb483ad50d3`; m2, m4, c7, c81, c84 repeat exactly. The run
+  name's length reaches the guest (`pc_run.py` name; m4 differs by 211 instructions):
+  references keep their `ref-` names. Old/new: m2, m4 service streams equal, c12/c13
+  diverge after ~10,300 services; ticks per frame (between `+44E0` calls) differ in m4
+  0/200, m2 9/901 (all by one), c12 763/4,253 (635 by one), c13 576/4,331 (553 by one).
+  Meter m4 (base on the old reference, same name): 154,344,769 → 160,124,683 model
+  cycles (+3.7448%, sync ELF): the rows with polls run generated (guest instructions
+  10,322,775 → 14,233,376); without the sync-only tests (8.407 cycles a visit, 1,893
+  `if` visits kept) about 151.66M (−1.74%). Bench (sync image, 3 runs, base I7): median
+  68,444 → 68,852 lines (+0.60%, ranges 68,427–68,448 / 68,827–68,852), new RAM hash
+  `4dcd4d43…`. Frames (production, 3 runs): median 330 ms (310–340) → 310 ms (300–320).
+  I3's song-buffer rule now holds per byte (`song_races`): with the new timing song 35's
+  reads span ticks 141–10037 while FRONTEND `+0EBE5` reloads `630CC`–`630D4` at 9835, last
+  read at 3220 (c62, c63); the per-song window flagged it. Chosen by the user. Stress
+  windows also end at a sync point's continuation (`_np`, `_bp_np`, `_native_np`): a tick
+  recorded at an `access` poll ran past its write of `9C20` (m2 seed 1, ticks 113/114).
 - Guest memory backs 1 MiB + HMA (`RT_GUEST_BYTES`); host runs compare RAM from the
   environment MCB to A0000h with dead stack masked (open-work 24).
 
@@ -164,7 +199,9 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   remains a guest interrupt. Supersedes speed-plan §2.3/§2.9's poll and delivery-order
   limits for these steps.
 - **RC3** References are re-recorded with the sync set (I8) and whenever it changes, with
-  old/new `polls=` fingerprints in the commit. Fixtures and tolerances stay.
+  old/new `polls=` fingerprints in the commit. Fixtures and tolerances stay. The set keeps
+  the loop heads outside native rows (user 2026-10-26), so a native row that removes
+  loop heads (I9, I10) re-records.
 - **RC4** Keyboard and mouse are read at the vertical blank; no keyboard interrupt. The
   BIOS keyboard state is updated at service entry in production and at sync points in
   tests (services are sync points).
@@ -182,11 +219,14 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   delivers every tick; ticks deferred by guest IF = 0 are delivered by the runtime's
   IF 0→1 paths (`sti` after its one-instruction shadow, POPF and IRET through
   `__set_flags`, `rt_set_flags_word`); wait loops on `813C` see the interrupt's store.
-- **Sync points** (`poll-points.csv` keeps its name and format) are addresses, not code:
-  main-code instructions that may access the handler footprint (I2) and software `int`
-  sites, minus accesses that only run with guest IF = 0 (they can never deliver), plus
-  IF 0→1. Between two sync points a tick commutes with all main code, so tests deliver
-  at the next one. Delivered by: the host run (Unicorn code hooks at the addresses), the
+- **Sync points** (`poll-points.csv` keeps its name, plus a `kind` column) are addresses,
+  not code: main-code instructions that may access the handler footprint (I2) and
+  software `int` sites, minus accesses that only run with guest IF = 0 (they can never
+  deliver), CLI/POPF/IRET with IF possibly set, plus IF 0→1. Between two sync points a
+  tick commutes with all main code, so tests could deliver at the next one; the
+  reference and sync builds also deliver at loop heads outside native rows (user
+  2026-10-26, I8 Facts): deferring ticks to the 333 sync points alone moves the
+  original's trajectory. Delivered by: the host run (Unicorn code hooks at the addresses), the
   reference (gate opens there), diagnostic builds (a check emitted only in those builds,
   next to the existing replay hooks; or gdb breakpoints) and the bench (a diagnostic-style
   build, or ticks at services plus a runtime spin detector; chosen in I8 by bench
@@ -245,8 +285,9 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   ranges, song buffers from SPAZ's table, the EMS frame if they sit there) only from a
   sync access or a runtime service that masks the tick. Fails loudly. Runs in
   `test-host-all` and the coverage scenarios; plants: undeclared main read of `9BCA`,
-  handler write outside the footprint. Records the sites found, song buffer location and
-  EMS use.
+  handler write outside the footprint; a generated write of a song byte between the
+  handler's first and last read of that byte fails. Records the sites found, song buffer
+  location and EMS use.
 - **I4 Private-stack entry** (runtime). IRQ0 delivery at today's polls goes through
   `rt_irq_async` in sync mode (private stack, sentinel return); faults keep `deliver`.
   References unchanged; host runs match with dead stack masked. Checks: `make test` (the
@@ -306,7 +347,9 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   emission (polls, sync sites, aliases, `native_polls.i`); `compute_oracle.py` compares at
   entry, exits and returns without histories, written-address sets for code and VRAM;
   rows re-enabled with their natives' G_IRQ tests and trampolines removed; footprint
-  overlap rejects (I2). Retired tests and plants get poll-free equivalents. Checks:
+  overlap rejects (I2). Loop heads in a re-enabled row's body leave the sync set
+  (`emit.Program`; references re-recorded, RC3). Retired tests and plants get poll-free
+  equivalents (until then `Program.polled_rows` keeps them on the pre-I8 loop heads). Checks:
   `t-compute-*` with sabotage, each row's native differential, `test-host-all`, replays;
   meter and bench per row group.
 - **I10 Re-open native rows** (user 2026-10-24: do them as soon as I9 allows), each by

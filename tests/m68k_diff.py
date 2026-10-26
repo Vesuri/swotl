@@ -68,10 +68,13 @@ BATCH = 1500
 REPLAY: Path | None = None   # set by m68k_sabotage
 
 
+ASM_DEFS = ("-DSWOTL_SYNC=1",)   # the sync build: poll checks host runs deliver at (irq-plan I8)
+
+
 def assemble(src: str, out: Path) -> bytes:
     s = out.with_suffix(".s")
     s.write_text(src)
-    r = subprocess.run([str(VASM), "-quiet", "-m68020", "-Fbin", "-o", str(out), str(s)],
+    r = subprocess.run([str(VASM), "-quiet", "-m68020", *ASM_DEFS, "-Fbin", "-o", str(out), str(s)],
                        capture_output=True, text=True)
     if r.returncode:
         raise RuntimeError(f"vasm failed:\n{r.stdout}{r.stderr}"[:4000])

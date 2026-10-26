@@ -142,7 +142,12 @@ def write(out: Path, file: str, module: str, body: bytes) -> None:
 def generate(out: Path, program: emit.Program | None = None) -> tuple[dict[str, cfg.Unit], Counter, dict[str, Counter]]:
     units = program.units if program is not None else cfg.build()
     out.mkdir(parents=True, exist_ok=True)
-    prog = program if program is not None else emit.Program(units)
+    proof = None
+    if program is None:
+        # I2/I8: the footprint proof on the program with loop heads only gives the
+        # sync points (irq.Proof.sync_points); they are leaders of the generated one
+        proof = irq.prove(emit.Program(units, sync={}))
+    prog = program if program is not None else emit.Program(units, sync=proof.sync_points())
     total, per = Counter(), {}
     files: list[str] = []
     texts: dict[str, list[str]] = {}
@@ -166,19 +171,18 @@ def generate(out: Path, program: emit.Program | None = None) -> tuple[dict[str, 
     write(out, "support.s", SUPPORT, support.HELPERS.encode())
     write(out, "program.s", PROGRAM, (support.equates() + prog.program_text(files)).encode())
     write(out, "native_polls.i", PROGRAM, (support.equates() + prog.native_poll_text()).encode())
-    # D8 poll points for the reference tracer (SWOTL_POLLS): DOSBox-X takes
+    # D8/I8 sync points for the reference tracer (SWOTL_POLLS): DOSBox-X takes
     # hardware interrupts only there, so the host can replay them exactly
-    (out / POLLS).write_text("module,offset\n" + "".join(
-        f"{m},0x{o:05x}\n" for m, o in sorted(prog.loop_heads)))
+    (out / POLLS).write_text("module,offset,kind\n" + "".join(
+        f"{m},0x{o:05x},{prog.sync[(m, o)]}\n" for m, o in sorted(prog.loop_heads)))
     # R27 sites for tools/outline_sites.py: jcc, its fall-through range, target,
     # the instruction after whose run the range goes
     (out / OUTLINE).write_text("label,first,last,target,ends,place,outlined\n" + "".join(
         f"{lab},{a},{b},{t},{int(e)},{pl},{int(on)}\n"
         for lab, (a, b, t, e, pl, on) in sorted(prog.outline_sites.items())))
-    if program is None:
+    if proof is not None:
         # I2: the IRQ0 handler's footprint and every main-code access classified
         # against it (translator/irq.py); a violation fails generation
-        proof = irq.prove(prog)
         (out / FOOTPRINT).write_text("kind,class,first,last,access,where\n"
                                      + "".join(r + "\n" for r in proof.rows()))
         print(proof.summary())

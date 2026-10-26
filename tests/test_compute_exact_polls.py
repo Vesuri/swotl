@@ -9,6 +9,7 @@ from test_compute_polls import graph, base, text_after
 from translator import check, compute, emit, gen, image
 from translator.decode import decode
 from translator.lower import LowerError
+emit.Program.polled_rows = True  # the exact/U5-poll rows, dormant in the game until I9 (irq-plan I8)
 
 
 def admission():
@@ -63,8 +64,8 @@ def emission():
     assert not p.compute_bodies[root].removed
     lines, _ = p.module_text(root[0])
     lab = emit.label(*root)
-    first = text_after(lines, lab, 7)
-    assert first[:3] == emit.poll(lab), 'callback precedes original entry poll'
+    first = text_after(lines, lab, 4 + len(emit.poll(lab)))
+    assert first[:len(emit.poll(lab))] == emit.poll(lab), 'callback precedes original entry poll'
     assert any('jsr rt_hle_exact_poll_test' in s for s in first)
     assert f'\tjmp {lab}_np' in lines, 'pending handoff must resume after the poll'
     tail = text_after(lines, lab + '_native_irq', 6)

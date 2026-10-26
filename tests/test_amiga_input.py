@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Exercise production Input.cpp through its ciaa.resource calls and MMIO registers.
 
-The fake registers model hardware values, not Input::key/moveMouse calls.
+The fake registers model hardware values, not Input::key/moveMouse calls. Both
+builds: sync (SWOTL_SYNC) posts IRQ1 per event, production none (irq-plan I8).
 The keyboard is read at the vertical blank from ciaa.resource's SP flag with
 the SP interrupt disabled (docs/irq-plan.md I7). This is handler coverage, not
 emulator interrupt-routing or physical input validation. --sabotage proves the
@@ -102,9 +103,14 @@ static void edge(unsigned wire, unsigned scan, unsigned irq) {
     icr |= 0x08;
     Input::verticalBlank();
     assert(cra == 0x81 && depth == 0 && !(icr & 0x08));
-    assert(rt_key_tail == k + 1 && rt_irq_tail == i + 1);
+    assert(rt_key_tail == k + 1);
     assert(rt_key_ring[k % RT_KEY_RING] == scan);
-    assert(rt_irq_ring[i % RT_IRQ_RING] == irq);
+#ifdef SWOTL_SYNC                  // sync builds post IRQ1; production none (irq-plan I8)
+    assert(rt_irq_tail == i + 1 && rt_irq_ring[i % RT_IRQ_RING] == irq);
+#else
+    assert(rt_irq_tail == i);
+    (void)irq;
+#endif
 }
 static void mouse(unsigned counters, unsigned buttons, int dx, int dy) {
     joy = counters;
@@ -143,7 +149,7 @@ int main() {
 '''
 
 
-def run(source: str, expected_ok: bool) -> None:
+def run(source: str, expected_ok: bool, sync: bool) -> None:
     (ROOT / 'tmp').mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='input-registers-', dir=ROOT / 'tmp') as name:
         d = Path(name)
@@ -153,12 +159,13 @@ def run(source: str, expected_ok: bool) -> None:
             p.write_text(text)
         (d / 'Input.cpp').write_text(source)
         (d / 'probe.cpp').write_text(HARNESS)
-        subprocess.run(['c++', '-std=c++17', '-O2', '-I', str(d), '-I',
+        subprocess.run(['c++', '-std=c++17', '-O2', *(['-DSWOTL_SYNC'] if sync else []), '-I', str(d), '-I',
                         str(ROOT / 'src/platform/amiga'), str(d / 'Input.cpp'),
                         str(d / 'probe.cpp'), '-o', str(d / 'probe')], check=True)
         result = subprocess.run([str(d / 'probe')], capture_output=True, text=True)
         assert (result.returncode == 0) == expected_ok, result.stdout + result.stderr
-        print(result.stdout.strip() if expected_ok else 'planted input fault caught')
+        build = 'sync' if sync else 'production'
+        print(f"{build}: {result.stdout.strip()}" if expected_ok else f'{build}: planted input fault caught')
 
 
 if __name__ == '__main__':
@@ -166,8 +173,14 @@ if __name__ == '__main__':
     parser.add_argument('--sabotage', action='store_true')
     args = parser.parse_args()
     source = (ROOT / 'src/platform/amiga/Input.cpp').read_text()
-    run(source, True)
+    for sync in (True, False):
+        run(source, True, sync)
     if args.sabotage:
+        # production posts a keyboard interrupt / the sync build posts none
+        posting = '#ifdef SWOTL_SYNC\n    rt_irq_ring'
+        assert source.count(posting) == 1
+        run(source.replace(posting, '#if 1\n    rt_irq_ring'), False, False)
+        run(source.replace(posting, '#if 0\n    rt_irq_ring'), False, True)
         for old, new in [('(code >> 1) | (code << 7)', '(code << 1) | (code >> 7)'),
                          ('(int8_t)(x - mouseCounterX)', '(int16_t)(x - mouseCounterX)'),
                          ('isRightMouseButtonPressed() ? 2 : 0', 'isRightMouseButtonPressed() ? 4 : 0'),
@@ -177,4 +190,5 @@ if __name__ == '__main__':
                          ('    SetICR(ciaaBase, CIAICRF_SP);\n    return true;', '    return true;'),
                          ('AbleICR(ciaaBase, CIAICRF_SETCLR | CIAICRF_SP);', '(void)spEnabled;')]:
             assert source.count(old) == 1
-            run(source.replace(old, new), False)
+            for sync in (True, False):
+                run(source.replace(old, new), False, sync)

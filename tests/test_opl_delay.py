@@ -19,6 +19,7 @@ from tools import compute_oracle as O
 from translator import emit
 from translator.support import equates
 from translator.ir import FLAGS, FLAG_BIT
+emit.Program.polled_rows = True  # the exact/U5-poll rows, dormant in the game until I9 (irq-plan I8)
 
 MODULE, SEG = 'SPAZ.OVL', 0x1770
 OFF = 0xd03 - 0xac3                     # module offset - IP in SEG

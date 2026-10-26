@@ -2,8 +2,10 @@
 
 The proof holds on the program, matches build/gen/irq-footprint.csv and keeps
 the facts the later steps rest on (handler-written game variables, ports, the
-813C readers as sync accesses). --sabotage (plants only): each plant edits one decoded
-instruction (or the compute rows) and must fail the proof with its message."""
+813C readers as sync accesses), and the host monitor's song-buffer rule holds per
+byte (tests/irq_monitor.py song_races). --sabotage (plants only): each plant edits one
+decoded instruction (or the compute rows) and must fail the proof with its message;
+each song-rule plant must fail song_rule."""
 from pathlib import Path
 import argparse
 import dataclasses
@@ -12,6 +14,8 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from translator import emit, irq
+sys.path.insert(0, str(ROOT / 'tests'))
+import irq_monitor
 
 SPAZ = 'SPAZ.OVL'
 # G spans the handler writes (irq-plan Facts): song counters, tick, timer slots, dword
@@ -92,6 +96,34 @@ def check(proof):
     return len(proof.sync)
 
 
+def song_rule(races=irq_monitor.song_races):
+    """Song bytes 100-103 read in ticks 10-20, byte 200 in ticks 10-500 (one song):
+    a generated write of a byte inside its own read window races; after its last
+    read (c62's reload of played bytes), before its first, or from a service, not."""
+    reads = {a: [10, 20, 35] for a in range(100, 104)}
+    reads[200] = [10, 500, 35]
+    w = lambda lin, tick, generated=True: (lin, 2, 'site', generated, tick)
+    assert len(races(reads, [w(102, 15)])) == 1, 'write inside a byte\'s read window passed'
+    assert len(races(reads, [w(199, 300)])) == 1, 'write reaching a byte still read passed'
+    for quiet in (w(100, 300), w(100, 5), w(102, 15, False)):
+        assert not races(reads, [quiet]), f'no race flagged: {quiet}'
+    return 5
+
+
+def merged_window(reads, writes):   # the pre-I8 rule: one extent and window per song
+    lo, hi = min(reads), max(reads)
+    first, last = min(r[0] for r in reads.values()), max(r[1] for r in reads.values())
+    return [w for w in writes if w[3] and lo <= w[0] + w[1] - 1 and w[0] <= hi and first <= w[4] <= last]
+
+
+SONG_PLANTS = {
+    'song rule: merged window': merged_window,
+    'song rule: first read only': lambda reads, writes: [
+        w for w in writes if w[3] and any(a in reads and reads[a][0] <= w[4] for a in range(w[0], w[0] + w[1]))],
+    'song rule: no races': lambda reads, writes: [],
+}
+
+
 def plant(name):
     prog = emit.Program()
     rows, expect = PLANTS[name](prog)
@@ -111,6 +143,14 @@ if __name__ == '__main__':
     if args.sabotage:
         for name in PLANTS:
             print('caught', name, plant(name), flush=True)
+        for name, races in SONG_PLANTS.items():
+            try:
+                song_rule(races)
+            except AssertionError as error:
+                print('caught', name, error, flush=True)
+            else:
+                raise AssertionError(f'{name} escaped')
     else:
         proof = irq.Proof(emit.Program())
         print('irq footprint:', check(proof), 'sync accesses;', proof.summary())
+        print('irq monitor song rule:', song_rule(), 'cases')

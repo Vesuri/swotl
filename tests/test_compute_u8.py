@@ -18,6 +18,8 @@ sys.path.insert(0, str(ROOT / 'tests'))
 from translator import compute  # noqa: E402
 from translator.lower import LowerError  # noqa: E402
 from test_compute_polls import base, guest_state, put_state, text_after  # noqa: E402
+from translator import emit  # noqa: E402
+emit.Program.polled_rows = True  # the exact/U5-poll rows, dormant in the game until I9 (irq-plan I8)
 
 M = 'SWOTL.EXE'
 SERVICE = 'rt_hle_u8_test'
@@ -79,7 +81,7 @@ def emission():
             assert row.removed == {at(h) for h in removed}, name
             assert c.loop_heads == (p.loop_heads - row.removed) | set(rets), (name, 'poll set')
             for r in rets:      # every return polls
-                assert text_after(lines, emit.label(*r), 3) == emit.poll(emit.label(*r)), (name, r)
+                assert text_after(lines, emit.label(*r), len(emit.poll(''))) == emit.poll(emit.label(*r)), (name, r)
         else:
             assert c.loop_heads == p.loop_heads, (name, 'poll set')
         for r in rets:

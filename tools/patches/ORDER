@@ -9,3 +9,4 @@ dosbox-x-swotl-release-visits.patch
 dosbox-x-swotl-key-chords.patch
 dosbox-x-swotl-rep-chunks.patch
 dosbox-x-swotl-joystick.patch
+dosbox-x-swotl-irq0-backlog.patch

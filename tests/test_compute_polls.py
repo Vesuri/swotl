@@ -20,6 +20,8 @@ sys.path.insert(0, str(ROOT / 'tests'))
 from translator import compute  # noqa: E402
 from translator.decode import decode  # noqa: E402
 from translator.lower import LowerError  # noqa: E402
+from translator import emit  # noqa: E402
+emit.Program.polled_rows = True  # the exact/U5-poll rows, dormant in the game until I9 (irq-plan I8)
 
 # -- admission on synthetic graphs ---------------------------------------------
 
@@ -187,7 +189,7 @@ def emission(drop_return_poll=False):
         for n in removed:   # neither arm polls there
             assert f'{emit.label(*n)}_np:' not in lines, f'removed poll {n} emitted'
         assert f'{emit.label(*RESUME)}_np:' in lines, 'return poll missing'
-        assert text_after(lines, emit.label(*RESUME), 3) == emit.poll(emit.label(*RESUME))
+        assert text_after(lines, emit.label(*RESUME), len(emit.poll(''))) == emit.poll(emit.label(*RESUME))
         hook = compute.polled_hook(SERVICE, 0, f'{emit.label(*FIRST)}_cx', cs)
         assert text_after(lines, emit.label(*FIRST), len(hook)) == hook
         resumes = [emit.label(*x) for x in (RESUME, *sync)]

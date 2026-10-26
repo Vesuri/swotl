@@ -21,6 +21,7 @@ from tools import compute_oracle as O
 from translator import compute, emit
 from translator.support import equates
 from translator.ir import FLAGS, FLAG_BIT
+emit.Program.polled_rows = True  # the exact/U5-poll rows, dormant in the game until I9 (irq-plan I8)
 
 CS_OFF = 0x49b0
 FIRST, RETURN = 0xc000, 0xc04a

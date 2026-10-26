@@ -164,11 +164,13 @@ extern volatile uint8_t rt_irq_pending;
 #define RT_RAISE_IRQ() (rt_irq_pending = 1, *(volatile uint8_t *)&G_IRQ = 1)
 void rt_bios_int08(void);
 /* Async IRQ0 (docs/irq-plan.md I6): the platform's tick interrupt calls
- * rt_irq_interrupt (rt_entry.s) when rt_irq0_ready, else posts vector 08h.
+ * rt_irq_interrupt (rt_entry.s) when rt_irq0_ready, else posts vector 08h;
+ * production (I8) then runs the posted ticks it may take (rt_irq0_take).
  * rt_irq0_running: a handler runs (either entry); rt_irq_mask: runtime services
  * in progress; rt_opl_pair: the main thread's OPL index/data pair is open. */
 extern volatile uint8_t rt_irq0_running, rt_irq_mask, rt_opl_pair, rt_irq_interrupting;
 int rt_irq0_ready(void);
+int rt_irq0_take(void);
 void rt_irq_interrupt(void);
 void rt_irq_abort(void) __attribute__((noreturn));
 /* IRQ0 entry (rt_entry.s rt_irq_async, docs/irq-plan.md I4): the guest handler
@@ -187,7 +189,8 @@ extern uint8_t rt_irq_saved[RT_STATE_BYTES + sizeof(struct rt_regs)];
  *   over them (the flight makes 4 services per frame; the m4 reference draws
  *   a frame every 9 ticks);
  * - in a spin (RT_BENCH_SPIN or more consecutive visits with IF set to one
- *   poll point): one per RT_BENCH_POLLS such visits. Poll visits are watched
+ *   loop-head poll point, other sync points not counted): one per
+ *   RT_BENCH_POLLS such visits. Poll visits are watched
  *   from each service, PIT channel 0 reload or such tick, for at most
  *   RT_BENCH_WATCH visits outside spins and until a spin ends (SPAZ's rate
  *   calibration counts loop iterations between two ticks: the reference
@@ -201,13 +204,16 @@ extern uint8_t rt_bench;
 void rt_bench_watch(void);
 
 /* input.c: the platform appends keyboard events (PC set 1 scan code, bit 7
- * break, RT_KEY_E0 for E0-prefixed keys), one per 09h interrupt it posts */
+ * break, RT_KEY_E0 for E0-prefixed keys), in sync builds (SWOTL_SYNC: host,
+ * replay, bench) one per 09h interrupt it posts; production posts none and
+ * rt_int_c drains them at service entry with IF set (docs/irq-plan.md I8) */
 #define RT_KEY_RING 16
 #define RT_KEY_E0 0x100
 extern volatile uint16_t rt_key_ring[RT_KEY_RING];
 extern volatile uint8_t rt_key_tail;
 void rt_input_init(void);
 void rt_keyboard_irq(void);
+void rt_keyboard_drain(void);
 int rt_key_available(void);
 uint16_t rt_key_take(void);
 void rt_int16(void);

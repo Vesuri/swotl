@@ -52,14 +52,18 @@ static int32_t mouseDY = 0;
 static uint8_t mouseButtons = 0;
 static uint8_t scriptButtons = 0;
 
+// Sync builds post IRQ1 for each event; production has no keyboard interrupt,
+// the runtime drains the events at service entry (docs/irq-plan.md I8).
 static void post(uint16_t scan)
 {
     Disable();                      // the rings are shared with the PIT interrupt
     rt_key_ring[rt_key_tail % RT_KEY_RING] = scan;
     ++rt_key_tail;
+#ifdef SWOTL_SYNC
     rt_irq_ring[rt_irq_tail % RT_IRQ_RING] = (scan & 0x80) ? 0x89 : 0x09;
     ++rt_irq_tail;
     RT_RAISE_IRQ();
+#endif
     Enable();
 }
 

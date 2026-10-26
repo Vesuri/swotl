@@ -13,6 +13,7 @@ from tools import compute_oracle as O
 from translator import emit, image
 from translator.support import equates
 from translator.ir import FLAGS, FLAG_BIT
+emit.Program.polled_rows = True  # the exact/U5-poll rows, dormant in the game until I9 (irq-plan I8)
 
 SCOPES = ((0xd92a, 0xd93d), (0xd95c, 0xd96f))
 

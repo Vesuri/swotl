@@ -151,6 +151,14 @@ static void add_key(uint16_t key)
     }
 }
 
+/* Production (I8): every pending keyboard event (runtime.h). */
+void rt_keyboard_drain(void)
+{
+    while (key_head != rt_key_tail) {
+        rt_keyboard_irq();
+    }
+}
+
 /* BIOS INT 09h for one keyboard event, as the reference's (DOSBox-X
  * IRQ1_Handler, US layout, lock keys toggling on release; Pause, Ctrl-Break
  * and Ctrl-Alt-Del are not modelled: the game does not use them). */

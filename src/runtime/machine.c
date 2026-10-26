@@ -246,6 +246,13 @@ uint32_t rt_int_c(uint32_t d6, uint32_t ip)
     if (rt_bench) {
         bench_service();
     }
+#ifndef SWOTL_SYNC
+    /* Production (I8): no keyboard interrupt; the BIOS takes the keys typed
+     * since the last service with IF set, as its INT 09h would have. */
+    if (G_IF) {
+        rt_keyboard_drain();
+    }
+#endif
     switch (vector) {
     case 0x10: rt_int10(); break;
     case 0x21: rt_int21(cs, (uint16_t)ip); break;
@@ -314,7 +321,8 @@ static void bench_service(void)
     rt_bench_watch();
 }
 
-/* A poll visit with IF set: consecutive visits to one poll point are
+/* A loop-head poll visit with IF set (other sync points do not count: a loop
+ * may hold several, irq-plan I8): consecutive visits to one poll point are
  * counted; a spin ticks every RT_BENCH_POLLS of them, leaving it ends the
  * watch, other visits use up its budget. */
 static void bench_poll(uint32_t at)
@@ -401,7 +409,7 @@ uint32_t rt_irq_c(uint32_t d6, uint32_t ip)
     if (rt_present_due == 1) {
         rt_video_refresh();
     }
-    if (bench_watching && G_IF) {
+    if (bench_watching && G_IF && (d6 & 1)) {   /* a loop head (emit.poll_stub) */
         bench_poll((d6 & 0xffff0000) | (uint16_t)ip);
     }
     while (G_IF && !rt_irq0_running && irq_head != rt_irq_tail) {
@@ -464,6 +472,21 @@ int rt_irq0_ready(void)
 {
     return G_IF && !rt_irq0_running && !rt_irq_mask && !rt_opl_pair &&
            irq_head == rt_irq_tail && !rt_bench && guest_vector(8);
+}
+
+/* Production (I8, no poll checks): the CIA tick takes the oldest posted tick
+ * when IRQ0 could run but for the posted ones. Only ticks are posted there
+ * (keys drain at service entry), so the order is kept. */
+int rt_irq0_take(void)
+{
+    if (!G_IF || rt_irq0_running || rt_irq_mask || rt_opl_pair || rt_bench ||
+            !guest_vector(8) || irq_head == rt_irq_tail ||
+            rt_irq_ring[irq_head % RT_IRQ_RING] != 8) {
+        return 0;
+    }
+    ++irq_head;
+    rt_irq_pending = irq_head != rt_irq_tail;
+    return 1;
 }
 
 /* After the restore: re-arm from what is posted (runtime.h). */

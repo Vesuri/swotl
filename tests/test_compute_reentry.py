@@ -9,6 +9,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / 'tests')]
 from translator import emit, region
 import m68k_diff as D
 import uc as U
+emit.Program.polled_rows = True  # the exact/U5-poll rows, dormant in the game until I9 (irq-plan I8)
 
 NODE = ('SWOTL.EXE', 0x10a53)
 PREDECESSORS = {
@@ -103,7 +104,7 @@ def emission():
     # still leaves the copy because its handler may have changed BP again.
     for lab in (emit.label(*NODE),emit.copy_label(*NODE)):
         at = next(i for i,line in enumerate(lines) if line.startswith(lab+':'))
-        assert lines[at+1:at+4] == emit.poll(lab)
+        assert lines[at+1:at+1+len(emit.poll(lab))] == emit.poll(lab)
     irq = lines.index(emit.copy_label(*NODE)+'_irq:')
     assert '\tbra '+emit.label(*NODE)+'_np' in lines[irq:irq+20]
     return 5

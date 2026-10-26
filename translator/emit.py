@@ -16,14 +16,16 @@ other target stops), so each sees the live-in union of that set; a divide
 error continues in the guest INT 00h handler; a flag-preserving cell walk passes its caller continuation's live flags
 through (other self-modified flow sees every flag live); an annotated PUSHF/POPF save reads what is live after
 its POPF. Leaders: seeds, call and far targets, transfer targets, return
-sites and starts without a fall-through predecessor.
+sites, sync points and starts without a fall-through predecessor.
 """
 
 from __future__ import annotations
 
 import bisect
+import csv
 import re
 from collections import Counter
+from pathlib import Path
 
 from . import cfg, compute, image, region, smc
 from .decode import Far, Rel
@@ -79,20 +81,33 @@ def stop_label(mod: str, off: int) -> str:
     return f"{TAG[mod]}_{off:05X}_stop"
 
 
-def poll(lab: str) -> list[str]:
-    """D8 safe point at a loop head (a block leader: live flags are in the state
+SYNC = "build/gen/poll-points.csv"   # make gen: module, offset, kind (irq.Proof.sync_points)
+
+
+def sync_points(path=None) -> dict[tuple[str, int], str]:
+    with (Path(path) if path else image.REPO / SYNC).open() as f:
+        return {(r["module"], int(r["offset"], 16)): r["kind"] for r in csv.DictReader(f)}
+
+
+def poll(lab: str, always: bool = False) -> list[str]:
+    """D8 safe point at a sync point (a block leader: live flags are in the state
     block, so the CCR is free): a posted interrupt branches to the poll's stub
-    (poll_stub), the common case falls through."""
-    return ["\ttst.b G_IRQ(a6)", f"\tbne {lab}_irq", f"{lab}_np:"]
+    (poll_stub), the common case falls through. Only sync builds (SWOTL_SYNC: host
+    runs, replays, the bench) test, but at an IF 0→1 point (always): production
+    takes ticks at the CIA interrupt (irq-plan I8)."""
+    test = ["\ttst.b G_IRQ(a6)", f"\tbne {lab}_irq"]
+    return (test if always else ["\tifd SWOTL_SYNC", *test, "\tendif"]) + [f"{lab}_np:"]
 
 
-def poll_stub(lab: str, ip: int, cs: str) -> list[str]:
+def poll_stub(lab: str, ip: int, cs: str, always: bool = False, loop: bool = False) -> list[str]:
     """Out of line, after an unconditional transfer: rt_irq takes a pending
-    hardware interrupt with d6 = CS << 16, d7 = the poll point's IP, then back
+    hardware interrupt with d6 = CS << 16 (| 1 at a loop head: the bench's spin
+    rule counts those, the pre-I8 poll set), d7 = the poll point's IP, then back
     past the test (`{lab}_np`; tools fold it into `lab`): a return to the label
     would be another visit, and loop while the bench watch keeps G_IRQ set."""
-    return [f"{lab}_irq:", f"\tmove.l #{hx(ip)},d7", f"\tmove.l #({cs})<<16,d6",
+    stub = [f"{lab}_irq:", f"\tmove.l #{hx(ip)},d7", f"\tmove.l #({cs})<<16{'|1' if loop else ''},d6",
             "\tjsr rt_irq", f"\tbra {lab}_np"]
+    return stub if always else ["\tifd SWOTL_SYNC", *stub, "\tendif"]
 
 
 def native_poll_stub(lab: str, ip: int, cs: str, result: int,
@@ -301,12 +316,16 @@ def cs_expr(cs: int) -> str:
 class Program:
     hle: dict = {}   # (mod, first) -> ((mod, resume), service); set from hle.csv
     sync_poll_first = True  # U5: a sync site's visit precedes its hook (sabotage turns it off)
+    polled_rows = False     # I8: compute rows with polls stay generated until I9 (irq-plan); tests: on
     polled_resumes: dict = {}  # U5/U8 hook -> its resumes (returns, sync sites); set in __init__
     polled_entry: dict = {}    # U5/U8 hook -> its d7 entry index (0 first, k sync site k)
 
     def __init__(self, units: dict[str, cfg.Unit] | None = None, components: bool = True,
                  diagnostic_hooks: dict[tuple[str, int], int] | None = None,
-                 diagnostic_reps: dict[tuple[str, int], int] | None = None):
+                 diagnostic_reps: dict[tuple[str, int], int] | None = None,
+                 sync: dict[tuple[str, int], str] | None = None):
+        # I8 sync points (irq.Proof.sync_points; default: make gen's poll-points.csv)
+        self.sync = sync_points() if sync is None else sync
         self.diagnostic_hooks = diagnostic_hooks or {}
         self.diagnostic_reps = diagnostic_reps or {}
         self.units = units or cfg.build()
@@ -349,6 +368,8 @@ class Program:
         self.compute_exits: dict[tuple[str, int], tuple] = {}
         self.exact_rows: set[tuple[str, int]] = set()
         for r in image.rows("hle.csv"):
+            if r.get("polls") and not self.polled_rows:
+                continue
             mod, first, last = r["module"], int(r["first"], 16), int(r["last"], 16)
             u = self.units[mod]
             resume = last + u.insns[last].size if last in u.insns else None
@@ -408,12 +429,23 @@ class Program:
         # (thunk: call far manager, dw id, jmp far)
         self.driver_jumps = {at + 7 for at, mod, _ in M.thunks(image.load()) if mod == GRAPHICS_DRIVER}
         self.build_edges()
-        # D8 poll points: targets of backward branches in the same module
-        # (loop heads); a pending hardware interrupt is taken there
-        self.loop_heads = {s for n, ss in self.succ.items()
-                           if self.node_insn(n).op not in ("call", "callf")
-                           for s in ss if isinstance(s, tuple) and s not in (RET, UNKNOWN, SMC)
-                           and s[0] == n[0] and s[1] <= n[1]}
+        # D8 poll points: where tests and the reference take a pending hardware
+        # interrupt (production: at the CIA tick). The I8 sync points and, so the
+        # reference keeps the original's timing (user 2026-10-26), the loop heads:
+        # targets of backward branches in the same module (`loop`, sync builds only).
+        loops = {s for n, ss in self.succ.items()
+                 if self.node_insn(n).op not in ("call", "callf")
+                 for s in ss if isinstance(s, tuple) and s not in (RET, UNKNOWN, SMC)
+                 and s[0] == n[0] and s[1] <= n[1]}
+        if self.polled_rows:   # tests of the dormant rows: the pre-I8 poll set, the loop heads
+            self.sync = dict.fromkeys(loops, "loop")
+        else:
+            self.sync = {**dict.fromkeys(loops, "loop"), **self.sync}
+        missing = [n for n in self.sync if n not in self.succ]
+        if missing:
+            raise LowerError(f"sync point is no reached instruction: {missing[:4]} (rerun make gen)")
+        self.loops = loops
+        self.loop_heads = set(self.sync)
         self.live_in: dict = {}
         self.live_out: dict = {}
         self.fused_jumps: dict = {}    # conditional label -> removed direct JMP
@@ -718,7 +750,7 @@ class Program:
         for n in self.succ:
             if jump_preds[n] or not fall_preds[n] or retried(self.node_insn(n)):
                 leaders.add(n)
-        return leaders
+        return leaders | self.loop_heads
 
     # -- generation -------------------------------------------------------------
     def cell_regions(self) -> None:
@@ -970,10 +1002,11 @@ class Program:
 
         def visit(o):   # D8 poll point
             assert (mod, o) in self.leaders, (mod, o)
-            lines.extend(poll(lab(mod, o)))
-            stub = poll_stub(lab(mod, o), u.ip_of(o), cs_expr(u.cs[o]))
+            always = self.sync.get((mod, o)) == "if"
+            lines.extend(poll(lab(mod, o), always))
+            stub = poll_stub(lab(mod, o), u.ip_of(o), cs_expr(u.cs[o]), always, (mod, o) in self.loops)
             if comp is not None:    # a handler may change BP: on in the exact code
-                stub[-1] = f"\tbra {label(mod, o)}_np"
+                stub[-1 if always else -2] = f"\tbra {label(mod, o)}_np"
             stubs.extend(stub)
             stats["interrupt poll"] += 1
 

@@ -1,0 +1,90 @@
+--- a/src/hardware/pic.cpp
++++ b/src/hardware/pic.cpp
+@@ -114,6 +114,8 @@
+ static PIC_Controller pics[2];
+ static PIC_Controller& master = pics[0];
+ static PIC_Controller& slave  = pics[1];
++unsigned swotl_irq0_backlog = 0;
++bool swotl_irq0_owed = false;   /* the pending IRQ0 was deliverable at an instruction */
+ Bitu PIC_Ticks = 0;
+ Bitu PIC_IRQCheck = 0; //Maybe make it a bool and/or ensure 32bit size (x86 dynamic core seems to assume 32 bit variable size)
+ Bitu PIC_IRQCheckPending = 0; //Maybe make it a bool and/or ensure 32bit size (x86 dynamic core seems to assume 32 bit variable size)
+@@ -423,6 +425,7 @@
+     Bitu t = irq>7 ? (irq - 8): irq;
+     PIC_Controller * pic=&pics[irq>7 ? 1 : 0];
+ 
++    if (irq == 0 && !(master.irr & 1)) swotl_irq0_owed = false;   /* SWOTL_POLLS: a new request */
+     pic->raise_irq(t);
+ }
+ 
+@@ -444,6 +447,12 @@
+ 
+     Bitu t = irq>7 ? (irq - 8): irq;
+     PIC_Controller * pic=&pics[irq>7 ? 1 : 0];
++    /* SWOTL_POLLS: a pending IRQ0 that only the gate held is kept, not dropped;
++     * others merge as without the gate */
++    if (swotl_irq_gate && irq == 0 && (master.irr & 1) && swotl_irq0_owed) {
++        ++swotl_irq0_backlog;
++        swotl_irq0_owed = false;
++    }
+     pic->lower_irq(t);
+ }
+ 
+@@ -537,6 +546,23 @@
+ static void inline master_startIRQ(Bitu i){
+     master.start_irq(i);
+     CPU_HW_Interrupt(master.vector_base + i);
++}
++
++/* SWOTL_POLLS: raise one held IRQ0 again once its request bit is free. */
++void SWOTL_Irq0Refill(void) {
++    if (!swotl_irq0_backlog || (master.irr & 1)) return;
++    --swotl_irq0_backlog;
++    swotl_irq0_owed = false;
++    master.lower_irq(0);
++    master.raise_irq(0);
++    /* at once (not after PIC_irq_delay_ns): every owed tick before the sync access */
++    if (master.irr & master.imrr & master.isrr & 1) PIC_IRQCheck = 1;
++}
++
++/* SWOTL_POLLS, before each instruction with IF set: the ungated machine would
++ * take a pending, unmasked IRQ0 not in service here. */
++void SWOTL_Irq0Check(void) {
++    if (master.irr & master.imrr & master.isrr & 1) swotl_irq0_owed = true;
+ }
+ 
+ void PIC_runIRQs(void) {
+--- a/src/misc/swotl_trace.cpp
++++ b/src/misc/swotl_trace.cpp
+@@ -821,9 +821,13 @@
+ }
+ 
+ bool SWOTL_IrqPoint(const uint32_t linear) {
+-	if (!swotl_active || !GETFLAG(IF) || !PIC_IRQCheck) return false;
++	if (!swotl_active || !GETFLAG(IF)) return false;
++	SWOTL_Irq0Check();
++	if (!PIC_IRQCheck && !swotl_irq0_backlog) return false;
+ 	const Location here = Locate(linear);
+ 	if (!IsPoll(here)) return false;
++	SWOTL_Irq0Refill();
++	if (!PIC_IRQCheck) return false;
+ 	irq_vector = -1;
+ 	swotl_irq_open = true;
+ 	PIC_runIRQs();
+--- a/include/swotl_trace.h
++++ b/include/swotl_trace.h
+@@ -8,6 +8,14 @@
+ extern bool swotl_active;
+ /* SWOTL_POLLS: hardware interrupts only through SWOTL_IrqPoint (pic.cpp gate). */
+ extern bool swotl_irq_gate, swotl_irq_open;
++/* IRQ0 edges that only the gate held while one was pending (pic.cpp
++ * PIC_DeActivateIRQ; owed: it was deliverable at an instruction, SWOTL_Irq0Check):
++ * each is raised again by SWOTL_Irq0Refill, so the gate merges no PIT tick the
++ * ungated machine would have taken. */
++extern unsigned swotl_irq0_backlog;
++extern bool swotl_irq0_owed;
++void SWOTL_Irq0Refill(void);
++void SWOTL_Irq0Check(void);
+ /* Before an instruction: true if a hardware interrupt was taken instead. */
+ bool SWOTL_IrqPoint(uint32_t linear);
+ 

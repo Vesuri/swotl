@@ -7,6 +7,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from translator import compute
 from translator.decode import decode
 from translator.lower import LowerError
+from translator import emit  # noqa: E402
+emit.Program.polled_rows = True  # the exact/U5-poll rows, dormant in the game until I9 (irq-plan I8)
 
 
 def differential(plant=None):

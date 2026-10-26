@@ -105,7 +105,7 @@ Trace outputs (`tmp/pc-runs/<name>/trace/`, written at exit):
 
 | File | Content |
 |---|---|
-| `events.csv` | ordered: arm, DOS open/read/seek/close (name, linear buffer, file pos), INT 10h/33h/67h and selected INT 21h with registers, faults, keys, snapshots; with `--services` (`SWOTL_SERVICES`, on in `make reference`) `svc`/`svc_ret`: every software INT raised by module code with all registers and FLAGS at entry and when execution is back at its return address with the entry SP (the runtime's service oracle); with `--polls` (`SWOTL_POLLS` = `build/gen/poll-points.csv`, on in `make reference`) hardware interrupts are taken only before a translator poll point (D8) and logged as `irq`: vector, service events so far, the poll point's executions since the last one (taken before the instruction; the interrupted visit counts only after IRET, while visits executed inside the handler count normally); `summary.txt` `polls=` is the FNV-1a of that file |
+| `events.csv` | ordered: arm, DOS open/read/seek/close (name, linear buffer, file pos), INT 10h/33h/67h and selected INT 21h with registers, faults, keys, snapshots; with `--services` (`SWOTL_SERVICES`, on in `make reference`) `svc`/`svc_ret`: every software INT raised by module code with all registers and FLAGS at entry and when execution is back at its return address with the entry SP (the runtime's service oracle); with `--polls` (`SWOTL_POLLS` = `build/gen/poll-points.csv`, on in `make reference`) hardware interrupts are taken only before a translator poll point (D8; IRQ0 edges only the gate held, pending while IRQ0 was deliverable, are raised again in order, `dosbox-x-swotl-irq0-backlog.patch`) and logged as `irq`: vector, service events so far, the poll point's executions since the last one (taken before the instruction; the interrupted visit counts only after IRET, while visits executed inside the handler count normally); `summary.txt` `polls=` is the FNV-1a of that file |
 | `reads.bin` | Original DOS read bytes, appended in event order; `read` events carry decimal `data=` offsets and `got=` lengths. Image proof uses these bytes even when the game later rewrites the file. Older captures retain file-based reconstruction. |
 | `modules.csv`, `executed-<module>.bin` | per-module instruction-start bitmap |
 | `edges.csv` | unique consecutive-instruction pairs |
@@ -223,7 +223,9 @@ Facts from these runs:
   Without `--polls` the instruction count at a milestone can differ
   (interrupt arrival points vary with host tick interleaving); with it,
   interrupts wait for a poll point and the run repeats exactly, instruction
-  count included.
+  count included. The run name's length reaches the guest (another name moved
+  m4 by 211 instructions): compare runs of equal-length names, references keep
+  `ref-<name>`.
 - RNG: root `+DC91`, 16 rounds of shift/XOR over `[255E..255F]` with carry
   into `[255C]` (returned); seeded at `+DCB1` from INT 21h AH=2Ch DX (DOS
   time, fixed by the pinned tick count). Not the MS C `rand`.

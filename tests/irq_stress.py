@@ -64,7 +64,10 @@ class Stress:
         for p in gen_dir.glob("*.s"):
             with p.open() as f:
                 names.update(m.group(1) for line in f if (m := IF_OPS.match(line)))
-        self.bound = {syms[n + s] for n in names for s in ("", "_bp", "_native_poll") if n + s in syms}
+        # _np: past a sync build's poll test at the event itself (irq-plan I8), where a
+        # tick armed at that poll is due before the access, CLI or POPF
+        self.bound = {syms[n + s] for n in names
+                      for s in ("", "_np", "_bp", "_bp_np", "_native_poll", "_native_np") if n + s in syms}
         self.bound |= {syms[n] for n in ("rt_int", "rt_fault", "rt_irq") if n in syms}
         # move.w ccr,-(a7); movem.l d0-d1/a0-a1,-(a7); jsr rt_irq_interrupt;
         # movem.l (a7)+,d0-d1/a0-a1; move.w (a7)+,ccr; rts (Unicorn has no RTR)

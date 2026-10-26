@@ -130,7 +130,7 @@ def host_image(labels, joystick_header=None):
         raise ValueError('REP metadata outside the original poll set')
     gen.generate(out / 'gen', program=program)
     vasm = str(os.environ.get('VASM') or Path.home() / '.local/vasmm68k_mot')
-    subprocess.run([vasm, '-quiet', '-m68020', '-Felf', '-x', '-nowarn=62',
+    subprocess.run([vasm, '-quiet', '-m68020', '-Felf', '-x', '-nowarn=62', '-DSWOTL_SYNC=1',
                     '-o', str(out / 'program.o'), 'program.s'], cwd=out / 'gen', check=True)
     subprocess.run([vasm, '-quiet', '-m68020', '-Felf', '-x', '-nowarn=62',
                     '-I' + str(ROOT / 'src/runtime'), '-I' + str(out / 'gen'),

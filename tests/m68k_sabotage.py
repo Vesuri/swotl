@@ -754,7 +754,8 @@ def plant(k: int) -> tuple[int, int, int, int]:
         D.HELPERS = real_helpers.replace(fn[1], fn[2])
         assert D.HELPERS != real_helpers
     elif fn == "poll stub":     # emit.poll_stub (R2)
-        E.poll_stub = lambda lab, ip, cs: real_poll_stub(lab, ip, cs)[:-1] + [f"\tbra {lab}"]
+        E.poll_stub = lambda lab, ip, cs, *a: [f"\tbra {lab}" if t == f"\tbra {lab}_np" else t
+                                               for t in real_poll_stub(lab, ip, cs, *a)]
     elif fn == "provenance":    # flags.carry_ccr (R3b)
         F.carry_ccr = provenance_any_move
     elif fn == "flags dead":    # Lowering.flags_dead (R4)

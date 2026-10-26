@@ -375,7 +375,7 @@ class Host:
                                      ("irq-handler", "SPZ_00804", 0x9BCA, 0x9DC0)):
             if sabotage == plant:
                 a = self.syms[lab]
-                code = e.read(a, 8)
+                code = e.read(a, 16)  # past a sync-build poll check (irq-plan I8)
                 want = (0x7FFF - old - 1) & 0xFFFF
                 k = code.index(want.to_bytes(2, "big"), 2)
                 e.write(a + k, ((0x7FFF - new - 1) & 0xFFFF).to_bytes(2, "big"))

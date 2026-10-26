@@ -11,6 +11,7 @@ from test_compute_polls import graph, base, text_after
 from translator import compute, emit, image
 from translator.decode import decode
 from translator.lower import LowerError
+emit.Program.polled_rows = True  # the exact/U5-poll rows, dormant in the game until I9 (irq-plan I8)
 
 
 def admission():
@@ -76,7 +77,7 @@ def emission():
     assert end in p.leaders and end in p.hle_resumes
     assert p.live_in[end] <= p.live_in[first]
     lines, _ = p.module_text('SWOTL.EXE')
-    assert text_after(lines, emit.label(*end), 3) == emit.poll(emit.label(*end))
+    assert text_after(lines, emit.label(*end), len(emit.poll(''))) == emit.poll(emit.label(*end))
     assert not any('R_0D5DA_irq' in line for line in lines)
     assert any('jsr R_0B017' in line for line in lines), 'projection call lost'
     for bad in ({'resume': 'unknown'}, {'polls': ''}, {'kind': 'hook'}):

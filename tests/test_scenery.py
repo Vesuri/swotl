@@ -16,6 +16,7 @@ from tools import compute_oracle as O
 from translator import compute, emit, image
 from translator.ir import FLAGS, FLAG_BIT, STATUS
 from translator.support import equates
+emit.Program.polled_rows = True  # the exact-poll row, dormant in the game until I9 (irq-plan I8)
 
 VERTEX = ('SWOTL.EXE', 0x10c08)
 CLEAR = ('SWOTL.EXE', 0x10a2f)

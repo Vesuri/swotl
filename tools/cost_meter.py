@@ -493,7 +493,7 @@ def plant_check(base_json: Path, objdump: str) -> int:
         s.write_text(re.sub(r"^(\tror\.w #8,d[0-7])$", r"\1\n\1\n\1", text, flags=re.M))
     host = REPO / "build/host"
     cross = CROSS
-    subprocess.run([VASM, "-quiet", "-m68020", "-Felf", "-x",
+    subprocess.run([VASM, "-quiet", "-m68020", "-Felf", "-x", "-DSWOTL_SYNC=1",   # as build/host
                     "-nowarn=62", "-o", str(work / "program.o"), "program.s"],
                    cwd=work / "gen", check=True)
     order = ["host_s.o", "host.o", "rt_entry.o"]

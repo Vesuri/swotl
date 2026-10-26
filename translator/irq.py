@@ -1438,6 +1438,45 @@ class Proof:
                 if first <= off <= hi and (mod, off) in syncs:
                     self.errors.append(f"compute row {site(row)} contains sync access {site((mod, off))}")
 
+    def sync_points(self) -> dict:
+        """I8 sync points, (module, offset) -> kind: where tests and the reference
+        deliver posted interrupts, before the instruction. `access`: a sync access;
+        `int`: a software interrupt (a service); `clear`: CLI, POPF or IRET (IF may
+        go 1→0: a tick due before it is taken there, as without polling, not after the
+        masked accesses that follow); `if`: the instruction after an IF 0→1, i.e.
+        after POPF or after STI's shadow (a RET there: its return sites).
+        Accesses and interrupts that only run with IF = 0 never deliver; reached
+        or not, every other one counts (I3 checks what the analysis missed)."""
+        prog = self.prog
+        out = {n: "access" for n, *_ in self.sync}
+
+        def live(n):
+            states = self.main.states(n)
+            return not states or any(not (st.iflag == 0 or st.shadow) for st in states)
+
+        def after(n):
+            ss = [s for s in prog.succ.get(n, ()) if isinstance(s, tuple) and s in prog.succ]
+            if prog.node_insn(n).op in ("ret", "retf"):
+                ss += sorted(prog.ret_of.get(n, ()))
+            return ss
+
+        for mod, u in prog.units.items():
+            for off, i in u.insns.items():
+                n = (mod, off)
+                if (n in self.fp.nodes and not self.main.states(n)) or n not in prog.succ:
+                    continue
+                if i.op == "int" and live(n):
+                    out.setdefault(n, "int")
+                if i.op in ("cli", "popf", "iret") and live(n):
+                    out.setdefault(n, "clear")
+                if i.op in ("sti", "popf"):
+                    states = self.main.states(n)
+                    if states and all(st.iflag == 1 for st in states):
+                        continue
+                    for m in after(n) if i.op == "popf" else [x for s in after(n) for x in after(s)]:
+                        out[m] = "if"   # checked in every build: wins over the other kinds
+        return out
+
     def raise_errors(self):
         if self.errors:
             raise Violation("IRQ0 footprint:\n" + "\n".join(sorted(set(self.errors))[:60]))

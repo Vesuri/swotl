@@ -166,7 +166,7 @@ rt_exit_guest:
 	endif
 	rts
 
-; Poll point with G_IRQ set (D8): d6 = CS << 16, d7 = IP of the loop head.
+; Poll point with G_IRQ set (D8): d6 = CS << 16 (| 1 at a loop head), d7 = its IP.
 ; Posted interrupts run in order: IRQ0's guest handler through rt_irq_async,
 ; another guest handler on the frame C pushed, then the next; BIOS handlers
 ; in C.

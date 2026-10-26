@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-all test-amiga test-amiga-replay test-amiga-restore test-amiga-keyboard amiga amiga-release smoke smoke-release whdload test-whdload install-data test-install-data release release-check test-release-installer size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-all test-amiga test-amiga-replay test-amiga-restore test-amiga-keyboard amiga amiga-sync amiga-release smoke smoke-release whdload test-whdload install-data test-install-data release release-check test-release-installer size clean
 
 PYTHON ?= python3
 # AmigaXDev's shared Python package (amigaxdev.dos.mz_info).
@@ -468,7 +468,7 @@ VASM     ?= $(HOME)/.local/vasmm68k_mot
 CROSS    = $(AMIGA_TOOLCHAIN)/bin/m68k-amiga-elf-
 VASMELF  = $(VASM) -quiet -m68020 -Felf -x -nowarn=62
 RT_CFLAGS = -m68020 -O2 -ffreestanding -nostdlib -fomit-frame-pointer \
-	-fno-tree-loop-distribute-patterns -Wall -Wextra -Werror -Isrc/runtime
+	-fno-tree-loop-distribute-patterns -Wall -Wextra -Werror -Isrc/runtime -DSWOTL_SYNC
 RUNTIME_C = $(wildcard src/runtime/*.c)
 HOST_OBJ = build/host/host_s.o build/host/host.o build/host/rt_entry.o \
 	$(patsubst src/runtime/%.c,build/host/%.o,$(RUNTIME_C)) build/host/program.o build/host/compute_projection.o build/host/compute_normalise.o build/host/compute_scenery.o build/host/compute_native.o
@@ -487,7 +487,7 @@ build/host/compute_projection.o: src/runtime/compute_projection.s
 
 build/host/program.o: build/gen/program.s $(wildcard build/gen/*.s)
 	@mkdir -p $(dir $@)
-	cd build/gen && $(VASMELF) -o ../host/program.o program.s
+	cd build/gen && $(VASMELF) -DSWOTL_SYNC=1 -o ../host/program.o program.s
 
 build/host/rt_entry.o: src/runtime/rt_entry.s src/runtime/compute_transform.s
 	@mkdir -p $(dir $@)
@@ -560,6 +560,12 @@ test-amiga-keyboard: amiga
 
 amiga: gen-check
 	. amiga/env.sh && $(MAKE) -C amiga
+
+# The bench's sync image (docs/irq-plan.md I8), in its own build directory:
+# build/amiga-sync/out/Swotl.{elf,exe}.
+amiga-sync: gen-check
+	mkdir -p build/amiga-sync && ln -sf ../../amiga/Makefile build/amiga-sync/Makefile
+	. amiga/env.sh && $(MAKE) -C build/amiga-sync REPO=../.. SYNC=1
 
 amiga-release: amiga
 	. amiga/env.sh && elf2hunk amiga/out/Swotl.elf amiga/out/Swotl-release.exe -s

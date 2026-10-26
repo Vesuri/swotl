@@ -223,17 +223,32 @@ volatile ULONG amiga_ticks = 0, amiga_ticks_async = 0;
 static ULONG cia_tick(void)
 {
     ++amiga_ticks;
-#ifndef SWOTL_REPLAY
-    if (rt_irq0_ready()) {
+#ifndef SWOTL_SYNC
+    /* Production has no poll checks (docs/irq-plan.md I8): ticks posted while
+     * IRQ0 could not run go first, then this one. */
+    int current = rt_irq0_ready();  /* else this tick waits behind posted ones */
+    if (current || rt_irq0_take()) {
         UWORD sr;
-        rt_irq0_running = 1;
-        ++amiga_ticks_async;
         *(volatile UWORD *)0xdff09c = INTF_EXTER;
         __asm__ volatile("move.w %%sr,%0" : "=d"(sr) : : "memory");
         __asm__ volatile("move.w %0,%%sr" : : "d"((UWORD)((sr & ~0x0700) | 0x0200)) : "memory");
-        rt_irq_interrupt();
+        for (;;) {
+            rt_irq0_running = 1;
+            ++amiga_ticks_async;
+            rt_irq_interrupt();
+            if (rt_irq0_take()) {
+                continue;
+            }
+            if (!current && rt_irq0_ready()) {
+                current = 1;
+                continue;
+            }
+            break;
+        }
         __asm__ volatile("move.w %0,%%sr" : : "d"(sr) : "memory");
-        return 0;
+        if (current) {
+            return 0;
+        }
     }
 #endif
     rt_irq_ring[rt_irq_tail % RT_IRQ_RING] = 8;
@@ -509,6 +524,12 @@ int amiga_guest_open(void)
         }
     }
     key_script_check();
+#ifndef SWOTL_SYNC
+    if (rt_bench) {         /* production takes no tick at a poll point (irq-plan I8) */
+        plat_log("SWOTL frame bench needs the sync image (make amiga-sync)");
+        return 0;
+    }
+#endif
     if (tfh) load_tfh();
     else plat_log("SWOTL sound FM");
     /* Guest RAM, the state block below it and the EMS store after it; Fast RAM

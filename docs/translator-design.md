@@ -284,9 +284,15 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   calls, plants), and
   `amiga/display_audit.sh` (40 handoffs against published guest snapshots
   and DAC, no conversion into the shown bitmap, zero late handoffs).
-- Interrupts (D8; [irq-plan](irq-plan.md) removes poll checks from production code:
-  asynchronous IRQ0, sync points delivered by the test harness): poll points at loop heads (targets of backward branches,
-  all block leaders, so live flags are in the state block): `tst.b G_IRQ(a6)`
+- Interrupts (D8; [irq-plan](irq-plan.md)): poll points (`build/gen/poll-points.csv`,
+  `module,offset,kind`, all block leaders, so live flags are in the state block) are the
+  I8 sync points (`irq.Proof.sync_points`: `access` footprint accesses and `int` sites
+  with IF possibly set, `clear` CLI/POPF/IRET, `if` the instruction after an IF 0→1) and
+  the loop heads (`loop`, targets of backward branches outside native rows; user
+  2026-10-26: they keep the reference on the original's timing). Only sync builds
+  (`SWOTL_SYNC`: host runs, replays, `make amiga-sync` for the bench) test at `access`,
+  `int`, `clear` and `loop` points; every build tests at `if` points. Production takes
+  IRQ0 at the CIA-B tick: `tst.b G_IRQ(a6)`
   and `bne` to the poll's stub `X_irq`, placed after the next run that cannot
   fall through: d6 = CS << 16, d7 = IP, `jsr rt_irq`, back past the test to
   `X_np` (the tools fold `X_np` into `X`; the block differential also runs
@@ -303,10 +309,12 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   tick runs it at once through `rt_irq_interrupt` when `rt_irq0_ready`: IF set, none
   running, no runtime service (`rt_irq_mask`) or main-thread OPL index/data pair
   (`rt_opl_pair`), nothing posted, not `BENCH`; a stop raised in it unwinds through
-  `rt_irq_abort` and is raised at the next poll; host runs inject recorded ticks
+  `rt_irq_abort` and is raised at the next poll; a tick posted while it could not run
+  is taken by the next CIA tick before its own, `rt_irq0_take`; host runs inject recorded ticks
   the same way with `host_run.py --stress SEED`, `tests/irq_stress.py`, I6), another
-  guest handler on a pushed frame, else the BIOS one (INT 08h ticks; INT 09h takes the next
-  `rt_key_ring` event, a set 1 scan code with break bit and E0 flag, as
+  guest handler on a pushed frame, else the BIOS one (INT 08h ticks; INT 09h, posted in
+  sync builds only, takes the next `rt_key_ring` event; production drains the ring at
+  service entry with IF set, `rt_keyboard_drain`: a set 1 scan code with break bit and E0 flag, as
   DOSBox-X's IRQ1 handler does: its scan-code table, shift and lock flags,
   words like `48E0`/`xxF0` in the buffer, which DOS AH=08h converts as its
   CON device over INT 16h AH=10h);
@@ -320,7 +328,7 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   other external targets stop. `c9-mouse-menu` checks motion, buttons and
   these recorded interrupts; `test_mouse_irq.py` checks the IVT/IF edges.
   The platform posts vectors to `rt_irq_ring` (08h tick,
-  09h/89h key make/break): Amiga a CIA-B timer per PIT period
+  09h/89h key make/break in sync builds): Amiga a CIA-B timer per PIT period
   (`plat_timer_rate`) and the CIA-A keyboard read at the vertical blank (`Input.cpp`: raw
   key -> scan code, PC typematic repeat from the vertical blank; diagnostic
   argument `KEYS=when:key,...` feeds keys, `lmb`/`rmb` and `mx±N`/`my±N`
@@ -330,7 +338,8 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   `SWOTL_ARGS` in `amiga/debug.sh`); host run the reference's `irq` events, replayed at the
   same visit of the same poll point after the same service event, one of a
   same-visit group per return of the guest handler to that poll point (the
-  reference takes interrupts only at poll points, `build/gen/poll-points.csv`;
+  reference takes interrupts only at poll points, `build/gen/poll-points.csv`, IRQ0
+  edges only the gate held raised again in order, `dosbox-x-swotl-irq0-backlog.patch`;
   references are re-recorded when poll points change).
 - IRQ0 footprint (irq-plan I2, `translator/irq.py`, run by `make gen`): the guest
   handler's memory, ports, IF changes, hooks and runtime calls, register

@@ -15,9 +15,9 @@ Checks every guest memory access of a host run against I2's footprint
   (recorded: the services that must mask the tick, I6); any other generated or
   runtime access fails;
 - song buffers: per song table entry, the handler's reads give the buffer's
-  extent and the ticks it was read in; a main or service write into an extent
-  between its first and last read fails (a generated one) or is recorded (a
-  service).
+  extent and the ticks it was read in; a main or service write of a byte
+  between the handler's first and last read of that byte fails (a generated
+  one, song_races) or is recorded (a service).
 Records the sync sites hit, IF-clear accesses, services, song buffers and EMS
 use (song segments in the E000h page frame) in tmp/test/irq-monitor-<run>.json.
 """
@@ -41,6 +41,22 @@ LIMIT = 20
 # (IRQ0 while IVT 08h is the BIOS's, and the end of SPAZ's chain)
 INTERRUPT_SIDE = {"bios_tick"}
 PRIVATE_STACK = (0xB000, 0x8000 - 6)   # runtime.h RT_IRQ_SS:RT_IRQ_SP, frame pushed
+
+
+def song_races(reads: dict[int, list], writes) -> list[str]:
+    """Generated main writes of a song byte between the handler's first and last
+    read of that byte. reads: linear -> [first tick, last tick, song]; writes:
+    (linear, size, who, generated, tick). A write after a byte's last read (a
+    reload of bytes already played) is no race."""
+    out = []
+    for lin, size, who, generated, tick in writes:
+        for a in range(lin, lin + size):
+            r = reads.get(a)
+            if generated and r and r[0] <= tick <= r[1]:
+                out.append(f"irq monitor: main write of {a:05X} into song {r[2]}'s buffer "
+                           f"at {who} (tick {tick}, byte read in ticks {r[0]}-{r[1]})")
+                break
+    return out
 
 
 class Monitor:
@@ -78,6 +94,7 @@ class Monitor:
         self.dirty = True
         self.songs: dict[int, list] = {}      # table index -> [linear, lo, hi, first tick, last tick]
         self.song_span = (1, 0)               # all extents: quick reject
+        self.song_reads: dict[int, list] = {}  # linear -> [first tick, last tick, song]
         self.windows: list[tuple[int, int, int]] = []
         self.in_handler = False
         self.k = (0, -1)
@@ -204,6 +221,8 @@ class Monitor:
                 s[2] = a if s[2] is None else max(s[2], a)
                 s[3] = self.tick if s[3] is None else s[3]
                 s[4] = self.tick
+                r = self.song_reads.setdefault(a, [self.tick, self.tick, song])
+                r[1] = self.tick
                 lo, hi = self.song_span
                 self.song_span = (a, a) if lo > hi else (min(lo, a), max(hi, a))
                 continue
@@ -274,13 +293,8 @@ class Monitor:
 
     # -- result ----------------------------------------------------------------
     def finish(self, out: Path | None) -> list[str]:
-        problems = list(self.problems)
+        problems = list(self.problems) + song_races(self.song_reads, self.song_writes)
         played = {k: s for k, s in self.songs.items() if s[1] is not None}
-        for lin, size, who, generated, tick in self.song_writes:
-            for k, s in played.items():
-                if generated and s[1] <= lin + size - 1 and lin <= s[2] and s[3] <= tick <= s[4]:
-                    problems.append(f"irq monitor: main write of {lin:05X} into song {k}'s buffer "
-                                    f"at {who} (tick {tick}, read in ticks {s[3]}-{s[4]})")
         ems = sorted(k for k, s in played.items() if EMS_FRAME * 16 <= s[0] < EMS_FRAME * 16 + 0x10000)
         record = dict(ticks=self.tick, handler_entries=dict(self.entries), g=self.g and f"{self.g:04X}",
                       sync_sites=dict(sorted(self.found.items())),
