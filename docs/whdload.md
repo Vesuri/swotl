@@ -38,15 +38,19 @@ Pokeri, `RoF` Rescue on Fractalus (each project's `docs/whdload*.md` and
 | `slv_info` | "Amiga port by Vesuri", version line, quit-key line | Sl |
 | `$VER: <Name>.slave x.yy (dd.mm.yyyy)` | literal, bumped by hand → byte-identical rebuilds | RoF §5, Sl |
 | SWOTL: Slicks set verbatim; `slv_keyexit = $5f` (Help): Amiga F10 reaches the game as PC F10, Help has no entry in `src/platform/amiga/Input.cpp`'s key table | — |
-| SWOTL `slv_config "C1:B:Their Finest Hour sound effects;"`: Custom1 selects the argument line, `TFH` or empty, set with `SetArgStr` and passed to the entry; the exe needs no hook | Sl, Ve |
+| SWOTL `slv_config "C1:B:Their Finest Hour sound effects;"`: Custom1 selects the argument line, `TFH` or empty, passed to `RunCommand` (below); the exe needs no hook | Sl, Ve |
 
 ## `_bootdos` sequence (Slicks, newest)
 
-1. `OldOpenLibrary` dos; `SetArgStr` to a null/LF-terminated arg string if exe uses `GetArgStr` (Sl).
+1. `OldOpenLibrary` dos; `SetArgStr` to a null/LF-terminated arg string if exe uses `GetArgStr` (Sl; SWOTL: none, step 5).
 2. `LoadSeg(_program)`; fail → `TDREASON_FAILMSG` / abort, never hang (Sl, Rv).
 3. Patch magic-tagged config blocks (below), then `resload_FlushCache` (Sl).
 4. **Lock the actual current drawer** (`ACCESS_READ`) + `SetProgramDir`. `DupLock(0)` left `pr_HomeDir` 0 → invisible PROGDIR requester hang (Ve).
-5. `AllocMem` 16 KiB stack, Exec `StackSwap`, call entry (Ve, Sl, Po).
+5. `AllocMem` 16 KiB stack, Exec `StackSwap`, call entry (Ve, Sl, Po). SWOTL instead
+   `RunCommand` with a 16 KiB stack: DOS allocates and swaps the stack and puts the
+   argument line in `Input()`'s buffer, which `ReadArgs` reads (its `?` prompt does not
+   work from an `RDA_Source`, so `SetArgStr` alone is not enough); FM and TFH pass
+   `make test-whdload`.
 6. On return: restore stack/args/PROGDIR, `UnLoadSeg`, `resload_Abort(TDREASON_OK)` — not back to CLI (BLACKSCREEN hides it; 68000 has no QuitKey) (RoF §1, Sl).
 7. Exe return 20 (missing/bad originals) → `TDREASON_FAILMSG` with readable text (Rv).
 

@@ -1,7 +1,8 @@
 ; WHDLoad/Kickstart 3.1 launcher for the Amiga port. Cross-assembled with vasm.
 ; The executable uses Exec/graphics/DOS; kickfs supplies ordinary file access.
 ; Custom1 selects Their Finest Hour sound: the slave passes the game's own TFH
-; argument (docs/sound-plan.md), so the same executable runs from a Shell.
+; argument (docs/sound-plan.md) through RunCommand, as a Shell does, so the
+; same executable runs from a Shell.
 
         INCLUDE whdload.i
         INCLUDE whdmacros.i
@@ -79,11 +80,6 @@ _bootdos
         move.l d0,a6
         tst.l d0
         beq .oserror
-        ; The game reads DOS GetArgStr, as a normal Shell-launched program does.
-        move.l (_args,pc),d1
-        jsr (_LVOSetArgStr,a6)
-        lea (_oldargs,pc),a0
-        move.l d0,(a0)
         lea (_program,pc),a0
         move.l a0,d1
         jsr (_LVOLoadSeg,a6)
@@ -110,44 +106,21 @@ _bootdos
         pea TDREASON_OK
         jmp (resload_Abort,a2)
         ENDC
-        ; Use Exec's public API instead of modifying Kickstart's CLI code.
-        move.l a6,-(sp)
-        move.l 4.w,a6
-        move.l #16384,d0
-        moveq #0,d1
-        jsr (_LVOAllocMem,a6)
-        tst.l d0
-        beq .oserror
-        lea (_stackmem,pc),a0
-        move.l d0,(a0)
-        lea (_stack,pc),a0
-        move.l d0,(a0)
-        add.l #16384,d0
-        move.l d0,(4,a0)
-        move.l d0,(8,a0)
-        jsr (_LVOStackSwap,a6)
-        move.l d7,a1
-        add.l a1,a1
-        add.l a1,a1
-        move.l (_args,pc),a0
-        move.l (_argslen,pc),d0
-        jsr (4,a1)
+        ; RunCommand allocates and swaps in the stack and also places the line
+        ; in Input()'s buffer, where ReadArgs reads it (dos.doc RunCommand);
+        ; -1 when it could not run the program.
+        move.l d7,d1
+        move.l #16384,d2
+        move.l (_args,pc),d3
+        move.l (_argslen,pc),d4
+        jsr (_LVORunCommand,a6)
         move.l d0,d6
-        move.l 4.w,a6
-        lea (_stack,pc),a0
-        jsr (_LVOStackSwap,a6)
-        move.l (_stackmem,pc),a1
-        move.l #16384,d0
-        jsr (_LVOFreeMem,a6)
-        move.l (sp)+,a6
         move.l (_oldhome,pc),d1
         jsr (_LVOSetProgramDir,a6)
         move.l d0,d1
         jsr (_LVOUnLock,a6)
         move.l d7,d1
         jsr (_LVOUnLoadSeg,a6)
-        move.l (_oldargs,pc),d1
-        jsr (_LVOSetArgStr,a6)
         move.l a6,a1
         move.l 4.w,a6
         jsr (_LVOCloseLibrary,a6)
@@ -195,10 +168,7 @@ _tfh    dc.l 0
         dc.l 0
 _args   dc.l 0
 _argslen dc.l 0
-_stackmem dc.l 0
-_stack dc.l 0,0,0
 _oldhome dc.l 0
-_oldargs dc.l 0
         IFD TEST
 _bootearly
         move.l (_resload,pc),a2

@@ -35,8 +35,10 @@ DanceDiverse3 set (`Palette24Bit`, `setPalette24Bit`) is kept for it.
 
 1. **Entry.** `start.c`'s `_start` replaces the shared one (L86; the link holds it at the
    hunk start): without `pr_CLI` it takes the WBStartup message before the constructors
-   (L84). Open dos/graphics outside `Forbid`; require AGA (L8); parse `GetArgStr` (L85),
-   or from Workbench `CurrentDir` to the icon's drawer and read its tool types (same
+   (L84). Open dos/graphics outside `Forbid`; require AGA (L8); parse the arguments with
+   `ReadArgs` (`TFH/S,MUSIC/S,BENCH/S,KEYS/K` from `Input()`'s buffer, where the Shell and
+   the slave's `RunCommand` put the line; `?` prompts; a bad line: `PrintFault`, 20), or
+   from Workbench `CurrentDir` to the icon's drawer and read its tool types (same
    keywords; `KEYS` copied).
 2. **Reserve.** Every game-owned block, all-or-nothing, largest first; Chip only for DMA
    data (L53, L54); only find-first's name records are allocated later, inside their I/O
@@ -151,7 +153,7 @@ link audit) not applied (open-work 41). Exact flags: [toolchain.md](toolchain.md
 | --- | --- | --- |
 | Restore status | OS view, vector, DMA and INTENA restored; LED filter off during the run and restored | `make test-amiga-restore` |
 | Beam watch | zero late display handoffs; no conversion into the shown bitmap | `amiga/display_audit.sh` |
-| Workbench start | icon start: tool types read, data from the icon's drawer, menu exit restores, result 0 with the message held; `BENCH` from the icon and the Shell: 20 | `make test-amiga-workbench` |
+| Workbench start | icon start: tool types read, data from the icon's drawer, menu exit restores, result 0 with the message held; `BENCH` from the icon and the Shell: 20; Shell arguments in lower case, after `?` and a bad one (IoErr 118, 20) | `make test-amiga-workbench` |
 | Keyboard | `monitor key` edges read by the I/O windows' VERTB server and the takeover VBI, typematic 1 + 7 in 61 fields | `make test-amiga-keyboard` |
 | Audio VBI spills | Paula work stays in blanking | none here; Slicks `g_slicks_audio_vbi_spills` |
 | C2P store verifier | converters write only final, correct plane words | none here; Slicks `tools/verify_planar_writes.sh` |

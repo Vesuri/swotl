@@ -4,6 +4,8 @@
 # AMIGA_CPU=68030 (make test-amiga) for the faster development model.
 # SWOTL_WORKBENCH=1: started from its icon by Workbench (SYS:WBStartup), tool
 # types from SWOTL_TOOLTYPES (words), instead of SWOTL_ARGS from the Shell.
+# SWOTL_INPUT: the Shell start's input (redirected from S:swotl-input), e.g. the
+# line a ReadArgs `?` prompt reads.
 # Without a fixture: interactive gdb; `continue` runs the program.
 # The stub serves memory reads but silently drops writes: inject inputs from C.
 set -uo pipefail
@@ -35,7 +37,11 @@ if [ -n "${SWOTL_WORKBENCH:-}" ]; then
   python3 ../tools/tool_icon.py "$GAME/Swotl.info" ${SWOTL_TOOLTYPES:-} || exit 1
 else
   rm -rf "$DH0/WBStartup"
-  printf 'C:SetPatch QUIET\ncd dh1:\nSwotl MUSIC %s\n' "${SWOTL_ARGS:-}" > "$DH0/s/startup-sequence"
+  redirect=
+  if [ -n "${SWOTL_INPUT+set}" ]; then
+    printf '%s\n' "$SWOTL_INPUT" > "$DH0/s/swotl-input"; redirect=' <S:swotl-input'
+  fi
+  printf 'C:SetPatch QUIET\ncd dh1:\nSwotl%s MUSIC %s\n' "$redirect" "${SWOTL_ARGS:-}" > "$DH0/s/startup-sequence"
 fi
 cp -f "$SETPATCH" "$DH0/c/SetPatch"
 cp -f "${3:-out/Swotl.exe}" "$GAME/Swotl" || exit 1

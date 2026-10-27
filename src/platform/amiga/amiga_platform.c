@@ -550,6 +550,30 @@ static int wb_options(int *tfh)
     return ok;
 }
 
+/* Shell start: ReadArgs, so the keywords are case-insensitive, `?` prompts
+ * with the template and a bad line fails with the DOS error. ReadArgs reads
+ * the line from Input()'s buffer, where the Shell and the WHDLoad slave's
+ * RunCommand put it. KEYS points into the RDArgs until the close. */
+static struct RDArgs *shell_args = 0;
+
+static int shell_options(int *tfh)
+{
+    enum { ARG_TFH, ARG_MUSIC, ARG_BENCH, ARG_KEYS, ARG_COUNT };
+    LONG values[ARG_COUNT] = {0, 0, 0, 0};
+    shell_args = ReadArgs((CONST_STRPTR)"TFH/S,MUSIC/S,BENCH/S,KEYS/K", values, 0);
+    if (!shell_args) {
+        amiga_io_begin();
+        PrintFault(IoErr(), (CONST_STRPTR)"Swotl");
+        amiga_io_end();
+        return 0;
+    }
+    *tfh = values[ARG_TFH] != 0;
+    if (values[ARG_MUSIC]) rt_music_skip = 0;   /* diagnostic: music records start their songs */
+    if (values[ARG_BENCH]) rt_bench = 1;        /* frame bench: ticks from guest progress, no CIA timer */
+    if (values[ARG_KEYS]) key_script = (const char *)values[ARG_KEYS];
+    return 1;
+}
+
 int amiga_guest_open(void)
 {
     DOSBase = (struct DosLibrary *)OpenLibrary((CONST_STRPTR)"dos.library", 39);
@@ -560,21 +584,8 @@ int amiga_guest_open(void)
     if (amiga_wb_startup && !wb_options(&tfh)) {
         return 0;
     }
-    const char *args = amiga_wb_startup ? 0 : (const char *)GetArgStr();
-    for (const char *a = args; a && *a; ++a) {
-        if ((a == args || a[-1] <= ' ') && a[0] == 'T' && a[1] == 'F' &&
-            a[2] == 'H' && a[3] <= ' ') tfh = 1;
-        if (a[0] == 'K' && a[1] == 'E' && a[2] == 'Y' && a[3] == 'S' && a[4] == '=') {
-            key_script = a + 5;     /* ends at a space or the line end */
-        }
-        if (a[0] == 'B' && a[1] == 'E' && a[2] == 'N' && a[3] == 'C' && a[4] == 'H' &&
-            a[5] <= ' ') {
-            rt_bench = 1;           /* frame bench: ticks from guest progress, no CIA timer */
-        }
-        if (a[0] == 'M' && a[1] == 'U' && a[2] == 'S' && a[3] == 'I' && a[4] == 'C' &&
-            a[5] <= ' ') {
-            rt_music_skip = 0;      /* diagnostic: music records start their songs */
-        }
+    if (!amiga_wb_startup && !shell_options(&tfh)) {
+        return 0;
     }
     key_script_check();
 #ifndef SWOTL_SYNC
@@ -633,6 +644,10 @@ void amiga_guest_close(void)
     if (wb_keys) {
         FreeMem(wb_keys, wb_keys_bytes);
         wb_keys = 0;
+    }
+    if (shell_args) {
+        FreeArgs(shell_args);
+        shell_args = 0;
     }
     if (DOSBase && amiga_wb_startup) {
         CurrentDir(wb_old_dir);

@@ -53,7 +53,10 @@ This proves emulated register routing, not physical A1200 input.
 with a tool icon (`tools/tool_icon.py`, tool types from `SWOTL_TOOLTYPES`). Tool types
 `MUSIC` and the menu exit as `KEYS`: restore status 127, `rt_music_skip` 0, then result 0 at
 `amiga_start_return` with the message held. `BENCH` from the icon and from the Shell
-(refused by the production image): result 20, a message only from the icon.
+(refused by the production image): result 20, a message only from the icon. Shell
+arguments through `ReadArgs`, stopped at `rt_start`: `tfh keys=1:shot` in lower case opens
+`sfx.rsc` and sets the key script; `?` then `tfh` at the prompt (`SWOTL_INPUT`,
+the Shell start's redirected input); `foo` stops at `PrintFault` with IoErr 118, then result 20.
 
 `make test-amiga-keyboard` (`amiga/keyboard_check.sh`) presses Left Shift through
 `monitor key`: toggled at the I/O windows' VERTB server until that server has read a
