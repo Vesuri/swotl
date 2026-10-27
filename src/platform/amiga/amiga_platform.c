@@ -3,12 +3,14 @@
  * PIT on a CIA-B timer (none in the frame bench, argument BENCH), the
  * diagnostic key script, the music skip (off; argument MUSIC keeps it off), and the
  * run of the translated program on its own native stack. Game files are read from the current directory (the game's
- * own data files, supplied by the user). */
+ * own data files, supplied by the user; from Workbench, the icon's drawer). */
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/cia.h>
+#include <proto/icon.h>
 #include <exec/memory.h>
 #include <dos/dos.h>
+#include <workbench/startup.h>
 #include <hardware/cia.h>
 #include <hardware/intbits.h>
 #include <resources/cia.h>
@@ -21,6 +23,7 @@
 #endif
 
 struct DosLibrary *DOSBase = 0;
+struct Library *IconBase = 0;
 
 #define MAX_FILES 16
 #define GUEST_STACK_BYTES 0x10000
@@ -500,6 +503,53 @@ static void load_tfh(void)
     plat_log(ok ? "SWOTL sound TFH" : "SWOTL TFH unavailable; sound FM");
 }
 
+/* Workbench start (L84): the icon's drawer becomes the current directory
+ * (a Shell's is its own) and the icon's tool types are the arguments, the
+ * same keywords; KEYS= is copied, the icon is freed before the run. */
+static BPTR wb_old_dir = 0;
+static char *wb_keys = 0;
+static ULONG wb_keys_bytes = 0;
+
+static int wb_options(int *tfh)
+{
+    struct WBArg *tool = amiga_wb_startup->sm_ArgList;
+    wb_old_dir = CurrentDir(tool->wa_Lock);
+    IconBase = OpenLibrary((CONST_STRPTR)"icon.library", 37);
+    if (!IconBase) {
+        return 1;
+    }
+    struct DiskObject *icon = GetDiskObject((STRPTR)tool->wa_Name);
+    int ok = 1;
+    if (icon) {
+        STRPTR *types = (STRPTR *)icon->do_ToolTypes;
+        *tfh = FindToolType(types, (STRPTR)"TFH") != 0;
+        if (FindToolType(types, (STRPTR)"BENCH")) rt_bench = 1;
+        if (FindToolType(types, (STRPTR)"MUSIC")) rt_music_skip = 0;
+        const char *keys = (const char *)FindToolType(types, (STRPTR)"KEYS");
+        if (keys) {
+            ULONG n = 0;
+            while (keys[n]) {
+                ++n;
+            }
+            wb_keys_bytes = n + 1;
+            wb_keys = (char *)AllocMem(wb_keys_bytes, MEMF_ANY);
+            if (wb_keys) {
+                for (ULONG k = 0; k < wb_keys_bytes; ++k) {
+                    wb_keys[k] = keys[k];
+                }
+                key_script = wb_keys;
+            } else {
+                plat_log("SWOTL not enough memory");
+                ok = 0;
+            }
+        }
+        FreeDiskObject(icon);
+    }
+    CloseLibrary(IconBase);
+    IconBase = 0;
+    return ok;
+}
+
 int amiga_guest_open(void)
 {
     DOSBase = (struct DosLibrary *)OpenLibrary((CONST_STRPTR)"dos.library", 39);
@@ -507,7 +557,10 @@ int amiga_guest_open(void)
         return 0;
     }
     int tfh = 0;
-    const char *args = (const char *)GetArgStr();
+    if (amiga_wb_startup && !wb_options(&tfh)) {
+        return 0;
+    }
+    const char *args = amiga_wb_startup ? 0 : (const char *)GetArgStr();
     for (const char *a = args; a && *a; ++a) {
         if ((a == args || a[-1] <= ' ') && a[0] == 'T' && a[1] == 'F' &&
             a[2] == 'H' && a[3] <= ' ') tfh = 1;
@@ -576,6 +629,13 @@ void amiga_guest_close(void)
     if (guest_block) {
         FreeMem(guest_block, RT_STATE_BYTES + RT_GUEST_BYTES + RT_EMS_BYTES);
         guest_block = 0;
+    }
+    if (wb_keys) {
+        FreeMem(wb_keys, wb_keys_bytes);
+        wb_keys = 0;
+    }
+    if (DOSBase && amiga_wb_startup) {
+        CurrentDir(wb_old_dir);
     }
     if (DOSBase) {
         CloseLibrary((struct Library *)DOSBase);

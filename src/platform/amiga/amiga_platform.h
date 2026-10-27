@@ -7,9 +7,14 @@
 extern "C" {
 #endif
 
+/* The Workbench start message (start.c), 0 from a Shell or the slave. */
+struct WBStartup;
+extern struct WBStartup *amiga_wb_startup;
+
 /* The translated program's lifetime (amiga_platform.c). open: dos.library,
- * the arguments, guest memory, the machine model and the PIT; 0 on failure;
- * call it before the takeover. run: from the program entry until it stops;
+ * the arguments (from Workbench the icon's tool types and drawer), guest
+ * memory, the machine model and the PIT; 0 on failure; call it before the
+ * takeover. run: from the program entry until it stops;
  * returns the plat_exit code. close: after the hand-back. */
 int amiga_guest_open(void);
 long amiga_guest_run(void);

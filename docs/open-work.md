@@ -77,12 +77,6 @@ speed work: [speed-plan.md](speed-plan.md).
 28. `make test-amiga AMIGA_MILESTONE=m2-choose-side` (plain fixture) ends
     `SWOTL_MILESTONE_WRONG_HANDOFF`, already at 1020874; m2 passes in
     `test-amiga-replay`.
-39. Workbench start (L84): without a CLI, take the WBStartup message before
-    opening dos.library and reply it last under `Forbid`; return 20 when a start
-    fails (`src/main.cpp` returns 0; the gcc8 `_start` does neither). Read the
-    options from the icon's tooltypes (user 2026-10-25): icon.library
-    `GetDiskObject` on the WBArg's lock and name, `FindToolType` for the same
-    keywords as item 44's template, `FreeDiskObject`.
 40. LED filter (L69): left as booted (on, ~5 kHz low-pass); the original AdLib
     output has none. Turn it off at takeover, restore it on exit.
 41. `alignas(4)` on even-sized globals of 4 bytes or more, with a link audit
@@ -90,11 +84,13 @@ speed work: [speed-plan.md](speed-plan.md).
 44. Arguments through dos.library `ReadArgs` (user 2026-10-25): the hand scan of
     `GetArgStr()` in `amiga_guest_open` (`amiga_platform.c`) is case-sensitive, so
     `swotl tfh` silently plays FM. Template for TFH, MUSIC, KEYS=, BENCH; case-
-    insensitive, `?` help, bad arguments fail with the DOS error. The WHDLoad slave's
+    insensitive, `?` help, bad arguments fail with the DOS error. The Workbench tool types
+    (`wb_options`) keep the same keywords. The WHDLoad slave's
     `SetArgStr` line must still parse (`RDA_Source` from `GetArgStr()`, or check that
     ReadArgs sees it). Refs: `~/.local/share/amiga/ndk/Autodocs/dos.doc` (ReadArgs,
     FreeArgs, RDArgs), `adcd21/Reference/Amiga_Mail_Vol2/II-27/readargs.c`. Checks:
-    fixtures that pass KEYS/MUSIC/BENCH, `test-whdload` FM and TFH, lower-case `tfh`.
+    fixtures that pass KEYS/MUSIC/BENCH, `test-whdload` FM and TFH, lower-case `tfh`,
+    `test-amiga-workbench`.
 
 45. Hardware-sprite pointer ([pointer-plan.md](pointer-plan.md), user 2026-10-26): the
     guest's software pointer masked out of the presented frame, an AGA sprite at the guest

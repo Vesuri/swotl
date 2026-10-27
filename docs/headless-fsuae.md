@@ -47,6 +47,13 @@ registers immediately after hardware loads; the debugger cannot read CIA
 registers directly. Load sites are derived from the current executable.
 This proves emulated register routing, not physical A1200 input.
 
+`make test-amiga-workbench` (`amiga/workbench_check.sh`) boots Workbench 2.04's `LoadWB`
+(`SWOTL_WORKBENCH=1` in `amiga/debug.sh`), which starts the game from `SYS:WBStartup`
+with a tool icon (`tools/tool_icon.py`, tool types from `SWOTL_TOOLTYPES`). Tool types
+`MUSIC` and the menu exit as `KEYS`: restore status 31, `rt_music_skip` 0, then result 0 at
+`amiga_start_return` with the message held. `BENCH` from the icon and from the Shell
+(refused by the production image): result 20, a message only from the icon.
+
 `make test-amiga-keyboard` (`amiga/keyboard_check.sh`) presses Left Shift through
 `monitor key`: toggled at the I/O windows' VERTB server until that server has read a
 make and a break, then held 60 fields with the machine taken over (5–9 makes, then

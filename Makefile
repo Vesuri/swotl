@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-all test-amiga test-amiga-replay test-amiga-restore test-amiga-keyboard amiga amiga-sync amiga-release smoke smoke-release whdload test-whdload install-data test-install-data release release-check test-release-installer size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-all test-amiga test-amiga-replay test-amiga-restore test-amiga-keyboard test-amiga-workbench amiga amiga-sync amiga-release smoke smoke-release whdload test-whdload install-data test-install-data release release-check test-release-installer size clean
 
 PYTHON ?= python3
 # AmigaXDev's shared Python package (amigaxdev.dos.mz_info).
@@ -38,6 +38,7 @@ help:
 	@echo "  make test-host          run it from the MZ entry to milestones m1-m3 against the reference"
 	@echo "  make test-host-all      the same to every milestone, m1-m7, and coverage c6-c10, c12, c13"
 	@echo "  make test-amiga         m1b-logo on the A1200 model (FS-UAE + GDB capture, amiga/milestone.gdb.in; AMIGA_CPU=68030)"
+	@echo "  make test-amiga-workbench  Workbench start from the icon (tool types, drawer, result) and the Shell result"
 	@echo "  make gates              the step gates: test, sabotage, host milestones, Amiga, smoke and restoration"
 	@echo "  make amiga   build amiga/out/Swotl.exe"
 	@echo "  make amiga-release  build and verify separate stripped amiga/out/Swotl-release.exe"
@@ -557,6 +558,8 @@ test-amiga-restore: amiga
 	$(GATE_LAUNCH) bash amiga/restore_check.sh
 test-amiga-keyboard: amiga
 	$(GATE_LAUNCH) bash amiga/keyboard_check.sh
+test-amiga-workbench: amiga
+	$(GATE_LAUNCH) bash amiga/workbench_check.sh
 
 amiga: gen-check
 	. amiga/env.sh && $(MAKE) -C amiga

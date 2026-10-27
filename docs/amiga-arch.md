@@ -12,7 +12,7 @@ slave: [whdload.md](whdload.md).
 | --- | --- |
 | Machine | PAL A1200, 68020, AGA required (`GFXF_AA_LISA` after `SetPatch`), L8 |
 | Memory | 2 MiB Chip for DMA data; Fast RAM required (D15, [translator-design.md](translator-design.md)); default 4 KiB Shell stack, L52 |
-| Launch | Shell. To run the same executable: Workbench (L84, open-work 39) and a WHDLoad slave (kickemu, INITAGA; [whdload.md](whdload.md)) |
+| Launch | Shell, Workbench (L84: the icon's tool types and drawer) and a WHDLoad slave (kickemu, INITAGA; [whdload.md](whdload.md)), the same executable |
 | Display | 320×200, 8 non-interleaved planes, 256 colours from the 18-bit VGA palette, L31 |
 | Timebase | PAL vblank (50 Hz) for display, input and audio; PIT channel 0 on a CIA-B timer (D8) |
 
@@ -33,12 +33,15 @@ DanceDiverse3 set (`Palette24Bit`, `setPalette24Bit`) is kept for it.
 
 ## Lifecycle
 
-1. **Entry.** Workbench start (L84) is not handled yet (open-work 39); open dos/graphics
-   outside `Forbid`; require AGA (L8); parse `GetArgStr` (L85).
+1. **Entry.** `start.c`'s `_start` replaces the shared one (L86; the link holds it at the
+   hunk start): without `pr_CLI` it takes the WBStartup message before the constructors
+   (L84). Open dos/graphics outside `Forbid`; require AGA (L8); parse `GetArgStr` (L85),
+   or from Workbench `CurrentDir` to the icon's drawer and read its tool types (same
+   keywords; `KEYS` copied).
 2. **Reserve.** Every game-owned block, all-or-nothing, largest first; Chip only for DMA
    data (L53, L54); only find-first's name records are allocated later, inside their I/O
-   window (`plat_alloc`). Failure frees everything before takeover; `main` returns 0
-   either way (20 on failure: open-work 39).
+   window (`plat_alloc`). Failure frees everything before takeover; `main` returns 20
+   (0 after a run), which `_start` returns (L86).
 3. **Load.** The optional TFH `sfx.rsc` (argument `TFH`) before takeover (L82); the
    guest's own files later, through I/O windows.
 4. **Build.** Bitmaps, copper lists and palettes completely, then publish them to the ISR
@@ -53,7 +56,8 @@ DanceDiverse3 set (`Palette24Bit`, `setPalette24Bit`) is kept for it.
    back, `Permit`; the copper display stays, a VERTB server reads the keyboard; fields the
    OS serves are added from `GfxBase->VBCounter`.
 7. **Return** in SL/VT's order (L4), then pending saves, frees, `releaseBlitterQueue`
-   (L50), library closes (the Workbench reply, L84: open-work 39). A readable-state restore check runs in
+   (L50), the previous current directory and library closes; after the finalizers `_start` replies
+   the WBStartup message under `Forbid` (L84). A readable-state restore check runs in
    the harness (L5).
 
 ## Interrupts
@@ -147,6 +151,7 @@ link audit) not applied (open-work 41). Exact flags: [toolchain.md](toolchain.md
 | --- | --- | --- |
 | Restore status | OS view, vector, DMA and INTENA restored | `make test-amiga-restore` |
 | Beam watch | zero late display handoffs; no conversion into the shown bitmap | `amiga/display_audit.sh` |
+| Workbench start | icon start: tool types read, data from the icon's drawer, menu exit restores, result 0 with the message held; `BENCH` from the icon and the Shell: 20 | `make test-amiga-workbench` |
 | Keyboard | `monitor key` edges read by the I/O windows' VERTB server and the takeover VBI, typematic 1 + 7 in 61 fields | `make test-amiga-keyboard` |
 | Audio VBI spills | Paula work stays in blanking | none here; Slicks `g_slicks_audio_vbi_spills` |
 | C2P store verifier | converters write only final, correct plane words | none here; Slicks `tools/verify_planar_writes.sh` |

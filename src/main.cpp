@@ -3,8 +3,9 @@
 int main(int argc, char** argv)
 {
     Swotl swotl;
-    if (swotl.isRunnable()) {
-        swotl.run();
+    if (!swotl.isRunnable()) {
+        return 20; // AmigaDOS FAIL
     }
+    swotl.run();
     return 0;
 }

@@ -38,7 +38,9 @@ VASMFLAGS = -m68020 -Felf -quiet -x -no-opt -nowarn=62 -I"$(SDKDIR)" -Iobj
 VASMGEN  = -m68020 -Felf -quiet -x -nowarn=62
 LDFLAGS  = -Wl,--emit-relocs,--gc-sections,-Ttext=0,-Map=$(OUT).map
 
-OBJECTS = obj/main.o obj/Swotl.o obj/Input.o obj/Audio.o obj/GCCRuntime.o \
+# start.o first: DOS enters the first hunk at offset 0, and the link check below
+# holds _start there.
+OBJECTS = obj/start.o obj/main.o obj/Swotl.o obj/Input.o obj/Audio.o obj/GCCRuntime.o \
 	obj/framework_amiga_hardware.o obj/framework_bitmap.o \
 	obj/framework_copper_list.o obj/framework_palette24.o \
 	obj/gcc8_c_support.o obj/gcc8_a_support.o obj/memory.o obj/version.o \
@@ -83,6 +85,9 @@ obj out:
 verify-runtime: obj/gcc8_c_support.o
 	PYTHONPATH='$(AMIGA_PYLIB)' $(PYTHON) -m amigaxdev.dos.verify_amiga_runtime $(OBJDUMP) $<
 
+obj/start.o: $(AMIGA_SRC)/start.c | obj
+	$(CC) $(CCFLAGS) -ffreestanding -c -o $@ $<
+
 obj/main.o: $(REPO)/src/main.cpp | obj
 	$(CC) $(CPPFLAGS) -c -o $@ $<
 
@@ -112,7 +117,9 @@ obj/framework_palette24.o: $(FRAMEWORK)/Palette24Bit.cpp | obj
 
 obj/gcc8_c_support.o: $(SUPPORT)/gcc8_c_support.c Makefile | obj
 	# Runtime implementations must not be folded into calls to themselves.
-	$(CC) $(CCFLAGS) -fno-builtin -Dmemcpy=swotl_support_memcpy -Dmemset=swotl_support_memset -c -o $@ $<
+	# Its _start loses main's result and the Workbench message: start.c's runs.
+	$(CC) $(CCFLAGS) -fno-builtin -Dmemcpy=swotl_support_memcpy -Dmemset=swotl_support_memset \
+		-D_start=swotl_unused_shared_start -c -o $@ $<
 
 obj/gcc8_a_support.o: $(SUPPORT)/gcc8_a_support.s | obj
 	$(AS) $(ASFLAGS) -o $@ $<
@@ -158,6 +165,8 @@ obj/version.o: $(AMIGA_SRC)/version.s | obj
 
 $(OUT).elf: $(OBJECTS) | out verify-runtime
 	$(CC) $(CCFLAGS) $(LDFLAGS) $(OBJECTS) -o $@
+	@test "$$($(OBJDUMP) -t $@ | awk '$$NF == "_start" && $$4 == ".text" { print $$1 }')" = 00000000 || \
+		{ echo "_start is not at the hunk start" >&2; rm -f $@; exit 1; }
 	$(OBJDUMP) --disassemble --no-show-raw-ins -S $@ > $(OUT).s 2>/dev/null || true
 
 $(OUT).exe: $(OUT).elf
