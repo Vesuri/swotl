@@ -83,7 +83,8 @@ speed work: [speed-plan.md](speed-plan.md).
     guest's software pointer masked out of the presented frame, an AGA sprite at the guest
     position plus lead written at the vertical blank, on every pointer screen incl. the film
     room; no toggle; the sprite toggles only on a state held for a field (user 2026-10-27).
-    Authorized: observe-only HLE row at tracker exit `0320:1011`. P1 measured; next: P2.
+    Authorized: observe-only HLE row at tracker exit `0320:1011`. Two sprites, `F9` as the
+    black (user 2026-10-27). P1, P2 done; next: P3.
 
 ## Release
 

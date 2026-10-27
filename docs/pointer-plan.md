@@ -49,9 +49,12 @@ stated before running (AGENTS.md validation scope). Evidence: `tmp/pointer/<step
   row `pointer_tracked` (observe only, EQ) at tracker exit `0320:1011` marks it applied
   (user 2026-10-26). A second AX=0Bh before that exit (motion discarded) stops the lead
   until the next exit.
-- **Colours.** Sprite 6, `BPLCON4 = $00FF`: value 1 → entry `FD` := `DAC[00]`, 2 → `FE`
-  (same entry, exact), 3 → `FF` := `DAC[F0]`. Overrides only while the pointer is active;
-  no palette change on a shape switch.
+- **Colours.** Two sprites, `BPLCON4 = $00FF` (bank `F`): sprite 6 draws the shape's `FE`
+  pixels as colour 2 (entry `FE`, exact); sprite 4 draws its other colour (arrow `00`,
+  crosshair `F0`) as colour 1, entry `F9` := that colour's DAC value, set on a shape
+  switch. `F9` is never displayed on a pointer screen (P2 census); `FD` and `FF` stay as
+  they are (user 2026-10-27, after the census found `FF`, the text colour, on every
+  pointer screen).
 - **Hardware.** All eight `SPRxPT` in both copper lists, unused channels at an empty
   sprite (L9); sprite DMA on; sprites in front (L32); BRDSPRT clear (display window clips);
   `SV8`/`EV8` for rows past `$FF`.
@@ -75,15 +78,31 @@ stated before running (AGENTS.md validation scope). Evidence: `tmp/pointer/<step
 - Breakpoints on the polls distort the model's field timing, and a stop with an interrupt
   pending is reported again: the script stops on cold paths and counts state changes.
 
+## Static facts and census (P2, 2026-10-27)
+
+`tools/pointer_static.py` (test with plants: `tests/test_pointer_static.py`):
+
+- Shape selects: 17 sites push constants, 16 × 0 (FRONTEND, NOTCAMP, CAMPAIGN), 1 × 1
+  (`FRONTEND+06E31`). Only `0C76` writes the shape words, only `0C64` and the tracker
+  the position, only hide/show name `A42A`.
+- VGA driver entries (index 8): save `RTSVGA+40E6`, restore `+4138`, draw `+4184`. Save
+  and restore copy w bytes per row at `row(y) + x`, unclipped; the row table (`cs:35FC`)
+  is 320·y; the draw writes rows 0–199 and columns 0–319 of segment `A000`. Buffer byte
+  `r·w + c` is therefore screen byte `320·(y0 + r) + x0 + c` of every drawn pixel.
+- Census, 99 reference snapshots, 52 with the pointer complete: entries `F0`–`FF` hold
+  one fixed set of colours on all 52 (`F0` black, `FE` yellow, `FF` white text on every
+  screen, `FD` grey on 41 pixels of 7); `F9` (light blue) and `AB` are never displayed.
+  No bank's sprite entries are all unused, hence the two sprites above.
+
 ## Steps
 
 | Step | Work | Checks |
 |---|---|---|
 | P1 | Measure on the A1200 model: tracker exits and pointer presents per field in menus | short `pN` scripts, counters; numbers in the commit |
-| P2 | Static: shapes ≤ 16 wide and fit the slots; `A42A` row layout (w bytes per row); census: `FD`, `FF` never displayed on pointer screens (reference corpus). If `FF` is shown, stop and ask | new tool + test, sabotage |
+| P2 | Static: shapes ≤ 16 wide and fit the slots; `A42A` row layout (w bytes per row); census of the sprite's stolen entry on pointer screens (reference corpus; `FF` was shown: two sprites and `F9`, user 2026-10-27) | new tool + test, sabotage |
 | P3 | `pointer.csv`, runtime mask and visibility, host model | c9 and the pointer-screen coverage fixtures: masked frame + modelled sprite = VGA memory at every present; plants: hotspot sign, equality rule, visibility |
 | P4 | Lead: AX=0Bh record, `pointer_tracked` row | at every tracker exit lead (motion consumed) = guest position; plants: ±BFh clamp, floor for truncation, bound off by one, discarded motion |
-| P5 | Amiga sprite, copper, colours, VBI write | `make amiga`, smoke, test-amiga, display audit 68030/68040; model shot at rest = DOSBox frame with its pointer; horizontal offset calibrated there |
+| P5 | Amiga sprites 4 and 6, copper, colours, VBI write | `make amiga`, smoke, test-amiga, display audit 68030/68040; model shot at rest = DOSBox frame with its pointer; horizontal offset calibrated there |
 | P6 | Docs: amiga-arch Display/Input, open-work; generic lessons to AmigaXDev | consistency |
 
 Gates: the new tests and plants, the host fixtures above, Amiga build and image checks; no
