@@ -24,6 +24,7 @@ G_DS	equ	1
 	xdef	rt_trap
 	xdef	rt_hle_music_skip
 	xdef	rt_hle_sfx_start
+	xdef	rt_hle_pointer_tracked
 	xdef	rt_in8
 	xdef	rt_in16
 	xdef	rt_out8
@@ -69,6 +70,7 @@ G_DS	equ	1
 	xref	rt_music_skip
 	xref	rt_sfx_id
 	xref	rt_sfx_starts
+	xref	rt_pointer_ds
 	xref	rt_irq0_enter
 	xref	rt_irq0_leave
 	xref	rt_irq_saved
@@ -344,6 +346,13 @@ rt_hle_sfx_start:
 	move.b	d6,(a0,d7.w)
 	lea	rt_sfx_starts,a0
 	addq.b	#1,(a0,d7.w)
+	cmp.w	d7,d7
+	rts
+
+; HLE pointer_tracked (annotations/hle.csv): the pointer tracker's exit, DS =
+; DGROUP (src/runtime/pointer.c). Observe only: EQ. Registers preserved.
+rt_hle_pointer_tracked:
+	move.w	G_DS(a6),rt_pointer_ds
 	cmp.w	d7,d7
 	rts
 

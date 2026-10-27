@@ -124,6 +124,18 @@ static void vram_all(void)
 static void present(void)
 {
     int32_t n = 0;
+    /* The pointer masked at the last present: from VGA memory again (pointer.c). */
+    for (uint16_t y = rt_pointer.masked_y0; y < rt_pointer.masked_y1; ++y) {
+        struct vram_row *row = &rt_vram_rows[y];
+        uint16_t lo = rt_pointer.masked_x0, hi = rt_pointer.masked_x1;
+        row->lo = row->hi && row->lo < lo ? row->lo : lo;
+        row->hi = row->hi > hi ? row->hi : hi;
+    }
+    if (rt_pointer.masked_y1) {
+        rt_vram_top = rt_vram_top < rt_pointer.masked_y0 ? rt_vram_top : rt_pointer.masked_y0;
+        rt_vram_bottom = rt_vram_bottom > rt_pointer.masked_y1 ? rt_vram_bottom : rt_pointer.masked_y1;
+        rt_pointer.masked_y1 = 0;
+    }
     for (int r = rt_vram_top; r < rt_vram_bottom; ++r) {
         RT_FIELD_POINT();
         struct vram_row *row = &rt_vram_rows[r];
@@ -157,6 +169,7 @@ static void present(void)
                 }
             }
         }
+        rt_pointer_mask((uint8_t *)frame);
         plat_present((const uint8_t *)frame, rects, n);
     }
 }

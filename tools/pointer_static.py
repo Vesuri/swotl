@@ -18,6 +18,7 @@ From the original modules (ref/), the decoded instructions (build/gen/*.ir,
   the row table at cs:35FC equal to 320 y, so buffer byte r w + c is the
   screen byte 320 (y0 + r) + x0 + c of every pixel the draw writes (rows 0-199,
   columns 0-319); the draw's segment (ds:284C) is A000h;
+- annotations/pointer.csv names exactly these words (the runtime's addresses);
 - census: in each snapshot whose pointer is complete in VGA memory, no pixel
   outside the pointer is F9h (the entry sprite 4's colour takes).
 
@@ -27,6 +28,7 @@ tests/test_pointer_static.py.
 from __future__ import annotations
 
 import argparse
+import csv
 import re
 import struct
 import sys
@@ -150,6 +152,13 @@ def check_writers(insns) -> list[str]:
     return problems
 
 
+def check_annotation(rows) -> list[str]:
+    want = {"x": 0x9C1A, "y": 0x9CBA, "width": 0x9D62, "height": 0x9D86, "hot_x": 0x9D3A,
+            "hot_y": 0x9D4C, "image": 0x9DC8, "buffer": BUFFER}
+    got = {r["name"]: int(r["offset"], 16) for r in rows}
+    return [] if got == want else [f"pointer.csv {got} is not {want}"]
+
+
 def check_driver(mods, dg: bytes) -> list[str]:
     problems = []
     thunks = {a: (name, off) for a, name, off in M.thunks(mods)}
@@ -236,7 +245,9 @@ def main() -> int:
     dg = dgroup(mods)
     insns = list(instructions(args.gen))
     ids, problems = shape_ids(insns)
-    problems += check_shapes(dg, ids) + check_writers(insns) + check_driver(mods, dg)
+    with (REPO / "annotations/pointer.csv").open() as f:
+        rows = list(csv.DictReader(f))
+    problems += check_shapes(dg, ids) + check_writers(insns) + check_driver(mods, dg) + check_annotation(rows)
     for n, (w, h, hx, hy, image, _) in shapes(dg, ids).items():
         print(f"shape {n}: {w}x{h} hotspot ({hx}, {hy}) image ds:{image:04X}")
     paths = sorted(p for run in sorted((REPO / "tmp/pc-runs").glob(args.runs))

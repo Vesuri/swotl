@@ -360,6 +360,9 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   only: SPAZ's effect start, BX = slot·6, DI = id·4 → `rt_sfx_id`,
   `rt_sfx_starts`; oracle `check_sfx` in every host run: each report equals
   the guest's store of DI after the hook; sabotage `sfx_start` on c6);
+  `pointer_tracked` (observe only: the pointer tracker's exit, DS = DGROUP →
+  `rt_pointer_ds`; oracle `check_pointer` in every host run, sabotage
+  `pointer-ds` on c9; [pointer-plan.md](pointer-plan.md));
   `music_skip` (SPAZ song
   start, [sound-plan.md](sound-plan.md)): `rt_music_skip`, 0 by default
   (music enabled, user 2026-10-15; 1 skips) and 0 with the argument

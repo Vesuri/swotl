@@ -94,6 +94,22 @@ stated before running (AGENTS.md validation scope). Evidence: `tmp/pointer/<step
   screen, `FD` grey on 41 pixels of 7); `F9` (light blue) and `AB` are never displayed.
   No bank's sprite entries are all unused, hence the two sprites above.
 
+## Mask and host model (P3, 2026-10-28)
+
+- `annotations/pointer.csv` → `pointer_guest` (gen); HLE `pointer_tracked` at `0320:1011`
+  records DGROUP (`rt_pointer_ds`). `src/runtime/pointer.c`: at each present, complete
+  (every opaque on-screen pixel holds the shape, one colour besides `FE`) → those frame
+  pixels from `A42A`, `rt_pointer` filled; the masked box is presented from VGA memory again
+  at the next present (`video.c`). `rt_pointer_visible`: a state applies once it holds at
+  two blanks in a row. Mask only with `rt_pointer_sprite` (host: on; Amiga: P5).
+- `tests/host_run.py` `check_pointer`, every present of every host run: the oracle's state
+  from DGROUP and VGA memory = `rt_pointer`; frame = VGA memory with the masked pixels from
+  the buffer; frame + modelled sprite = VGA memory; no `F9` while shown. `test-host-all`:
+  90 fixtures, 279945 presents, 7977 with the pointer shown (83 fixtures), all equal.
+- The fixtures never show the crosshair: `tests/test_pointer_model.py` calls the mask on
+  built states (arrow, crosshair, clipped, overwritten, two colours, off screen, no DGROUP,
+  no sprites) and the visibility sequence; plants hotspot, equality, visibility caught.
+
 ## Steps
 
 | Step | Work | Checks |

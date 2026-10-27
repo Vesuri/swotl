@@ -47,6 +47,10 @@ MEM = 0x01000000          # flat map: code, data, stack, guest RAM
 STACK_TOP = 0x00FF0000
 BLOCK = 0x00400000        # src/platform/host/host.c HOST_BLOCK
 GUEST_BYTES = 0x110000
+# Hardware-sprite pointer (docs/pointer-plan.md): DGROUP offsets, struct rt_pointer
+# (runtime.h: shown, w, h, other, x, y, image, the masked box, 16 x 16 pixels)
+POINTER = {r["name"]: int(r["offset"], 16) for r in image.rows("pointer.csv")}
+POINTER_BYTES, POINTER_PIXELS, POINTER_SIZE = 274, 18, 16
 SFX_SLOT_IDS = 0x1DE   # SPAZ DS: per OPL channel the effect id·4 (stored at hle.csv sfx_start)
 TOP = BLOCK + GUEST_BYTES - 1   # rt_guest: guest linear L at TOP - L (reversed)
 STATE = TOP + 1           # state block (translator/lower.py STATE_EQU)
@@ -229,6 +233,7 @@ SABOTAGE = {
     "irq-sentinel": "rt_irq_async expects another sentinel CS:IP than its frame holds (I4)",
     "keyon": "rt_out8 counts no AdLib key-on edge (its addq dropped)",
     "sfx_start": "rt_hle_sfx_start records no effect id (its move.b dropped)",
+    "pointer-ds": "rt_hle_pointer_tracked records no DGROUP (its move.w dropped)",
     "irq-main": "FLIGHT +0123B reads 9BCA instead of 813C (undeclared main read, I3)",
     "irq-handler": "the IRQ0 handler's inc of 9BCA writes 9DC0 (outside the footprint, I3)",
 }
@@ -238,7 +243,7 @@ STRESS_SABOTAGE = {
 }
 # Plants a milestone other than --milestone exercises (the guest's first
 # hardware interrupt handler runs after m1b-logo).
-SABOTAGE_AT = {"missing-file": "c83-program-disk-prompt", "keyon": "m2-choose-side", "sfx_start": "c6-flight-keys",
+SABOTAGE_AT = {"missing-file": "c83-program-disk-prompt", "keyon": "m2-choose-side", "sfx_start": "c6-flight-keys", "pointer-ds": "c9-mouse-menu",
                "irq-stack": "m2-choose-side", "irq-state": "m2-choose-side", "irq-sentinel": "m2-choose-side",
                "irq-main": "m3-demo-flight", "irq-handler": "m2-choose-side",
                "mouse-motion": "c9-mouse-menu",
@@ -365,6 +370,9 @@ class Host:
             a = self.syms["rt_out8"]
             code = e.read(a, 0x100)
             e.write(a + code.index(bytes.fromhex("52307000")), bytes.fromhex("4e714e71"))
+        if sabotage == "pointer-ds":  # move.w G_DS(a6),rt_pointer_ds -> nops
+            a = self.syms["rt_hle_pointer_tracked"]
+            e.write(a + e.read(a, 0x10).index(bytes.fromhex("33ee0001")), bytes.fromhex("4e71") * 4)
         if sabotage == "sfx_start":  # move.b d6,(a0,d7.w) -> nop; nop
             a = self.syms["rt_hle_sfx_start"]
             code = e.read(a, 0x20)
@@ -480,6 +488,30 @@ class Host:
                              and int(n[len(prefix):], 16) > last)
                 a = self.syms[emit.label(r["module"], resume)]
                 e.hook_range(U.HOOK_CODE, sfx_stored, a, a)
+
+        # HLE pointer_tracked: after the service, rt_pointer_ds is the guest's DS
+        # (DGROUP); check_pointer's oracle reads the pointer state from it.
+        self.tracker_ds = 0
+        self.pointer_bad: list[str] = []
+        self.pointer_counts = {"presents": 0, "shown": 0, "f9": 0}
+
+        @U.CODE_CB
+        def tracked(h, addr, size, user):
+            self.tracker_ds = self.guest_regs(0)["ds"]
+            got = struct.unpack(">H", self.mem(self.syms["rt_pointer_ds"], 2))[0]
+            if got != self.tracker_ds and len(self.pointer_bad) < 8:
+                self.pointer_bad.append(f"tracker exit: rt_pointer_ds {got:04x}, DS {self.tracker_ds:04x}")
+
+        for r in image.rows("hle.csv"):
+            if r["service"] == "pointer_tracked":
+                prefix = emit.label(r["module"], 0)[:-5]
+                last = int(r["last"], 16)
+                resume = min(int(n[len(prefix):], 16) for n in self.syms
+                             if n.startswith(prefix) and len(n) == len(prefix) + 5
+                             and all(ch in "0123456789ABCDEF" for ch in n[len(prefix):])
+                             and int(n[len(prefix):], 16) > last)
+                a = self.syms[emit.label(r["module"], resume)]
+                e.hook_range(U.HOOK_CODE, tracked, a, a)
 
         @U.CODE_CB
         def music_entry(h, addr, size, user):
@@ -743,6 +775,7 @@ class Host:
                 self.display_miss = f"present {self.presents}: {len(miss)} stored pixels outside " \
                     f"its rectangles, first x={miss[0] % 320} y={miss[0] // 320}"
             self.vram_written.clear()
+            self.check_pointer(args[0])
             self.e.write(self.syms["rt_present_due"], b"\1")
         elif n == "plat_palette":
             if self.sabotage == "dac":
@@ -755,6 +788,70 @@ class Host:
             self.halted = True
             self.e.stop()
         self.e.reg_write(U.M68K["d0"], res & 0xFFFFFFFF)
+
+    def check_pointer(self, frame_addr: int) -> None:
+        """At a present: the oracle's pointer (guest state at DGROUP, VGA memory)
+        against rt_pointer. Complete (every opaque on-screen pixel holds the shape,
+        one colour besides FEh at most): shown, the frame is VGA memory with those
+        pixels from the save buffer, the modelled sprite over the frame is VGA
+        memory and no frame pixel is F9h; otherwise not shown and the frame is VGA
+        memory."""
+        def bad(text):
+            if len(self.pointer_bad) < 8:
+                self.pointer_bad.append(f"present {self.presents}: {text}")
+        got = self.mem(self.syms["rt_pointer"], POINTER_BYTES)
+        frame = self.mem(frame_addr, 64000)
+        vram = self.gmem(0xA0000, 64000)
+        ds = self.tracker_ds
+        self.pointer_counts["presents"] += 1
+        pixels = {}
+        if ds and self.gmem(0x449, 1)[0] == 0x13:
+            def word(name, signed=True):
+                return int.from_bytes(self.gmem(ds * 16 + POINTER[name], 2), "little", signed=signed)
+            w, h = word("width"), word("height")
+            x0 = (word("x") + word("hot_x") + 0x8000) % 0x10000 - 0x8000
+            y0 = (word("y") + word("hot_y") + 0x8000) % 0x10000 - 0x8000
+            if 0 < w <= POINTER_SIZE and 0 < h <= POINTER_SIZE:
+                shape = self.gmem(ds * 16 + word("image", False), w * h)
+                buffer = self.gmem(ds * 16 + POINTER["buffer"], w * h)
+                for r in range(h):
+                    for c in range(w):
+                        p = shape[r * w + c]
+                        if p != 0xFD and 0 <= x0 + c < 320 and 0 <= y0 + r < 200:
+                            pixels[(y0 + r) * 320 + x0 + c] = (p, buffer[r * w + c])
+        others = {p for p, _ in pixels.values()} - {0xFE}
+        complete = bool(pixels) and len(others) <= 1 and all(vram[o] == p for o, (p, _) in pixels.items())
+        if got[0] != complete:
+            bad(f"shown {got[0]}, the oracle's pointer {'complete' if complete else 'not complete'}")
+            return
+        expected = bytearray(vram)
+        if complete:
+            self.pointer_counts["shown"] += 1
+            x, y = struct.unpack(">hh", got[4:8])
+            fields = (x, y, got[1], got[2], got[3])
+            want = (x0, y0, w, h, others.pop() if others else 0xFD)
+            if fields != want:
+                bad(f"x, y, w, h, other {fields}, the oracle's {want}")
+            for o, (p, b) in pixels.items():
+                expected[o] = b
+            composite = bytearray(frame)
+            sprite = got[POINTER_PIXELS:POINTER_PIXELS + POINTER_SIZE * POINTER_SIZE]
+            for r in range(got[2]):
+                for c in range(got[1]):
+                    p = sprite[r * POINTER_SIZE + c]
+                    if p != 0xFD and 0 <= x + c < 320 and 0 <= y + r < 200:
+                        composite[(y + r) * 320 + x + c] = p
+            if bytes(composite) != vram:
+                o = next(k for k in range(64000) if composite[k] != vram[k])
+                bad(f"frame + sprite differs from VGA memory, first x={o % 320} y={o // 320}")
+            if 0xF9 in frame:
+                self.pointer_counts["f9"] += 1
+                o = frame.index(0xF9)
+                bad(f"colour F9h shown at x={o % 320} y={o // 320} with the pointer")
+        if frame != bytes(expected) and self.gmem(0x449, 1)[0] == 0x13:
+            o = next(k for k in range(64000) if frame[k] != expected[k])
+            bad(f"frame differs from VGA memory {'with the pointer masked ' if complete else ''}"
+                f"first x={o % 320} y={o // 320}: {frame[o]:02x}, expected {expected[o]:02x}")
 
     def sound_event(self, kind: str, a: int, b: int) -> None:
         if self.sound_log is not None:
@@ -1270,6 +1367,14 @@ def check_opl(h, trace: Path, counts: bool = True) -> list[str]:
     return problems
 
 
+def check_pointer(h) -> list[str]:
+    """Each present's pointer against the oracle (Host.check_pointer)."""
+    c = h.pointer_counts
+    print(f"pointer: {c['presents']} presents, {c['shown']} with the pointer shown, "
+          f"DGROUP {h.tracker_ds:04x}")
+    return [f"pointer: {p}" for p in h.pointer_bad]
+
+
 def check_sfx(h) -> list[str]:
     """Each HLE sfx_start report (rt_sfx_id, rt_sfx_starts) equals the slot and
     id SPAZ stored at the hooked instruction."""
@@ -1364,6 +1469,7 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
     if h.stopped_at == label:
         problems += check_opl(h, trace, not music_skip)
         problems += check_sfx(h)
+    problems += check_pointer(h)
     marked = bytearray(64000)  # stored since the last present: still marked (rt_vram_rows)
     rows = h.mem(h.syms["rt_vram_rows"], 800)
     for y in range(200):

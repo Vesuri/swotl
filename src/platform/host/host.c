@@ -12,6 +12,7 @@ void rt_run_guest(void);
 
 void host_main(void)
 {
+    rt_pointer_sprite = 1;      /* the harness models the sprites (tests/host_run.py) */
     rt_start(HOST_BLOCK);
     rt_run_guest();
     rt_stop("guest returned from its entry", 0, 0);

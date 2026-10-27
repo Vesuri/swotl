@@ -1,0 +1,9 @@
+name,offset,evidence
+x,0x9C1A,"pointer x: stored by SWOTL.EXE 0320:0C64 and the tracker (0320:1004); hide/show use x + hot_x (docs/pointer-plan.md)"
+y,0x9CBA,"pointer y: stored by 0320:0C64 and the tracker (0320:100A); hide/show use y + hot_y"
+width,0x9D62,"shape width: 0320:0C76 from the table at ds:05F0 (8 bytes per shape), the only writer (tools/pointer_static.py)"
+height,0x9D86,"shape height: 0320:0C76"
+hot_x,0x9D3A,"shape hotspot x, signed, added to x: 0320:0C76"
+hot_y,0x9D4C,"shape hotspot y, signed, added to y: 0320:0C76"
+image,0x9DC8,"shape image offset in DGROUP: 0320:0C76 from ds:065C; width bytes per row, FDh transparent (RTSVGA+4184 draw)"
+buffer,0xA42A,"save buffer: show (0320:0CD2, RTSVGA+40E6) copies the screen under the shape, width bytes per row at 320 y + x; hide (0320:0CAC, RTSVGA+4138) copies it back"

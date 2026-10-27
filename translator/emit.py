@@ -46,6 +46,19 @@ RUNTIME = ("rt_int", "rt_irq", "rt_fault", "rt_halt", "rt_trap", "rt_in8", "rt_i
 # `last`, EQ runs the guest code. `args`: up to two guest word registers, in
 # d7 and d6 for the service.
 HLE_SERVICES = tuple(sorted({"rt_hle_" + r["service"] for r in image.rows("hle.csv")}))
+# Hardware-sprite pointer (docs/pointer-plan.md): DGROUP offsets of the guest's
+# pointer state (annotations/pointer.csv) as the table pointer_guest, in this
+# order (src/runtime/pointer.c POINTER_*).
+POINTER_NAMES = ("x", "y", "width", "height", "hot_x", "hot_y", "image", "buffer")
+
+
+def pointer_guest() -> list[int]:
+    rows = image.rows("pointer.csv")
+    if tuple(r["name"] for r in rows) != POINTER_NAMES:
+        raise LowerError(f"pointer.csv: names must be {', '.join(POINTER_NAMES)} in order")
+    return [int(r["offset"], 16) for r in rows]
+
+
 # D9: the graphics driver in scope. Only it writes video memory
 # (docs/external-surface.md); a return from a call into it through its PLINK
 # thunks publishes a frame.
@@ -793,7 +806,7 @@ class Program:
         if self.diagnostic_reps:
             lines.append("\txref\trt_replay_rep")
         lines += ["\txref\t" + s for s in sorted({s for _, s in self.hle.values()})]
-        lines += ["\txdef\tdispatch_table", "\txdef\tdispatch_count", "\txdef\tload_segment",
+        lines += ["\txdef\tdispatch_table", "\txdef\tdispatch_count", "\txdef\tload_segment", "\txdef\tpointer_guest",
                   "\txdef\toverlay_table", "\txdef\tsmc_expose", "\txdef\tsmc_lo",
                   "\txdef\tsmc_hi", "\txdef\tsmc_seg_limit"]
         if len(self.cells) == 1:
@@ -805,7 +818,8 @@ class Program:
         rows = self.dispatch_rows()
         lines += ["\tcnop\t0,4", "load_segment:\tdc.l\tLOADSEG",
                   f"overlay_table:\tdc.l\t{hx(M.OVL_TABLE)}\t; PLINK records, id 1 first (root offset)",
-                  "dispatch_count:", f"\tdc.l\t{len(rows)}", "dispatch_table:"]
+                  "pointer_guest:\tdc.w\t" + ",".join(hx(o) for o in pointer_guest()),
+                  "\tcnop\t0,4", "dispatch_count:", f"\tdc.l\t{len(rows)}", "dispatch_table:"]
         lines += [f"\tdc.w\t{cs_expr(cs)},{hx(ip)},{oid},{far}\n\tdc.l\t{lab}"
                   for cs, ip, oid, far, lab in rows]
         lines += ["\tsection\t.bss,bss"] + data

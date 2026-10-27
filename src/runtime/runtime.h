@@ -228,6 +228,28 @@ extern uint8_t rt_music_skip;        /* 1: HLE music_skip skips song starts */
 extern uint8_t rt_sfx_id[3];         /* per SPAZ slot: the effect id last started (HLE sfx_start) */
 extern uint8_t rt_sfx_starts[3];     /* per SPAZ slot: starts, wrapping */
 
+/* Hardware-sprite pointer (pointer.c, docs/pointer-plan.md). At each present,
+ * shown: the guest's pointer was complete in VGA memory and is masked out of
+ * the frame; then its top-left pixel (position + hotspot), size, shape (image
+ * offset in DGROUP, pixels RT_POINTER_SIZE per row, FDh transparent) and its
+ * colour besides FEh. The masked box (ends exclusive; y1 0: none) is presented
+ * from VGA memory again at the next present (video.c). */
+#define RT_POINTER_SIZE 16
+struct rt_pointer {
+    uint8_t shown, w, h, other;
+    int16_t x, y;
+    uint16_t image;
+    uint16_t masked_x0, masked_y0, masked_x1, masked_y1;
+    uint8_t pixels[RT_POINTER_SIZE * RT_POINTER_SIZE];
+};
+extern struct rt_pointer rt_pointer;
+extern uint16_t rt_pointer_ds;       /* DGROUP, from the tracker's exit (HLE pointer_tracked); 0 before */
+extern uint8_t rt_pointer_sprite;    /* set by a platform that shows the pointer as sprites */
+void rt_pointer_mask(uint8_t *frame);
+/* At each vertical blank, `shown` of the frame on display: the sprites' visibility,
+ * which follows it once it has held at two blanks in a row (a field). */
+uint8_t rt_pointer_visible(uint8_t shown);
+
 /* stop: report and halt, never resumes */
 void rt_stop(const char *what, uint32_t a, uint32_t b) __attribute__((noreturn));
 void rt_unsupported(const char *what, uint16_t vector, uint16_t cs, uint16_t ip) __attribute__((noreturn));

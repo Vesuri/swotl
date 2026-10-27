@@ -13,6 +13,7 @@ each check against a planted fault, which it must report:
   segment   the draw segment B800h
   census    an F9h pixel on a pointer screen
   partial   the same, with one pointer pixel overwritten: no pointer screen, no report
+  csv       annotations/pointer.csv with the buffer one byte off
 """
 import dataclasses
 import struct
@@ -76,6 +77,10 @@ def main():
             ("FRONTEND.OVL", 0x2001, 0x1F40, 0x0101, "push", "bx"),
             ("FRONTEND.OVL", 0x2002, 0x1F40, 0x0102, "callf", "0x320:0xc76")]
     caught["argument"] = P.shape_ids(insns + call)[1]
+    rows = [{"name": n, "offset": hex(o)} for n, o in (("x", 0x9C1A), ("y", 0x9CBA), ("width", 0x9D62),
+            ("height", 0x9D86), ("hot_x", 0x9D3A), ("hot_y", 0x9D4C), ("image", 0x9DC8))]
+    assert not P.check_annotation(rows + [{"name": "buffer", "offset": "0xa42a"}])
+    caught["csv"] = P.check_annotation(rows + [{"name": "buffer", "offset": "0xa42b"}])
 
     def module_plant(off, value):
         rts = bytearray(mods["RTSVGA.OVL"].data)
@@ -100,7 +105,8 @@ def main():
     expect = {"width": "does not fit", "colour": "one besides FEh", "overlap": "overlaps",
               "segment": "draw segment", "writer": "writes the pointer image",
               "buffer": "names the save buffer", "argument": "not a constant",
-              "driver": "RTSVGA+4122", "rows": "row table", "census": "F9h on 1 pixels"}
+              "driver": "RTSVGA+4122", "rows": "row table", "census": "F9h on 1 pixels",
+              "csv": "pointer.csv"}
     missed = []
     for name, found in caught.items():
         hit = [f for f in found if expect[name] in f]
