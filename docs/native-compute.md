@@ -12,7 +12,8 @@ fit (DX=0, then remainder<divisor).
 Since irq-plan I10 (user 2026-10-26, go-ahead for each native) `D5A6` is one row up to
 its projection call (D614, continuing at D618; folds R38's D5DA loop) and `BB70` one row
 up to its RETF. The scenery clear at 10A2F uses a continuation endpoint (R40). Loop rows:
-the sprite span setup with the packet loop `4E89` (`sprite_row`, widens R42), D69C's
+the sprite row `4E89` (`sprite_row`: packet loop, span setup and, since 2026-10-27, the
+span walk loop 4FD3..5032 calling the cell walk; widens R42), D69C's
 pixel loops at D92A and D95C (R44, retaining generated clipping, shared callees and
 returns), SPAZ's OPL delay loops `D03` and `D0F` in O(1) (F9, speed-plan §2.9 exception).
 Rows with guest calls as continuation exits (`hle.csv` `exits`) and
@@ -248,3 +249,28 @@ dispatch). The callee declines before any mutation, so a decline takes the exit
 unchanged; a handled call continues in the caller. FDE0 calls the transform
 (B52D) and classify (BB70) natives this way. The caller's differential runs each
 case with the real callee natives and with declining callees (every exit taken).
+
+### Code writes and the cell walk (user 2026-10-27)
+
+User: "extend the native contract for the sprite decoder's walk loop". A native may
+write code bytes inside a D16 cell cache (translator-design D16) only through the
+bookkeeping the lowered CS stores use (`lower.code_store`): a RET planted at a covered
+cell start sets `smc_walk_plant` when none is planted, the cell's first byte back
+clears it, anything else calls `smc_walk_wb` (which drops the cache when needed).
+Segment loads below `smc_seg_limit` call `smc_expose` as `lower.putseg` does. It may
+call the generated cell walk (`smc_walk`, d7 = entry IP) at a root near call whose
+only targets are the walk (`compute.validate` records it in `Region.walks`; a walk
+call in a callee or a far call rejects), with the guest return pushed as the original
+does; a return elsewhere goes to `rt_ret_mismatch` as the generated return check
+does. A target outside the cells, or any state the native does not handle, resumes in
+generated code before the call (a root loop head or endpoint). The generated program
+exports the one cache's labels by surface name (`emit.WALK_ALIASES`). Oracle:
+`compute_oracle.run(cells=…)` exempts writes into the cells (`cell_addresses`) from
+the entry boundary rule (the walk executes the planted RET; the restore rewrites a
+fetched byte); every other code write still fails, and the cells join `compare`'s
+code set, so plant and restore addresses are compared. The cache bytes (`_cov`
+through `_plant`) at the endpoint must equal the generated body's for the case (the
+guest state cannot show a stale plant). Row: `sprite_row`'s walk loop
+4FD3..5032 (`tests/test_sprite_packet.py`: native linked against the generated walk;
+synthetic RET, MOV and reload cells, a sprite DS reaching the cells, DF set and span
+starts outside the cells, captured entries; plants).

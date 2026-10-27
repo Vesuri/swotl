@@ -162,11 +162,19 @@ def check(validate):
     p.succ[n[1]] = [n[8]]
     assert n[8] in validate(p, n[3], n[2], 26).body
     count += 4
+    # user 2026-10-27: a root near call of the cell walk (its indirect rest
+    # unresolved) is admitted and recorded; the walk is no callee
+    p, n, insns = graph()
+    p.succ[n[3]] = ['unknown', 'smc']
+    row = validate(p, n[3], n[2])
+    assert row.body == {n[3], n[1]} and row.walks == (n[3],), row
+    count += 1
     for defect in ('sync-access', 'callee-sync', 'unknown', 'recursion', 'early-return-outside',
                    'wrong-resume', 'io', 'interrupt', 'flags-control',
                    'nested-hook', 'manager', 'empty-successors', 'outside-range',
                    'empty-body', 'rep-diagnostic', 'diagnostic', 'ss-write',
-                   'fault-edge-not-divide', 'fault-edge-not-int0', 'end-before-resume'):
+                   'fault-edge-not-divide', 'fault-edge-not-int0', 'end-before-resume',
+                   'walk-in-callee', 'walk-other-target', 'walk-far'):
         p, n, insns = graph()
         first, resume, end = n[3], n[2], None
         # I2: a row meeting the handler footprint (a non-loop sync point) rejects
@@ -194,6 +202,13 @@ def check(validate):
         elif defect == 'end-before-resume': end = 19
         elif defect == 'diagnostic': p.diagnostic_hooks[n[4]] = 1
         elif defect == 'ss-write': insns[n[4]] = decode(bytes.fromhex('8ed0'), 0)
+        elif defect == 'walk-in-callee':     # a callee's cell walk call
+            insns[n[4]] = decode(bytes.fromhex('ffd2'), 0)
+            p.succ[n[4]], p.call_site[n[4]] = ['unknown', 'smc'], n[5]
+        elif defect == 'walk-other-target': p.succ[n[3]] = ['smc', n[4]]
+        elif defect == 'walk-far':
+            insns[n[3]] = decode(bytes.fromhex('ff1f'), 0)
+            p.succ[n[3]] = ['unknown', 'smc']
         try:
             validate(p, first, resume, end)
         except LowerError:

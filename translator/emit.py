@@ -77,6 +77,11 @@ def walk_label(mod: str, first: int) -> str:
     return f"{TAG[mod]}_{first:05X}_walk"
 
 
+# The one cell cache's entry points and data, exported to the runtime's natives.
+WALK_ALIASES = (("smc_walk", ""), ("smc_walk_wb", "_wb"), ("smc_walk_plant", "_plant"),
+                ("smc_walk_cov", "_cov"))
+
+
 def stop_label(mod: str, off: int) -> str:
     return f"{TAG[mod]}_{off:05X}_stop"
 
@@ -755,6 +760,11 @@ class Program:
             u = self.units.get(mod)
             if u and any(lab == walk_label(mod, lo_) for lab, *_ in self.cells):
                 data += smc.tables(walk_label(mod, lo_), u.ip_of(lo_), u.ip_of(hi_))
+        if len(self.cells) == 1:
+            # A compute native's walk calls and code-store bookkeeping (native-compute
+            # "Code writes and the cell walk"), by surface name, not guest address.
+            lab = self.cells[0][0]
+            data += [f"{a}\tequ\t{lab}{x}" for a, x in WALK_ALIASES]
         return code, data
 
     def region(self, mod: str, off: int) -> tuple[int, int] | None:
@@ -785,7 +795,10 @@ class Program:
         lines += ["\txref\t" + s for s in sorted({s for _, s in self.hle.values()})]
         lines += ["\txdef\tdispatch_table", "\txdef\tdispatch_count", "\txdef\tload_segment",
                   "\txdef\toverlay_table", "\txdef\tsmc_expose", "\txdef\tsmc_lo",
-                  "\txdef\tsmc_hi", "\txdef\tsmc_seg_limit", "\tsection\t.text,code"]
+                  "\txdef\tsmc_hi", "\txdef\tsmc_seg_limit"]
+        if len(self.cells) == 1:
+            lines += ["\txdef\t" + a for a, _ in WALK_ALIASES]
+        lines += ["\tsection\t.text,code"]
         lines += [f'\tinclude\t"{f}"' for f in files]
         code, data = self.smc_text()
         lines += code

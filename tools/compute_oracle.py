@@ -74,12 +74,15 @@ the declined generated code enters rt_fault."""
         self.state = state
 
 
-def run(ram, registers, resume, limit=100000, returns=()):
+def run(ram, registers, resume, limit=100000, returns=(), cells=frozenset()):
     """Execute original bytes, stopping *before* the guest return.
 
 `returns` (U8): the row's other root returns or endpoints, CS:IP, stopped
 before like `resume`; `at` names the one reached. A divide error raises
-DivideFault.
+DivideFault. `cells` (user 2026-10-27, native-compute "Code writes and the cell
+walk"): linear addresses of D16 cell caches (`cell_addresses`) whose writes
+may meet fetches (the RET plant the walk executes, its restore); every other
+code write still fails, and compare checks the cells' write addresses.
 
 IR supplies only the undefined-flag mask. Unicorn supplies all expected values,
 flow and writes. Faults and external effects fail closed; their guard/fallback
@@ -115,12 +118,12 @@ cases belong in the block differential before a compute row can be enabled.
             if count >= limit:
                 raise ValueError('oracle instruction limit before resume')
             at = regs['cs'] * 16 + regs['ip']
-            check_code_writes(written, {at})
+            check_code_writes(written - cells, {at})
             insn = decode(x.e.read(at, 16), regs['ip'])
             if not memory_known(at, insn.size, captured_bytes):
                 raise ValueError('oracle instruction fetch outside captured memory')
             fetched.update(range(at, at + insn.size))
-            check_code_writes(written, fetched)
+            check_code_writes(written - cells, fetched)
             step(state)  # only state.undef is used as expected-result metadata
             case = (regs, flags, word & 0xf000, regs['ip'], [])
             err, regs, word, mem, ints, outs, writes = x.run(case, 1)
@@ -133,7 +136,7 @@ cases belong in the block differential before a compute row can be enabled.
             if err or ints or outs or 'trap' in regs or insn.op == 'in':
                 raise ValueError(f'oracle external effect/fault at {at:05x}: {err, ints, outs}')
             written.update(writes)
-            check_code_writes(written, fetched)
+            check_code_writes(written - cells, fetched)
             flags = {f: (word >> FLAG_BIT[f]) & 1 for f in FLAGS}
             state.regs.update(regs, flagsx=word & 0xf000)
             state.ip, state.flags = regs['ip'], dict(flags)
@@ -156,6 +159,13 @@ def code_addresses(p, loadseg):
     """Linear addresses of every decoded guest instruction byte (compare's `code`)."""
     return frozenset((loadseg + u.cs[o]) * 16 + u.ip_of(o) + k
                      for u in p.units.values() for o, i in u.insns.items() for k in range(i.size))
+
+
+def cell_addresses(p, loadseg):
+    """Linear addresses of the D16 cell caches' bytes (run's `cells`; compare's
+`code` for a row that calls the walk)."""
+    return frozenset(a for _, seg, first, n in p.cells
+                     for a in range((loadseg + seg) * 16 + first, (loadseg + seg) * 16 + first + n))
 
 
 def compare(expected, actual, live, code=frozenset()):

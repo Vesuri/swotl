@@ -39,12 +39,14 @@ def successors(p, n):
 
 CALLS = {'call', 'callf'}
 RETURNS = {'ret', 'retf'}
+UNKNOWN, SMC = 'unknown', 'smc'     # emit's indirect and cell-walk successors
 
 
 class Region(NamedTuple):
     body: frozenset     # nodes the callback covers, callees included
     returns: tuple      # root returns (U8) or continuation endpoints, ascending
     loops: tuple = ()   # root loop heads, ascending: resumes after the returns
+    walks: tuple = ()   # root calls of the D16 cell walk (user 2026-10-27), ascending
 
 
 def validate(p, first, resume, end=None, endpoint=False, exits=(), entries=()):
@@ -60,6 +62,12 @@ instead. Recursion and diagnostic hooks are rejected. A root loop head is a
 resume too: a native may continue there in generated code. Interior entries
 still execute generated code normally; `entries` (I10) are re-entry hooks of
 this row, walked as roots like `first`.
+
+Code writes and the cell walk (user 2026-10-27): a root near call whose only
+targets are a D16 cell walk (and the unresolved rest of an indirect call) is
+admitted; the native calls the generated walk itself and must continue in
+generated code before the call for any target outside the cells (a resume).
+The walk is no callee here: its cells are not guest IR (D16).
     """
     tail = p.node_insn(resume)
     if first == resume or tail is None or (not endpoint and tail.op not in RETURNS):
@@ -82,6 +90,7 @@ this row, walked as roots like `first`.
     callees: dict = {}
     rets = endpoints.copy()
     reached = set()
+    walks = set()
 
     def function(entry, root, stack):
         nodes, work = set(), [entry]
@@ -113,7 +122,12 @@ this row, walked as roots like `first`.
             succ = successors(p, n)
             if not succ:
                 raise LowerError(f'compute: no proved continuation at {n}')
-            if i.op in CALLS:
+            if i.op in CALLS and SMC in succ:
+                if not root or i.op != 'call' or set(succ) - {UNKNOWN, SMC}:
+                    raise LowerError(f'compute: cell walk call outside the root or with other targets at {n}')
+                walks.add(n)
+                work.append(p.call_site.get(n))
+            elif i.op in CALLS:
                 for t in succ:
                     if t in stack:
                         raise LowerError(f'compute: recursion at {t}')
@@ -133,7 +147,8 @@ this row, walked as roots like `first`.
     if endpoint and reached != endpoints:
         raise LowerError('compute: continuation endpoint is unreachable')
     body = frozenset(root.union(*(c for c in callees.values() if c)))
-    return Region(body, tuple(sorted(rets)), tuple(sorted(root & set(getattr(p, 'loops', ())))))
+    return Region(body, tuple(sorted(rets)), tuple(sorted(root & set(getattr(p, 'loops', ())))),
+                  tuple(sorted(walks)))
 
 
 def hook(service, resume, cs):

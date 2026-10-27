@@ -103,8 +103,8 @@ F31A → F339/F35F/F3B4; object processing and calls remain generated
 ([contract](native-compute.md#multiple-continuation-endpoints-user-2026-10-22)).
 Since irq-plan I10 guest calls are continuation exits with
 [re-entries](native-compute.md#re-entries-irq-plan-i10-user-2026-10-26)
-(`BFD1`, `BD68`, `F290`, `FDE0`, `109D6`); `4DAE`'s `call dx` walk stays
-generated.
+(`BFD1`, `BD68`, `F290`, `FDE0`, `109D6`); `4DAE`'s `call dx` walk calls the
+generated cell walk from the native (user 2026-10-27).
 
 - **N4** Routines that need C, each after U6, by S1–S9 plus C's cases, in B3 price
   order; S8 includes re-recording the references its sync set affects. Price each
@@ -156,7 +156,7 @@ lost their gain to guards, hooks, exits and polls (R41–R47).
 | F5 | `BFD1` rasterizer, one scope. Done: `C000..C42C`, guest calls as continuation exits (U11), folds R48; meter −0.0167%, bench −0.044%, flyby `BFD1` −2.1%/call (speed-plan §1): far below the estimate. Poll-free with re-entries at irq-plan I10: −1.18M m4 more | guest | 7.58% | 3.0–4.2% kept 0.05% | U11 |
 | F6 | Terrain `FDE0`+`F290`+`EA74`, scope ends before the PLINK call. Done at irq-plan I10: `F290` (−0.84M m4) and `FDE0` (−0.59M) whole with exits and re-entries; `EA74` (cell-walk driver) has no positive scope | guest | 7.09% | 2.5–3.5% | — |
 | F7 | `109D6` whole, native geometry called directly, DOS call a generated exit. Done at irq-plan I10: vertex loops 10C08–10F5F, −0.66M m4 | guest | 5.0% | 2.0–2.8% | — |
-| F8 | Sprite decoder `4D7D`/`4DAE` incl. `call dx` dispatch. irq-plan I10: span setup with the packet loop (`sprite_row`); the walk loop 0623–064F (~10.6M m4) needs a native planting code writes and calling the cell walk | guest | 3.9–14.8% | 1.6–7% | contract extension (user) |
+| F8 | Sprite decoder `4D7D`/`4DAE` incl. `call dx` dispatch. irq-plan I10: span setup with the packet loop (`sprite_row`); the walk loop 4FD3..5032 (049B:0623–0682, ~10.7M m4) in `sprite_row` since 2026-10-27: RET plants through the cell cache's bookkeeping, the generated cell walk called directly ([contract](native-compute.md#code-writes-and-the-cell-walk-user-2026-10-27)); meter −1.2038%, bench +0.025% | guest | 3.9–14.8% | 1.6–7% | user 2026-10-27 |
 | F9 | SPAZ OPL write `0CEE` delay loops. Done with every iteration, poll and stack store kept: meter −1.4996%, flyby `0CEE` −36.4%/call (speed-plan §1). O(1) done at irq-plan I10 | guest | 2.67% | ~2.4% kept ~1.0% | U9 |
 | F10 | Present/C2P reusing `3B9A`'s changed spans | platform | 5.22% | 1.0–1.5% | none (D5 bench) |
 

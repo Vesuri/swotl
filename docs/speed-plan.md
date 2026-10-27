@@ -560,6 +560,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | I10 / 109D6 | ground-object vertex loops 10C08–10F5F; B52D/D5A6 calls and their 9C20h sync writes as exits | runtime, translator (`irq.check_rows`), compute tests | generated −3.46M, native 2.80M: −0.66M |
 | I10 / FDE0 | terrain polygons whole; transform and classify natives called directly (exit only on decline), other calls as exits | runtime, compute tests | generated −3.96M, native 3.37M: −0.59M |
 | I10 / BD68 | edge submission; C962/CD00 calls as exits with re-entries; hook and dispatch overhead leaves little | runtime, compute tests | generated −1.11M, native 1.05M: −0.06M |
+| F8 | sprite walk loop 4FD3..5032 in `sprite_row` (user 2026-10-27: code writes through the cell cache's bookkeeping, the generated cell walk called directly); sync set −1 (4FD3), references re-recorded; generated −10.70M, native +8.97M | runtime, translator, compute tests | −1.2038% (bench +0.025%, user accepts as noise) |
 | ZI | post-irq-plan frames checkpoint (irq-plan I11): 300, 290, 300 ms against pre-irq-plan 330, 330, 320 (no overlap); target unmet | docs | measurement only |
 | I10 / rest | D5A6 prefix and suffix to the projection call; F9 delay loops O(1) (§2.9 exception); D69C BP once; 4DAE packet loop widened to the span setup (`sprite_row`) | runtime, compute tests | −2.43M together (no per-row I9 runtime baseline) |
 

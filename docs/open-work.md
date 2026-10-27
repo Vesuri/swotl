@@ -47,9 +47,9 @@ speed work: [speed-plan.md](speed-plan.md).
     prefix, `BB70`, `F290`, `FDE0`, `109D6`, `BD68`, F9 O(1), `BFD1`
     re-entries, `D69C`, `4DAE` span setup (meter −4.9158%; speed-plan §7 I10).
     Not built: `EA74` (cell-walk driver, all exits), N2 `B8A1` (no calls).
-    Open: the `4DAE` walk loop (0623–064F, ~10.6M of m4, est. −3.8%) needs a
-    native that plants code writes and calls the cell walk: a contract
-    extension for the user.
+    The `4DAE` walk loop (4FD3..5032, ~10.7M of m4) joins `sprite_row` under the
+    user's contract extension of 2026-10-27 (native-compute "Code writes and the
+    cell walk"): meter −1.2038%, bench +0.025% (speed-plan §7 F8).
     Current meter and target costs: speed-plan §1; candidate facts and native
     source mapping: [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md).
     Interface: [native-compute.md](native-compute.md). Native replacement needs

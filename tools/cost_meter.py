@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Deterministic cost meter (docs/speed-plan.md §3-4): the per-step acceptance.
 
-  cost_meter.py [MILESTONE] [--elf E] [--gen G] [--out JSON]
+  cost_meter.py [MILESTONE] [--elf E] [--gen G] [--out JSON] [--trace DIR]
   cost_meter.py --compare A.json B.json
   cost_meter.py --calibrate CAPTURE ELF [--write]
   cost_meter.py --plant-check BASE_JSON
 
-Run: the host run (tests/host_run.py, the reference's interrupts replayed)
-from the milestone's first snapshot to its last (default m4-demo-frames: 49
+Run: the host run (tests/host_run.py, the reference's interrupts replayed;
+--trace: another capture of the milestone, e.g. one recorded with a changed sync
+set before the references are re-recorded) from the milestone's first snapshot to its last (default m4-demo-frames: 49
 drawn frames of the demo flight). A Unicorn block hook counts executions of
 every translated block and every taken transfer (and its target: `targets`,
 for R8's alignment); blocks expand to executed
@@ -268,14 +269,15 @@ def load_model() -> dict:
 
 # --- the run -------------------------------------------------------------------
 
-def run(milestone: str, elf: Path, gen: Path, timeout: int) -> tuple[Counter, Counter, dict]:
+def run(milestone: str, elf: Path, gen: Path, timeout: int,
+        trace: Path | None = None) -> tuple[Counter, Counter, dict]:
     """Block counts {(addr, size): n}, taken counts {block: n} and taken transfers
     {(block, target): n} (in meta["into"]) over the window."""
     import host_run
     import uc as U
     host_run.ELF = elf
     script = host_run.milestone_script(milestone)
-    trace = REPO / f"tmp/pc-runs/ref-{milestone}/trace"
+    trace = trace or REPO / f"tmp/pc-runs/ref-{milestone}/trace"
     script["irqs"], script["releases"] = host_run.reference_inputs(trace)
     h = host_run.Host(host_run.image.M.REF, None)
     blocks, taken, into = Counter(), Counter(), Counter()
@@ -626,6 +628,7 @@ def main(argv=None) -> int:
     ap.add_argument("--gen", type=Path, default=REPO / "build/gen")
     ap.add_argument("--out", type=Path, help="write the full result as JSON")
     ap.add_argument("--timeout", type=int, default=3600)
+    ap.add_argument("--trace", type=Path, help="capture trace directory (default: the reference's)")
     ap.add_argument("--objdump", default=OBJDUMP)
     ap.add_argument("--calibrate", nargs=2, type=Path, metavar=("CAPTURE", "ELF"))
     ap.add_argument("--write", action="store_true", help="with --calibrate: write cost_model.json")
@@ -644,7 +647,7 @@ def main(argv=None) -> int:
         return 0
     host = args.elf.parent
     prog = Program(args.elf, args.objdump, (host / "host.o", host / "host_s.o"))
-    blocks, taken_blocks, meta = run(args.milestone, args.elf.resolve(), args.gen, args.timeout)
+    blocks, taken_blocks, meta = run(args.milestone, args.elf.resolve(), args.gen, args.timeout, args.trace)
     n, taken = expand(prog, blocks, taken_blocks)
     res = report(prog, n, taken, load_model(), args.gen)
     res["targets"] = targets(prog, meta.pop("into"))
