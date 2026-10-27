@@ -168,5 +168,5 @@ clean:
 
 -include obj/*.d
 
-obj/compute_native.o: $(RUNTIME)/compute_native.s $(RUNTIME)/compute_sprite.s $(RUNTIME)/compute_line.s $(RUNTIME)/compute_raster.s $(RUNTIME)/compute_opl.s $(GEN)/equates.i | obj
+obj/compute_native.o: $(RUNTIME)/compute_native.s $(RUNTIME)/compute_sprite.s $(RUNTIME)/compute_line.s $(RUNTIME)/compute_raster.s $(RUNTIME)/compute_edge.s $(RUNTIME)/compute_opl.s $(RUNTIME)/compute_classify.s $(RUNTIME)/compute_ground.s $(RUNTIME)/compute_terrain.s $(RUNTIME)/compute_polygons.s $(GEN)/equates.i | obj
 	$(VASM) $(VASMFLAGS) -I"$(RUNTIME)" -I"$(GEN)" -o $@ $<

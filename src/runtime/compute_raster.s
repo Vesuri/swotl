@@ -4,6 +4,9 @@
 ; oracle; poll-free since irq-plan I9. The guest calls (span output
 ; CEB3/CD99/CE3C, slope C8E0) and the epilogue stay generated as
 ; continuation exits. Reads keep their order against writes.
+; I10 (user 2026-10-26): the row re-enters here after those calls return
+; (hle.csv entries; the hook passes the entry index in d7: 0 = C000, then
+; C2A8, C2B6, C2C0, C3EE), so the scanline tail no longer runs generated.
 ; A record index (7FFFh - offset) is taken only after a peek proved the
 ; record does not wrap (offset <= FFF0h); otherwise resume at that loop head
 ; in generated code.
@@ -17,6 +20,7 @@ RZ_C2A5	equ 5
 RZ_C2B3	equ 6
 RZ_C2BD	equ 7
 RZ_C3EB	equ 8
+RZ_C000	equ 9
 RZ_C0D1	equ 12
 RZ_C1E2	equ 15
 RZ_C3DF	equ 21
@@ -63,36 +67,38 @@ RASTER_PEEK_C3DF macro	; DI = ES:[SI+2] into d6
 	bhi.w \1
 	endm
 
-	xdef rt_hle_rasterize
-rt_hle_rasterize:
-	tst.b G_DF(a6)
-	bne.s raster_decline
-	add.l #$1000,d6
-	moveq #0,d7
-	move.w G_DS(a6),d7
-	cmp.w #$9000,d7
-	bhi.s raster_decline
-	cmp.l d6,d7
-	bcs.s raster_decline
-	move.w G_ES(a6),d7
-	cmp.w #$9000,d7
-	bhi.s raster_decline
-	cmp.l d6,d7
-	bcs.s raster_decline
-	move.w G_SS(a6),d7
-	cmp.w #$9000,d7
-	bhi.s raster_decline
-	cmp.l d6,d7
-	bcs.s raster_decline
-	; The add stage's POP DS rereads its stack slot after REP MOVSW.
+; ES and SS 1000h paragraphs apart: the add stage's POP DS rereads its stack
+; slot after REP MOVSW. Every other address is the generated one, so the
+; segments need no other admission.
+RASTER_APART macro	; fail
 	move.w G_ES(a6),d7
 	sub.w G_SS(a6),d7
-	bpl.s .apart
+	bpl.s .a\@
 	neg.w d7
-.apart:
+.a\@:
 	cmp.w #$1000,d7
-	bcs.s raster_decline
-	bra.s raster_c000
+	bcs.w \1
+	endm
+
+; DF = 0 and RASTER_APART hold at each scanline head (C000); a re-entry
+; within the scanline needs neither.
+	xdef rt_hle_rasterize
+rt_hle_rasterize:
+	subq.w #1,d7
+	bcc.s .reentry
+	tst.b G_DF(a6)
+	bne.s raster_decline
+	RASTER_APART raster_decline
+	bra.s raster_c000_ok
+.reentry:
+	beq.w raster_c2c0	; C2A8: JMP C2C0 after CEB3 returns
+	subq.w #2,d7
+	bcs.s .c2b6
+	beq.w raster_c2c0	; C2C0: after CE3C returns
+	bra.w raster_c3ee	; C3EE: after the slope call returns
+.c2b6:				; OR AX,AX after CD99 returns; nonzero leaves
+	tst.w d0		; through the epilogue in generated code
+	beq.w raster_c2c0
 
 raster_decline:
 	moveq #0,d7
@@ -100,7 +106,14 @@ raster_decline:
 
 ; ---- scanline head, exits ----------------------------------------------
 
+raster_c000_bail:		; the next scanline resumes in generated code,
+	moveq #RZ_C000,d7	; whose hook declines
+	rts
 raster_c000:
+	tst.b G_DF(a6)
+	bne.s raster_c000_bail
+	RASTER_APART raster_c000_bail
+raster_c000_ok:
 	move.w (DS_23FF,a3),d0
 	bne.s raster_c04b
 	subq.w #1,(DS_23FF,a3)
@@ -222,6 +235,19 @@ raster_c0d1:
 	movea.w d6,a4
 	movea.w d7,a5
 	addq.w #2,d3
+	bra.s raster_c0d1_body
+; After a pass step that wrote no record, ES:[BX] is the previous step's DI
+; (a swap stores it there): only ES:[BX+2] is peeked.
+raster_c0d1_next:
+	move.w #$7ffd,d7
+	sub.w d3,d7
+	move.w -1(a1,d7.w),d7
+	cmp.w #$fff0,d7
+	bhi.w raster_c0d1_bail
+	movea.w a5,a4
+	movea.w d7,a5
+	addq.w #2,d3
+raster_c0d1_body:
 	move.w #$7fff,d7
 	sub.w a4,d7
 	lea 0(a1,d7.w),a0	; SI record: byte k at -k(a0)
@@ -265,10 +291,15 @@ raster_c11a:
 	addq.w #1,d2
 raster_c129:
 	subq.w #1,d1
-	bne.w raster_c0d1
+	bne.w raster_c0d1_next
+raster_c129_end:
 	tst.w d2
 	bne.w raster_c0c5
 	bra.w raster_c1c2
+raster_c129r:			; after a record store: peek both
+	subq.w #1,d1
+	bne.w raster_c0d1
+	bra.s raster_c129_end
 raster_c0d1_bail:
 	moveq #RZ_C0D1,d7
 	rts
@@ -292,7 +323,7 @@ raster_c132:
 	bne.s .c164
 	clr.b d0
 	move.b d0,-5(a0)
-	bra.s raster_c129
+	bra.w raster_c129r
 .c164:
 	tst.w -1(a1,d6.w)
 	bne.s .c177
@@ -300,7 +331,7 @@ raster_c132:
 	bne.s .c177
 	clr.b d0
 	move.b d0,-5(a1,d6.w)
-	bra.s raster_c129
+	bra.w raster_c129r
 .c177:
 	move.b -5(a1,d6.w),d0
 	andi.w #3,d0
@@ -331,14 +362,14 @@ raster_c18a:
 	moveq #0,d0
 	move.b d0,-5(a1,d6.w)
 	move.w d0,-1(a1,d6.w)
-	bra.w raster_c129
+	bra.w raster_c129r
 .c1af:
 	moveq #0,d0
 	move.b d0,-5(a1,d6.w)
 	move.w d0,-1(a1,d6.w)
 	move.b d0,-5(a0)
 	move.w d0,-1(a0)
-	bra.w raster_c129
+	bra.w raster_c129r
 
 ; ---- visibility: priority table ES:41F0, 255 words ---------------------
 
@@ -453,7 +484,7 @@ raster_c27c:
 	bne.s .c29d
 	move.w (DS_2533,a3),d3
 	cmp.w (DS_23FF,a3),d3
-	beq.s .c2c0
+	beq.s raster_c2c0
 .c29d:
 	tst.w (DS_2581,a3)
 	bne.s .c2ab
@@ -467,7 +498,7 @@ raster_c27c:
 .c2bd:
 	moveq #RZ_C2BD,d7
 	rts
-.c2c0:
+raster_c2c0:
 	move.b (DS_253A,a3),d1
 	move.w (DS_2537,a3),d3
 	move.w d3,(DS_2531,a3)
@@ -566,8 +597,7 @@ raster_c372:
 	addq.w #2,a4
 	subq.w #1,(DS_252D,a3)
 	beq.s .c383
-	bmi.s .c37f
-	bra.w raster_c1e2
+	bpl.w raster_c1e2
 .c37f:
 	addq.w #1,(DS_23FF,a3)
 .c383:
@@ -587,7 +617,43 @@ raster_c395:
 	movea.w a4,a5
 	move.w d0,(DS_252D,a3)
 	move.w d0,d1
-raster_c3a4:
+	; DI walks ES:4062 up by words: a0 below its word (DI = 4062h + 2k <= FFFEh)
+	move.w d0,d7
+	subq.w #1,d7
+	cmp.w #$5fcd,d7
+	bhi.s raster_c3a4
+	lea $3f9e(a1),a0
+raster_c3a4_ptr:
+	move.w -(a0),d3
+	move.w #$7fff,d7
+	sub.w d3,d7
+	move.w -1(a1,d7.w),d0
+	beq.s .c3c7
+	subq.w #1,d0
+	beq.s .c3c7
+	move.w d0,-1(a1,d7.w)
+	move.w a4,d7
+	cmp.w a5,d7
+	bne.s .copy
+.c3be:
+	addq.w #2,a4
+	addq.w #2,a5
+	subq.w #1,d1
+	bne.s raster_c3a4_ptr
+	bra.s raster_c3cf
+.copy:				; ES:[SI] = ES:[DI], reread after the record store
+	move.w (a0),d0
+	move.w #$7fff,d7
+	sub.w a4,d7
+	move.w d0,-1(a1,d7.w)
+	bra.s .c3be
+.c3c7:
+	addq.w #2,a5
+	subq.w #1,(DS_252D,a3)
+	subq.w #1,d1
+	bne.s raster_c3a4_ptr
+	bra.s raster_c3cf
+raster_c3a4:			; CX = 0 or more than 5FCEh records: indexed
 	move.w #$7fff,d7
 	sub.w a5,d7
 	move.w -1(a1,d7.w),d3
@@ -612,13 +678,13 @@ raster_c3a4:
 	addq.w #2,a5
 	subq.w #1,d1
 	bne.s raster_c3a4
-	bra.s .c3cf
+	bra.s raster_c3cf
 .c3c7:
 	addq.w #2,a5
 	subq.w #1,(DS_252D,a3)
 	subq.w #1,d1
 	bne.s raster_c3a4
-.c3cf:
+raster_c3cf:
 	move.w (DS_252D,a3),d0
 	movea.w #$4060,a4
 	move.w d0,ES_4060(a1)
@@ -633,9 +699,11 @@ raster_c3df:
 	movea.w d6,a5
 	move.w #$7fff,d6
 	sub.w a5,d6		; DI record: byte k at -k(a1,d6.w)
-	tst.b -5(a1,d6.w)
-	bpl.s .c3eb
-	or.b #$40,-5(a1,d6.w)
+	move.b -5(a1,d6.w),d7	; byte 5, kept for the C40A test (nothing
+	bpl.s raster_c3eb	; between stores to it)
+raster_c3ee_d7:
+	or.b #$40,d7
+	move.b d7,-5(a1,d6.w)
 	move.w -13(a1,d6.w),d0
 	move.w -11(a1,d6.w),d2
 	cmp.w #1,-1(a1,d6.w)
@@ -645,7 +713,7 @@ raster_c3df:
 	lsr.w #1,d2
 	roxr.w #1,d0
 .c40a:
-	btst #5,-5(a1,d6.w)
+	btst #5,d7
 	bne.s .c41b
 	add.w d0,-9(a1,d6.w)
 	move.w -7(a1,d6.w),d7
@@ -661,9 +729,14 @@ raster_c3df:
 	subq.w #1,(DS_252D,a3)
 	bne.s raster_c3df
 	bra.w raster_c000
-.c3eb:
+raster_c3eb:
 	moveq #RZ_C3EB,d7
 	rts
+raster_c3ee:			; DI from the guest register
+	move.w #$7fff,d6
+	sub.w a5,d6
+	move.b -5(a1,d6.w),d7
+	bra.s raster_c3ee_d7
 raster_c3df_bail:
 	moveq #RZ_C3DF,d7
 	rts

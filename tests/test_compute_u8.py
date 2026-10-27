@@ -177,7 +177,7 @@ def candidate_admission(plant=False):
     # production Program intact and disable the enabled nested hooks in this copy.
     enabled = base()
     original = copy(enabled)
-    hooks = {at(0xb017), at(0xb393), at(0xb4e2), at(0xd5da)} & enabled.hle.keys()
+    hooks = {at(0xb017), at(0xb393), at(0xb4e2), at(0xd5a6), at(0xd5da)} & enabled.hle.keys()
     original.hle = {n: row for n, row in enabled.hle.items() if n not in hooks}
     count = 0
     for first, returns in ((0xb017, 4), (0xb4e2, 1), (0xd5a6, 1)):

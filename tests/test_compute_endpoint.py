@@ -74,7 +74,7 @@ def emission():
                reason='approved endpoint protocol test, not a native routine',
                oracle='tests/test_compute_endpoint.py', resume='continue')
     def rows(name):
-        return [r for r in original(name) if not (name == 'hle.csv' and r['first'] == row['first'])] + \
+        return [r for r in original(name) if not (name == 'hle.csv' and r['first'] in (row['first'], '0xD5A6'))] + \
             ([row] if name == 'hle.csv' else [])
     with patch.object(image, 'rows', rows):
         p = emit.Program(units=base().units)

@@ -98,11 +98,10 @@ its transform/projection calls and return checks remain generated.
 User approved the same endpoint contract for F290 tile selection on 2026-10-23:
 F31A → F339/F35F/F3B4; object processing and calls remain generated
 ([contract](native-compute.md#multiple-continuation-endpoints-user-2026-10-22)).
-Outside every contract: `F290`, `BD68`, `FDE0` (with `end`) call
-another overlay through the PLINK manager; `109D6` reaches DOS (`int 21h` in
-the callee at `144B7`); `4DAE` has `call dx`; `D69C`'s callee poll `D4FA` is
-shared. `BFD1`'s callee flow is resolved by continuation exits (F5). Each needs a narrower row (end
-the replacement before the call) or annotations, with its routine.
+Since irq-plan I10 guest calls are continuation exits with
+[re-entries](native-compute.md#re-entries-irq-plan-i10-user-2026-10-26)
+(`BFD1`, `BD68`, `F290`, `FDE0`, `109D6`); `4DAE`'s `call dx` walk stays
+generated.
 
 - **N4** Routines that need C, each after U6, by S1–S9 plus C's cases, in B3 price
   order; S8 includes re-recording the references its poll set affects. Price each
@@ -134,6 +133,8 @@ the replacement before the call) or annotations, with its routine.
   and 1012F → 101DE/10186 on 2026-10-23; cache misses, transform/projection
   and overlay calls remain generated. User deferred FDE0 on 2026-10-23:
   the initial cache-loop design has no positive price (R45).
+  irq-plan I10 (user 2026-10-26) lifted these deferrals: `BB70`, `109D6`,
+  `F290`, `BD68`, `FDE0` and the `D5A6` prefix are rows (speed-plan §7 I10).
 
 ## F. Flyby plan
 
@@ -147,13 +148,13 @@ lost their gain to guards, hooks, exits and polls (R41–R47).
 | F0 | `amiga/perf_flyby.gdb`, `tools/profile_tree.py`, `tools/ab_runs.py`; re-profile after each kept step | instrument | — | — | U9 |
 | F1 | EMS map copy (`ems.c`): long-word copy, exact identical-remap skip. Done: c12 meter −27.72% (speed-plan §1); a write-back skip needs a cheap exact unmodified test | runtime | 1.8–10.3% | 1.4–8% | — |
 | F2 | `RTSVGA+3B9A` frame compare and changed-span copy. Done as a lowering: its cost is its REP instructions; REP MOVSW by longs, flyby `rep movsw` −29% (speed-plan §1). Left: `repne cmpsw` 1.0–1.4% and `repe cmpsw` 1.4–1.5% of the clip, already word/long loops; a native merging search and copy has no price yet | translator | 4.11% | 0.3% kept | — |
-| F3 | Geometry as whole routines: `B52D`+`B54B`; `D5A6`→`B017` all paths→`B4E2`. `B017` whole with `B4E2` done (folds the `B393` and `B4E2` rows): meter −1.4854%, flyby cycles/call −22.7% (speed-plan §1). `D5A6` stays a separate row: `B017` is also called directly (~15% of calls) and nested hooks reject. `B52D` whole with `B54B` done: meter −1.5848%, flyby cycles/call −23.3%; bench +0.025% (8 runs per arm), accepted by the user as noise. `D5A6` prefix deferred by the user 2026-10-24: ~0.5% of the clip; it changes the poll set (D5F8 → the `B017` call) and re-records references | guest | 4.57% generated | 2.3–3.0% | U10 |
+| F3 | Geometry as whole routines: `B52D`+`B54B`; `D5A6`→`B017` all paths→`B4E2`. `B017` whole with `B4E2` done (folds the `B393` and `B4E2` rows): meter −1.4854%, flyby cycles/call −22.7% (speed-plan §1). `D5A6` stays a separate row: `B017` is also called directly (~15% of calls) and nested hooks reject. `B52D` whole with `B54B` done: meter −1.5848%, flyby cycles/call −23.3%; bench +0.025% (8 runs per arm), accepted by the user as noise. `D5A6` prefix done at irq-plan I10: the row is D5A6..D614, continuing at the `B017` call | guest | 4.57% generated | 2.3–3.0% | U10 |
 | F4 | FM synthesis speed, output unchanged. Done in C (asm not needed): loop cache and render loop; flyby `fm_field` −24.4% per call (10.75% → 8.11% of the clip); bench +0.20% (frames 4–11 render no loops), accepted by the user as noise 2026-10-24 (speed-plan §1) | platform | 10.97% | 3.3–5.5% | user only if output changes |
 | F5 | `BFD1` rasterizer, one scope. Done: `C000..C42C`, guest calls as continuation exits (U11), folds R48; meter −0.0167%, bench −0.044%, flyby `BFD1` −2.1%/call (speed-plan §1): far below the estimate | guest | 7.58% | 3.0–4.2% kept 0.05% | U11 |
-| F6 | Terrain `FDE0`+`F290`+`EA74`, scope ends before the PLINK call | guest | 7.09% | 2.5–3.5% | lift deferrals; `EA74` authorization |
-| F7 | `109D6` whole, native geometry called directly, DOS call a generated exit | guest | 5.0% | 2.0–2.8% | lift deferral; scope |
-| F8 | Sprite decoder `4D7D`/`4DAE` incl. `call dx` dispatch | guest | 3.9–14.8% | 1.6–7% | scope |
-| F9 | SPAZ OPL write `0CEE` delay loops. Done with every iteration, poll and stack store kept: meter −1.4996%, flyby `0CEE` −36.4%/call (speed-plan §1). O(1): irq-plan I10 | guest | 2.67% | ~2.4% kept ~1.0% | U9 |
+| F6 | Terrain `FDE0`+`F290`+`EA74`, scope ends before the PLINK call. Done at irq-plan I10: `F290` (−0.84M m4) and `FDE0` (−0.59M) whole with exits and re-entries; `EA74` (cell-walk driver) has no positive scope | guest | 7.09% | 2.5–3.5% | — |
+| F7 | `109D6` whole, native geometry called directly, DOS call a generated exit. Done at irq-plan I10: vertex loops 10C08–10F5F, −0.66M m4 | guest | 5.0% | 2.0–2.8% | — |
+| F8 | Sprite decoder `4D7D`/`4DAE` incl. `call dx` dispatch. irq-plan I10: span setup with the packet loop (`sprite_row`); the walk loop 0623–064F (~10.6M m4) needs a native planting code writes and calling the cell walk | guest | 3.9–14.8% | 1.6–7% | contract extension (user) |
+| F9 | SPAZ OPL write `0CEE` delay loops. Done with every iteration, poll and stack store kept: meter −1.4996%, flyby `0CEE` −36.4%/call (speed-plan §1). O(1) done at irq-plan I10 | guest | 2.67% | ~2.4% kept ~1.0% | U9 |
 | F10 | Present/C2P reusing `3B9A`'s changed spans | platform | 5.22% | 1.0–1.5% | none (D5 bench) |
 
 Next: `FLIGHT+1538C` object drawing (1.1–1.6%), `FLIGHT+0A8D2` AI scan (~1.5%).

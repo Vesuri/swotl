@@ -1,11 +1,12 @@
 """BFD1 scanline rasterizer from C000 (F5): original x86 is the oracle.
 
-Each captured call runs from its BFD1 entry. The prologue, every guest call
-(continuation exits) and the row's code after them run as original x86 to the
-next C000 entry, the row's only hook. From each entry the native and the
-generated arm run to the next exit and are compared with the original there
-(RC5, docs/irq-plan.md: registers, live flags, all RAM, code/VRAM write sets).
-A record pointer past FFF0h resumes at its loop head in generated code."""
+Each captured call runs from its BFD1 entry. The prologue and every guest call
+(continuation exits) run as original x86 to the row's next hook: C000 or a
+re-entry after a call returns (I10: C2A8, C2B6, C2C0, C3EE; d7 = 1 + k). From
+each hook the native and the generated arm run to the next exit and are
+compared with the original there (RC5, docs/irq-plan.md: registers, live
+flags, all RAM, code/VRAM write sets). A record pointer past FFF0h resumes at
+its loop head in generated code; re-entries reach the C1E2 and C3DF peeks."""
 from pathlib import Path
 import argparse
 import random
@@ -28,6 +29,8 @@ FIRST, RETURN = 0xc000, 0xc04a
 LOOPS = (0xc000, 0xc085, 0xc0c5, 0xc0d1, 0xc11a, 0xc129, 0xc1e2, 0xc27c,
          0xc2f2, 0xc306, 0xc32d, 0xc3a4, 0xc3df)
 EXITS = (0xc02c, 0xc03a, 0xc040, 0xc043, 0xc2a5, 0xc2b3, 0xc2bd, 0xc3eb)
+ENTRIES = (0xc2a8, 0xc2b6, 0xc2c0, 0xc3ee)     # hle.csv entries
+INDEX = {FIRST: 0} | {a: k + 1 for k, a in enumerate(ENTRIES)}
 # compute.resume_dispatch ids: the endpoints ascending, then the root loop heads
 RESUME = {a: k + 1 for k, a in enumerate(EXITS)} | {a: 9 + k for k, a in enumerate(LOOPS)}
 # Wrap peeks (RASTER_PEEK_*): the ES offset this test pokes, a wrapping value,
@@ -142,10 +145,16 @@ def generated_image(plant=False):
 PLANTS = {'write': ('\tmove.w a5,-1(a1,d7.w)\n', '\tnop\n'),
           'index': ('\taddq.w #2,d7\t\t; 7FFFh - BX, wrapping like BX\n', '\taddq.w #1,d7\n'),
           'guard': ('\tcmp.w #$1000,d7\n', '\tcmp.w #$0,d7\n'),
-          'peek': ('\tcmp.w #$fff0,d7\n', '\tcmp.w #$ffff,d7\n'),
+          'peek': ('\tsubq.w #2,d7\n\tmove.w -1(a1,d7.w),d7\n\tcmp.w #$fff0,d7\n',
+                   '\tsubq.w #2,d7\n\tmove.w -1(a1,d7.w),d7\n\tcmp.w #$ffff,d7\n'),
           'carry': ('\taddx.w d2,d7\n', '\tadd.w d2,d7\n'),
           'resume': ('\tmoveq #RZ_C2B3,d7\n', '\tmoveq #RZ_C2BD,d7\n'),
-          'bail': ('raster_c0d1_bail:\n\tmoveq #RZ_C0D1,d7\n', 'raster_c0d1_bail:\n\tmoveq #RZ_C1E2,d7\n')}
+          'bail': ('raster_c0d1_bail:\n\tmoveq #RZ_C0D1,d7\n', 'raster_c0d1_bail:\n\tmoveq #RZ_C1E2,d7\n'),
+          'entry': ('\tbra.w raster_c3ee\t; C3EE: after the slope call returns\n', '\tbra.w raster_c2c0\n'),
+          'reentry': ('\ttst.w d0\t\t; through the epilogue in generated code\n', '\ttst.w d1\n'),
+          'head': ('\tbne.s raster_c000_bail\n', '\tbne.s raster_c000_ok\n'),
+          'carry-next': ('\tmovea.w a5,a4\n\tmovea.w d7,a5\n', '\tmovea.w a4,a4\n\tmovea.w d7,a5\n'),
+          'expire-ptr': ('\tmove.w -(a0),d3\n', '\tmove.w (a0),d3\n')}
 
 
 @lru_cache(maxsize=None)
@@ -159,10 +168,10 @@ def native_image(plant=None, predecessor='direct'):
               'taken': ['cmp.w d0,d0', 'beq entry', 'illegal'],
               'fall': ['cmp.w d0,d0', 'bne done'], 'indirect': ['lea entry,a0', 'jmp (a0)'],
               'return': ['pea entry', 'rts']}[predecessor]
-    # d7 holds garbage on entry: the hook passes no entry index (compute.hook)
+    # d7 = the entry index (moveq in the hook), patched at SNIP+4 per run
     text = [equates(), f'rt_irq equ ${B.STUB_AT["rt_irq"]:x}',
             f'org ${B.SNIP:x}', 'dc.l done,0', *prefix, 'entry:',
-            'move.l #$5a5a5a5a,d7', f'move.l #${B.LOADSEG+0x49b:x},d6',
+            f'move.l ${B.SNIP+4:x},d7', f'move.l #${B.LOADSEG+0x49b:x},d6',
             'jsr rt_hle_rasterize', 'rts' if predecessor == 'call' else 'bra done',
             'done:', 'nop', source]
     work = ROOT/f'tmp/rasterize-native-{os.getpid()}'
@@ -178,12 +187,12 @@ def actual_state(m, got, fl, fx, writes, at):
                 writes=writes, ram=m.gread(0, B.X.RAM))
 
 
-def native_run(binary, ram, regs, at):
-    """The native from C000; never calls rt_irq (poll-free, RC5)."""
+def native_run(binary, ram, regs, at, index=0):
+    """The native from hook `index` (0: C000); never calls rt_irq (poll-free, RC5)."""
     m = B.D.M68k(ram, B.STUB_AT)
     m.irq_calls = []
     try:
-        m.e.write(B.SNIP, binary)
+        m.e.write(B.SNIP, binary[:4] + index.to_bytes(4, 'big') + binary[8:])
         m.extra_stops = {int.from_bytes(binary[:4], 'big'): 'done'}
         O.watch_native(m)
         flags = {f: regs['flags'] >> FLAG_BIT[f] & 1 for f in FLAGS}
@@ -230,31 +239,47 @@ def check(name, expected, actual, stop):
 def chain(name, ram, regs, plant=None, generated=True, mutate=None, generated_plant=False):
     """Walk one call. Returns the number of compared entries."""
     cs = regs['cs']
-    entry = {(cs, FIRST-CS_OFF), (cs, RETURN-CS_OFF)}
+    entry = hooks(cs)
     exits = tuple((cs, a-CS_OFF) for a in EXITS)
     regs, ram = run_to(ram, regs, entry)
     full = native_image(plant)
     count = 0
     while regs['ip'] != RETURN-CS_OFF:
+        at = regs['ip'] + CS_OFF
         if mutate:
-            ram, regs = mutate(FIRST, ram, regs)
+            ram, regs = mutate(at, ram, regs)
         expected = O.run(ram, regs, (cs, RETURN-CS_OFF), limit=10**7, returns=exits)
         stop = expected['at'][1] + CS_OFF
         if stop not in EXITS:
             raise RasterMismatch((name, 'original left the row without an exit', hex(stop)))
-        actual, result = native_run(full, ram, regs, expected['at'])
-        if result != RESUME[stop]:
-            raise RasterMismatch((name, 'native', hex(stop), result))
-        check(name+' native', expected, actual, stop)
-        REACHED.add(stop)
+        actual, result = native_run(full, ram, regs, expected['at'], INDEX[at])
+        if at == 0xc2b6 and regs['ax'] and not result:
+            declined(name, ram, regs, actual)   # CD99 aborted: generated epilogue
+        else:
+            if result != RESUME[stop]:
+                raise RasterMismatch((name, 'native', hex(at), hex(stop), result))
+            check(f'{name} native {at:x}', expected, actual, stop)
+        REACHED.update({stop, at})
         if generated:
-            check(name+' generated', expected,
-                  generated_run(ram, regs, FIRST, EXITS, generated_plant), stop)
+            check(f'{name} generated {at:x}', expected,
+                  generated_run(ram, regs, at, EXITS, generated_plant), stop)
         count += 1
         ram = captured_ram(expected['ram'], ram)
         regs = dict(expected['registers'], cs=cs, ip=expected['at'][1], flags=expected['flags'])
         regs, ram = run_to(ram, regs, entry)
     return count
+
+
+def hooks(cs):
+    """Where the original stops for the next hook: C000, the re-entries, the return."""
+    return {(cs, a-CS_OFF) for a in (FIRST, *ENTRIES, RETURN)}
+
+
+def declined(name, ram, regs, actual):
+    if actual['writes'] or actual['ram'] != ram or any(
+            actual['registers'][k] != v for k, v in regs.items()
+            if k in actual['registers'] and k not in ('cs', 'ip')):
+        raise RasterMismatch((name, 'decline mutation'))
 
 
 def head_exit(at, ram, regs):
@@ -269,15 +294,14 @@ def head_exit(at, ram, regs):
 
 
 def decline_cases(plant=None):
-    """Guards decline before any mutation."""
+    """The C000 hook declines before any mutation: DF set, or ES and SS closer
+    than 1000h paragraphs (the add stage's POP DS rereads its stack slot)."""
     binary = native_image(plant)
     name, ram, regs = next(captured())
     cs = regs['cs']
     regs, ram = run_to(ram, regs, {(cs, FIRST-CS_OFF)})
-    cases = [(seg, value) for seg in ('ds', 'es', 'ss')
-             for value in (0, cs+0xfff, 0x9001, 0xffff)]
-    cases += [('es', regs['ss']+0xfff), ('es', regs['ss']-0xfff),
-              ('flags', regs['flags'] | 0x400)]
+    cases = [('es', regs['ss']+0xfff), ('es', regs['ss']-0xfff), ('es', regs['ss']),
+             ('flags', regs['flags'] | 0x400)]
     count = 0
     for key, value in cases:
         changed = dict(regs, **{key: value & 0xffff})
@@ -289,6 +313,34 @@ def decline_cases(plant=None):
             raise RasterMismatch((key, value, 'decline registers'))
         count += 1
     return count
+
+
+def head_cases(plant=None):
+    """A re-entry whose scanline ends where the next head fails its admission
+    (DF set at a re-entry) resumes at C000 in generated code, whose hook declines,
+    with the original's state at that arrival."""
+    full = native_image(plant)
+    for name, ram, regs in captured():
+        cs = regs['cs']
+        entry = hooks(cs)
+        stops = tuple((cs, a-CS_OFF) for a in (*EXITS, FIRST))
+        exits = tuple((cs, a-CS_OFF) for a in EXITS)
+        regs, ram = run_to(ram, regs, entry)
+        while regs['ip'] != RETURN-CS_OFF:
+            if regs['ip'] + CS_OFF in (0xc2a8, 0xc2c0, 0xc3ee):
+                df = dict(regs, flags=regs['flags'] | 0x400)
+                want = O.run(ram, df, (cs, RETURN-CS_OFF), limit=10**7, returns=stops)
+                if want['at'][1] + CS_OFF == FIRST:
+                    actual, result = native_run(full, ram, df, want['at'], INDEX[regs['ip'] + CS_OFF])
+                    if result != RESUME[FIRST]:
+                        raise RasterMismatch((name, 'head', result))
+                    check(f'{name} head', want, actual, FIRST)
+                    return 1
+            expected = O.run(ram, regs, (cs, RETURN-CS_OFF), limit=10**7, returns=exits)
+            ram = captured_ram(expected['ram'], ram)
+            regs = dict(expected['registers'], cs=cs, ip=expected['at'][1], flags=expected['flags'])
+            regs, ram = run_to(ram, regs, entry)
+    raise RasterMismatch('head coverage')
 
 
 def first_bail(ram, regs):
@@ -310,20 +362,19 @@ def first_bail(ram, regs):
 
 
 def wrap_cases(plant=None):
-    """A record pointer past FFF0h at a peeking loop head reached from C000:
+    """A record pointer past FFF0h at a peeking loop head reached from a hook:
     the native resumes at the first such arrival in generated code with the
     original's state there. From C000 the merge (C0D1) reads every active
     record pointer before C1E2 (unless one record is active) and C1E2 every one
-    before C3DF, so the fixtures reach the C0D1 resume; the C1E2/C3DF peeks
-    were reached by re-entry at their polls (retired, RC5), as were the
-    priority searches' BX wraps through 0 (C2F2/C32D: the row sets DS:2535
-    before it reads it)."""
+    before C3DF; the re-entries at C2C0 (visibility) and C3EE (advance) reach
+    the C1E2 and C3DF peeks first. The priority searches' BX wraps through 0
+    (C2F2/C32D) stay unreachable: the row sets DS:2535 before it reads it."""
     count = 0
     full = native_image(plant)
-    need = {0xc0d1}
+    need = set(PEEKS)
     for name, ram, regs in captured():
         cs = regs['cs']
-        entry = {(cs, FIRST-CS_OFF), (cs, RETURN-CS_OFF)}
+        entry = hooks(cs)
         exits = tuple((cs, a-CS_OFF) for a in EXITS)
         regs, ram = run_to(ram, regs, entry)
         while need and regs['ip'] != RETURN-CS_OFF:
@@ -350,7 +401,7 @@ def wrap_cases(plant=None):
                 else:
                     continue
                 want = O.run(memory, regs, (cs, RETURN-CS_OFF), limit=10**7, returns=ends)
-                actual, result = native_run(full, memory, regs, want['at'])
+                actual, result = native_run(full, memory, regs, want['at'], INDEX[regs['ip'] + CS_OFF])
                 if want['at'][1] + CS_OFF != head or result != RESUME[head]:
                     raise RasterMismatch((name, 'wrap', hex(head), result))
                 check(f'wrap {head:x}', want, actual, head)
@@ -373,6 +424,9 @@ def dispatch_cases(plant=False):
     want_ids = {r[1]: k + 1 for k, r in enumerate(resumes)}
     if want_ids != RESUME:
         raise RasterMismatch(('resume ids', want_ids))
+    entries = program().compute_entries[('SWOTL.EXE', FIRST)]
+    if tuple(e[1] for e in entries) != ENTRIES:
+        raise RasterMismatch(('entries', entries))
     source = (ROOT/'src/runtime/compute_raster.s').read_text()
     for a, k in re.findall(r'^RZ_C([0-9A-F]{3})\tequ (\d+)$', source, re.M):
         if want_ids.get(int('C' + a, 16)) != int(k):
@@ -436,8 +490,8 @@ def run_all(plant=None, generated=True):
         total += chain(name, ram, regs, plant, generated)
     name, ram, regs = next(captured())
     total += chain(name+'+head-exit', ram, regs, plant, False, head_exit)
-    if not plant and REACHED != set(EXITS):
-        raise RasterMismatch(('coverage', sorted(map(hex, set(EXITS) - REACHED))))
+    if not plant and not REACHED >= set(EXITS) | {FIRST, *ENTRIES}:
+        raise RasterMismatch(('coverage', sorted(map(hex, (set(EXITS) | {FIRST, *ENTRIES}) - REACHED))))
     return total
 
 
@@ -450,20 +504,22 @@ if __name__ == '__main__':
         print('rasterize:', run_all(generated=args.generated), 'entries pass at their exits', flush=True)
         print('rasterize:', decline_cases(), 'decline cases pass', flush=True)
         print('rasterize:', wrap_cases(), 'wrap cases pass', flush=True)
+        print('rasterize:', head_cases(), 'scanline-head resume cases pass', flush=True)
         print('rasterize:', dispatch_cases(), 'resume table cases pass', flush=True)
     if args.predecessors:
         n, failures = predecessor_cases()
         assert not failures, failures
         print('rasterize:', n, 'predecessor cases pass', flush=True)
     if args.sabotage:
-        for plant in ('write', 'index', 'carry', 'resume'):
+        for plant in ('write', 'index', 'carry', 'resume', 'entry', 'reentry', 'carry-next', 'expire-ptr'):
             try:
                 run_all(plant, generated=False)
             except RasterMismatch as error:
                 print('caught', plant, str(error)[:200], flush=True)
             else:
                 raise AssertionError(plant+' escaped')
-        for plant, probe in (('guard', decline_cases), ('peek', wrap_cases), ('bail', wrap_cases)):
+        for plant, probe in (('guard', decline_cases), ('peek', wrap_cases), ('bail', wrap_cases),
+                             ('head', head_cases)):
             try:
                 probe(plant)
             except RasterMismatch as error:

@@ -384,7 +384,7 @@ lines.
 - **Reference cadence** (DOSBox-X `cycles=fixed 12000`, m4): a drawn frame
   every 9 PIT ticks ≈ 36 ms, ≈ 408K x86 instructions per frame.
 - **Meter** (`tools/cost_meter.py`, deterministic): `--out tmp/meter/ARM.json`
-  per arm, `--compare A B` for the §3 deltas; also poll tests per class (irq-plan I1). Weights `tools/cost_model.json`,
+  per arm, `--compare A B` for the §3 deltas; also poll tests per class (irq-plan I1); the JSON's `runtime` holds model cycles per runtime symbol (natives against the generated cycles they replace). Weights `tools/cost_model.json`,
   fit at A4 on the `e891ace` bench capture: per code byte 1.038 (0.912 inside
   a loop of ≤ 256 bytes whose back branch was taken in the workload), read
   1.795, write 3.219, taken transfer 5.113 outside such a loop and 1.712 inside,
@@ -544,6 +544,14 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | ZF3 | post-F3/F4 frames checkpoint: 330, 300, 300 ms against pre-F3 360, 350, 360 (no overlap); target unmet | docs | measurement only |
 | F5 | `BFD1` whole, exact polls, guest calls as exits; folds R48. Price (S2, flyby `130bd18`): 575,524 inclusive cycles/call, self 260,523 + ordering 86,293; clear 0.80% of the clip stays (long stores, U3); replaceable ~300K/call; estimate −45–60% of it, 1.5–2.5% of the clip | runtime, translator, compute tests | −0.0167% (bench −0.044%, flyby `BFD1` −2.1%/call) |
 | F9 | SPAZ OPL delay loops as exact-poll rows, every iteration, poll and store kept | runtime, annotations, `test_opl_delay` | −1.4996% (bench +0.056%, D8; flyby `0CEE` −36.4%/call) |
+| I10 | native rows re-opened poll-free (irq-plan I10), one batch, references re-recorded once; per row below: generated cycles saved and native cost on the same m4 run (`cost_meter.py` `runtime` per symbol) | runtime, translator, compute tests | −4.9158% (bench −0.48%) |
+| I10 / BB70 | polygon classify whole up to its RETF, R39's admission guard | runtime, compute tests | generated −3.13M, native 1.47M: −1.66M |
+| I10 / BFD1 | rasterizer re-entered after each guest call (`hle.csv` entries); guards once per scanline | runtime, translator, compute tests | −1.18M against the I9 arm (native 9.79M → 13.11M, generated 5.74M → 1.25M) |
+| I10 / F290 | tile and scenery selection whole; object calls as exits with re-entries; far-ring sprite objects skipped by their type byte | runtime, compute tests | generated −2.90M, native 2.06M: −0.84M |
+| I10 / 109D6 | ground-object vertex loops 10C08–10F5F; B52D/D5A6 calls and their 9C20h sync writes as exits | runtime, translator (`irq.check_rows`), compute tests | generated −3.46M, native 2.80M: −0.66M |
+| I10 / FDE0 | terrain polygons whole; transform and classify natives called directly (exit only on decline), other calls as exits | runtime, compute tests | generated −3.96M, native 3.37M: −0.59M |
+| I10 / BD68 | edge submission; C962/CD00 calls as exits with re-entries; hook and dispatch overhead leaves little | runtime, compute tests | generated −1.11M, native 1.05M: −0.06M |
+| I10 / rest | D5A6 prefix and suffix to the projection call; F9 delay loops O(1) (§2.9 exception); D69C BP once; 4DAE packet loop widened to the span setup (`sprite_row`) | runtime, compute tests | −2.43M together (no per-row I9 runtime baseline) |
 
 No priced translator candidate remains. Unchanged outside authorized U5 rows (§2):
 poll points (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers

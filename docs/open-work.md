@@ -43,14 +43,13 @@ speed work: [speed-plan.md](speed-plan.md).
     approved under U9: native-plan F.
     F5 covers the R46 priority searches and R47 expiry/advance inside the
     whole `BFD1` row.
-    Deferred by the user: F3's `D5A6` prefix (2026-10-24; poll-set change and
-    reference re-recording for ~0.5% of the flyby), N2 `B8A1` (no calls in m4/c13/c27), N4 `BB70`
-    (sync-preserving design has no positive price), `109D6` vertex loops
-    (initial guarded adapter exceeded its budget), `F290` (narrow
-    tile-selection adapter has no positive price, R41), `BD68` (edge-loop
-    address-reuse design has no positive price, R43), and `FDE0` (cache-loop
-    design has no positive price, R45; deferred 2026-10-23).
-    These remain generated.
+    irq-plan I10 (user 2026-10-26) re-opened the deferred rows poll-free: `D5A6`
+    prefix, `BB70`, `F290`, `FDE0`, `109D6`, `BD68`, F9 O(1), `BFD1`
+    re-entries, `D69C`, `4DAE` span setup (meter −4.9158%; speed-plan §7 I10).
+    Not built: `EA74` (cell-walk driver, all exits), N2 `B8A1` (no calls).
+    Open: the `4DAE` walk loop (0623–064F, ~10.6M of m4, est. −3.8%) needs a
+    native that plants code writes and calls the cell walk: a contract
+    extension for the user.
     Current meter and target costs: speed-plan §1; candidate facts and native
     source mapping: [swotl-tfh-rendering-map.md](swotl-tfh-rendering-map.md).
     Interface: [native-compute.md](native-compute.md). Native replacement needs
@@ -79,9 +78,8 @@ speed work: [speed-plan.md](speed-plan.md).
     I3 monitored, I4 private-stack entry, I5 field task, I6 asynchronous IRQ0, I7
     keyboard at the vertical blank, I8 sync points with the loop heads kept (user
     2026-10-26; irq-plan Facts), I9 native rows poll-free (bench +0.036% accepted by the user
-    2026-10-26). Next: I10; F10 skipped by the user (2026-10-25).
-    The deferred natives it unblocks (D5A6 prefix, BB70, F9 O(1), FDE0, BD68,
-    F290, 109D6; exact-poll rows rebuilt) are done at its I10.
+    2026-10-26), I10 native rows re-opened (meter −4.9158%, bench −0.48%). Next: I11;
+    F10 skipped by the user (2026-10-25).
 
 ## Amiga platform
 

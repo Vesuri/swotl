@@ -70,7 +70,9 @@ def program():
         p = emit.Program()
     body = p.compute_bodies[VERTEX]
     assert set(LOOP_ENTRIES) == set(body.loops), body.loops
-    assert len(body.body) == 255, len(body.body)  # 257 less the two sync accesses
+    # 257 less the two sync accesses, plus 34 reached from the re-entries
+    # 10CE4/10F21 (I10 ground_vertices row)
+    assert len(body.body) == 289, len(body.body)
     assert not set(body.body) & p.loop_heads, 'vertex body loop heads left in the sync set'
     assert body.returns == tuple(('SWOTL.EXE', o) for o in (0x10cd1,0x10f0e,0x10f62,0x10f6a,0x11131))
     cache = ROOT/'tmp/scenery-differential'

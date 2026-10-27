@@ -70,9 +70,9 @@ def boundaries():
     ram = bytearray(B.X.RAM)
     raw = B.relocated(image.load()['SWOTL.EXE'])
     ram[B.LOADSEG * 16:B.LOADSEG * 16 + len(raw)] = raw
-    base = dict(ax=0, bx=0x5678, cx=0x9abc, dx=0xdef0, si=0xabcd,
-                di=0x4321, sp=0xfffe, bp=0x8000, cs=B.LOADSEG+0x49b,
-                ip=0x8c2a, ds=0x5000, ss=0x6000, es=0xa000, flags=0x7603)
+    base = dict(ax=0x1111, bx=0x5678, cx=0x9abc, dx=0xdef0, si=0xabcd,
+                di=0x4321, sp=0x1000, bp=0x8000, cs=B.LOADSEG+0x49b,
+                ip=0x8bf6, ds=0x5000, ss=0x6000, es=0xa000, flags=0x7603)
     rng = random.Random(38)
     specs = [(0,0,0), (0x7fff,0x7fff,0x7fff), (0xffffffff,)*3]
     for bit in range(32):
@@ -82,15 +82,22 @@ def boundaries():
                 values[axis] = min(0xffffffff, (1 << bit) + delta)
                 specs.append(tuple(values))
     specs += [tuple(rng.randrange(1<<32) for _ in range(3)) for _ in range(64)]
-    for ix,(x,y,z) in enumerate(specs):
-        yield f'normalise-{ix}-{x:x}-{y:x}-{z:x}',bytes(ram),dict(base,
-            ax=x>>16,bx=x&65535,cx=y>>16,dx=y&65535,si=z>>16,di=z&65535)
+    # the far call's arguments BX, AX, DX, CX, DI, SI at SP+4 .. SP+15; SPs
+    # near the 64K wrap decline and run the generated body
+    sps = [0x1000]*len(specs)
+    sps[:12] = [0, 2, 0xffee, 0xfff0, 0xfff2, 0xfffe, 0x8000, 0x8006, 0x7ffa, 0x7ff8, 0x800e, 0x8010]
+    for ix,((x,y,z),sp) in enumerate(zip(specs,sps)):
+        image_ = bytearray(ram)
+        for k, word in enumerate((x&65535, x>>16, y&65535, y>>16, z&65535, z>>16)):
+            at = base['ss']*16 + (sp+4+2*k & 0xffff)
+            image_[at:at+2] = word.to_bytes(2, 'little')
+        yield f'normalise-{ix}-{x:x}-{y:x}-{z:x}-sp{sp:x}',bytes(image_),dict(base, sp=sp)
 
 
 @lru_cache(maxsize=1)
 def program():
     p = emit.Program()
-    node, resume = ('SWOTL.EXE', 0xd5da), ('SWOTL.EXE', 0xd5f8)
+    node, resume = ('SWOTL.EXE', 0xd5a6), ('SWOTL.EXE', 0xd618)
     compute.validate(p, node, resume, endpoint=True)
     cache = ROOT/'tmp/point-normalise'
     cache.mkdir(exist_ok=True)
@@ -100,11 +107,12 @@ def program():
 
 def run(entries=(), plant=None, predecessors=False, generated=False, broken=False):
     p, node, resume, cache, binary, addresses = program()
-    # the hle.csv row, re-proved: a continuation endpoint; its loop head D5DA
-    # left the sync set and is a resume after the endpoint
+    # the hle.csv row, re-proved: a continuation endpoint at the projection
+    # call; its loop head D5DA left the sync set and is a resume after it
     region = compute.validate(p, node, resume, endpoint=True)
-    assert p.compute_bodies[node] == region and region.loops == (node,), region
-    assert node not in p.loop_heads and p.compute_resumes[node] == [resume, node]
+    loop = ('SWOTL.EXE', 0xd5da)
+    assert p.compute_bodies[node] == region and region.loops == (loop,), region
+    assert loop not in p.loop_heads and p.compute_resumes[node] == [resume, loop]
     callback = (ROOT/'src/runtime/compute_normalise.s').read_text() if not generated and not broken else ''
     if broken:
         callback = 'rt_hle_point_normalise:\n\tmoveq #1,d7\n\trts\n'
@@ -116,8 +124,16 @@ def run(entries=(), plant=None, predecessors=False, generated=False, broken=Fals
         callback = callback.replace('eori.w #$7fff,d5', 'moveq #0,d5')
     elif plant == 'axis':
         callback = callback.replace('lsr.l d7,d1', 'nop')
-    elif plant == 'resume':     # no resume 3 (D5F8, then the loop head D5DA)
+    elif plant == 'resume':     # no resume 3 (D618, then the loop head D5DA)
         callback = callback.replace('moveq #1,d7', 'moveq #3,d7')
+    elif plant == 'sign':
+        callback = callback.replace('\tneg.w d3\n', '\n')
+    elif plant == 'store':
+        callback = callback.replace('\tmove.w d3,($5d44,a3)\n', '\n')
+    elif plant == 'push':
+        callback = callback.replace('\tmove.w a4,5(a2,d4.w)\n', '\n')
+    elif plant == 'frame':
+        callback = callback.replace('cmp.w #$7ff9,d4', 'cmp.w #$7fff,d4')
     cases = list(boundaries())
     for path in entries:
         ram, regs = O.load_entry(path)
@@ -139,12 +155,14 @@ def run(entries=(), plant=None, predecessors=False, generated=False, broken=Fals
             source += intro + ['entry:'] + hook[:1] + ['before_call:', hook[1], 'result:'] + hook[2:]
             source += [f'\tjmp ${addresses[emit.label(*node)]:x}']
             source += compute.resume_dispatch('handled_dispatch',
-                [f'${addresses[emit.label(*r)]:x}' for r in p.compute_resumes[node]], '$8c2a') + [callback]
+                [f'${addresses[emit.label(*r)]:x}' for r in p.compute_resumes[node]], '$8bf6') + [callback]
             code = B.D.assemble('\n'.join(source), Path(scratch)/'callback.bin')
             before_at = int.from_bytes(code[:4], 'big')
             result_at = int.from_bytes(code[4:8], 'big')
             for name, ram, regs in cases:
-                end = (regs['cs'], 0x8c48)
+                end = (regs['cs'], 0x8c68)
+                d4 = (0x7fff - regs['sp'] + 0x8000 & 0xffff) - 0x8000
+                declines = not -0x7ff2 <= d4 <= 0x7ff9
                 expected = O.run(ram, regs, end)
                 m = B.D.M68k(ram, B.STUB_AT, {p.hle[n][1] for n in p.compute_rows})
                 outcomes, before = [], []
@@ -175,7 +193,7 @@ def run(entries=(), plant=None, predecessors=False, generated=False, broken=Fals
                         (regs, flags, regs['flags'] & 0xf000, regs['ip'], []), random.Random(36), irq=False)
                     if info['err'] or info['stop'] != 'compute_resume' or outs or info['irq']:
                         raise NormaliseMismatch(count + 1, (name, mode, 'execution', info, outs))
-                    if outcomes != [not generated]:
+                    if outcomes != [not generated and not declines]:
                         raise NormaliseMismatch(count + 1, (name, mode, 'guard outcome', outcomes))
                     got.update(cs=end[0], ip=end[1])
                     actual = dict(registers=got, flags=fx | sum(fl[f] << FLAG_BIT[f] for f in FLAGS),
@@ -191,7 +209,8 @@ def run(entries=(), plant=None, predecessors=False, generated=False, broken=Fals
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('--entries', nargs='*', type=Path, default=[])
+    ap.add_argument('--entries', nargs='*', type=Path,
+                    default=sorted(ROOT.glob('tmp/pc-runs/native-D5A6-normalise-*/trace/snap-entry*')))
     ap.add_argument('--sabotage', action='store_true')
     ap.add_argument('--predecessors', action='store_true')
     ap.add_argument('--generated-only', action='store_true')
@@ -213,7 +232,7 @@ if __name__ == '__main__':
             raise AssertionError('plant survived: stale-program cache')
         finally:
             program.cache_clear()
-        for plant in ('count', 'register', 'axis', 'resume'):
+        for plant in ('count', 'register', 'axis', 'resume', 'sign', 'store', 'push', 'frame'):
             try:
                 run(plant=plant)
             except NormaliseMismatch as error:

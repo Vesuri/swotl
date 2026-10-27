@@ -1,4 +1,4 @@
-"""Deferred polygon classification: retained original/generated coverage."""
+"""Polygon classification BB70: original x86 vs the native and the generated body (poll-free, RC5)."""
 import argparse
 from functools import lru_cache
 import random
@@ -14,7 +14,7 @@ from translator import compute, emit, image
 from translator.ir import FLAGS, FLAG_BIT
 from translator.support import equates
 
-STUB_AT = dict(B.STUB_AT, rt_hle_polygon_classify=B.D.STUB + 4 * len(B.STUBS))
+STUB_AT = B.STUB_AT
 
 
 class ClassifyMismatch(AssertionError):
@@ -141,14 +141,7 @@ def check_body(p, node, resume):
 @lru_cache(maxsize=1)
 def program():
     from unittest.mock import patch
-    original = image.rows
-    row = dict(module='SWOTL.EXE', first='0xBB70', last='0xBD66',
-               service='polygon_classify', args='', kind='compute',
-               reason='Test-only poll-free body; native candidate deferred (irq-plan I10)',
-               oracle='tests/test_polygon_classify.py')
-    with patch.object(image, 'rows', lambda name: original(name) +
-                      ([row] if name == 'hle.csv' else [])):
-        p = emit.Program()
+    p = emit.Program()
     node, resume = ('SWOTL.EXE', 0xbb70), ('SWOTL.EXE', 0xbd67)
     check_body(p, node, resume)
     cache = ROOT/'tmp/polygon-classify'
@@ -158,9 +151,25 @@ def program():
     return p, node, resume, cache, binary, addresses
 
 
-def run(entries=(), predecessors=False, generated=True, broken=False):
+PLANTS = {'ties': ('.p1tie:\n\taddq.w #1,d1\n', '.p1tie:\n\taddq.w #2,d1\n'),
+          'rotate': ('\taddq.w #1,d3\t\t\t; r', '\taddq.w #2,d3\t\t\t; r'),
+          'saved': ('\tmove.l -3(a4),($5c73,a3)', '\tmove.l -7(a4),($5c73,a3)'),
+          'clip': ('\tbge.s .zerolo', '\tbgt.s .zerolo'),
+          'right': ('\tbcc.s .zerolo', '\tbhi.s .zerolo'),
+          'bx': ('\tlsl.w #3,d3\t\t\t; BX = 8n', '\tlsl.w #2,d3\t\t\t; BX = 8n'),
+          'push': ('\tmove.w a4,5(a2,d4.w)', '\tmove.w a5,5(a2,d4.w)'),
+          'guard': ('\tcmp.w #14,d7', '\tcmp.w #15,d7')}
+
+
+def run(entries=(), predecessors=False, generated=False, broken=False, plant=None):
     p, node, resume, cache, binary, addresses = program()
-    callback = 'rt_hle_polygon_classify:\n\tmoveq #0,d7\n\trts\n'
+    callback = (ROOT/'src/runtime/compute_classify.s').read_text()
+    if plant:
+        old, new = PLANTS[plant]
+        assert callback.count(old) == 1, plant
+        callback = callback.replace(old, new)
+    if generated:
+        callback = 'rt_hle_polygon_classify:\n\tmoveq #0,d7\n\trts\n'
     if broken:
         callback = 'rt_hle_polygon_classify:\n\tmoveq #1,d7\n\trts\n'
     cases = list(boundaries())
@@ -220,7 +229,7 @@ def run(entries=(), predecessors=False, generated=True, broken=False):
                         (regs, flags, regs['flags'] & 0xf000, regs['ip'], []), random.Random(36), irq=False)
                     if info['err'] or info['stop'] != 'compute_resume' or outs or info['irq']:
                         raise ClassifyMismatch(count + 1, (name, mode, 'execution', info, outs))
-                    if outcomes != [not generated and fast_entry(ram, regs)]:
+                    if outcomes != [broken or not generated and fast_entry(ram, regs)]:
                         raise ClassifyMismatch(count + 1, (name, mode, 'guard outcome', outcomes))
                     got.update(cs=end[0], ip=end[1])
                     actual = dict(registers=got, flags=fx | sum(fl[f] << FLAG_BIT[f] for f in FLAGS),
@@ -236,12 +245,14 @@ def run(entries=(), predecessors=False, generated=True, broken=False):
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('--entries', nargs='*', type=Path, default=[])
+    ap.add_argument('--entries', nargs='*', type=Path,
+                    default=sorted(ROOT.glob('tmp/pc-runs/native-N4-classify-*/trace/snap-entry*')))
     ap.add_argument('--sabotage', action='store_true')
     ap.add_argument('--predecessors', action='store_true')
     args = ap.parse_args()
     reporting_controls()
-    print('generated classify:', run(args.entries, predecessors=args.predecessors), 'cases pass', flush=True)
+    print('generated classify:', run(args.entries, predecessors=args.predecessors, generated=True), 'cases pass', flush=True)
+    print('native classify:', run(args.entries, predecessors=args.predecessors), 'cases pass', flush=True)
     from test_polygon_classify_sync import run as sync_run
     print('classifier loop-head resumes:', sync_run(), 'pass', flush=True)
     if args.sabotage:
@@ -257,6 +268,13 @@ if __name__ == '__main__':
             print('classification: skipped loop-head resume caught', flush=True)
         else:
             raise AssertionError('skipped loop-head resume escaped')
+        for plant in PLANTS:
+            try:
+                run(plant=plant)
+            except ClassifyMismatch as error:
+                print('classification:', plant, 'caught:', str(error)[:160], flush=True)
+            else:
+                raise AssertionError('plant survived: ' + plant)
         from unittest.mock import patch
         try:
             with patch.object(program, 'cache_clear', lambda: None):

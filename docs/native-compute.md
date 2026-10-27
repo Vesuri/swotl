@@ -210,3 +210,36 @@ ascending offset order, followed by the root loop heads. Liveness includes every
 endpoint.
 Checks: `t-compute-multi-endpoint`, `t-sab-compute-multi-endpoint`, existing
 endpoint/U8/contract checks; the routine still needs S1–S9.
+
+### Re-entries (irq-plan I10, user 2026-10-26)
+
+Optional `entries` on a row with `exits` lists module offsets where the row's
+native resumes after a continuation exit's call returns (or anywhere in its
+body). Each gets a hook to the same service with `moveq #1+k,d7` (the first
+hook passes 0); the native dispatches on it after its guards and may decline
+there before any mutation. A re-entry keeps its own liveness (it is a call's return
+site; resume liveness would flow into the callee): the native defines every
+flag live at a resume it reaches from a re-entry. Entries are walked as roots (their flow joins the
+body, loop heads included), are leaders, and their liveness includes every
+resume; an entry may not be an endpoint or another row's body. Rows: BFD1
+(C2A8, C2B6, C2C0, C3EE), BD68 (BE1B, BEDB, BF97, BFB4), F290 (F414, F470, F5E8),
+FDE0 (FF6A, 1006B, 1008B, 100B8, 1019E, 101E6, 101F6, 10211: after its eight calls),
+109D6 (10CE4, 10F21: after the B52D/D5A6 calls and their 9C20h sync writes).
+A re-entry may skip the first hook's admission when the native re-checks it
+before relying on it: BFD1 re-admits at each scanline head (DF = 0, ES and SS
+1000h apart) and, failing there inside, resumes at C000, whose hook declines.
+The IRQ0 footprint check (`irq.check_rows`) takes a row with exits by its proved
+body: the stretches from an exit to the next entry stay generated, sync accesses
+included (plant `compute-exit-body`).
+Checks: each row's differential from every entry (`t-rasterize`,
+`t-edge-submit`, `t-terrain-select`, `t-terrain-polygons`, `t-ground-vertices`) and sabotage.
+
+### Direct native calls (irq-plan I10, user 2026-10-27)
+
+A native may call another row's native at that row's call site instead of
+taking the exit: it stores the call's return address as the original call does
+and enters the callee with the callee's hook state (d6 = CS, d7 per its
+dispatch). The callee declines before any mutation, so a decline takes the exit
+unchanged; a handled call continues in the caller. FDE0 calls the transform
+(B52D) and classify (BB70) natives this way. The caller's differential runs each
+case with the real callee natives and with declining callees (every exit taken).

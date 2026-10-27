@@ -200,6 +200,23 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   1.6M → 0.02M, scenery 0.6M → 0.06M). Bench (sync image, 3 runs, base I8): median
   68,850 → 68,875 lines (+0.036%, ranges 68,848–68,850 / 68,859–68,878; RAM hash
   unchanged). Frames (production, 3 runs): median 320 ms (310–340) → 300 ms (290–300).
+- I10: one batch (user 2026-10-26: all natives first, one verification). Rows: `D5A6`
+  to the `B017` call, `BB70` whole, `F290`, `FDE0`, `109D6` vertex loops, `BD68`, `BFD1`
+  re-entries (C1E2/C3DF wraps now tested), F9 O(1), `D69C`, `4DAE` span setup.
+  Contract: `hle.csv` `entries` (re-entry hooks after an exit's call; a re-entry keeps
+  its own liveness, else resume liveness flows into the callee: CF went live in
+  B52D/B017/D5A6/BB70), direct native calls (FDE0 → B52D, BB70), `irq.check_rows`
+  takes a row with exits by its proved body. 34 loop heads leave the sync set (2,357
+  points: 206 access, 104 int, 11 clear, 12 if, 2,024 loop); `polls=`
+  `a8595a6631599363` → `9243d3a514f7c09d`, 94 references re-recorded (m2, m4, c7, c81,
+  c84 repeat exactly; c20/c22/c23 not resident as before). First meter −0.66%: the new
+  natives cost 2–3× their estimates (FDE0 native 5.19M against 3.03M generated saved);
+  after one optimization pass every row is below its generated cost. Meter m4:
+  150,903,197 → 143,485,059 model cycles (−4.9158%; guest instructions 11,026,510 →
+  7,761,478; per row: speed-plan §7 I10). Bench (sync image, 3 runs, base I9): median
+  68,872 → 68,539 lines (−0.48%, ranges 68,859–68,878 / 68,520–68,543; RAM hash
+  unchanged). Frames (production, 3 runs): median 300 ms (280–310) → 280 ms (260–300). Not built: `EA74`; the `4DAE` walk
+  loop needs a contract extension (open-work 14b).
 - Guest memory backs 1 MiB + HMA (`RT_GUEST_BYTES`); host runs compare RAM from the
   environment MCB to A0000h with dead stack masked (open-work 24).
 

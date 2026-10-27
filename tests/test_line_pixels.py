@@ -139,6 +139,7 @@ def native(entries=False, plant=None, predecessor="direct", wide=False):
                'carry':('bcc.s line_right_no_row','bra.s line_right_no_row'),
                'code-window':('bcs.s line_right_decline','nop'),
                'count':('addq.w #1,d1\n\tbra.s line_right_store','bra.s line_right_store'),
+               'bp':('\tmove.w d6,d5\n\teori.w #$7fff,d5\n\tmoveq #1,d7\n\trts\nline_right_decline','\tmoveq #1,d7\n\trts\nline_right_decline'),
                'decline':('line_right_decline:\n\tmoveq #0,d7','line_right_decline:\n\taddq.w #1,d1\n\tmoveq #0,d7')}
     if plant:
         old,new=templates[plant]
@@ -207,7 +208,7 @@ if __name__=='__main__':
         print('line pixels:',predecessor,native(args.entries,predecessor=predecessor),'native cases pass',flush=True)
     print('line pixels:',native(wide=True),'full-counter native cases pass',flush=True)
     if args.sabotage:
-        for plant in ('store','carry','code-window','count','decline'):
+        for plant in ('store','carry','code-window','count','bp','decline'):
             try:native(plant=plant)
             except LineMismatch as error:print('line pixels:',plant,'caught:',error,flush=True)
             else:raise AssertionError(plant+' escaped')

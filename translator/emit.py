@@ -347,6 +347,8 @@ class Program:
         self.compute_end: dict[tuple[str, int], int] = {}   # U8: range end past the return
         self.compute_endpoints: set[tuple[str, int]] = set()
         self.compute_exits: dict[tuple[str, int], tuple] = {}
+        self.compute_entries: dict[tuple[str, int], tuple] = {}   # row -> re-entry hooks
+        self.entry_of: dict[tuple[str, int], tuple] = {}   # re-entry -> (row, d7 index)
         for r in image.rows("hle.csv"):
             mod, first, last = r["module"], int(r["first"], 16), int(r["last"], 16)
             u = self.units[mod]
@@ -378,6 +380,21 @@ class Program:
                 if any(o not in u.insns for _, o in exits):
                     raise LowerError('hle.csv: continuation exit is no instruction')
                 self.compute_exits[(mod, first)] = exits
+            if r.get('entries'):
+                # I10: the row resumes in its native at these instructions (after a
+                # continuation exit's call returns); the hook passes 1 + k in d7.
+                if not continuation:
+                    raise LowerError('hle.csv: entries need continuation endpoints')
+                try:
+                    entries = tuple((mod, int(x, 16)) for x in r['entries'].split())
+                except ValueError as error:
+                    raise LowerError('hle.csv: invalid entries') from error
+                if any(o not in u.insns for _, o in entries) or len(set(entries)) != len(entries) \
+                        or (mod, first) in entries:
+                    raise LowerError('hle.csv: entry is no distinct instruction')
+                self.compute_entries[(mod, first)] = entries
+                for k, e in enumerate(entries):
+                    self.entry_of[e] = ((mod, first), 1 + k)
             if kind not in {'hook', 'compute'}:
                 raise LowerError(f'hle.csv: unknown kind {kind}')
             if kind == 'compute':
@@ -421,7 +438,8 @@ class Program:
         self.returns()
         self.compute_bodies = {n: compute.validate(self, n, self.hle[n][0], self.compute_end.get(n),
                                                     n in self.compute_endpoints,
-                                                    self.compute_exits.get(n, ()))
+                                                    self.compute_exits.get(n, ()),
+                                                    self.compute_entries.get(n, ()))
                                for n in self.compute_rows}
         # RC5: nothing observes a row's intermediate state, so the loop heads in
         # its body leave the sync set (RC3: the references are recorded without
@@ -432,7 +450,7 @@ class Program:
             for h in row.body & loops:
                 if self.sync.get(h) == "loop":
                     del self.sync[h]
-            if len(row.returns) + len(row.loops) > 1:
+            if len(row.returns) + len(row.loops) > 1 or n in self.compute_entries:
                 self.compute_resumes[n] = [*row.returns, *row.loops]
         self.loop_heads = set(self.sync)
         self.liveness()
@@ -450,6 +468,7 @@ class Program:
         for resumes in self.compute_resumes.values():
             self.leaders |= set(resumes)
             self.hle_resumes |= set(resumes)
+        self.leaders |= set(self.entry_of)
         self.components(components)
 
     # -- graph ----------------------------------------------------------------
@@ -644,6 +663,9 @@ class Program:
                     new = (new - ALL) | out | self.live_out.get(self.saves[n], set())
                 if n in self.hle:   # the hook may skip to the resume instruction
                     new |= self.live_in[self.hle[n][0]]
+                # A re-entry keeps its own liveness: the native defines every
+                # flag live at a resume it reaches from there (a re-entry is a
+                # call's return site; the union would flow into the callee).
                 for r in self.compute_resumes.get(n, ()):
                     new |= self.live_in[r]
                 self.live_out[n] = out
@@ -931,9 +953,12 @@ class Program:
                     lines += ["\ttst.l (sp)+", f"\tbne {label(mod, o)}_np"]
                 else:
                     lines.append("\tlea 4(sp),sp")
-            resumes = self.compute_resumes.get((mod, o))
+            row, index = self.entry_of.get((mod, o), ((mod, o), 0))
+            resumes = self.compute_resumes.get(row) if (mod, o) in self.hle or index else None
             if resumes:
-                _, service = self.hle[(mod, o)]
+                _, service = self.hle[row]
+                if row in self.compute_entries:
+                    lines.append(f"\tmoveq #{index},d7")
                 lines += compute.hook(service, f"{lab(mod, o)}_cx", cs_expr(u.cs[o]))
                 targets = [self.compute_resume(x, f"{lab(mod, o)}_cr{k}", stubs)
                            for k, x in enumerate(resumes)]
@@ -948,7 +973,8 @@ class Program:
                     lines += [f"\tmove.w {GREG[a]},{d}" for a, d in zip(self.hle_args[(mod, o)], ("d7", "d6"))]
                     lines += [f"\tjsr {service}", f"\tbne {label(*resume)}"]
                 stats["HLE hook"] += 1
-            if ((mod, o) in self.hle or (mod, o) in self.hle_resumes) and lw.ccr_only:
+            if ((mod, o) in self.hle or (mod, o) in self.hle_resumes or (mod, o) in self.entry_of) \
+                    and lw.ccr_only:
                 raise LowerError(f"{mod}+{o:05X}: HLE hook where the CCR holds live flags")
             if (mod, o) in self.loop_heads:
                 visit(o)

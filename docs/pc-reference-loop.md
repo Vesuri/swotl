@@ -80,6 +80,7 @@ Facts about the originals: [source-inventory.md](source-inventory.md).
 | Emulator | DOSBox-X `dosbox-x-v2026.08.31` + `tools/patches/` in `ORDER`; `make reference-emulator` (tree in `~/.local/src/swotl-dosbox-x`, linked from `tools/vendor/dosbox-x`: autoconf fails on the repo path's spaces) |
 | Config | `reference/dosbox-x.conf`: `svga_s3`, 4 MB, `core=normal`, `cputype=386`, `cycles=fixed 12000`, `nosound`, SB16 220/7/1 |
 | Run | `make reference-run RUN=name RUN_ARGS=...` → `tools/pc_run.py`: fresh `tmp/pc-runs/<name>/root/` copy of `ref/`, headless, `swotl V S 5 N Y Y 64`. Exit 0 = `SWOTL_EXIT_AFTER` snapshot reached, 2 = time limit, 3 = guest fault (INT 0/6), 4 = no trace output |
+| Native entries | `tools/native_entries.py TAG MODULE+HEX HITS`: one run per fixture (default m4, c13, c27; its keys and inputs as `tools/reference.py` runs it), snapshots `entryK` at the given executions; `tmp/pc-runs/native-TAG-FIXTURE/` (native-plan S3) |
 | Arming | first instruction at `PSP+10h+1617h:0382h`; off unless `SWOTL_TRACE` |
 | Addresses | `(module, offset)`: root = image offset; overlay = `.OVL` file offset of the bytes the last DOS read put at that paragraph; `-` = unowned linear address |
 | Determinism | BIOS tick count set to `SWOTL_BIOS_TICKS` (0) at arming; DOS time and INT 1Ah derive from it, so the RNG seed (DOS time) is fixed. Every milestone repeats byte-identical |

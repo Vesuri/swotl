@@ -23,14 +23,9 @@ from translator.ir import FLAGS, FLAG_BIT
 MODULE, SEG = 'SPAZ.OVL', 0x1770
 OFF = 0xd03 - 0xac3                     # module offset - IP in SEG
 ROWS = {'opl_wait_index': (0xd03, 0xd07, 'index'), 'opl_wait_data': (0xd0f, 0xd17, 'data')}
-# RC5 sees final RAM, not each store: the 'store' plant drops the entry pass's
-# stores (CX = 1 never writes the slot), not one of three equal ones.
-PLANTS = {'store': ('\tmove.w d0,(a0)\n\tmove.w d0,(a0)\n\tmove.w d0,(a0)\n\tbra.s opl_wait_data_count\n',
-                    '\tbra.s opl_wait_data_count\n'),
-          'count': ('\tsubq.w #1,d1\n\tbne.s opl_wait_index_loop\n',
-                    '\tsubq.w #2,d1\n\tbne.s opl_wait_index_loop\n'),
-          'slot': ('\taddq.w #2,d7\n\tlea -1(a2,d7.w),a0\n\tmove.w d0,(a0)\n\tmove.w d0,(a0)\n',
-                   '\taddq.w #1,d7\n\tlea -1(a2,d7.w),a0\n\tmove.w d0,(a0)\n\tmove.w d0,(a0)\n')}
+PLANTS = {'store': ('\tmove.w d0,-1(a2,d7.w)\n', ''),
+          'count': ('\tmoveq #0,d1\n', '\tmoveq #1,d1\n'),
+          'slot': ('\taddq.w #2,d7\n', '\taddq.w #1,d7\n')}
 
 
 class DelayMismatch(AssertionError):

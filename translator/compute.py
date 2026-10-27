@@ -47,7 +47,7 @@ class Region(NamedTuple):
     loops: tuple = ()   # root loop heads, ascending: resumes after the returns
 
 
-def validate(p, first, resume, end=None, endpoint=False, exits=()):
+def validate(p, first, resume, end=None, endpoint=False, exits=(), entries=()):
     """Prove a compute region (RC5): resolved flow, no effects, transitively.
 
 Nothing observes a row's intermediate state, so loops are allowed; their heads
@@ -58,7 +58,8 @@ end defaults to resume: compiled C may place loop bodies after the return);
 with endpoint, `resume` and `exits` are non-return continuation endpoints
 instead. Recursion and diagnostic hooks are rejected. A root loop head is a
 resume too: a native may continue there in generated code. Interior entries
-still execute generated code normally.
+still execute generated code normally; `entries` (I10) are re-entry hooks of
+this row, walked as roots like `first`.
     """
     tail = p.node_insn(resume)
     if first == resume or tail is None or (not endpoint and tail.op not in RETURNS):
@@ -97,7 +98,8 @@ still execute generated code normally.
                 raise LowerError(f'compute: unresolved flow {n}')
             if root and (n[0] != first[0] or not first[1] <= n[1] < limit):
                 raise LowerError(f'compute: flow outside the declared range at {n}')
-            if forbidden(p, n) or n in p.hle and n != first:
+            if forbidden(p, n) or n in p.hle and n != first or n in getattr(p, 'entry_of', {}) \
+                    and p.entry_of[n][0] != first:
                 raise LowerError(f'compute: sync point, hook or external effect at {n}')
             nodes.add(n)
             i = p.node_insn(n)
@@ -124,6 +126,10 @@ still execute generated code normally.
         return nodes
 
     root = function(first, True, frozenset())
+    for entry in entries:
+        if entry in endpoints:
+            raise LowerError(f'compute: entry {entry} is an endpoint')
+        root |= function(entry, True, frozenset())
     if endpoint and reached != endpoints:
         raise LowerError('compute: continuation endpoint is unreachable')
     body = frozenset(root.union(*(c for c in callees.values() if c)))

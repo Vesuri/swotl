@@ -236,7 +236,9 @@ def emission(plant=False, missing_resume=False, kept_loop=False):
                        (0xbbac, 0xbbb3, 0xbc55, 0xbc73, 0xbcc4, 0xbd14, 0xbd44))
     loop_row = dict(row, first='0xBB70', last='0xBD66', service='contract_test_loops')
     def rows(name):
-        return original(name) + ([row, other_row, loop_row] if name == 'hle.csv' else [])
+        # the I10 classify row is replaced by the test's own BB70 row
+        kept = [r for r in original(name) if not (name == 'hle.csv' and r['first'] == '0xBB70')]
+        return kept + ([row, other_row, loop_row] if name == 'hle.csv' else [])
 
     real = compute.validate
     def validate(prog, n, *args, **kwargs):
@@ -250,15 +252,16 @@ def emission(plant=False, missing_resume=False, kept_loop=False):
     if plant:
         candidate.compute_rows.remove(other)
     assert candidate.compute_rows == p.compute_rows | {first, other, loop_root}
-    for existing in p.compute_rows - {first, other}:
+    for existing in p.compute_rows - {first, other, loop_root}:
         assert candidate.hle[existing] == p.hle[existing]
         assert existing in candidate.leaders
         assert candidate.compute_resumes.get(existing) == p.compute_resumes.get(existing)
-    for existing in p.compute_bodies.keys() - {first, other}:
+    for existing in p.compute_bodies.keys() - {first, other, loop_root}:
         assert candidate.compute_bodies[existing] == p.compute_bodies[existing]
     rows_loops = candidate.compute_bodies[loop_root]
     assert rows_loops.loops == loop_heads and rows_loops.returns == (('SWOTL.EXE', 0xbd67),)
-    assert set(loop_heads) <= p.loop_heads, 'control needs sync-set loop heads'
+    # production holds the I10 classify row: its loop heads are loops, out of the sync set
+    assert set(loop_heads) <= p.loops and not set(loop_heads) & p.loop_heads, 'control: BB70 loop heads'
     assert not set(loop_heads) & candidate.loop_heads, 'body loop head kept in the sync set'
     assert candidate.loop_heads == p.loop_heads - rows_loops.body, 'sync set changed elsewhere'
     targets = [('SWOTL.EXE', 0xbd67), *loop_heads]

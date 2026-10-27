@@ -1,4 +1,5 @@
-; D69C pixel loops, U6 authorization 2026-10-22; poll-free since irq-plan I9.
+; D69C pixel loops, U6 authorization 2026-10-22; poll-free since irq-plan I9,
+; BP written once at the end since I10 (user 2026-10-26).
 ; Original x86 is the oracle. Scratch d6 holds real BP, d7 the wrapping
 ; reversed DI index. Ordinary memory guards decline unchanged.
 
@@ -27,12 +28,12 @@ line_right_step:
 	adda.w ($5a7b,a3),a5
 	sub.w ($5a7b,a3),d7
 line_right_no_row:
-	move.w d6,d5
-	eori.w #$7fff,d5
 line_right_store:
 	move.b d3,0(a1,d7.w)
 	subq.w #1,d1
 	bne.s line_right_step
+	move.w d6,d5
+	eori.w #$7fff,d5
 	moveq #1,d7
 	rts
 line_right_decline:
@@ -64,12 +65,12 @@ line_left_step:
 	adda.w ($5a7b,a3),a5
 	sub.w ($5a7b,a3),d7
 line_left_no_row:
-	move.w d6,d5
-	eori.w #$7fff,d5
 line_left_store:
 	move.b d3,0(a1,d7.w)
 	subq.w #1,d1
 	bne.s line_left_step
+	move.w d6,d5
+	eori.w #$7fff,d5
 	moveq #1,d7
 	rts
 line_left_decline:

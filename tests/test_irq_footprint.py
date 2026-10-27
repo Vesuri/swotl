@@ -67,6 +67,15 @@ def compute_row_tick(prog):
     return {('FLIGHT.OVL', 0x1224)}, 'compute row FLIGHT.OVL+01224 contains sync access FLIGHT.OVL+01224'
 
 
+def compute_exit_body(prog):
+    # a row with exits is checked on its proved body: a sync access in it (the
+    # 9C20 write after B52D) still rejects
+    row = ('SWOTL.EXE', 0x10c08)
+    region = prog.compute_bodies[row]
+    prog.compute_bodies[row] = region._replace(body=region.body | {('SWOTL.EXE', 0x10cde)})
+    return {row}, 'compute row SWOTL.EXE+10C08 contains sync access SWOTL.EXE+10CDE'
+
+
 def slot_bound(prog):
     # mov byte ds:[9C20],2Ah -> 40h: the handler would count past 9CA9
     operand(prog, ('SWOTL.EXE', 0x10be5), 1, value=0x40)
@@ -75,7 +84,8 @@ def slot_bound(prog):
 
 PLANTS = {'handler-main-variable': handler_main_variable, 'split-rmw': split_rmw,
           'unsaved-register': unsaved_register, 'undeclared-port': undeclared_port,
-          'compute-row-tick': compute_row_tick, 'slot-bound': slot_bound}
+          'compute-row-tick': compute_row_tick, 'compute-exit-body': compute_exit_body,
+          'slot-bound': slot_bound}
 
 
 def check(proof):

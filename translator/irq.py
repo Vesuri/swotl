@@ -1426,7 +1426,8 @@ class Proof:
                                            f"bound {lo:#x}..{hi:#x} (immediate or frame-copy restore)")
 
     def check_rows(self):
-        """No compute row's range or proved body (callees included) holds a sync access."""
+        """No compute row's range or proved body (callees included) holds a sync access;
+        a row with exits: its proved body (the exit stretches stay generated)."""
         syncs = {n for n, *_ in self.sync}
         bodies = getattr(self.prog, "compute_bodies", {})
         for row in sorted(self.compute_rows):
@@ -1437,7 +1438,10 @@ class Proof:
             last = max(o for o in u.insns if o < resume[1]) if resume[1] else first
             hi = max(last, end or 0)
             nodes = {(mod, off) for off in u.insns if first <= off <= hi}
-            if row in bodies:
+            if row in bodies and row in getattr(self.prog, "compute_exits", {}):
+                # exits and re-entries: the stretches between them run generated
+                nodes = set(bodies[row].body)
+            elif row in bodies:
                 nodes |= bodies[row].body
             for n in sorted(nodes & syncs):
                 self.errors.append(f"compute row {site(row)} contains sync access {site(n)}")

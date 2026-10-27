@@ -383,6 +383,7 @@ def report(prog: Program, n: Counter, taken: Counter, coef: dict, gen: Path) -> 
     classes = defaultdict(lambda: Counter())
     labels = defaultdict(lambda: Counter())
     ops = defaultdict(lambda: Counter())
+    runtime = Counter()
     for pc, k in n.items():
         f = prog.feat[pc]
         c = classes[prog.cls[pc]]
@@ -404,6 +405,8 @@ def report(prog: Program, n: Counter, taken: Counter, coef: dict, gen: Path) -> 
             labels[lab]["taken"] += taken[pc]
             if pc == prog.by_name.get(lab):
                 labels[lab]["execs"] += k
+        elif prog.cls[pc] == "runtime":     # per runtime symbol (natives, helpers)
+            runtime[prog.symbol(pc)] += cyc
     forms = defaultdict(lambda: Counter())
     for lab, c in labels.items():
         t = text.get(lab)
@@ -414,6 +417,7 @@ def report(prog: Program, n: Counter, taken: Counter, coef: dict, gen: Path) -> 
     guest = sum(c["execs"] for lab, c in labels.items() if lab in text)
     return {"classes": {k: dict(v) for k, v in classes.items()},
             "labels": {k: dict(v) for k, v in labels.items()},
+            "runtime": dict(runtime),
             "forms": {k: dict(v) for k, v in forms.items()},
             "ops": {k: dict(v) for k, v in ops.items()},
             "polls": poll_counts(prog, n, taken, coef),
