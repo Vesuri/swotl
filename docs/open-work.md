@@ -23,10 +23,10 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Translator and validation
 
-14b. Speed target remains unmet: frames-fixture 68020 run medians on `130bd18`
-    (ZF3, 2026-10-24, arm64) 330, 300 and 300 ms/frame against ≤ 240 ms ([speed-plan.md](speed-plan.md)
-    §1, §9). The middle run needs 60 ms (20%) less; same-session pre-F3
-    medians 360, 350, 360 ms do not overlap, so F3+F4 is a frame-rate gain. No priced translator candidate remains;
+14b. Speed target remains unmet: frames-fixture 68020 run medians on `c21d035`
+    (ZI, irq-plan I11, 2026-10-27, arm64) 300, 290 and 300 ms/frame against ≤ 240 ms
+    ([speed-plan.md](speed-plan.md) §1, §9): 60 ms (20%) more to cut. Same-session
+    pre-irq-plan medians 330, 330, 320 ms do not overlap, a frame-rate gain. No priced translator candidate remains;
     flag-word packing is rejected (speed-plan §10). The
     [U8 extensions](native-compute.md#contract-extensions-u8) (C4) are
     implemented; since irq-plan I9 every row is
@@ -60,7 +60,7 @@ speed work: [speed-plan.md](speed-plan.md).
     the specific R20/R35 tradeoffs and R36/R40/R48/F3b/F4 and irq-plan I7 (+0.117%) bench differences accepted by
     the user as noise (speed-plan §7) and D8's tiny bench regressions (speed-plan §3). Z1 leaves the target unmet; plan F is next.
     Guest native steps after irq-plan I9 are priced without polls or write
-    histories (open-work 43, RC5).
+    histories ([irq-plan](irq-plan.md) RC5).
 14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`
     `Harness`: each byte drew from a fresh generator with the same seed).
     A random background is stronger but changes every corpus case; needs
@@ -71,15 +71,6 @@ speed work: [speed-plan.md](speed-plan.md).
     not rewritten by the guest); decide whether lockstep needs more (dead
     flag bits in pushed images under the remaining `annotations/flags.csv`
     pair).
-43. Interrupt delivery without polling ([irq-plan.md](irq-plan.md), user
-    2026-10-24 with its rule changes): SPAZ's IRQ0 handler from the CIA-B
-    interrupt, keyboard and mouse at the vertical blank, sync points for
-    lockstep, native rows poll-free (U3/U5 retire). I1 measured, I2 proved,
-    I3 monitored, I4 private-stack entry, I5 field task, I6 asynchronous IRQ0, I7
-    keyboard at the vertical blank, I8 sync points with the loop heads kept (user
-    2026-10-26; irq-plan Facts), I9 native rows poll-free (bench +0.036% accepted by the user
-    2026-10-26), I10 native rows re-opened (meter −4.9158%, bench −0.48%). Next: I11;
-    F10 skipped by the user (2026-10-25).
 
 ## Amiga platform
 

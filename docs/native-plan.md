@@ -27,7 +27,8 @@ order, scratch writes and tables are kept.
 Already equivalent: chunky buffers in Fast RAM; C2P (SWOTL runs Kalms'
 `c2p1x1_8_c5_bm` on changed rows; the slave's `c2p_merge` is the same technique for 4-bit
 chunky). The slave drops intermediate global writes it proved dead (`xform20`: ~60
-accesses per call); the native contract compares every byte's write history (U3).
+accesses per call); the native contract compared every byte's write history (U3) until
+irq-plan I9, now the final state (RC5), so such stores may go.
 The slave's `tools/xform_check.py` models TFH's originals: test ideas only.
 
 ## User decisions
@@ -69,12 +70,14 @@ explicit unpriced savings; do not invent a native price for them.
   mutation for unhandled cases (fault, overflow). Named by function in `src/runtime/`,
   never by guest address; `hle.csv` row `kind=compute` with reason and oracle command.
 - **S6** Native differential on the S3 inputs without the x86 results: registers, live and
-  control flags, writes (per U3), all RAM. The row's sabotage plant is caught.
+  control flags, all RAM and the code/VRAM written-address sets (RC5). The row's sabotage
+  plant is caught.
 - **S7** Meter and bench (three runs per arm, same session, equal final RAM); FS-UAE frames
   capture per arm: the routine's cycles per call before and after. Accept by §3.
 - **S8** Checks relevant to the row, its callers, consumers and shared contracts
-  (AGENTS.md; user reaffirmed 2026-10-22), with the row active and references
-  unchanged. State the selection before running; retain green unchanged inputs.
+  (AGENTS.md; user reaffirmed 2026-10-22), with the row active; references re-recorded
+  only when the row's body takes loop heads out of the sync set (irq-plan RC3). State the
+  selection before running; retain green unchanged inputs.
 - **S9** Docs: speed-plan §1 and §7, open-work 14b, the rendering map row (measured).
 
 ## N. Native routines
@@ -104,8 +107,8 @@ Since irq-plan I10 guest calls are continuation exits with
 generated.
 
 - **N4** Routines that need C, each after U6, by S1–S9 plus C's cases, in B3 price
-  order; S8 includes re-recording the references its poll set affects. Price each
-  with its return/sync polls and exits. `BB70` deferred by the user 2026-10-22: preserving its seven sync sites
+  order; S8 includes re-recording the references its sync set affects. Price each
+  with its exits (poll-free, RC5). `BB70` deferred by the user 2026-10-22: preserving its seven sync sites
   has no positive price;
   `109D6` vertex loops deferred by the user 2026-10-22 after the initial
   guarded adapter exceeded its diagnostic budget.
@@ -150,7 +153,7 @@ lost their gain to guards, hooks, exits and polls (R41–R47).
 | F2 | `RTSVGA+3B9A` frame compare and changed-span copy. Done as a lowering: its cost is its REP instructions; REP MOVSW by longs, flyby `rep movsw` −29% (speed-plan §1). Left: `repne cmpsw` 1.0–1.4% and `repe cmpsw` 1.4–1.5% of the clip, already word/long loops; a native merging search and copy has no price yet | translator | 4.11% | 0.3% kept | — |
 | F3 | Geometry as whole routines: `B52D`+`B54B`; `D5A6`→`B017` all paths→`B4E2`. `B017` whole with `B4E2` done (folds the `B393` and `B4E2` rows): meter −1.4854%, flyby cycles/call −22.7% (speed-plan §1). `D5A6` stays a separate row: `B017` is also called directly (~15% of calls) and nested hooks reject. `B52D` whole with `B54B` done: meter −1.5848%, flyby cycles/call −23.3%; bench +0.025% (8 runs per arm), accepted by the user as noise. `D5A6` prefix done at irq-plan I10: the row is D5A6..D614, continuing at the `B017` call | guest | 4.57% generated | 2.3–3.0% | U10 |
 | F4 | FM synthesis speed, output unchanged. Done in C (asm not needed): loop cache and render loop; flyby `fm_field` −24.4% per call (10.75% → 8.11% of the clip); bench +0.20% (frames 4–11 render no loops), accepted by the user as noise 2026-10-24 (speed-plan §1) | platform | 10.97% | 3.3–5.5% | user only if output changes |
-| F5 | `BFD1` rasterizer, one scope. Done: `C000..C42C`, guest calls as continuation exits (U11), folds R48; meter −0.0167%, bench −0.044%, flyby `BFD1` −2.1%/call (speed-plan §1): far below the estimate | guest | 7.58% | 3.0–4.2% kept 0.05% | U11 |
+| F5 | `BFD1` rasterizer, one scope. Done: `C000..C42C`, guest calls as continuation exits (U11), folds R48; meter −0.0167%, bench −0.044%, flyby `BFD1` −2.1%/call (speed-plan §1): far below the estimate. Poll-free with re-entries at irq-plan I10: −1.18M m4 more | guest | 7.58% | 3.0–4.2% kept 0.05% | U11 |
 | F6 | Terrain `FDE0`+`F290`+`EA74`, scope ends before the PLINK call. Done at irq-plan I10: `F290` (−0.84M m4) and `FDE0` (−0.59M) whole with exits and re-entries; `EA74` (cell-walk driver) has no positive scope | guest | 7.09% | 2.5–3.5% | — |
 | F7 | `109D6` whole, native geometry called directly, DOS call a generated exit. Done at irq-plan I10: vertex loops 10C08–10F5F, −0.66M m4 | guest | 5.0% | 2.0–2.8% | — |
 | F8 | Sprite decoder `4D7D`/`4DAE` incl. `call dx` dispatch. irq-plan I10: span setup with the packet loop (`sprite_row`); the walk loop 0623–064F (~10.6M m4) needs a native planting code writes and calling the cell walk | guest | 3.9–14.8% | 1.6–7% | contract extension (user) |
@@ -160,10 +163,19 @@ lost their gain to guards, hooks, exits and polls (R41–R47).
 Next: `FLIGHT+1538C` object drawing (1.1–1.6%), `FLIGHT+0A8D2` AI scan (~1.5%).
 All estimates: clip −28–36% (555 → 355–400 ms/frame); frames fixture, EMS ≈ 0,
 −22–31% (340 → 235–265 ms): 240 ms only at the top of the range.
-Each guest step follows S1–S9 with whole-scope prices and the exact-poll
-contract; runtime/platform steps follow speed-plan §3. Z-style frames
+Each guest step follows S1–S9 with whole-scope prices and the poll-free
+contract (RC5); runtime/platform steps follow speed-plan §3. Z-style frames
 checkpoints after F3, F7 and F10. After F3 (run after F4, ZF3 2026-10-24):
-330, 300, 300 ms against pre-F3 360, 350, 360 ms (speed-plan §1).
+330, 300, 300 ms against pre-F3 360, 350, 360 ms (speed-plan §1). After F7 (irq-plan
+I11, ZI 2026-10-27): 300, 290, 300 ms against pre-irq-plan 330, 330, 320 ms.
+
+Re-priced under RC5 (irq-plan I10, m4 meter 150.9M model cycles; generated cycles saved
+minus native cost, speed-plan §7): `BB70` −1.66M, `BFD1` −1.18M, `F290` −0.84M, `109D6`
+−0.66M, `FDE0` −0.59M, `BD68` −0.06M, `D5A6`, F9 O(1), `D69C` and the `4DAE` span setup
+together −2.43M; total −4.9158%. The first natives cost 2–3× their estimates (exits,
+re-entry hooks, guards); one optimization pass put every row below its generated cost.
+Left: the `4DAE` walk loop (~10.6M generated, estimate −3.8% of m4, contract extension:
+user), `EA74` (no positive scope), `B8A1` (no calls).
 
 ## Z. Close
 

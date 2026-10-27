@@ -106,7 +106,7 @@ Trace outputs (`tmp/pc-runs/<name>/trace/`, written at exit):
 
 | File | Content |
 |---|---|
-| `events.csv` | ordered: arm, DOS open/read/seek/close (name, linear buffer, file pos), INT 10h/33h/67h and selected INT 21h with registers, faults, keys, snapshots; with `--services` (`SWOTL_SERVICES`, on in `make reference`) `svc`/`svc_ret`: every software INT raised by module code with all registers and FLAGS at entry and when execution is back at its return address with the entry SP (the runtime's service oracle); with `--polls` (`SWOTL_POLLS` = `build/gen/poll-points.csv`, on in `make reference`) hardware interrupts are taken only before a translator poll point (D8; IRQ0 edges only the gate held, pending while IRQ0 was deliverable, are raised again in order, `dosbox-x-swotl-irq0-backlog.patch`) and logged as `irq`: vector, service events so far, the poll point's executions since the last one (taken before the instruction; the interrupted visit counts only after IRET, while visits executed inside the handler count normally); `summary.txt` `polls=` is the FNV-1a of that file |
+| `events.csv` | ordered: arm, DOS open/read/seek/close (name, linear buffer, file pos), INT 10h/33h/67h and selected INT 21h with registers, faults, keys, snapshots; with `--services` (`SWOTL_SERVICES`, on in `make reference`) `svc`/`svc_ret`: every software INT raised by module code with all registers and FLAGS at entry and when execution is back at its return address with the entry SP (the runtime's service oracle); with `--polls` (`SWOTL_POLLS` = `build/gen/poll-points.csv`, on in `make reference`) hardware interrupts are taken only before a sync point (the file keeps its name; translator-design D8, irq-plan RC3: re-recorded whenever the set changes; IRQ0 edges only the gate held, pending while IRQ0 was deliverable, are raised again in order, `dosbox-x-swotl-irq0-backlog.patch`) and logged as `irq`: vector, service events so far, the sync point's executions since the last one (taken before the instruction; the interrupted visit counts only after IRET, while visits executed inside the handler count normally); `summary.txt` `polls=` is the FNV-1a of that file |
 | `reads.bin` | Original DOS read bytes, appended in event order; `read` events carry decimal `data=` offsets and `got=` lengths. Image proof uses these bytes even when the game later rewrites the file. Older captures retain file-based reconstruction. |
 | `modules.csv`, `executed-<module>.bin` | per-module instruction-start bitmap |
 | `edges.csv` | unique consecutive-instruction pairs |
@@ -175,7 +175,7 @@ service-only release format.
 | c6-flight-keys | m5 path, then 48 keys at 30-frame intervals in flight | in-flight controls, gun camera film room (REPLAY, `RP*.TMP` written) |
 | c7-demo-dispatch | c32's keys (c1, then Space, A, 0) | HIGH view call through the eight-word table at +EC62, return at +EC60 (re-scripted at irq-plan I9: the attract demo no longer took it before 6.1G gated instructions) |
 | c8-steep-bank | m5 path, then 61 left presses | bank angle above the alternate renderer threshold; +EC17 calls the modified walk at +758E |
-| c9-mouse-menu | signed motion on both axes, each button and all buttons, releases | INT 33h motion consumption and buttons in the menu; DOS mouse IRQ12 at recorded poll points |
+| c9-mouse-menu | signed motion on both axes, each button and all buttons, releases | INT 33h motion consumption and buttons in the menu; DOS mouse IRQ12 at recorded sync points |
 | c10-campaign-weeks | U, B, S, 1, 2, name A, Enter; skip three weeks (S, Y); M, W, R | new campaign file, campaign simulation |
 | c11-tour-mission | U, T, S, 2, create pilot A, S, 1, M, S; c6's flight keys | tour of duty pilot file, escort mission flight, film room |
 | c12-b17-bombing | U, F, 4, 3, S; c6's flight keys | B-17 bombing mission; the setup writes walk cells up to `+8A6B` |
@@ -223,7 +223,7 @@ Facts from these runs:
 - Determinism: RAM/VRAM/DAC at every milestone are identical across runs.
   Without `--polls` the instruction count at a milestone can differ
   (interrupt arrival points vary with host tick interleaving); with it,
-  interrupts wait for a poll point and the run repeats exactly, instruction
+  interrupts wait for a sync point and the run repeats exactly, instruction
   count included. The run name's length reaches the guest (another name moved
   m4 by 211 instructions): compare runs of equal-length names, references keep
   `ref-<name>`.
@@ -254,7 +254,7 @@ comparison and display-handoff checks. The ordinary wall-clock A1200 gate stays
 mandatory; replay is additional validation, not a performance fixture.
 
 `pc_run.py --rep-chunks` additionally records `rep.csv`: original REP slices
-at existing poll points, with service/visit counts, start/end CX/SI/DI and
+at existing sync points, with service/visit counts, start/end CX/SI/DI and
 restart status. Host and Amiga diagnostic builds execute each element through
 the translator and resume at those exact boundaries; every record must match
 and be consumed. Amiga metadata compacts only identical adjacent slice steps.

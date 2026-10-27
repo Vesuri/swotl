@@ -91,7 +91,8 @@ them here. Structure for this port: [amiga-arch.md](amiga-arch.md). Elsewhere:
     drawing. — RV's body-in-ISR moved rows under the decode (238 bad frames → 0). VT runs
     original VBL callbacks only at safe trap-return boundaries. — *RV `docs/amiga-arch.md`;
     VT `docs/amiga-arch.md`* SWOTL exception (user 2026-10-24): SPAZ's IRQ0 handler, whose
-    footprint is disjoint from drawing state ([irq-plan](irq-plan.md) RC1).
+    footprint is disjoint from drawing state ([irq-plan](irq-plan.md) RC1), in the CIA-B
+    interrupt since I6 ([amiga-arch.md](amiga-arch.md#interrupts)).
 19. **Derive PC time from the beam:** `vblank_count*313 + line`, re-read until count and
     VPOSR agree; treat a read just after line 0 that looks backwards as zero elapsed. BIOS
     ticks: accumulate 1193182 per VBI, tick at 65536×50. — exact for the 15625 Hz line rate.

@@ -45,8 +45,9 @@ DanceDiverse3 set (`Palette24Bit`, `setPalette24Bit`) is kept for it.
    (L15).
 5. **Take over** in SL's order (L2, L3), VERTB vector (L10), keyboard SP off in CIA-A's
    ICR mask (L72, irq-plan I7), `Forbid` (L6).
-6. **Run.** The translated program runs on its own stack (`amiga_guest_run`); posted
-   interrupts are taken at its poll points (D8); the field task presents (D9). Disk access only
+6. **Run.** The translated program runs on its own stack (`amiga_guest_run`); SPAZ's
+   tick runs in the CIA-B interrupt, keys reach the guest at its services (D8); the field
+   task presents (D9). Disk access only
    inside I/O windows (L7). SWOTL: every DOS call of `amiga_platform.c` is one window
    (`Swotl::beginIO`/`endIO`): Exec's VERTB and SOFTINT vectors, saved INTENA and DISK|BLITTER DMA
    back, `Permit`; the copper display stays, a VERTB server reads the keyboard; fields the
@@ -69,9 +70,10 @@ DanceDiverse3 set (`Palette24Bit`, `setPalette24Bit`) is kept for it.
 The original's keyboard (INT 09h) handler does not run in Amiga interrupt context
 (L18). SPAZ's timer handler runs in the CIA-B interrupt (RC1, L18 exception, irq-plan I6);
 the keyboard is read at the vertical blank (RC4, irq-plan I7). A tick the
-interrupt cannot run, and the keyboard's events, go to `rt_irq_ring` (keys to
-`rt_key_ring`); the guest's or the runtime's BIOS handler runs at the next poll point with
-guest IF set ([translator-design.md](translator-design.md) D8). Shared rings are guarded
+interrupt cannot run goes to `rt_irq_ring` and is taken by the next CIA tick
+(`rt_irq0_take`) or at the guest's next IF 0→1; keyboard events go to `rt_key_ring`,
+drained at service entry with guest IF set (`rt_keyboard_drain`). Generated code has no
+poll checks ([translator-design.md](translator-design.md) D8). Shared rings are guarded
 by `Disable`/`Enable` (L20).
 
 ## Display
@@ -87,7 +89,7 @@ by `Disable`/`Enable` (L20).
 - **Buffering.** Two Chip bitmaps and two complete copper lists. Each bitmap retains
   dirty rows until its own conversion, including updates superseded before a VBI.
   Main withdraws the pending list before writing its bitmap; VERTB publishes only
-  completed lists. No wait is added before guest interrupt polling.
+  completed lists.
 - **Palette.** DAC changes invalidate both physical lists. A publication
   rebuilds its inactive list only if stale, and carries forward its dirty
   pixels, including palette-only updates. Validity is main-thread state. The list and bitmap are handed

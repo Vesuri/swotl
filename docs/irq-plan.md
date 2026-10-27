@@ -1,4 +1,4 @@
-# Interrupt plan (open-work 43)
+# Interrupt plan (done; closed at I11 2026-10-27)
 
 Goal: no guest interrupt polling in generated code. SPAZ's INT 08h handler runs from the
 CIA-B timer interrupt, asynchronously as on the PC; keyboard and mouse are read at the
@@ -217,6 +217,10 @@ call; its estimate was −45–60% of the replaceable ~300K cycles per call).
   68,872 → 68,539 lines (−0.48%, ranges 68,859–68,878 / 68,520–68,543; RAM hash
   unchanged). Frames (production, 3 runs): median 300 ms (280–310) → 280 ms (260–300). Not built: `EA74`; the `4DAE` walk
   loop needs a contract extension (open-work 14b).
+- I11 (2026-10-27): docs closed; open-work 43 removed. Frames checkpoint (production,
+  3 interleaved runs, arms built from `5d82dad`, before I4, and `c21d035`): medians 330,
+  330, 320 → 300, 290, 300 ms; ranges 320–330 / 290–300 do not overlap (−9.1%; speed-plan
+  §1 ZI).
 - Guest memory backs 1 MiB + HMA (`RT_GUEST_BYTES`); host runs compare RAM from the
   environment MCB to A0000h with dead stack masked (open-work 24).
 

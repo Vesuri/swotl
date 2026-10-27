@@ -9,18 +9,21 @@ from `xproj20`/`xdiv20` and the original's 16-bit path; it folds the earlier
 `B393` (R36) and `B4E2` (R37) rows. The divide handles the explicit
 zero-denominator path; for nonzero denominators both original word quotients
 fit (DX=0, then remainder<divisor).
-The user-authorized (2026-10-22, U6) D5DA normalization loop from
-`xpnorm20` resumes at D5F8 (R38); it writes no guest memory.
-The scenery clear at 10A2F uses a continuation endpoint (R40); the sprite
-packet loop at 4ECD (R42), D69C’s pixel loops at D92A and D95C (R44,
-retaining generated clipping, shared callees and returns), BFD1's scanline
-loop from C000 (F5, folds R48's ordering row: `end` C42C, its guest calls and
-epilogue continuation exits, `hle.csv` `exits`) and SPAZ's OPL delay loops
-`D03` and `D0F` (F9: every iteration and stack store kept) are loop rows.
-Remaining candidates and user deferrals: open-work 14b. Admission, pricing
-and S1–S9 remain required. Since [irq-plan](irq-plan.md) I9 every row is
-poll-free (RC5, user 2026-10-24): U3 write histories, the U5 poll contract and
-exact native polling are retired; nothing observes a row's intermediate state.
+Since irq-plan I10 (user 2026-10-26, go-ahead for each native) `D5A6` is one row up to
+its projection call (D614, continuing at D618; folds R38's D5DA loop) and `BB70` one row
+up to its RETF. The scenery clear at 10A2F uses a continuation endpoint (R40). Loop rows:
+the sprite span setup with the packet loop `4E89` (`sprite_row`, widens R42), D69C's
+pixel loops at D92A and D95C (R44, retaining generated clipping, shared callees and
+returns), SPAZ's OPL delay loops `D03` and `D0F` in O(1) (F9, speed-plan §2.9 exception).
+Rows with guest calls as continuation exits (`hle.csv` `exits`) and
+[re-entries](#re-entries-irq-plan-i10-user-2026-10-26): BFD1's scanline loop from C000
+(F5, folds R48's ordering row: `end` C42C), `BD68` edge submission, `F290` tile
+selection, `FDE0` terrain polygons (calls `B52D` and `BB70` directly) and `109D6`'s
+vertex loops 10C08–10F5F. Measurements: speed-plan §7. Remaining candidates and user
+deferrals: open-work 14b. Admission, pricing and S1–S9 remain required. Since
+[irq-plan](irq-plan.md) I9 every row is poll-free (RC5, user 2026-10-24): U3 write
+histories, the U5 poll contract and exact native polling are retired; nothing observes a
+row's intermediate state.
 
 ## Admission
 
@@ -120,8 +123,8 @@ both arms against x86 without hand-porting guest code. Admission, wrong-arm,
 register, missing/duplicate store, live-flag and uncaptured-memory plants must
 be caught.
 
-Before enabling an authorized row: record original entry states with the
-existing DOSBox snapshot mechanism, add the routine-specific boundaries and
+Before enabling an authorized row: record original entry states with
+`tools/native_entries.py` (DOSBox snapshots per fixture), add the routine-specific boundaries and
 fallback cases, demonstrate its sabotage, and run the relevant checks under AGENTS.md
 with that row active (native-plan S8). Keep each row's oracle command and evidence in its
 `hle.csv` entry. Price, measure and accept under speed-plan §3–4.
@@ -133,13 +136,15 @@ existing reference without approval.
 User 2026-10-24 (irq-plan RC5), implemented at I9. Production code has no poll
 checks; tests and the reference deliver interrupts at sync points
 (`build/gen/poll-points.csv`). A row is atomic to the interrupt: the loop heads
-in its body, callees included, leave the sync set (`emit.Program`), in both arms
-and for flow from outside alike, and the references are recorded without them
+in its body, callees and re-entries included, leave the sync set (`emit.Program`), in
+both arms and for flow from outside alike, and the references are recorded without them
 (RC3: old/new `polls=` fingerprints in the commit). A row whose footprint meets
-the handler's is rejected (I2). No latency bound (RC6).
+the handler's is rejected (I2; `irq.check_rows` takes a row with exits by its proved
+body). No latency bound (RC6).
 
 A native may also continue at a root loop head in generated code with exact
-state there (the BFD1 wrap peeks); one hook at `first` is the only entry.
+state there (the BFD1 wrap peeks). Entries: the hook at `first` and the `entries`
+re-entry hooks (below).
 
 ## Contract extensions (U8)
 

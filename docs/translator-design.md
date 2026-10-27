@@ -250,13 +250,13 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   Translator hooks preserve native registers/CCR and split diagnostic
   entries at block boundaries; the normal generated bodies are unchanged.
   `tests/amiga_replay.*` replays DOSBox input and interrupt groups at their
-  recorded poll visits/service counts through the production IRQ glue.
+  recorded sync visits/service counts through the production IRQ glue.
   Every service prefix checks registers, segments, vector, IF and DF;
   final counts, guest state, DAC and shown bitplanes must match the original.
   The final guest state is held while its queued frame reaches the VBI.
   Only diagnostic builds disable physical input and the CIA timer; normal
   hardware, smoke and restoration gates remain mandatory. No reference,
-  poll point, normal interrupt order or PIT rate changes.
+  sync point, normal interrupt order or PIT rate changes.
 - Display (D9 slice): only the graphics driver (`emit.GRAPHICS_DRIVER`,
   RTSVGA) writes video memory. Before each of its memory stores the
   lowering checks the segment for A000h and calls `rt_vram_mark` (offset,
@@ -274,7 +274,7 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   rectangle (one call per full-width band, per row otherwise) into the
   inactive bitmap. Both bitmaps retain dirty rows since their own last
   conversion. A pending frame is withdrawn before reuse; updates can
-  coalesce without waiting before a guest poll. Each bitmap has a complete
+  coalesce without waiting. Each bitmap has a complete
   copper list and palette. VERTB switches lists before input, only at beam
   lines below 8; a late VBI defers the handoff. `amiga_bitmap` and
   `amiga_colours` describe the handed-off frame. Checked by the host run
@@ -289,10 +289,12 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   I8 sync points (`irq.Proof.sync_points`: `access` footprint accesses and `int` sites
   with IF possibly set, `clear` CLI/POPF/IRET, `if` the instruction after an IF 0→1) and
   the loop heads (`loop`, targets of backward branches outside native rows; user
-  2026-10-26: they keep the reference on the original's timing). Only sync builds
+  2026-10-26: they keep the reference on the original's timing). A native row is atomic
+  to the interrupt (irq-plan RC5): loop heads in its body, callees and re-entries
+  included, are not in the set. Only sync builds
   (`SWOTL_SYNC`: host runs, replays, `make amiga-sync` for the bench) test at `access`,
   `int`, `clear` and `loop` points; every build tests at `if` points. Production takes
-  IRQ0 at the CIA-B tick: `tst.b G_IRQ(a6)`
+  IRQ0 at the CIA-B tick (below). A test is `tst.b G_IRQ(a6)`
   and `bne` to the poll's stub `X_irq`, placed after the next run that cannot
   fall through: d6 = CS << 16, d7 = IP, `jsr rt_irq`, back past the test to
   `X_np` (the tools fold `X_np` into `X`; the block differential also runs
@@ -336,11 +338,11 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   guest mouse reads after the previous step (host load moves frame
   timings), and `shot`/`quit` call `amiga_script_mark` for a gdb fixture;
   `SWOTL_ARGS` in `amiga/debug.sh`); host run the reference's `irq` events, replayed at the
-  same visit of the same poll point after the same service event, one of a
-  same-visit group per return of the guest handler to that poll point (the
-  reference takes interrupts only at poll points, `build/gen/poll-points.csv`, IRQ0
+  same visit of the same sync point after the same service event, one of a
+  same-visit group per return of the guest handler to that point (the
+  reference takes interrupts only at sync points, `build/gen/poll-points.csv`, IRQ0
   edges only the gate held raised again in order, `dosbox-x-swotl-irq0-backlog.patch`;
-  references are re-recorded when poll points change).
+  references are re-recorded when the sync set changes, irq-plan RC3).
 - IRQ0 footprint (irq-plan I2, `translator/irq.py`, run by `make gen`): the guest
   handler's memory, ports, IF changes, hooks and runtime calls, register
   transparency proved over the lifted IR; every main-code access classified
@@ -364,17 +366,17 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   `MUSIC`; `amiga/debug.sh` passes `MUSIC` and host runs
   clear it, since the references hold the music. Oracle `make
   t-hle-music-skip` (in `test-host-all`): m2 with the skip on; the interrupt
-  the reference took in the song code is posted at the next poll point;
+  the reference took in the song code is posted at the next sync point;
   services and interrupts equal the reference, RAM too outside SPAZ's state
   (its data segment, its effect counts at DS:6564, dead stack below SP).
   Optional `kind=compute` uses the complete generated register ABI and a d7.l
-  handled result; admission proves poll-free reachable flow, including callees.
-  It leaves the guest return and check generated. With `polls` (U5) the row's
-  body loses its polls in both arms, its return and listed sync sites become
-  polls, and each sync site is a resume and a hook entry. U8: REP off the poll
-  set, the divide-fault edge as a decline edge, every root return a resume
-  (d7 dispatch), `end` for code past the return. Contract and oracle:
-  [native-compute.md](native-compute.md). Enabled: the poll-free `B54B` transform.
+  handled result; admission proves the reachable flow (`compute.validate`: loops,
+  callees, several returns, continuation `exits`, re-entry hooks `entries`). It
+  leaves the guest return and check generated. A row is atomic to the interrupt
+  (irq-plan RC5): its body's loop heads leave the sync set in both arms. U8: REP,
+  the divide-fault edge as a decline edge, every root return a resume
+  (d7 dispatch), `end` for code past the return. Contract, oracle and the
+  enabled rows: [native-compute.md](native-compute.md).
 - Self-modified code (D16, `translator/smc.py`): the root block
   `+6A4D..+8E2C` is one generated cell walk (the whole template block: the
   [2581]=0 variant fills it at 190 cells per run). The setup (+E50E) writes opcodes

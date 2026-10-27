@@ -21,11 +21,12 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   B017’s authorized B393 projection long path; R37 enables the authorized
   B4E2 perspective divide; R38 enables D5A6’s normalization loop.
   R40 enables the guarded scenery clears with proved BP-region re-entry.
-  R42 enables the guarded sprite packet loop with every original poll retained.
-  R44 enables the guarded line pixel loops with every original poll retained.
-  R48 enables guarded edge ordering and merging with exact original polls.
+  R42 enables the guarded sprite packet loop, R44 the guarded line pixel loops, R48
+  guarded edge ordering and merging (all with exact original polls until irq-plan I9).
   F3a replaces `B017` with its divide `B4E2` whole (folding R36 and R37);
-  F3b replaces `B52D` with `B54B` whole.
+  F3b replaces `B52D` with `B54B` whole; F5 `BFD1`'s scanline loop (folds R48); F9
+  SPAZ's OPL delay loops. [irq-plan](irq-plan.md) I8–I10 (user 2026-10-24): no poll
+  checks in production, rows poll-free (RC5), and the deferred rows re-opened (§7 I10).
   Paused under U7, resumed under U9 (2026-10-23): [native-plan.md](native-plan.md#f-flyby-plan).
 - **Frames fixture** (Z1, `9afe0b8`, 2026-10-23): medians 340, 340 and
   350 ms; run-median span 340–350 ms. Frames 4–11 intervals (fields):
@@ -51,6 +52,14 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
   alone and F4 alone overlap their parents. 300 ms needs 60 ms (20%) less
   to reach 240 ms. `tools/ab_runs.py frames`, three runs per arm,
   interleaved. Evidence: `tmp/speed/zf3/`.
+- **Frames checkpoint after irq-plan** (ZI, irq-plan I11, 2026-10-27, arm64, production
+  images): head `c21d035` medians 300, 290, 300 ms (`[19,17,13,14,15,21,15,14]`,
+  `[19,17,14,13,14,22,14,15]`, `[19,16,13,16,14,17,14,13]`) against pre-irq-plan
+  `5d82dad` (F5, F9 kept) 330, 330, 320 ms (`[20,17,14,18,16,18,15,15]`,
+  `[20,18,13,19,15,18,15,15]`, `[24,15,17,16,20,14,16,14]`). Ranges 290–300 and 320–330
+  do not overlap: a frame-rate gain (−30 ms median, −9.1%). 300 ms needs 60 ms (20%)
+  less to reach 240 ms. `tools/ab_runs.py frames`, three interleaved runs per arm.
+  Evidence: `tmp/irq/I11/`.
 - **F1 measurements** (2026-10-23): EMS map copy. Meter m4 unchanged
   (161,346,464; no maps in its window). Meter c12 (B-17 bombing, 715 frames,
   10.3 maps/frame): 10,719,598,079 → 7,748,395,558 (−27.72%), runtime
@@ -254,7 +263,7 @@ Breaking any of these voids the step, whatever it measures.
    the exact condition that makes it exact (DF, CX, no 16-bit offset wrap,
    no overlap) and falls back to an exact body otherwise. Flags live after
    the instruction keep their exact x86 values. No dropped return check,
-   poll point (except as native-plan U5 or [irq-plan](irq-plan.md) allows), fail-loud stop or wrap
+   sync point (except as [irq-plan](irq-plan.md) allows; native-plan U5 retired at its I9), fail-loud stop or wrap
    handling; no "usually true" or "never seen" assumption; no annotation
    asserting what the translator must prove.
 4. **D16:** every cell is matched against the writer forms from the guest RAM
@@ -289,10 +298,10 @@ Breaking any of these voids the step, whatever it measures.
    and speed); presenting a frame before the game publishes it (D9: the
    outermost graphics driver call returns), reading the frame to find
    changes, or skipping published frames; changing the PIT or timer rate
-   or the order of interrupt delivery; removing or thinning poll points or
-   return checks (exceptions: native-plan U5 polls of a U6-authorized routine,
-   with its references re-recorded; [irq-plan](irq-plan.md)'s sync points and
-   asynchronous IRQ0, user 2026-10-24, RC2); shortening the guest's own delay loops
+   or the order of interrupt delivery; removing or thinning sync points or
+   return checks (exceptions: [irq-plan](irq-plan.md)'s sync points, loop heads in
+   native rows and asynchronous IRQ0, user 2026-10-24, RC2/RC3/RC5; native-plan U5
+   retired at its I9); shortening the guest's own delay loops
    (SPAZ OPL waits are guest semantics; exception, user 2026-10-24: F9's
    delay loops in O(1) with an exact final state once irq-plan I9 has landed);
    a double buffer or copper display;
@@ -551,10 +560,11 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | I10 / 109D6 | ground-object vertex loops 10C08–10F5F; B52D/D5A6 calls and their 9C20h sync writes as exits | runtime, translator (`irq.check_rows`), compute tests | generated −3.46M, native 2.80M: −0.66M |
 | I10 / FDE0 | terrain polygons whole; transform and classify natives called directly (exit only on decline), other calls as exits | runtime, compute tests | generated −3.96M, native 3.37M: −0.59M |
 | I10 / BD68 | edge submission; C962/CD00 calls as exits with re-entries; hook and dispatch overhead leaves little | runtime, compute tests | generated −1.11M, native 1.05M: −0.06M |
+| ZI | post-irq-plan frames checkpoint (irq-plan I11): 300, 290, 300 ms against pre-irq-plan 330, 330, 320 (no overlap); target unmet | docs | measurement only |
 | I10 / rest | D5A6 prefix and suffix to the projection call; F9 delay loops O(1) (§2.9 exception); D69C BP once; 4DAE packet loop widened to the span setup (`sprite_row`) | runtime, compute tests | −2.43M together (no per-row I9 runtime baseline) |
 
-No priced translator candidate remains. Unchanged outside authorized U5 rows (§2):
-poll points (`(a6)` is guest byte 0; no thinning), `mulu`/`divu` themselves. The translator helpers
+No priced translator candidate remains. Unchanged (§2): sync points outside native rows
+(`(a6)` is guest byte 0; no thinning; no poll checks in production since irq-plan I8), `mulu`/`divu` themselves. The translator helpers
 `__set_flags` (POPF/IRET) and `__flags_word` are the largest runtime-side
 items left.
 
@@ -589,13 +599,13 @@ items left.
 
 ## 9. Gap
 
-ZF3's frames-fixture medians (arm64) are 330, 300 and 300 ms: the middle
-run needs 60 ms (20%) less to reach 240 ms; the run range needs 60–90 ms
-less. Against the same-session pre-F3 arm (350–360 ms) the ranges do not
-overlap: F3+F4 is an established frame-rate gain. The user
+ZI's frames-fixture medians (arm64, irq-plan I11) are 300, 290 and 300 ms: 60 ms (20%)
+more to cut to reach 240 ms; the run range needs 50–60 ms less. Against the same-session
+pre-irq-plan arm (320–330 ms) the ranges do not overlap, as F3+F4 did against pre-F3
+(ZF3). The user
 resumed speed work under U9 on 2026-10-23: plan F in native-plan.
 No priced translator candidate remains (§7). N1, N2’s B393 projection and B4E2 divide,
-and N4’s D5DA normalization loop, scenery clear, sprite packet loop and line pixel loops are kept; F5's whole `BFD1` scanline loop replaces R48's ordering row. Rows are poll-free since irq-plan I9
+and N4’s scenery clear and line pixel loops are kept; F5's whole `BFD1` scanline loop replaces R48's ordering row; irq-plan I10's rows are in §7. Rows are poll-free since irq-plan I9
 ([native-compute.md](native-compute.md#loops-and-the-sync-set-rc5); U5 retired), with the U8
 extensions (C4). Active candidates and user deferrals: open-work 14b and
 [native-plan.md](native-plan.md).
