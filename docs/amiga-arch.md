@@ -120,7 +120,7 @@ per period (L44). Publication never feeds back into simulation; missed slots are
   Paula-only re-hoster (`fm_paula.c`, `Audio.cpp`) never decides what sounds (L71);
   optional TFH samples. Facts and decisions: [sound-plan.md](sound-plan.md).
 - **Shared rules.** Channel ownership between music and effects is an explicit policy
-  (L59); stereo placement deliberate (L68); the LED filter is left as booted (L69: open-work 40).
+  (L59); stereo placement deliberate (L68); the LED filter is off from the takeover and restored as found at the hand-back (L69).
 
 ## Input
 
@@ -149,7 +149,7 @@ link audit) not applied (open-work 41). Exact flags: [toolchain.md](toolchain.md
 
 | Check | Proves | Source |
 | --- | --- | --- |
-| Restore status | OS view, vector, DMA and INTENA restored | `make test-amiga-restore` |
+| Restore status | OS view, vector, DMA and INTENA restored; LED filter off during the run and restored | `make test-amiga-restore` |
 | Beam watch | zero late display handoffs; no conversion into the shown bitmap | `amiga/display_audit.sh` |
 | Workbench start | icon start: tool types read, data from the icon's drawer, menu exit restores, result 0 with the message held; `BENCH` from the icon and the Shell: 20 | `make test-amiga-workbench` |
 | Keyboard | `monitor key` edges read by the I/O windows' VERTB server and the takeover VBI, typematic 1 + 7 in 61 fields | `make test-amiga-keyboard` |

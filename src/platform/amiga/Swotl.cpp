@@ -5,6 +5,7 @@
 #include <exec/memory.h>
 #include <graphics/gfx.h>
 #include <graphics/gfxbase.h>
+#include <hardware/cia.h>
 #include <hardware/dmabits.h>
 #include <hardware/intbits.h>
 extern "C" {
@@ -45,12 +46,17 @@ extern struct GfxBase* GfxBase;
 extern "C" {
 struct BitMap amiga_bitmap;
 uint32_t amiga_colours[1 + 256 * 3 + 1];
-// Restore bits: inactive, ActiView, VERTB and SOFTINT triples, DMA, INTENA; all set = 31.
+// Restore bits: inactive, ActiView, VERTB and SOFTINT triples, DMA, INTENA, LED
+// filter off at the hand-back, LED filter restored; all set = 127.
 volatile uint16_t amiga_restore_status = 0;
 uint32_t amiga_chip_free = 0, amiga_chip_largest = 0;
 volatile uint32_t amiga_frames = 0;    // vertical blanks since the takeover (debug fixtures)
 volatile uint32_t amiga_io_frames = 0; // of those, inside I/O windows (host-timed disk I/O)
 }
+
+// CIA-A PRA, byte accesses only (the framework's pointer is not volatile, so GCC
+// may read it with a bitfield instruction).
+static volatile uint8_t* const ledFilter = (volatile uint8_t*)ciaapraPointer;
 
 // Heap storage: a default Shell stack is only 4 KiB. All allocations precede
 // takeover; DMA reads only the two Chip bitmaps and their complete lists.
@@ -164,6 +170,8 @@ Swotl::Swotl() :
     oldCopperList(0),
     oldEnabledDMAChannels(0),
     oldEnabledInterrupts(0),
+    oldLedFilter(0),
+    filterWasOff(false),
     ioFrames(0),
     ioDepth(0),
     guestOpen(false),
@@ -266,6 +274,11 @@ void Swotl::takeOver()
     AmigaHardware::clearInterruptRequests(INTF_ALL);
     AmigaHardware::setDMAChannels(DMA_ALL, false);
 
+    // The LED filter (CIA-A PRA bit 1, set = off) as found: AdLib output has no
+    // ~5 kHz low-pass (L69). No interrupt runs here to race the read-modify-write.
+    oldLedFilter = *ledFilter & CIAF_LED;
+    *ledFilter |= CIAF_LED;
+
     // Clear sprites
     uint32_t* spriteData = (uint32_t*)spr1dataPointer;
     for (uint16_t i = 0; i < 8; i++) {
@@ -309,6 +322,8 @@ void Swotl::handBack()
     Audio::handBack();
     AmigaHardware::setInterrupts(INTF_ALL, false);
     AmigaHardware::clearInterruptRequests(INTF_ALL);
+    filterWasOff = (*ledFilter & CIAF_LED) != 0;
+    *ledFilter = (uint8_t)((*ledFilter & ~CIAF_LED) | oldLedFilter);
     AmigaHardware::setDMAChannels(DMAF_COPPER | DMAF_RASTER | DMAF_SPRITE, false);
     // LoadView restores neither COP1LC nor the ECS border blanking (L4).
     AmigaHardware::setCopperList(CopperList(oldCopperList), true);
@@ -356,6 +371,12 @@ uint16_t Swotl::restoreStatus() const
     if ((AmigaHardware::enabledInterrupts() & INTF_ALL) ==
         (oldEnabledInterrupts & INTF_ALL)) {
         status |= 16;
+    }
+    if (filterWasOff) {
+        status |= 32;
+    }
+    if ((*ledFilter & CIAF_LED) == oldLedFilter) {
+        status |= 64;
     }
     return status;
 }

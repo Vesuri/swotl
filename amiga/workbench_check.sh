@@ -27,7 +27,7 @@ fixture() {
       echo 'continue'
       echo 'finish'
       echo 'printf "SWOTL_WB_RESTORE status=%u fields=%u music_skip=%u\n", amiga_restore_status, amiga_frames, rt_music_skip'
-      printf 'if amiga_restore_status != 31 || rt_music_skip != 0\n  detach\n  quit 1\nend\n'
+      printf 'if amiga_restore_status != 127 || rt_music_skip != 0\n  detach\n  quit 1\nend\n'
     fi
     echo 'break amiga_start_return'
     echo 'continue'

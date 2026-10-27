@@ -24,7 +24,8 @@ A replacement publication or missing success marker fails.
 
 `make test-amiga-restore` exits through the game menu (E), then checks
 ActiView, the VERTB and SOFTINT vector triples, DMACONR and INTENAR against their saved
-values. `amiga_restore_status == 31` means all checks passed. The fixture
+values, that the LED filter was off at the hand-back (32) and CIA-A PRA's LED bit is
+restored (64). `amiga_restore_status == 127` means all checks passed. The fixture
 requires its success marker; a debugger disconnect is a failure.
 
 `tests/test_amiga_input.py` runs production `Input.cpp` against modeled CIA
@@ -50,7 +51,7 @@ This proves emulated register routing, not physical A1200 input.
 `make test-amiga-workbench` (`amiga/workbench_check.sh`) boots Workbench 2.04's `LoadWB`
 (`SWOTL_WORKBENCH=1` in `amiga/debug.sh`), which starts the game from `SYS:WBStartup`
 with a tool icon (`tools/tool_icon.py`, tool types from `SWOTL_TOOLTYPES`). Tool types
-`MUSIC` and the menu exit as `KEYS`: restore status 31, `rt_music_skip` 0, then result 0 at
+`MUSIC` and the menu exit as `KEYS`: restore status 127, `rt_music_skip` 0, then result 0 at
 `amiga_start_return` with the message held. `BENCH` from the icon and from the Shell
 (refused by the production image): result 20, a message only from the icon.
 

@@ -77,8 +77,6 @@ speed work: [speed-plan.md](speed-plan.md).
 28. `make test-amiga AMIGA_MILESTONE=m2-choose-side` (plain fixture) ends
     `SWOTL_MILESTONE_WRONG_HANDOFF`, already at 1020874; m2 passes in
     `test-amiga-replay`.
-40. LED filter (L69): left as booted (on, ~5 kHz low-pass); the original AdLib
-    output has none. Turn it off at takeover, restore it on exit.
 41. `alignas(4)` on even-sized globals of 4 bytes or more, with a link audit
     (L104): not applied; m68k GCC aligns them to 2.
 44. Arguments through dos.library `ReadArgs` (user 2026-10-25): the hand scan of

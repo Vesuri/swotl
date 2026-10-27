@@ -58,6 +58,8 @@ private:
     struct IntVector oldSoftwareVector;
     uint16_t oldEnabledDMAChannels;
     uint16_t oldEnabledInterrupts;
+    uint8_t oldLedFilter;
+    bool filterWasOff;
     uint32_t ioFrames;
     uint16_t ioDepth;
     bool guestOpen;

@@ -21,7 +21,7 @@ continue
 # finish must be top-level: a resume command ends a breakpoint command list.
 finish
 printf "SWOTL_RESTORE status=%u fields=%u io_fields=%u\n", amiga_restore_status, amiga_frames, amiga_io_frames
-if amiga_restore_status != 31
+if amiga_restore_status != 127
   detach
   quit 1
 end
