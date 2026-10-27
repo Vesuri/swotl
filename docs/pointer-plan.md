@@ -36,9 +36,13 @@ stated before running (AGENTS.md validation scope). Evidence: `tmp/pointer/<step
 - **Mask.** In `present()`, while every opaque shape pixel in VGA memory equals the shape,
   replace those pixels in the chunky frame by the save buffer's. The guest's own cursor
   never reaches the bitplanes.
-- **Visibility.** The sprite shows iff the shape is complete in VGA memory at the present
-  (hidden, partly drawn or overwritten: no mask, no sprite, frame as the reference). The
-  state rides the queued list and takes effect when the vertical blank shows that list.
+- **Visibility.** The shape is complete in VGA memory at a present, or not (hidden, partly
+  drawn or overwritten: no mask, frame as the reference). The sprite follows that state only
+  once it has held at two consecutive presents, so for at least a field: the guest moves
+  its pointer by hide, store, show, and a present between them must not blank the sprite
+  (the DOS flicker is not reproduced; user 2026-10-27). The sprite's image changes only
+  with the shape. The state rides the queued list and takes effect when the vertical
+  blank shows that list.
 - **Position.** Vertical blank, before sprite DMA fetches: guest position + hotspot + lead.
   Lead = motion not yet applied by the guest, by its own rule (±BFh/±7Fh, ÷ 2 toward zero,
   bounds). Single-writer counters: platform totals; runtime records each AX=0Bh result; HLE
@@ -54,6 +58,22 @@ stated before running (AGENTS.md validation scope). Evidence: `tmp/pointer/<step
 - **Placement.** Guest addresses in `annotations/pointer.csv`, emitted by `gen`; runtime
   `pointer.c` (mask, visibility, lead), shared with the host; Amiga `Pointer.cpp` (sprite
   words, colours, VBI write). No toggle: the sprite replaces the software pointer.
+
+## Measurements (P1, 2026-10-27)
+
+`amiga/pointer_measure.sh`, 68030 model, main menu, production image at `aea0e90`:
+
+| Window | Fields | Moves (hide, show) | Frames shown | Present inside a move | Inside a menu redraw |
+|---|---|---|---|---|---|
+| mouse moved every field, 48 steps | 49 | 48 | 48 | 1 | 0 |
+| at rest, 5000 mouse reads | 25 | 0 | 1 | 0 | 0 |
+
+- The guest polls the mouse about 100 times per field at rest, so a move is shown in
+  the field its motion arrives: the lead stays small in the menu, larger on slow screens.
+- 1 move in 48 is presented between hide and show (the frame without a pointer): the
+  visibility rule above keeps the sprite on through it.
+- Breakpoints on the polls distort the model's field timing, and a stop with an interrupt
+  pending is reported again: the script stops on cold paths and counts state changes.
 
 ## Steps
 

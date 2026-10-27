@@ -63,6 +63,11 @@ the Shell start's redirected input); `foo` stops at `PrintFault` with IoErr 118,
 make and a break, then held 60 fields with the machine taken over (5–9 makes, then
 the break). It fails on `rt_stop` or by field 500 without the window edges.
 
+`bash amiga/pointer_measure.sh` (pointer plan P1) moves the mouse one step per field in
+the main menu (`MOVE` fields), then rests (`REST` mouse reads), and counts hide-show pairs,
+frames shown and presents between a hide and its show. It stops only on cold paths and
+counts state changes: a stop with an interrupt pending is reported again after it.
+
 `bash amiga/display_audit.sh` captures 40 actual handoffs over the attract
 sequence. It compares pixels with guest RAM captured at publication, checks
 palette values and conversion targets, and rejects late copper switches.

@@ -82,7 +82,8 @@ speed work: [speed-plan.md](speed-plan.md).
 45. Hardware-sprite pointer ([pointer-plan.md](pointer-plan.md), user 2026-10-26): the
     guest's software pointer masked out of the presented frame, an AGA sprite at the guest
     position plus lead written at the vertical blank, on every pointer screen incl. the film
-    room; no toggle. Authorized: observe-only HLE row at tracker exit `0320:1011`. Next: P1.
+    room; no toggle; the sprite toggles only on a state held for a field (user 2026-10-27).
+    Authorized: observe-only HLE row at tracker exit `0320:1011`. P1 measured; next: P2.
 
 ## Release
 
