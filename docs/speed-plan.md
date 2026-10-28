@@ -11,7 +11,8 @@ Method background: [perf-method.md](perf-method.md). Open-work item: 14b.
 
 - **Bar (user, 2026-10-07):** a 14 MHz 80286's frame rate on the 68020 +
   8 MB Fast model (`AMIGA_CPU` unset): frames 4–11 median ≤ 12 fields
-  (240 ms); stretch ≤ 10.
+  (240 ms); stretch ≤ 10. A guide, not an absolute target (user 2026-10-28): the ReadMe
+  recommends a 68030 or better.
 - **Status:** R16 alignment repair, R17 palette validity, R18 flag extraction kept; R20 cell
   cache, R21 string layout, R22 call layout, R24 REP STOSW fill, R25 BP as data, R26 REPE CMPSW, R27 cold
   branch sides, R28 carry in X, R29 far push, R30 repeated segment loads,

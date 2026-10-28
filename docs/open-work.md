@@ -23,9 +23,12 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Translator and validation
 
-14b. Speed target remains unmet: frames-fixture 68020 run medians on `c21d035`
-    (ZI, irq-plan I11, 2026-10-27, arm64) 300, 290 and 300 ms/frame against ≤ 240 ms
-    ([speed-plan.md](speed-plan.md) §1, §9): 60 ms (20%) more to cut. Same-session
+14b. Optional speed work: ≤ 240 ms/frame is a guide, not a target (user 2026-10-28);
+    the ReadMe recommends a 68030 or better. Left: F10 (present/C2P on `3B9A`'s spans,
+    1.0–1.5%), unpriced `FLIGHT+1538C`, `FLIGHT+0A8D2` and F2's `cmpsw` searches
+    ([native-plan.md](native-plan.md) §F). Frames-fixture 68020 run medians on `c21d035`
+    (ZI, irq-plan I11, 2026-10-27, arm64) 300, 290 and 300 ms/frame
+    ([speed-plan.md](speed-plan.md) §1, §9). Same-session
     pre-irq-plan medians 330, 330, 320 ms do not overlap, a frame-rate gain. No priced translator candidate remains;
     flag-word packing is rejected (speed-plan §10). The
     [U8 extensions](native-compute.md#contract-extensions-u8) (C4) are
@@ -58,7 +61,7 @@ speed work: [speed-plan.md](speed-plan.md).
     Bench acceptance for platform/layout work (D5) and a later palette window
     (D6) are approved. Fidelity gates and no slowdown remain mandatory except
     the specific R20/R35 tradeoffs and R36/R40/R48/F3b/F4 and irq-plan I7 (+0.117%) bench differences accepted by
-    the user as noise (speed-plan §7) and D8's tiny bench regressions (speed-plan §3). Z1 leaves the target unmet; plan F is next.
+    the user as noise (speed-plan §7) and D8's tiny bench regressions (speed-plan §3).
     Guest native steps after irq-plan I9 are priced without polls or write
     histories ([irq-plan](irq-plan.md) RC5).
 14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`
