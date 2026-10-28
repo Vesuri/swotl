@@ -105,6 +105,12 @@ by `Disable`/`Enable` (L20).
   `AMIGA_CPU=68040` (L26, L29).
 - **Copper lists.** Fully written up to the terminator (no NOP prefill in this lineage,
   L22); one owner per write-only register (L30).
+- **Pointer.** The guest's software pointer is masked out of the presented frame (runtime
+  `pointer.c`) and shown by sprites 4 and 6 (`Pointer.cpp`, BPLCON4 `$00FF`: `FE` exact,
+  the other colour through entry `F9`, unused on pointer screens). Sprite data per buffer,
+  rewritten only on a shape change; all eight `SPRxPT` before the palette; the VBI writes
+  position (guest position + lead + hotspot) and visibility (a state held for a field).
+  Facts and checks: [pointer-plan.md](pointer-plan.md).
 
 ## Timing
 
@@ -130,7 +136,9 @@ The vertical blank's keyboard read (L72; in I/O windows a VERTB server) maps eac
 edge through one table to a PC set 1 make/break code and posts it to `rt_key_ring` with
 vector 09h; unmapped codes are counted (`amiga_unmapped_keys`, L76). Presses stay pending until the original reads them (L75);
 typematic repeat runs in the VBI (L77). The mouse (port 0) is sampled once per VBI
-(L79–80); its deltas feed the runtime's INT 33h driver (`plat_mouse`). No Amiga joystick:
+(L79–80); its deltas feed the runtime's INT 33h driver (`plat_mouse`), and the counts
+not yet taken feed the pointer sprite's lead (`rt_pointer_lead`, the guest's own motion
+rule). No Amiga joystick:
 port `201h` answers as the reference's absent one (`src/runtime/ports.c`).
 
 ## Files

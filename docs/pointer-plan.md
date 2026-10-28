@@ -1,4 +1,4 @@
-# Pointer plan (open-work 45)
+# Pointer plan (open-work 45, done 2026-10-28)
 
 Goal: the game's software mouse pointer is shown as an AGA hardware sprite that looks
 the same and moves smoothly, its position written at the vertical blank. Every screen that

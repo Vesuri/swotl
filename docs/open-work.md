@@ -79,12 +79,6 @@ speed work: [speed-plan.md](speed-plan.md).
     `test-amiga-replay`.
 41. `alignas(4)` on even-sized globals of 4 bytes or more, with a link audit
     (L104): not applied; m68k GCC aligns them to 2.
-45. Hardware-sprite pointer ([pointer-plan.md](pointer-plan.md), user 2026-10-26): the
-    guest's software pointer masked out of the presented frame, an AGA sprite at the guest
-    position plus lead written at the vertical blank, on every pointer screen incl. the film
-    room; no toggle; the sprite toggles only on a state held for a field (user 2026-10-27).
-    Authorized: observe-only HLE row at tracker exit `0320:1011`. Two sprites, `F9` as the
-    black (user 2026-10-27). P1–P5 done; next: P6.
 
 ## Release
 
