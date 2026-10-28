@@ -14,7 +14,8 @@
 	xdef	plat_calendar_date
 	xdef	plat_file_stamp
 	xdef	plat_close
-	xdef	plat_dir_entry
+	xdef	plat_dir_names
+	xdef	plat_file_info
 	xdef	plat_timer_rate
 	xdef	plat_mouse
 	xdef	plat_present
@@ -55,7 +56,9 @@ plat_file_stamp:	nop
 	rts
 plat_close:	nop
 	rts
-plat_dir_entry:	nop
+plat_dir_names:	nop
+	rts
+plat_file_info:	nop
 	rts
 plat_timer_rate:	nop
 	rts

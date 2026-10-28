@@ -329,7 +329,7 @@ class Host:
         self.stopped_at: str | None = None
         self.stubs = {self.syms[n]: n for n in ("plat_alloc", "plat_free", "plat_open", "plat_create", "plat_read", "plat_write",
                                                 "plat_delete", "plat_seek",
-                                                "plat_calendar_date", "plat_file_stamp", "plat_close", "plat_dir_entry", "plat_timer_rate", "plat_mouse", "plat_present", "plat_palette",
+                                                "plat_calendar_date", "plat_file_stamp", "plat_close", "plat_dir_names", "plat_file_info", "plat_timer_rate", "plat_mouse", "plat_present", "plat_palette",
                                                 "plat_service", "plat_log", "plat_exit")}
         if '__wrap_rt_port_in' in self.syms:
             @U.CODE_CB
@@ -698,7 +698,7 @@ class Host:
         sp = self.r("a7")
         args = struct.unpack(">IIII", self.mem(sp + 4, 16))
         res = 0
-        if n in ("plat_open", "plat_dir_entry", "plat_create", "plat_delete"):
+        if n in ("plat_open", "plat_dir_names", "plat_file_info", "plat_create", "plat_delete"):
             name = self.cstr(args[0])
             path = self.root
             for part in filter(None, name.split("/")):
@@ -724,18 +724,26 @@ class Host:
                     self.free_spans.append((previous, size+length))
                 else:
                     self.free_spans.append((address, length))
-        elif n == "plat_dir_entry":
+        elif n == "plat_dir_names":
             prefix = name + "/" if name else ""
-            disk = {p.name: (p.stat().st_size, *dos_file_stamp(p.stat().st_mtime)) for p in path.iterdir()
+            disk = {p.name for p in path.iterdir()
                     if p.is_file() and len(p.name) <= 12 and prefix + p.name.upper() not in self.deleted} \
-                if path.is_dir() else {}
-            disk.update({w[len(prefix):]: (len(d), *self.file_stamps[w]) for w, d in self.written.items()
-                         if w.startswith(prefix) and "/" not in w[len(prefix):]})
-            entries = sorted(disk.items())
-            if args[1] < len(entries):
-                self.e.write(args[2], entries[args[1]][0].encode() + b"\0")
-                self.e.write(args[3], struct.pack(">IHH", *entries[args[1]][1]))
-                res = 1
+                if path.is_dir() else set()
+            disk.update(w[len(prefix):] for w in self.written
+                        if w.startswith(prefix) and "/" not in w[len(prefix):])
+            packed = b"".join(n.encode() + b"\0" for n in sorted(disk))
+            fit = packed[:args[2]]
+            fit = fit[:fit.rfind(b"\0") + 1]
+            if fit:
+                self.e.write(args[1], fit)
+            res = len(packed)
+        elif n == "plat_file_info":
+            if name in self.written:
+                self.e.write(args[1], struct.pack(">IHH", len(self.written[name]), *self.file_stamps[name]))
+            elif on_disk:
+                self.e.write(args[1], struct.pack(">IHH", path.stat().st_size, *dos_file_stamp(path.stat().st_mtime)))
+            else:
+                res = -1
         elif n == "plat_open":
             if args[1] and on_disk and name not in self.written:
                 self.written[name] = bytearray(path.read_bytes())  # a copy: ref/ stays untouched

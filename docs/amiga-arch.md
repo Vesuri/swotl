@@ -41,9 +41,10 @@ DanceDiverse3 set (`Palette24Bit`, `setPalette24Bit`) is kept for it.
    from Workbench `CurrentDir` to the icon's drawer and read its tool types (same
    keywords; `KEYS` copied).
 2. **Reserve.** Every game-owned block, all-or-nothing, largest first; Chip only for DMA
-   data (L53, L54); only find-first's name records are allocated later, inside their I/O
-   window (`plat_alloc`). Failure frees everything before takeover; `main` returns 20
-   (0 after a run), which `_start` returns (L86).
+   data (L53, L54); only find-first's name list and records are allocated later, inside
+   their I/O window (`plat_alloc`): one directory pass (`plat_dir_names`), then one
+   `Lock`/`Examine` per matching name (`plat_file_info`). Failure frees everything before
+   takeover; `main` returns 20 (0 after a run), which `_start` returns (L86).
 3. **Load.** The optional TFH `sfx.rsc` (argument `TFH`) before takeover (L82); the
    guest's own files later, through I/O windows.
 4. **Build.** Bitmaps, copper lists and palettes completely, then publish them to the ISR

@@ -173,9 +173,9 @@ void plat_close(int32_t handle)
     if (!stamped) rt_stop("cannot set file timestamp", handle, 0);
 }
 
-int32_t plat_dir_entry(const char *dir, uint32_t index, char *name, struct plat_file_info *info)
+int32_t plat_dir_names(const char *dir, char *buffer, uint32_t size)
 {
-    int32_t found = 0;
+    int32_t bytes = 0;
     amiga_io_begin();
     BPTR lock = Lock((CONST_STRPTR)dir, ACCESS_READ);
     struct FileInfoBlock *fib = AllocDosObject(DOS_FIB, 0);
@@ -185,18 +185,38 @@ int32_t plat_dir_entry(const char *dir, uint32_t index, char *name, struct plat_
             while (fib->fib_FileName[k] && k <= 12) {
                 ++k;
             }
-            if (fib->fib_DirEntryType < 0 && k <= 12 && index-- == 0) {  /* longer: not 8.3 */
-                for (k = 0; fib->fib_FileName[k]; ++k) {
-                    name[k] = fib->fib_FileName[k];
-                }
-                name[k] = 0;
-                info->size = (uint32_t)fib->fib_Size;
-                amiga_file_date(fib->fib_Date.ds_Days, fib->fib_Date.ds_Minute,
-                                fib->fib_Date.ds_Tick, &info->dos_time, &info->dos_date);
-                found = 1;
-                break;
+            if (fib->fib_DirEntryType >= 0 || k > 12) {  /* longer: not 8.3 */
+                continue;
             }
+            if ((uint32_t)bytes + k + 1 <= size) {
+                for (int c = 0; c <= k; ++c) {
+                    buffer[bytes + c] = fib->fib_FileName[c];
+                }
+            }
+            bytes += k + 1;
         }
+    }
+    if (fib) {
+        FreeDosObject(DOS_FIB, fib);
+    }
+    if (lock) {
+        UnLock(lock);
+    }
+    amiga_io_end();
+    return bytes;
+}
+
+int32_t plat_file_info(const char *path, struct plat_file_info *info)
+{
+    int32_t found = -1;
+    amiga_io_begin();
+    BPTR lock = Lock((CONST_STRPTR)path, ACCESS_READ);
+    struct FileInfoBlock *fib = AllocDosObject(DOS_FIB, 0);
+    if (lock && fib && Examine(lock, fib) && fib->fib_DirEntryType < 0) {
+        info->size = (uint32_t)fib->fib_Size;
+        amiga_file_date(fib->fib_Date.ds_Days, fib->fib_Date.ds_Minute,
+                        fib->fib_Date.ds_Tick, &info->dos_time, &info->dos_date);
+        found = 0;
     }
     if (fib) {
         FreeDosObject(DOS_FIB, fib);

@@ -73,40 +73,39 @@ static int name_order(const char *a, const char *b)
 
 static void search_snapshot(uint16_t slot)
 {
-    char name[13];
-    struct plat_file_info info;
-    for (uint32_t i = 0; plat_dir_entry(searches[slot].directory, i, name, &info); ++i) {
+    const char *dir = searches[slot].directory;
+    int32_t bytes = plat_dir_names(dir, 0, 0);
+    char *names = bytes > 0 ? plat_alloc((uint32_t)bytes) : 0;
+    if (bytes > 0 && (!names || plat_dir_names(dir, names, (uint32_t)bytes) != bytes)) {
+        rt_stop("directory snapshot", slot, (uint32_t)bytes);
+    }
+    for (int32_t at = 0; at < bytes;) {
         struct search_name *p = plat_alloc(sizeof *p);
-        if (!p) rt_stop("directory snapshot allocation", slot, i);
+        if (!p) rt_stop("directory snapshot allocation", slot, (uint32_t)at);
         int k = 0;
         do {
-            char c = name[k];
+            char c = names[at++];
             p->name[k] = c >= 'a' && c <= 'z' ? (char)(c - 32) : c;
-        } while (name[k++]);
-        struct search_name **at = &searches[slot].remaining;
-        while (*at && name_order((*at)->name, p->name) < 0) at = &(*at)->next;
-        p->next = *at;
-        *at = p;
+        } while (p->name[k++]);
+        struct search_name **link = &searches[slot].remaining;
+        while (*link && name_order((*link)->name, p->name) < 0) link = &(*link)->next;
+        p->next = *link;
+        *link = p;
     }
+    if (names) plat_free(names);
 }
 
-/* Names are snapshotted; metadata is read at FindNext, as DOSBox stats each
- * surviving name. New files cannot enter a search already in progress. */
-static int search_next(uint16_t slot, char *name, struct plat_file_info *info)
+/* Names are snapshotted; as DOSBox, a FindNext matches the name first and
+ * then reads the surviving file's metadata. New files cannot enter a search
+ * already in progress. */
+static int search_next(uint16_t slot, char *name)
 {
-    while (searches[slot].remaining) {
-        struct search_name *p = searches[slot].remaining;
-        searches[slot].remaining = p->next;
-        for (int k = 0;; ++k) { name[k] = p->name[k]; if (!name[k]) break; }
-        plat_free(p);
-        char current[13];
-        for (uint32_t i = 0; plat_dir_entry(searches[slot].directory, i, current, info); ++i) {
-            for (int k = 0; current[k]; ++k)
-                if (current[k] >= 'a' && current[k] <= 'z') current[k] -= 32;
-            if (!name_order(name, current)) return 1;
-        }
-    }
-    return 0;
+    struct search_name *p = searches[slot].remaining;
+    if (!p) return 0;
+    searches[slot].remaining = p->next;
+    for (int k = 0;; ++k) { name[k] = p->name[k]; if (!name[k]) break; }
+    plat_free(p);
+    return 1;
 }
 
 uint16_t rt_psp(void)
@@ -577,7 +576,7 @@ static int find_next_entry(void)
     }
     fcb_form(spname, field_len(dta + DTA_SPNAME, 8), spext, field_len(dta + DTA_SPEXT, 3), pat);
     struct plat_file_info info;
-    while (search_next(slot, name, &info)) {
+    while (search_next(slot, name)) {
         int n = 0;
         for (; name[n]; ++n) {
             name[n] = name[n] >= 'a' && name[n] <= 'z' ? (char)(name[n] - 32) : name[n];
@@ -596,6 +595,14 @@ static int find_next_entry(void)
         }
         if (!match) {
             continue;
+        }
+        char path[sizeof searches[slot].directory + 14];
+        int at = 0;
+        for (const char *d = searches[slot].directory; *d; ++d) path[at++] = *d;
+        if (at) path[at++] = '/';
+        for (int k = 0; k <= n; ++k) path[at + k] = name[k];
+        if (plat_file_info(path, &info) < 0) {
+            continue;  /* gone since the snapshot */
         }
         wr8(dta + DTA_ATTR, 0x20);  /* archive, as AH=43h */
         wr16(dta + DTA_TIME, info.dos_time);
