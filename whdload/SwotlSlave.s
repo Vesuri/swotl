@@ -36,10 +36,10 @@ slv_CurrentDir dc.b "data",0
 slv_name dc.b "Secret Weapons of the Luftwaffe",0
 slv_copy dc.b "1991 Lucasfilm Games",0
 slv_info dc.b "Amiga port by Vesuri",10
-        dc.b "Version 0.90 (24.10.2026)",10
+        dc.b "Version 0.90 (28.10.2026)",10
         dc.b "Help quits",0
 slv_config dc.b "C1:B:Their Finest Hour sound effects;",0
-        dc.b "$VER: SWotL.slave 0.90 (24.10.2026)",0
+        dc.b "$VER: SWotL.slave 0.90 (28.10.2026)",0
 _program dc.b "SWotL",0
 _args_fm dc.b 10,0
 _args_fm_end
