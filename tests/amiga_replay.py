@@ -15,6 +15,10 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
+import _amigaxdev  # noqa: F401,E402
+from amigaxdev import barto  # noqa: E402
+
 sys.path[:0] = [str(Path(__file__).resolve().parent), str(Path(__file__).resolve().parents[1])]
 import host_run as H
 import rep_replay
@@ -105,14 +109,15 @@ def prepare(name, out, trace=None):
     print(f'{name}: {len(points)} diagnostic points, {len(irqs)} interrupts, {len(services)} service events', flush=True)
 
 
-def build(out):
-    work = out / 'amiga'
+def build(out, plant=None):
+    work = out / (f'amiga-plant-{plant}' if plant else 'amiga')
     work.mkdir(exist_ok=True)
     makefile = work / 'Makefile'
     if not makefile.exists():
         makefile.symlink_to(ROOT / 'amiga/Makefile')
     subprocess.run(['make', '-s', '-C', str(work), f'REPO={os.path.relpath(ROOT, work)}',
-                    'GEN=../gen', 'REPLAY=..'], check=True)
+                    'GEN=../gen', 'REPLAY=..'] + ([f'PLANT={PLANTS[plant]}'] if plant else []), check=True)
+    return work
 
 
 def fresh_run_directory(out):
@@ -121,10 +126,28 @@ def fresh_run_directory(out):
     return Path(tempfile.mkdtemp(prefix='run-', dir=out))
 
 
-def run(name, out, trace=None):
+# Plants for the real-video check, built into the replay's image (gdb writes to
+# the copper lists in Chip RAM do not reach them): fetch-window restores the
+# framework's AGA fetch ($20-$98), which takes the DMA slots of sprites 3-7;
+# composed sprite words still pass, the video not.
+PLANTS = {'fetch-window': 'FETCH_WINDOW'}
+
+
+def run(name, out, trace=None, plant=None, work=None):
+    work = work or out / 'amiga'
     capture = out / 'capture'
     capture.mkdir(exist_ok=True)
+    # The screenshot of a one-field trace after the capture is the emulator's own
+    # picture of the last field before it (a two-field trace's second field is
+    # not the shown frame); the stub needs the file quoted, so a path without spaces.
+    fd, video_trace = tempfile.mkstemp(prefix='swotl-video-', suffix='.bin')
+    os.close(fd)
     template = (ROOT / 'amiga/milestone.gdb.in').read_text()
+    template = template.replace('printf "SWOTL_MILESTONE_OK\\n"',
+        'set $video_count = amiga_display_count\n'
+        f'monitor profile 1 "" "{video_trace}"\n'
+        'if amiga_display_count != $video_count\n  printf "SWOTL_VIDEO_HANDOFF\\n"\n  quit 1\nend\n'
+        'printf "SWOTL_MILESTONE_OK\\n"')
     template = template.replace('@LABEL@', 'rt_replay_done').replace('@OUT@', os.path.relpath(capture, ROOT / 'amiga'))
     expected = json.loads((out / 'expected.json').read_text())
     check = '\n'.join(f'if replay_{key} != {value}\n  printf "SWOTL_REPLAY_INCOMPLETE\\n"\n  quit 1\nend'
@@ -139,10 +162,10 @@ def run(name, out, trace=None):
         port = listener.getsockname()[1]
     env = dict(os.environ, DEBUG_PORT=str(port), FSUAE_PORT_PINNED='1',
                AMIGA_CPU=os.environ.get('AMIGA_CPU', '68030'),
-               SWOTL_ELF=str(out / 'amiga/out/Swotl.elf'), FSUAE_RUN=os.path.relpath(fresh_run_directory(out), ROOT / 'amiga'), FSUAE_CLAIM_STRICT='1', SWOTL_ARGS='')
+               SWOTL_ELF=str(work / 'out/Swotl.elf'), FSUAE_RUN=os.path.relpath(fresh_run_directory(out), ROOT / 'amiga'), FSUAE_CLAIM_STRICT='1', SWOTL_ARGS='')
     with (capture / 'gdb.log').open('w') as log:
         command = [str(ROOT / 'amiga/debug.sh'), '', str(capture / 'fixture.gdb'),
-                   str(out / 'amiga/out/Swotl.exe')]
+                   str(work / 'out/Swotl.exe')]
         process = subprocess.Popen(command, env=env, stdout=log,
                                    stderr=subprocess.STDOUT, start_new_session=True)
         try:
@@ -163,16 +186,28 @@ def run(name, out, trace=None):
     regs = [line.removeprefix('SWOTL_REGS ') for line in lines if line.startswith('SWOTL_REGS ')]
     assert len(regs) == 1
     (capture / 'regs.txt').write_text(regs[0])
+    shot = barto.last_screenshot(video_trace)
+    os.unlink(video_trace)
+    assert shot, 'the traced field has no screenshot'
+    (capture / 'video.png').write_bytes(shot[1])
     problems = H.check(name, 2400, capture, None, trace=trace)
-    assert not problems, '\n'.join(problems)
-    print(f'Amiga diagnostic replay {name}: state, shown pixels and service history match DOSBox', flush=True)
+    script = H.milestone_script(name)
+    snap = (trace or ROOT / f'tmp/pc-runs/ref-{name}/trace') / f"snap-{name}-{len(script['snapshots']) - 1}"
+    video = H.compare_video(capture / 'video.png', snap)
+    if plant:
+        assert video, f'{plant} plant escaped the video check'
+        print(f'Amiga diagnostic replay {name}: {plant} plant caught by the video check ({video[0]})', flush=True)
+        return
+    assert not problems and not video, '\n'.join(problems + video)
+    print(f'Amiga diagnostic replay {name}: state, shown pixels, real video and service history match DOSBox', flush=True)
 
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--milestone', required=True)
+    ap.add_argument('--plant', choices=tuple(PLANTS), help='the video check must catch this fault')
     args = ap.parse_args()
     out = ROOT / 'tmp/amiga-replay' / args.milestone
     prepare(args.milestone, out)
-    build(out)
-    run(args.milestone, out)
+    work = build(out, args.plant)
+    run(args.milestone, out, plant=args.plant, work=work)

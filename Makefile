@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-all test-amiga test-amiga-replay test-amiga-restore test-amiga-keyboard test-amiga-workbench amiga amiga-sync amiga-release smoke smoke-release whdload test-whdload install-data test-install-data release release-check test-release-installer size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-all test-amiga test-amiga-replay test-amiga-replay-plant test-amiga-restore test-amiga-keyboard test-amiga-workbench amiga amiga-sync amiga-release smoke smoke-release whdload test-whdload install-data test-install-data release release-check test-release-installer size clean
 
 PYTHON ?= python3
 # AmigaXDev's shared Python package (amigaxdev.dos.mz_info).
@@ -553,6 +553,9 @@ test-amiga-replay: host
 	@$(MAKE) -s -k -j3 $(AMIGA_REPLAY_MILESTONES:%=t-amiga-replay-%)
 t-amiga-replay-%:
 	$(call RUN,amiga-replay-$*,. amiga/env.sh && $(PYTHON) tests/amiga_replay.py --milestone $*)
+# The real-video check's plant: the old fetch window built in, on a pointer screen.
+test-amiga-replay-plant: host
+	$(call RUN,amiga-replay-plant,. amiga/env.sh && $(PYTHON) tests/amiga_replay.py --milestone c9-mouse-menu --plant fetch-window)
 
 test-amiga-restore: amiga
 	$(GATE_LAUNCH) bash amiga/restore_check.sh
@@ -637,6 +640,7 @@ g-fsuae:
 	@nice -n $(GATES_NICE) $(MAKE) -s amiga
 	@$(MAKE) -s -k -j3 g-amiga g-smoke g-restore
 	$(call GATE,test-amiga-replay)
+	$(call GATE,test-amiga-replay-plant)
 g-amiga:
 	$(call GATE,test-amiga,-o amiga -o host GATE_ISOLATED=1)
 g-smoke:

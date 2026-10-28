@@ -58,6 +58,10 @@ endif
 # Diagnostic image is built in a separate working directory by the replay test.
 ifneq ($(REPLAY),)
 CCFLAGS += -DSWOTL_REPLAY -I"$(REPLAY)"
+# A planted display fault the replay's real-video check must catch.
+ifneq ($(PLANT),)
+CCFLAGS += -DSWOTL_PLANT_$(PLANT)
+endif
 VASMFLAGS += -DSWOTL_REPLAY=1
 OBJECTS += obj/replay_c.o obj/replay_s.o
 ifneq ($(wildcard $(REPLAY)/joystick_data.h),)

@@ -1309,6 +1309,38 @@ def compare_shown(capture: Path, bytes_per_row: int, snap: Path) -> list[str]:
     return out
 
 
+# The emulator's own picture: a one-field trace screenshot of the native FS-UAE
+# (tests/amiga_replay.py), 754x576 with the 320x200 screen at 2x2 from (74, 60)
+# (DIWSTRT $3881). Composed planes and sprite words cannot show what the
+# chipset does with them (a fetch window that took the sprites' DMA slots).
+VIDEO_SIZE, VIDEO_ORIGIN = (754, 576), (74, 60)
+
+
+def compare_video(png: Path, snap: Path) -> list[str]:
+    """Every screen pixel of the real video against the DOSBox frame's colour
+    (6-bit DAC guns as g << 2 | g >> 4), exactly."""
+    from PIL import Image
+    picture = Image.open(png).convert("RGB")
+    if picture.size != VIDEO_SIZE:
+        return [f"video: screenshot size {picture.size}, expected {VIDEO_SIZE}"]
+    px = picture.load()
+    planes = (snap / "vram.bin").read_bytes()
+    dac = (snap / "dac.bin").read_bytes()
+    rgb = [tuple(g << 2 | g >> 4 for g in dac[3 * k:3 * k + 3]) for k in range(256)]
+    ox, oy = VIDEO_ORIGIN
+    bad = []
+    for a in range(320 * 200):
+        x, y = a % 320, a // 320
+        want = rgb[planes[((a & ~3) << 2) | (a & 3)]]
+        if any(px[ox + 2 * x + i, oy + 2 * y + j] != want for i in (0, 1) for j in (0, 1)):
+            bad.append(a)
+    if not bad:
+        return []
+    a = bad[0]
+    return [f"video: {len(bad)} of 64000 pixels differ from the DOSBox frame, first x={a % 320} "
+            f"y={a // 320} shown {px[ox + 2 * (a % 320), oy + 2 * (a // 320)]}"]
+
+
 def check_capture(tag, regs, state, ram, dac, ref_regs, ref, snap, h) -> list[str]:
     """Registers (state block: segments), RAM, framebuffer and DAC (dac None:
     not compared) of one capture vs the snapshot."""

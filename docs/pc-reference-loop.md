@@ -250,7 +250,17 @@ Facts from these runs:
 builds isolated diagnostic images under `tmp/amiga-replay/`, checks service-event
 state and replays recorded input/IRQs.
 The final guest snapshot and displayed bitplanes use the existing host/original
-comparison and display-handoff checks. The ordinary wall-clock A1200 gate stays
+comparison and display-handoff checks. Then one traced field (`monitor profile 1`,
+native FS-UAE) gives the emulator's own picture, `capture/video.png`: every screen
+pixel must equal the DOSBox frame's colour (`host_run.compare_video`; 754×576, the
+screen at 2×2 from (74, 60)), with no handoff during the traced field. Composed
+planes and sprite words cannot see what the chipset does with them: the fetch
+window once took the pointer sprites' DMA slots. `make test-amiga-replay-plant`
+(also in `make gates`) builds c9's image with that window (`PLANT=FETCH_WINDOW`,
+`SWOTL_PLANT_FETCH_WINDOW`) and must be caught (the arrow is missing: 14 pixels).
+The one-field shot is the field before the trace, and a two-field trace's second
+field differs from the shown frame; gdb writes to copper lists in Chip RAM report
+success but do not reach them, so plants are built in. The ordinary wall-clock A1200 gate stays
 mandatory; replay is additional validation, not a performance fixture.
 
 `pc_run.py --rep-chunks` additionally records `rep.csv`: original REP slices

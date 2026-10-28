@@ -208,8 +208,10 @@ Swotl::Swotl() :
             SCREEN_PLANES, false, false, false, false, false, true, 0x9c);
         // The framework's AGA fetch ($20-$98) takes the DMA slots of sprites
         // 3-7; FMODE 3 fetches the same 320 pixels at the same place from $38.
+#ifndef SWOTL_PLANT_FETCH_WINDOW  // replay plant (tests/amiga_replay.py)
         display->copper[b][at++] = copperMove(ddfstrt, 0x38);
         display->copper[b][at++] = copperMove(ddfstop, 0xb0);
+#endif
         // Sprite colours from bank F (Pointer.h); the pointers before the
         // palette, final before sprite DMA starts.
         display->copper[b][at++] = copperMove(bplcon4, 0x00ff);
