@@ -298,7 +298,8 @@ Breaking any of these voids the step, whatever it measures.
    model, Fast RAM, FS-UAE options, fixture, game data and settings, warp
    and speed); presenting a frame before the game publishes it (D9: the
    outermost graphics driver call returns), reading the frame to find
-   changes, or skipping published frames; changing the PIT or timer rate
+   changes, or skipping published frames other than those between two
+   mouse polls (D9 frame boundary, user 2026-10-28); changing the PIT or timer rate
    or the order of interrupt delivery; removing or thinning sync points or
    return checks (exceptions: [irq-plan](irq-plan.md)'s sync points, loop heads in
    native rows and asynchronous IRQ0, user 2026-10-24, RC2/RC3/RC5; native-plan U5

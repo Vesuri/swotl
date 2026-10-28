@@ -264,10 +264,15 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   changed columns; a store with no driver call in progress stops. The `jmp
   far` of each PLINK thunk into the driver is a `jsr` counted in
   `rt_vdrv_depth`; the outermost return publishes the frame
-  (`rt_vdrv_return`). A published frame's changed rows go to `plat_present`
-  as 32-pixel-aligned rectangles at the first vertical blank after it
-  (`rt_present_due`; Amiga: the field task, host: the next poll) while no
-  driver call and no main-thread present or video BIOS call runs; mode set marks the whole
+  (`rt_vdrv_return`). The game's mouse poll (INT 33h AX=3, after all of a
+  frame's drawing) ends a frame (`rt_video_frame`): its changed rows go to
+  `plat_present` as 32-pixel-aligned rectangles there if a vertical blank is
+  due, otherwise at the next one (`rt_present_due`; Amiga: the field task,
+  host: always due) while no driver call and no main-thread present or video
+  BIOS call runs; publications between polls are not presented, so an erase
+  and its redraw (PANEL gauges) are never shown apart (user 2026-10-28).
+  Before the first poll, or after one second of IRQ0 deliveries without one,
+  each publication presents as before; mode set marks the whole
   frame; DAC block sets go to `plat_palette` at once. No frame is read to
   find changes. Amiga (machine taken over, `Swotl.cpp`): an 8-plane copper
   display (framework `CopperList`/`Bitmap`), Kalms `c2p1x1_8_c5_bm` per

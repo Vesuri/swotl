@@ -338,6 +338,7 @@ void rt_int33(void)
             rt_r.cx = (uint16_t)mouse_x & 0xfff8;
             rt_r.dx = (uint16_t)mouse_y & 0xfff8;
         }
+        rt_video_frame();
         break;
     case 0x000b:  /* motion since last call */
         rt_r.cx = (uint16_t)rt_mickey_x;

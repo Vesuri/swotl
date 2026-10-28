@@ -1,12 +1,18 @@
 /* INT 10h video BIOS as the reference machine answers it: chained mode 13h
  * at A000:0000 (guest RAM) and the DAC (docs/external-surface.md). Display
  * (D9): the graphics driver's stores to A000h mark changed rows
- * (rt_vram_mark); a frame is published when the outermost call into the
- * driver returns, and its changed rows are presented at the first vertical
- * blank after that (rt_present_due) while no driver call runs. DAC block
- * sets reach the platform at once, as on the VGA. The vertical blank's work
- * runs at a poll point or in the platform's field task (an interrupt,
- * docs/irq-plan.md I5); `busy` keeps it off the main thread's display path. */
+ * (rt_vram_mark). The game's mouse poll (INT 33h AX=3, once per pass of its
+ * loop, after the frame's drawing) is the frame boundary: the frame is
+ * presented there if a vertical blank is due, else at the next blank unless
+ * a driver call changed rows first (then the next poll's frame). Between
+ * polls nothing is shown, so a cockpit gauge's erase and redraw (two driver
+ * calls) never reach the screen apart. Before the first poll and once a
+ * second of IRQ0 ticks passes without one, a frame is published when the
+ * outermost driver call returns and presented at the first vertical blank
+ * after that while no driver call runs. DAC block sets reach the platform at
+ * once, as on the VGA. The vertical blank's work runs at a poll point or in
+ * the platform's field task (an interrupt, docs/irq-plan.md I5); `busy`
+ * keeps it off the main thread's display path. */
 #include "runtime.h"
 #include "platform.h"
 
@@ -89,6 +95,9 @@ struct vram_row rt_vram_rows[200];
 uint16_t rt_vram_top = 200, rt_vram_bottom = 0;
 uint16_t rt_vdrv_depth;          /* calls into the graphics driver in progress */
 static uint8_t published;        /* a driver call that changed rows has returned */
+static uint8_t polled;           /* the game polls the mouse: frames end there */
+static uint8_t ready;            /* rows unchanged since the poll's frame */
+static uint32_t poll_irq0;       /* IRQ0 deliveries at the last poll */
 volatile uint8_t rt_present_due;
 static volatile uint8_t busy;    /* the main thread presents or sets the video mode or DAC */
 static struct plat_rect rects[200];
@@ -153,6 +162,7 @@ static void present(void)
     rt_vram_top = 200;
     rt_vram_bottom = 0;
     published = 0;
+    ready = 0;
     rt_present_due = 0;
     if (n && rd8(BDA_MODE) == 0x13) {
         /* Rows are whole 32-pixel groups and guest memory is reversed at a
@@ -174,15 +184,22 @@ static void present(void)
     }
 }
 
+/* Frames end at the game's mouse poll: polled within the last second of
+ * IRQ0 deliveries at the programmed rate. */
+static int framed(void)
+{
+    return polled && rt_irq0_runs + rt_irq0_bios - poll_irq0 < 1193182u / rt_pit_divisor;
+}
+
 /* After a vertical blank, at a poll point (rt_present_due 1) or in the field
- * task: the platform's own work once, then the frame if published and the
- * main thread is outside the driver and the display path; otherwise it stays
- * due (2) for the next publish. */
+ * task: the platform's own work once, then the frame if published, the main
+ * thread is outside the driver and the display path, and (while frames end
+ * at the poll) the rows are the poll's; otherwise it stays due (2). */
 void rt_video_refresh(void)
 {
     plat_service();
     rt_present_due = 2;
-    if (published && !rt_vdrv_depth && !busy) {
+    if (published && !rt_vdrv_depth && !busy && (ready || !framed())) {
         present();
     }
 }
@@ -192,8 +209,26 @@ void rt_video_publish(void)
 {
     set_busy(1);
     published = 1;
+    ready = 0;
+    if (rt_present_due && !framed()) {
+        present();
+    }
+    set_busy(0);
+}
+
+/* INT 33h AX=3: the frame the game drew since its last poll is finished. */
+void rt_video_frame(void)
+{
+    polled = 1;
+    poll_irq0 = rt_irq0_runs + rt_irq0_bios;
+    if (!published) {
+        return;
+    }
+    set_busy(1);
     if (rt_present_due) {
         present();
+    } else {
+        ready = 1;
     }
     set_busy(0);
 }

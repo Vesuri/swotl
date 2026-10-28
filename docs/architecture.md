@@ -74,7 +74,7 @@ root EXE + .OVL images (proved against DOSBox captures)
   (DOS 5 PSP/MCBs/environment, IVT values, BIOS/EMS answers) behind
   `platform.h`; one implementation for the host harness and the A1200.
 - Drivers: RTSVGA and SPAZ run translated. RTSVGA's video-memory stores
-  are marked and its published frames' changed rows presented (D9); SPAZ's
+  are marked and their changed rows presented once per game frame (D9); SPAZ's
   OPL2 writes reach the runtime's register file, which the FM re-hoster
   plays on Paula (D10, [sound-plan.md](sound-plan.md)).
 

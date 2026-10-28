@@ -6,7 +6,10 @@ repeated replacement of a pending image and palette-only publications. Then
 the production runtime display path (src/runtime/video.c) with the field
 task (docs/irq-plan.md I5) interrupting the main thread inside graphics
 driver calls, presents and video BIOS calls: it never presents there, and a
-published frame is shown by the next field task outside them.
+published frame is shown by the next field task outside them. With mouse
+polls (INT 33h AX=3, the game's frame boundary) inside the last second of
+IRQ0 deliveries, nothing published after the last poll is presented, and the
+poll's frame is shown by the next field task.
 """
 import argparse
 from pathlib import Path
@@ -78,7 +81,13 @@ void rt_stop(const char *what, uint32_t a, uint32_t b) __attribute__((noreturn))
 void rt_unsupported(const char *what, uint16_t vector, uint16_t cs, uint16_t ip) __attribute__((noreturn));
 extern uint8_t rt_dac[768];
 extern volatile uint8_t rt_present_due;
+extern volatile uint32_t rt_irq0_runs, rt_irq0_bios;
+extern uint32_t rt_pit_divisor;
+struct rt_pointer { uint16_t masked_x0, masked_y0, masked_x1, masked_y1; };
+extern struct rt_pointer rt_pointer;
+void rt_pointer_mask(uint8_t *frame);
 void rt_video_refresh(void);
+void rt_video_frame(void);
 void rt_int10(void);
 void maybe_field(void);
 #define RT_FIELD_POINT() maybe_field()
@@ -106,9 +115,17 @@ static uint8_t memory[0x110000];
 uint8_t *rt_guest = memory + 0x10ffff;
 struct rt_regs rt_r;
 uint16_t g_es;
+volatile uint32_t rt_irq0_runs, rt_irq0_bios;
+uint32_t rt_pit_divisor = 65536;    /* 18 deliveries a second */
+struct rt_pointer rt_pointer;
+void rt_pointer_mask(uint8_t *frame) {}
 static uint8_t shown[64000];
 static unsigned seed = 14, fielding, driving, spanning, display;
-static unsigned fields, raced, presents, owed;
+static unsigned fields, raced, presents, owed, polls, framed_presents;
+static unsigned polled, poll_irq0, since_poll, poll_owed, deferred, blanked;
+static unsigned rate = 3;           /* 1 in rate field points takes a field; 30: the game outpaces fields */
+/* the frame boundary holds: a poll within the last second of IRQ0 */
+static int framed(void) { return polled && rt_irq0_runs - poll_irq0 < 18; }
 static unsigned next(unsigned n) { seed = seed * 1103515245u + 12345u; return (seed >> 8) % n; }
 void rt_stop(const char *what, uint32_t a, uint32_t b) { fprintf(stderr, "stop %s\n", what); abort(); }
 void rt_unsupported(const char *what, uint16_t v, uint16_t cs, uint16_t ip) { rt_stop(what, v, 0); }
@@ -118,11 +135,12 @@ static void field(void)
     if (fielding) return;
     fielding = 1;
     ++fields;
+    blanked = 1;
     raced += driving || spanning || display;
     rt_video_refresh();
     fielding = 0;
 }
-void maybe_field(void) { if (!next(3)) field(); }
+void maybe_field(void) { if (!next(rate)) field(); }
 void plat_service(void) {}
 uint8_t *rt_span(uint32_t a, uint32_t n)
 {
@@ -135,12 +153,19 @@ uint8_t *rt_span(uint32_t a, uint32_t n)
 void plat_present(const uint8_t *frame, const struct plat_rect *r, int32_t n)
 {
     assert(!display && !driving);   /* inside a display update or a driver call */
+    if (framed()) {
+        if (since_poll) {
+            fprintf(stderr, "a frame published after the last poll was presented\n");
+            exit(1);
+        }
+        ++framed_presents;
+    }
     display = 1;
     for (int32_t k = 0; k < n; ++k)
         for (unsigned y = r[k].y0; y < r[k].y1; ++y)
             memcpy(shown + y * 320 + r[k].x0, frame + y * 320 + r[k].x0, r[k].x1 - r[k].x0);
     ++presents;
-    owed = 0;
+    owed = poll_owed = blanked = 0;
     maybe_field();
     display = 0;
 }
@@ -179,7 +204,27 @@ static void driver(unsigned depth)
     }
     --driving;
     maybe_field();
-    if (!--rt_vdrv_depth && rt_vram_bottom) rt_video_publish();
+    if (!--rt_vdrv_depth && rt_vram_bottom) {
+        since_poll = 1;
+        poll_owed = 0;              /* drawing over the poll's frame: superseded */
+        rt_video_publish();
+    }
+}
+/* INT 33h AX=3 after a frame's drawing. */
+static void poll(void)
+{
+    ++polls;
+    polled = 1;
+    poll_irq0 = rt_irq0_runs;
+    poll_owed = owed;
+    since_poll = 0;
+    unsigned before = presents, due = blanked;
+    rt_video_frame();
+    if (owed && due && presents == before) {
+        fprintf(stderr, "a poll after a field held its frame\n");
+        exit(1);
+    }
+    deferred += owed && presents == before;
 }
 int main(void)
 {
@@ -190,11 +235,15 @@ int main(void)
         if (what < 60) driver(0);
         else if (what < 75) video_bios(0x1012);
         else if (what < 76) video_bios(0x0013);
-        if (next(2)) continue;
+        else if (step > 2000 && what < 90 && (step / 4000) % 2 == 0) poll();
+        if (!next(40)) ++rt_irq0_runs;
+        rate = (step / 4000) % 2 == 0 && (step / 1000) % 2 ? 30 : 3;
+        if (next(rate == 3 ? 2 : 10)) continue;
         field();
-        /* outside every display path: what was published is shown */
-        if (owed) {
-            fprintf(stderr, "step %u: a published frame was not shown\n", step);
+        /* outside every display path: what was published (or, with frames,
+         * ended by a poll) is shown */
+        if (framed() ? poll_owed : owed) {
+            fprintf(stderr, "step %u: a %s frame was not shown\n", step, framed() ? "polled" : "published");
             return 1;
         }
         if (presents != checked && !rt_vram_bottom) {   /* no rows left to present */
@@ -202,8 +251,10 @@ int main(void)
             for (unsigned k = 0; k < 64000; ++k) assert(shown[k] == rd8(0xa0000 + k));
         }
     }
-    printf("fields %u, %u inside the main display path, presents %u\n", fields, raced, presents);
-    assert(raced > 1000 && presents > 1000);
+    printf("fields %u, %u inside the main display path, presents %u (%u framed by %u polls, %u deferred)\n",
+           fields, raced, presents, framed_presents, polls, deferred);
+    assert(raced > 1000 && presents > 1000 && framed_presents > 500 && presents - framed_presents > 1000);
+    assert(deferred > 100);
     return 0;
 }
 '''
@@ -251,9 +302,13 @@ if __name__ == '__main__':
     run_video(video, True)
     if args.sabotage:
         # the field task presents during a publish, a video BIOS call, a driver call
-        for old, new in [(' && !busy) {', ') {'),
+        for old, new in [(' && !busy && ', ' && '),
                          ('    set_busy(1);\n    published = 1;', '    published = 1;'),
                          ('    set_busy(1);\n    switch', '    switch'),
-                         ('published && !rt_vdrv_depth', 'published')]:
+                         ('published && !rt_vdrv_depth', 'published'),
+                         # between polls: a publication presents; a poll's frame is not shown
+                         ('    published = 1;\n    ready = 0;', '    published = 1;'),
+                         ('if (rt_present_due && !framed()) {', 'if (rt_present_due) {'),
+                         ('    } else {\n        ready = 1;', '    } else {\n        ready = 0;')]:
             assert old in video
             run_video(video.replace(old, new, 1), False)

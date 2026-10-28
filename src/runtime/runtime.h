@@ -139,11 +139,12 @@ void rt_int10(void);
 extern uint8_t rt_dac[768];      /* video.c: 6-bit R, G, B */
 /* video.c: set to 1 (with RT_RAISE_IRQ) at each vertical blank by a platform
  * without a field task (rt_video_refresh at the next poll point; the host);
- * a published frame's changed rows are presented outside the graphics
- * driver, or when the driver returns (D9); 2: due, the platform's per-blank
- * work done */
+ * a published frame's changed rows are presented at the game's mouse poll,
+ * or outside the graphics driver or when it returns while the game does not
+ * poll (D9); 2: due, the platform's per-blank work done */
 extern volatile uint8_t rt_present_due;
 void rt_video_refresh(void);
+void rt_video_frame(void);      /* INT 33h AX=3: the game's frame boundary */
 /* Where a field task may interrupt the display path: empty; a test seam
  * (tests/test_display_queue.py runs the field task there). */
 #define RT_FIELD_POINT() ((void)0)
@@ -220,6 +221,7 @@ void rt_int16(void);
 void rt_int33(void);
 
 /* ports.c */
+extern volatile uint32_t rt_irq0_runs, rt_irq0_bios;  /* machine.c: IRQ0 deliveries */
 extern uint32_t rt_pit_divisor;    /* channel 0 reload, 1..65536 */
 extern uint8_t rt_opl[256];         /* AdLib registers as written (rt_entry.s rt_out8) */
 extern uint8_t rt_opl_index;
