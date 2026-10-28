@@ -82,8 +82,3 @@ speed work: [speed-plan.md](speed-plan.md).
     `test-amiga-replay`.
 41. `alignas(4)` on even-sized globals of 4 bytes or more, with a link audit
     (L104): not applied; m68k GCC aligns them to 2.
-
-## Release
-
-42. Manual pass of the Installer requesters (wording, layout) and one install
-    from real ACC floppy images on an A1200 (the FS-UAE test scripts every answer).
