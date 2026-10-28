@@ -110,6 +110,8 @@ by `Disable`/`Enable` (L20).
   the other colour through entry `F9`, unused on pointer screens). Sprite data per buffer,
   rewritten only on a shape change; all eight `SPRxPT` before the palette; the VBI writes
   position (guest position + lead + hotspot) and visibility (a state held for a field).
+  Fetch window `DDFSTRT $38`/`DDFSTOP $B0` (the framework's AGA `$20` takes the slots of
+  sprites 3–7).
   Facts and checks: [pointer-plan.md](pointer-plan.md).
 
 ## Timing

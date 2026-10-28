@@ -156,6 +156,13 @@ stated before running (AGENTS.md validation scope). Evidence: `tmp/pointer/<step
   (stolen `00`), equal to DOSBox; display audit 68030 and 68040 40 captures ok, no late
   sprite write (the audit's screens have no pointer). Plant `HSTART = $81 + x` on the c9
   replay: 12 pixels differ.
+- Fetch window (2026-10-28): the framework's AGA `DDFSTRT $20`/`DDFSTOP $98` took the DMA
+  slots of sprites 3–7 (sprite n fetches at `$15+4n`, `$17+4n`); sprites 4 and 6 showed as
+  a black block that moved only vertically, which the composed checks cannot see.
+  `Swotl.cpp` writes `$38`/`$B0` after `setPlayfield`: FMODE 3 fetches the same 320
+  pixels at the same place. Real video (one-field `monitor profile` screenshot, native
+  FS-UAE) on the m2-choose-side and c9-mouse-menu replays: all 64,000 pixels at 2×2 equal
+  the DOSBox frame, arrow included; display audit 68030 and 68040, `test-amiga` (m1b), smoke ok.
 
 ## Steps
 
