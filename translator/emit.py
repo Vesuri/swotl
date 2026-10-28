@@ -49,7 +49,8 @@ HLE_SERVICES = tuple(sorted({"rt_hle_" + r["service"] for r in image.rows("hle.c
 # Hardware-sprite pointer (docs/pointer-plan.md): DGROUP offsets of the guest's
 # pointer state (annotations/pointer.csv) as the table pointer_guest, in this
 # order (src/runtime/pointer.c POINTER_*).
-POINTER_NAMES = ("x", "y", "width", "height", "hot_x", "hot_y", "image", "buffer")
+POINTER_NAMES = ("x", "y", "width", "height", "hot_x", "hot_y", "image", "x_min", "x_end", "y_min",
+                 "y_end", "buffer")
 
 
 def pointer_guest() -> list[int]:

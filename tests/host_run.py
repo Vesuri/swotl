@@ -50,7 +50,11 @@ GUEST_BYTES = 0x110000
 # Hardware-sprite pointer (docs/pointer-plan.md): DGROUP offsets, struct rt_pointer
 # (runtime.h: shown, w, h, other, x, y, image, the masked box, 16 x 16 pixels)
 POINTER = {r["name"]: int(r["offset"], 16) for r in image.rows("pointer.csv")}
-POINTER_BYTES, POINTER_PIXELS, POINTER_SIZE = 274, 18, 16
+POINTER_BYTES, POINTER_PIXELS, POINTER_SIZE = 276, 18, 16
+# The tracker's motion words at its exit (SWOTL.EXE 0320:0D1A): the mouse's after
+# halving (A8F8, A9A8) and the one applied (C37C, C37E; keys or joystick may set
+# it instead); 0320:0C64 sets the position directly.
+TRACKER_MOUSE, TRACKER_APPLIED, POSITION_SET = (0xA8F8, 0xA9A8), (0xC37C, 0xC37E), 0x3E64
 SFX_SLOT_IDS = 0x1DE   # SPAZ DS: per OPL channel the effect id·4 (stored at hle.csv sfx_start)
 TOP = BLOCK + GUEST_BYTES - 1   # rt_guest: guest linear L at TOP - L (reversed)
 STATE = TOP + 1           # state block (translator/lower.py STATE_EQU)
@@ -234,6 +238,8 @@ SABOTAGE = {
     "keyon": "rt_out8 counts no AdLib key-on edge (its addq dropped)",
     "sfx_start": "rt_hle_sfx_start records no effect id (its move.b dropped)",
     "pointer-ds": "rt_hle_pointer_tracked records no DGROUP (its move.w dropped)",
+    "pointer-clamp": "the lead clamps x motion to +-C0h, not +-BFh (pointer.c rebuilt)",
+    "pointer-trunc": "the lead halves by an arithmetic shift (floor), not toward zero",
     "irq-main": "FLIGHT +0123B reads 9BCA instead of 813C (undeclared main read, I3)",
     "irq-handler": "the IRQ0 handler's inc of 9BCA writes 9DC0 (outside the footprint, I3)",
 }
@@ -243,7 +249,8 @@ STRESS_SABOTAGE = {
 }
 # Plants a milestone other than --milestone exercises (the guest's first
 # hardware interrupt handler runs after m1b-logo).
-SABOTAGE_AT = {"missing-file": "c83-program-disk-prompt", "keyon": "m2-choose-side", "sfx_start": "c6-flight-keys", "pointer-ds": "c9-mouse-menu",
+SABOTAGE_AT = {"missing-file": "c83-program-disk-prompt", "keyon": "m2-choose-side", "sfx_start": "c6-flight-keys", "pointer-ds": "c9-mouse-menu", "pointer-clamp": "c9-mouse-menu",
+               "pointer-trunc": "c9-mouse-menu",
                "irq-stack": "m2-choose-side", "irq-state": "m2-choose-side", "irq-sentinel": "m2-choose-side",
                "irq-main": "m3-demo-flight", "irq-handler": "m2-choose-side",
                "mouse-motion": "c9-mouse-menu",
@@ -491,16 +498,40 @@ class Host:
 
         # HLE pointer_tracked: after the service, rt_pointer_ds is the guest's DS
         # (DGROUP); check_pointer's oracle reads the pointer state from it.
+        # The lead's prediction (rt_pointer_predicted) is the guest's new position
+        # at every exit whose motion came from the mouse.
         self.tracker_ds = 0
         self.pointer_bad: list[str] = []
-        self.pointer_counts = {"presents": 0, "shown": 0, "f9": 0}
+        self.pointer_counts = {"presents": 0, "shown": 0, "f9": 0, "exits": 0, "predicted": 0, "moved": 0}
+        self.position_set = False
 
         @U.CODE_CB
         def tracked(h, addr, size, user):
-            self.tracker_ds = self.guest_regs(0)["ds"]
+            self.tracker_ds = ds = self.guest_regs(0)["ds"]
             got = struct.unpack(">H", self.mem(self.syms["rt_pointer_ds"], 2))[0]
             if got != self.tracker_ds and len(self.pointer_bad) < 8:
                 self.pointer_bad.append(f"tracker exit: rt_pointer_ds {got:04x}, DS {self.tracker_ds:04x}")
+            def word(o):
+                return int.from_bytes(self.gmem(ds * 16 + o, 2), "little", signed=True)
+            valid, px, py = struct.unpack(">3h", self.mem(self.syms["rt_pointer_predicted"], 6))
+            mouse = tuple(word(o) for o in TRACKER_MOUSE) == tuple(word(o) for o in TRACKER_APPLIED)
+            self.pointer_counts["exits"] += 1
+            if valid and mouse and not self.position_set:
+                self.pointer_counts["predicted"] += 1
+                x, y = word(POINTER["x"]), word(POINTER["y"])
+                self.pointer_counts["moved"] += any(word(o) for o in TRACKER_MOUSE)
+                if (px, py) != (x, y) and len(self.pointer_bad) < 8:
+                    self.pointer_bad.append(f"tracker exit {self.pointer_counts['exits']}: lead "
+                                            f"({px}, {py}), guest ({x}, {y}), motion "
+                                            f"{[word(o) for o in TRACKER_MOUSE]}")
+            self.position_set = False
+
+        @U.CODE_CB
+        def position_set(h, addr, size, user):
+            self.position_set = True
+
+        a = self.syms[emit.label("SWOTL.EXE", POSITION_SET)]
+        e.hook_range(U.HOOK_CODE, position_set, a, a)
 
         for r in image.rows("hle.csv"):
             if r["service"] == "pointer_tracked":
@@ -828,10 +859,11 @@ class Host:
         if complete:
             self.pointer_counts["shown"] += 1
             x, y = struct.unpack(">hh", got[4:8])
-            fields = (x, y, got[1], got[2], got[3])
-            want = (x0, y0, w, h, others.pop() if others else 0xFD)
+            hot = struct.unpack("bb", got[274:276])
+            fields = (x, y, got[1], got[2], got[3]) + hot
+            want = (x0, y0, w, h, others.pop() if others else 0xFD, word("hot_x"), word("hot_y"))
             if fields != want:
-                bad(f"x, y, w, h, other {fields}, the oracle's {want}")
+                bad(f"x, y, w, h, other, hotspot {fields}, the oracle's {want}")
             for o, (p, b) in pixels.items():
                 expected[o] = b
             composite = bytearray(frame)
@@ -1371,7 +1403,8 @@ def check_pointer(h) -> list[str]:
     """Each present's pointer against the oracle (Host.check_pointer)."""
     c = h.pointer_counts
     print(f"pointer: {c['presents']} presents, {c['shown']} with the pointer shown, "
-          f"DGROUP {h.tracker_ds:04x}")
+          f"DGROUP {h.tracker_ds:04x}; tracker exits {c['exits']}, {c['predicted']} predicted "
+          f"({c['moved']} with mouse motion)")
     return [f"pointer: {p}" for p in h.pointer_bad]
 
 
@@ -1421,6 +1454,9 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
     joystick_header = joystick_replay.c_header(joystick) if joystick else None
     diagnostic_elf = rep_replay.host_image(rep.labels if rep else [], joystick_header) if rep or joystick else None
     script["rep"] = rep
+    if sabotage in ("pointer-clamp", "pointer-trunc"):
+        import test_pointer_model
+        diagnostic_elf = test_pointer_model.planted_elf(sabotage[len("pointer-"):])
     h = Host(image.M.REF, sabotage, music_skip, elf=diagnostic_elf, stress=stress)
     h.deleted.update(("TARGETS.DEF",) if sabotage == "missing-file" else script["missing_files"])
     h.calendar_date, h.file_clock = reference_clocks(trace)

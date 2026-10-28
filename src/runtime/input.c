@@ -296,7 +296,7 @@ void rt_int16(void)
  * in text, 2 horizontally in mode 13h). The platform's counts are taken at
  * each call, so clamping sees their sum rather than each event. */
 static int16_t mouse_x = 320, mouse_y = 100;
-static int16_t mickey_x, mickey_y;
+int16_t rt_mickey_x, rt_mickey_y;     /* motion since the last AX=0Bh (the pointer lead reads it) */
 static uint8_t mouse_buttons;
 
 static int16_t clamp(int32_t v, int16_t max)
@@ -307,11 +307,13 @@ static int16_t clamp(int32_t v, int16_t max)
 static void mouse_poll(void)
 {
     int32_t dx, dy;
+    rt_pointer_open();
     mouse_buttons = (uint8_t)plat_mouse(&dx, &dy);
+    rt_mickey_x = (int16_t)(rt_mickey_x + dx);
+    rt_mickey_y = (int16_t)(rt_mickey_y + 2 * dy);
+    rt_pointer_close();
     mouse_x = clamp(mouse_x + dx, 639);
     mouse_y = clamp(mouse_y + dy, 199);
-    mickey_x = (int16_t)(mickey_x + dx);
-    mickey_y = (int16_t)(mickey_y + 2 * dy);
 }
 
 void rt_int33(void)
@@ -323,7 +325,9 @@ void rt_int33(void)
         rt_r.bx = 3;
         mouse_x = 320;
         mouse_y = 100;
-        mickey_x = mickey_y = 0;
+        rt_pointer_open();
+        rt_mickey_x = rt_mickey_y = 0;
+        rt_pointer_close();
         break;
     case 0x0003:  /* position and buttons */
         rt_r.bx = mouse_buttons;
@@ -336,9 +340,12 @@ void rt_int33(void)
         }
         break;
     case 0x000b:  /* motion since last call */
-        rt_r.cx = (uint16_t)mickey_x;
-        rt_r.dx = (uint16_t)mickey_y;
-        mickey_x = mickey_y = 0;
+        rt_r.cx = (uint16_t)rt_mickey_x;
+        rt_r.dx = (uint16_t)rt_mickey_y;
+        rt_pointer_open();
+        rt_pointer_read(rt_mickey_x, rt_mickey_y);
+        rt_mickey_x = rt_mickey_y = 0;
+        rt_pointer_close();
         break;
     default:
         rt_unsupported("mouse function", 0x33, 0, 0);

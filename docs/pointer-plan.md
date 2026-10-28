@@ -110,6 +110,29 @@ stated before running (AGENTS.md validation scope). Evidence: `tmp/pointer/<step
   built states (arrow, crosshair, clipped, overwritten, two colours, off screen, no DGROUP,
   no sprites) and the visibility sequence; plants hotspot, equality, visibility caught.
 
+## Lead (P4, 2026-10-28)
+
+- `input.c`: each AX=0Bh result goes to `rt_pointer_read` (pending mickeys:
+  `rt_mickey_x/y`). `pointer_tracked` calls `rt_pointer_tracked`: the position at the exit,
+  reads cleared. `rt_pointer_lead(dx, dy)` (vertical blank, platform motion not yet read
+  by INT 33h): exit position + read motion (one read) + unread motion, each by the guest
+  rule; two reads before an exit: no lead (the last value) until the next exit.
+- A pointer shown away from the exit's position (set by `0C64`, or a present between the
+  tracker's show and its exit) is adopted with no read pending (`rt_pointer_mask`).
+- Consistency: every main-thread write (INT 33h taking the platform's counts, AX=0Bh's read
+  and clear, the exit, the adopt) runs with `serial` odd; the blank keeps its last result
+  then. `rt_pointer` also carries the hotspot for the platform.
+- Bounds from the tracker's clamp words (`x_min` `9F52`, `x_end` `9FCE`, `y_min` `A0EA`,
+  `y_end` `A1D0`, `pointer.csv`).
+- `tests/host_run.py`, every tracker exit after the first whose motion came from the mouse
+  (A8F8/A9A8 = applied C37C/C37E) and not from `0C64`: the lead's prediction = guest
+  position. `test-host-all`: 915298 exits, 914792 predicted (805 with motion), all equal;
+  plants clamp and trunc caught on c9. No fixture reaches an upper bound or reads twice
+  before an exit: `tests/test_pointer_model.py` drives the lead on built states (rest,
+  read, pending, both, clamp, trunc, bounds, discard, a write open at the blank, a direct
+  set) against a Python reference; plants clamp, trunc, bound, discard, serial, adopt
+  caught.
+
 ## Steps
 
 | Step | Work | Checks |
@@ -117,7 +140,7 @@ stated before running (AGENTS.md validation scope). Evidence: `tmp/pointer/<step
 | P1 | Measure on the A1200 model: tracker exits and pointer presents per field in menus | short `pN` scripts, counters; numbers in the commit |
 | P2 | Static: shapes ≤ 16 wide and fit the slots; `A42A` row layout (w bytes per row); census of the sprite's stolen entry on pointer screens (reference corpus; `FF` was shown: two sprites and `F9`, user 2026-10-27) | new tool + test, sabotage |
 | P3 | `pointer.csv`, runtime mask and visibility, host model | c9 and the pointer-screen coverage fixtures: masked frame + modelled sprite = VGA memory at every present; plants: hotspot sign, equality rule, visibility |
-| P4 | Lead: AX=0Bh record, `pointer_tracked` row | at every tracker exit lead (motion consumed) = guest position; plants: ±BFh clamp, floor for truncation, bound off by one, discarded motion |
+| P4 | Lead: AX=0Bh record, `pointer_tracked` row | at every mouse-driven tracker exit lead (motion consumed) = guest position, plants clamp and truncation (host); bound off by one and discarded motion on built states (model test) |
 | P5 | Amiga sprites 4 and 6, copper, colours, VBI write | `make amiga`, smoke, test-amiga, display audit 68030/68040; model shot at rest = DOSBox frame with its pointer; horizontal offset calibrated there |
 | P6 | Docs: amiga-arch Display/Input, open-work; generic lessons to AmigaXDev | consistency |
 

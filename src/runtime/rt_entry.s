@@ -71,6 +71,7 @@ G_DS	equ	1
 	xref	rt_sfx_id
 	xref	rt_sfx_starts
 	xref	rt_pointer_ds
+	xref	rt_pointer_tracked
 	xref	rt_irq0_enter
 	xref	rt_irq0_leave
 	xref	rt_irq_saved
@@ -350,9 +351,13 @@ rt_hle_sfx_start:
 	rts
 
 ; HLE pointer_tracked (annotations/hle.csv): the pointer tracker's exit, DS =
-; DGROUP (src/runtime/pointer.c). Observe only: EQ. Registers preserved.
+; DGROUP; the lead's motion applied (src/runtime/pointer.c). Observe only: EQ.
+; Registers preserved.
 rt_hle_pointer_tracked:
 	move.w	G_DS(a6),rt_pointer_ds
+	movem.l	d0-d1/a0-a1,-(a7)
+	jsr	rt_pointer_tracked
+	movem.l	(a7)+,d0-d1/a0-a1
 	cmp.w	d7,d7
 	rts
 

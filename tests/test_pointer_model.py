@@ -8,7 +8,13 @@ tests/host_run.py.
 
   python3 tests/test_pointer_model.py [--sabotage]
 
-Cases: arrow at rest; crosshair (hotspot -3, -3); crosshair clipped at the top
+Lead: the position at the tracker's exit advanced by the guest's rule (clamp
++-BFh/+-7Fh, halve toward zero unless 0, hold in [min, end)) by an unapplied
+read, then by the motion not read yet (runtime and platform counts); two reads
+before an exit discard the lead; the prediction at an exit; a write open at
+the blank keeps the last result; a pointer shown away from the last exit
+(set directly) is the lead's new start, its pending read dropped; a move
+presented before the tracker's exit is predicted there. Cases: arrow at rest; crosshair (hotspot -3, -3); crosshair clipped at the top
 left; one opaque pixel overwritten; a second colour besides FEh; drawn wholly
 off screen; no DGROUP yet; no sprite platform. Visibility: a state applies once
 it holds at two blanks in a row. Plants (pointer.c rebuilt):
@@ -16,6 +22,12 @@ it holds at two blanks in a row. Plants (pointer.c rebuilt):
   hotspot     the hotspot subtracted
   equality    a pixel that differs from the shape still counts
   visibility  a state applies at its first blank
+  clamp       x motion clamped to +-C0h
+  trunc       halved by an arithmetic shift (floor)
+  bound       x held below x_end instead of x_end - 1
+  discard     a second read keeps the lead
+  serial      the lead computed while a write is open
+  adopt       a shown pointer away from the last exit not adopted
 """
 import argparse
 import os
@@ -36,6 +48,13 @@ PLANTS = {
     "hotspot": ("word(POINTER_X) + word(POINTER_HOT_X)", "word(POINTER_X) - word(POINTER_HOT_X)"),
     "equality": ("!= p) {\n                return;", "!= p && 0) {\n                return;"),
     "visibility": ("        held = 0;\n", "        held = 1;\n"),
+    # lead plants (also tests/host_run.py sabotage pointer-*)
+    "clamp": ("#define POINTER_X_LIMIT 0xbf", "#define POINTER_X_LIMIT 0xc0"),
+    "trunc": ("        m = (int16_t)(m / 2);", "        m = (int16_t)(m >> 1);"),
+    "bound": ("v >= hi ? (int16_t)(hi - 1)", "v >= hi ? hi"),
+    "discard": ("        if (reads < 2) {", "        if (reads < 3) {"),
+    "serial": ("if (!(serial & 1) && lead.tracked)", "if (lead.tracked)"),
+    "adopt": ("    if (lead.x != x || lead.y != y) {\n        consume", "    if (0 && (lead.x != x || lead.y != y)) {\n        consume"),
 }
 
 
@@ -129,9 +148,9 @@ def expect_shown(m, shape, x, y, other, box):
     problems = []
     if got[0] != 1:
         return ["not shown"]
-    fields = struct.unpack(">hh", got[4:8]) + (got[1], got[2], got[3])
-    if fields != (x + hx, y + hy, w, hh, other):
-        problems.append(f"x, y, w, h, other {fields}")
+    fields = struct.unpack(">hh", got[4:8]) + (got[1], got[2], got[3]) + struct.unpack("bb", got[274:276])
+    if fields != (x + hx, y + hy, w, hh, other, hx, hy):
+        problems.append(f"x, y, w, h, other, hotspot {fields}")
     if struct.unpack(">4H", got[10:18]) != box:
         problems.append(f"masked box {struct.unpack('>4H', got[10:18])}, expected {box}")
     want = bytearray(screen)
@@ -158,6 +177,98 @@ def expect_hidden(m, shape, x, y, **kw):
     return problems + ([] if frame == bytes(screen) else ["frame changed"])
 
 
+def rule(p, m, limit, lo, end):
+    m = -limit if m <= -limit - 1 else limit if m >= limit + 1 else m
+    h = int(m / 2)
+    m = h if h else m
+    v = p + m
+    return end - 1 if v >= end else lo if v < lo else v
+
+
+def lead_cases(m):
+    """(name, reads, runtime mickeys, platform counts, start, bounds) against rule()."""
+    out = {}
+    h = m.h
+    m.setup(ARROW, 100, 50)
+    bounds = (8, 312, 4, 196)
+    cases = [("rest", [], (0, 0), (0, 0), (100, 50)),
+             ("read", [(8, 4)], (0, 0), (0, 0), (100, 50)),
+             ("pending", [], (6, 2), (3, 5), (100, 50)),
+             ("read and pending", [(-8, 6)], (6, -2), (1, 1), (100, 50)),
+             ("clamp", [(-400, 300)], (0, 0), (0, 0), (160, 100)),
+             ("trunc", [(-9, -7)], (1, -1), (0, 0), (100, 50)),
+             ("bound high", [(40, 30)], (0, 0), (0, 0), (300, 190)),
+             ("bound low", [(-40, -30)], (0, 0), (0, 0), (12, 6)),
+             ("discard", [(8, 4), (6, 2)], (5, 5), (2, 2), (100, 50))]
+    for name, reads, mickeys, counts, start in cases:
+        for n, v in zip(("x_min", "x_end", "y_min", "y_end"), bounds):
+            m.gw(DS * 16 + H.POINTER[n], struct.pack("<H", v))
+        m.gw(DS * 16 + H.POINTER["x"], struct.pack("<H", start[0]))
+        m.gw(DS * 16 + H.POINTER["y"], struct.pack("<H", start[1]))
+        m.call("rt_pointer_tracked")
+        for mx, my in reads:
+            m.call("rt_pointer_read", mx & 0xFFFFFFFF, my & 0xFFFFFFFF)
+        h.e.write(h.syms["rt_mickey_x"], struct.pack(">h", mickeys[0]))
+        h.e.write(h.syms["rt_mickey_y"], struct.pack(">h", mickeys[1]))
+        m.call("rt_pointer_lead", counts[0] & 0xFFFFFFFF, counts[1] & 0xFFFFFFFF, FRAME, FRAME + 2)
+        got = struct.unpack(">hh", h.mem(FRAME, 4))
+        x, y = start
+        if len(reads) < 2:
+            if reads:
+                x = rule(x, reads[0][0], 0xBF, bounds[0], bounds[1])
+                y = rule(y, reads[0][1], 0x7F, bounds[2], bounds[3])
+            x = rule(x, mickeys[0] + counts[0], 0xBF, bounds[0], bounds[1])
+            y = rule(y, mickeys[1] + 2 * counts[1], 0x7F, bounds[2], bounds[3])
+        problems = [] if got == (x, y) else [f"lead {got}, expected {(x, y)}"]
+        if len(reads) == 1:     # the exit after the read: the prediction
+            px = rule(start[0], reads[0][0], 0xBF, bounds[0], bounds[1])
+            py = rule(start[1], reads[0][1], 0x7F, bounds[2], bounds[3])
+            m.call("rt_pointer_tracked")
+            pred = struct.unpack(">3h", h.mem(h.syms["rt_pointer_predicted"], 6))
+            if pred != (1, px, py):
+                problems.append(f"prediction {pred}, expected {(1, px, py)}")
+        h.e.write(h.syms["rt_mickey_x"], b"\0\0")
+        h.e.write(h.syms["rt_mickey_y"], b"\0\0")
+        out[f"lead {name}"] = problems
+    # A write open at the blank (INT 33h between rt_pointer_open and close): the
+    # last result, not the half-written state.
+    m.call("rt_pointer_tracked")
+    m.call("rt_pointer_lead", 0, 0, FRAME, FRAME + 2)
+    before = struct.unpack(">hh", h.mem(FRAME, 4))
+    m.call("rt_pointer_open")
+    h.e.write(h.syms["rt_mickey_x"], struct.pack(">h", 20))
+    m.call("rt_pointer_lead", 0, 0, FRAME, FRAME + 2)
+    got = struct.unpack(">hh", h.mem(FRAME, 4))
+    m.call("rt_pointer_close")
+    h.e.write(h.syms["rt_mickey_x"], b"\0\0")
+    out["lead open write"] = [] if got == before else [f"lead {got} during a write, expected {before}"]
+    # Set directly (0C64) after an exit and a read: shown there, the lead starts there.
+    def bounded(x, y):
+        m.setup(ARROW, x, y)
+        for n, v in zip(("x_min", "x_end", "y_min", "y_end"), bounds):
+            m.gw(DS * 16 + H.POINTER[n], struct.pack("<H", v))
+    bounded(100, 50)
+    m.call("rt_pointer_tracked")
+    m.call("rt_pointer_read", 8, 4)
+    bounded(120, 60)
+    m.mask()
+    m.call("rt_pointer_lead", 0, 0, FRAME, FRAME + 2)
+    got = struct.unpack(">hh", h.mem(FRAME, 4))
+    out["lead adopt"] = [] if got == (120, 60) else [f"lead {got} after a direct set, expected (120, 60)"]
+    # The tracker's move presented before its exit: predicted at the present,
+    # kept at the exit.
+    bounded(100, 50)
+    m.call("rt_pointer_tracked")
+    m.call("rt_pointer_read", 8, 4)
+    want = (1, rule(100, 8, 0xBF, bounds[0], bounds[1]), rule(50, 4, 0x7F, bounds[2], bounds[3]))
+    bounded(want[1], want[2])
+    m.mask()
+    m.call("rt_pointer_tracked")
+    pred = struct.unpack(">3h", h.mem(h.syms["rt_pointer_predicted"], 6))
+    out["lead adopt predicted"] = [] if pred == want else [f"prediction {pred}, expected {want}"]
+    return out
+
+
 def cases(m):
     out = {}
     out["arrow"] = expect_shown(m, ARROW, 100, 50, 0x00, (100, 50, 106, 57))
@@ -177,6 +288,7 @@ def cases(m):
     seq, want = [1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 1], [0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1]
     got = [m.call("rt_pointer_visible", s) & 0xFF for s in seq]
     out["visibility"] = [] if got == want else [f"visible {got}, expected {want}"]
+    out.update(lead_cases(m))
     return out
 
 

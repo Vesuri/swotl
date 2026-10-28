@@ -231,8 +231,8 @@ extern uint8_t rt_sfx_starts[3];     /* per SPAZ slot: starts, wrapping */
 /* Hardware-sprite pointer (pointer.c, docs/pointer-plan.md). At each present,
  * shown: the guest's pointer was complete in VGA memory and is masked out of
  * the frame; then its top-left pixel (position + hotspot), size, shape (image
- * offset in DGROUP, pixels RT_POINTER_SIZE per row, FDh transparent) and its
- * colour besides FEh. The masked box (ends exclusive; y1 0: none) is presented
+ * offset in DGROUP, pixels RT_POINTER_SIZE per row, FDh transparent), its
+ * colour besides FEh and its hotspot. The masked box (ends exclusive; y1 0: none) is presented
  * from VGA memory again at the next present (video.c). */
 #define RT_POINTER_SIZE 16
 struct rt_pointer {
@@ -241,11 +241,24 @@ struct rt_pointer {
     uint16_t image;
     uint16_t masked_x0, masked_y0, masked_x1, masked_y1;
     uint8_t pixels[RT_POINTER_SIZE * RT_POINTER_SIZE];
+    int8_t hot_x, hot_y;
 };
 extern struct rt_pointer rt_pointer;
 extern uint16_t rt_pointer_ds;       /* DGROUP, from the tracker's exit (HLE pointer_tracked); 0 before */
 extern uint8_t rt_pointer_sprite;    /* set by a platform that shows the pointer as sprites */
 void rt_pointer_mask(uint8_t *frame);
+/* Lead (pointer.c): AX=0Bh's motion (input.c), the tracker's exit (HLE
+ * pointer_tracked; rt_pointer_predicted: valid, x, y the lead predicted for it,
+ * for tests/host_run.py), and at the vertical blank the guest position with
+ * the motion it has not applied, `dx`, `dy` the platform's counts not yet
+ * taken by INT 33h. */
+extern int16_t rt_mickey_x, rt_mickey_y;
+extern int16_t rt_pointer_predicted[3];
+void rt_pointer_open(void);
+void rt_pointer_close(void);
+void rt_pointer_read(int16_t mx, int16_t my);
+void rt_pointer_tracked(void);
+void rt_pointer_lead(int32_t dx, int32_t dy, int16_t *x, int16_t *y);
 /* At each vertical blank, `shown` of the frame on display: the sprites' visibility,
  * which follows it once it has held at two blanks in a row (a field). */
 uint8_t rt_pointer_visible(uint8_t shown);

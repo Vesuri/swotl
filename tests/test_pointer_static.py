@@ -78,7 +78,8 @@ def main():
             ("FRONTEND.OVL", 0x2002, 0x1F40, 0x0102, "callf", "0x320:0xc76")]
     caught["argument"] = P.shape_ids(insns + call)[1]
     rows = [{"name": n, "offset": hex(o)} for n, o in (("x", 0x9C1A), ("y", 0x9CBA), ("width", 0x9D62),
-            ("height", 0x9D86), ("hot_x", 0x9D3A), ("hot_y", 0x9D4C), ("image", 0x9DC8))]
+            ("height", 0x9D86), ("hot_x", 0x9D3A), ("hot_y", 0x9D4C), ("image", 0x9DC8),
+            ("x_min", 0x9F52), ("x_end", 0x9FCE), ("y_min", 0xA0EA), ("y_end", 0xA1D0))]
     assert not P.check_annotation(rows + [{"name": "buffer", "offset": "0xa42a"}])
     caught["csv"] = P.check_annotation(rows + [{"name": "buffer", "offset": "0xa42b"}])
 
