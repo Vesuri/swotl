@@ -52,6 +52,11 @@ tree with uncommitted tracked changes; `amiga-release whdload install-data`,
 - LH5 only, fail rather than fall back to LH0 (Ve).
 - Checker decodes each member independently with Lhasa, verifies header+payload CRC, exact member set, HUNK magic `000003f3`, icon magic, slave `WHDLOADS` header and memory/flag/quit-key bytes, byte identity with build outputs (Sl, Po).
 - Record per release: archive size + SHA-256 of archive, exe, slave, helper (Sl).
+- SWOTL 0.90 (28.10.2026, built from `5e19e33`): `SWotL-0.90.lha` 542,634 bytes, SHA-256
+  `42cb14f08684aa2ef0e2781423c48c36f3066811c1d5d95f14ed0cee4ad6ed9d`; exe
+  `9c679f6ac2b4fdf551768e57c4960e94c45adc2934d5a91f49132ea015cd60a3`; slave
+  `12dc9af60a1e79d80ec2a797613de269ea61b3ce8c89aee643145afe300d54d3`; helper
+  `04407c8ff4276a63913f99a96d50c243a0827e37d04e56043dcca7942081efee`.
 
 ## Package layout (converged)
 
