@@ -76,6 +76,7 @@ Pokeri, `RoF` Rescue on Fractalus (each project's `docs/whdload*.md` and
 | Enhanced/optional paths need their own measurement (RoF: 52 KiB chip left → silent bitmap alloc failure) | RoF §1 |
 | Checker asserts exact slave chip/exp sizes so drift is caught | Po |
 | SWOTL: `CHIPMEMSIZE = $200000`, `FASTMEMSIZE = $600000` (D15: code + guest RAM + EMS exceed 2 MiB Chip). MemFree slave, A1200/68020 + 8 MiB Fast, 3,000 fields (attract run into flight), 2026-10-24: lowest largest free Fast 602,904 bytes (FM and TFH), Chip 1,846,264 (FM) / 1,738,960 (TFH). Host needs 8 MiB Fast | — |
+| SWOTL PRELOAD on 8 MiB Fast is partial: `Avail` before WHDLoad (A1200, 68EC020, KS 3.1, WB 2.04 C:) 8,270,072 free Fast; ExpMem 6,815,744; data drawer 5,114,353 bytes in 546 files (with `sfx.rsc`). Preload stops at the first file that does not fit, so the files the game opens during the Lucasfilm Games logo (59 files, 750 KB, each opened twice; gdb on `plat_open` to frame 2000) mostly load through OS switches. All files preload from about 12 MB Fast; a 68EC020 tops out at 8 MiB Zorro II, 2026-10-28 | — |
 
 ## Caches (68020)
 
