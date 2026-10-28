@@ -68,6 +68,7 @@ AmigaXDev's docs (edit them there, then `make share`); this repo keeps what is s
 
 ## Pointers
 
+- Index: `docs/README.md`.
 - Method: `docs/architecture.md`, `docs/phases.md`,
   `docs/translator-design.md`,
   `docs/translation-lessons.md`, `docs/x86-notes.md`, `docs/method-lessons.md`

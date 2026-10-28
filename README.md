@@ -60,7 +60,8 @@ Without WHDLoad, the installed game runs from a Shell in its `data` drawer as
 `SWotL`, or `SWotL TFH` for the Their Finest Hour effects. Translator design, tests and the reference setup against the
 original under DOSBox are in [architecture.md](docs/architecture.md),
 [toolchain.md](docs/toolchain.md) and [pc-reference-loop.md](docs/pc-reference-loop.md);
-remaining work is in [open-work.md](docs/open-work.md).
+remaining work is in [open-work.md](docs/open-work.md). The
+[documentation index](docs/README.md) lists the rest.
 
 ## Credits and licensing
 

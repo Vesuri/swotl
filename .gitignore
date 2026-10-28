@@ -23,16 +23,13 @@ tools/ghidra-proj/
 tools/vendor/
 __pycache__/
 *.py[cod]
-work/
 
 # Generated translator/build output.
 build/
 dist/
-src/gen/
 amiga/obj/
 amiga/out/
 amiga/.run/
-amiga/assets/
 *.o
 *.d
 *.elf
