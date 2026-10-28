@@ -83,7 +83,8 @@ AmigaXDev's docs (edit them there, then `make share`); this repo keeps what is s
 - Tools: `docs/toolchain.md`, `docs/headless-fsuae.md`,
   `docs/pc-reference-loop.md`
 - Guest map: `docs/plink.md`, `docs/external-surface.md`,
-  `docs/source-inventory.md`, `docs/indirect-coverage.md`, `annotations/`
+  `docs/source-inventory.md`, `docs/indirect-coverage.md`, `docs/game-timing.md`,
+  `annotations/`
 - Release: `docs/whdload.md`, `docs/release.md`
 - Build: `make amiga`, `make smoke`, bench/diagnostic sync image `make amiga-sync`; original: `make reference-staging`;
   ref facts: `make inspect`, `make hash`/`check-ref`; milestones `make
