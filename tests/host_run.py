@@ -38,6 +38,7 @@ import uc as U  # noqa: E402
 import joystick_replay
 import irq_monitor
 import irq_stress
+import amiga_sprites as S
 from translator import emit, image  # noqa: E402
 from tools import fixture_inputs
 
@@ -1269,10 +1270,31 @@ def compare_shown(capture: Path, bytes_per_row: int, snap: Path) -> list[str]:
             for b in range(8):
                 shown[y * 320 + xb * 8 + b] = sum(((bits[k] >> (7 - b)) & 1) << k for k in range(8))
     words = struct.unpack(f">{1 + 768 + 1}I", (capture / "colours.bin").read_bytes())
-    dac = bytes(w >> 26 for w in words[1:769])
+    dac = bytearray(w >> 26 for w in words[1:769])
     out = []
     if words[0] != 256 << 16:
         out.append(f"amiga: LoadRGB32 header {words[0]:08x}")
+    if (capture / "sprites.bin").exists():
+        # The pointer sprites (tests/amiga_sprites.py) over a frame with the
+        # pointer; entry F9h holds the stolen colour, the guest's own F9h is
+        # compared from its DAC.
+        sprites = (capture / "sprites.bin").read_bytes()
+        stolen = struct.unpack(">h", (capture / "stolen.bin").read_bytes())[0]
+        pointer = (capture / "pointer.bin").read_bytes()
+        if pointer[0] and not S.visible(sprites):
+            out.append("amiga: the frame has the pointer, the sprite is not shown")
+        if pointer[0]:
+            shown, problems = S.compose(bytes(shown), sprites, stolen)
+            out += [f"amiga: {p}" for p in problems]
+            print(f"amiga: pointer sprites composed, stolen colour {stolen:02x}")
+        elif S.visible(sprites):
+            print("amiga: sprite held over a frame without the pointer: not composed")
+        if stolen >= 0:
+            if dac[0xF9 * 3:0xF9 * 3 + 3] != dac[stolen * 3:stolen * 3 + 3]:
+                out.append(f"amiga: entry F9h {dac[0xF9 * 3:0xF9 * 3 + 3].hex()}, "
+                           f"the stolen colour {stolen:02x} {dac[stolen * 3:stolen * 3 + 3].hex()}")
+            dac[0xF9 * 3:0xF9 * 3 + 3] = (capture / "dac.bin").read_bytes()[0xF9 * 3:0xF9 * 3 + 3]
+    dac = bytes(dac)
     ram = bytes(lo) + bytes(shown) + bytes(hi - lo - len(shown))
     out += [f"amiga shown: {p}" for p in compare_frame(ram, dac, snap, len(shown))]
     return out

@@ -9,6 +9,8 @@ export AMIGA_CPU="${AMIGA_CPU:-68030}" JOY0=none JOY1=none
 unset SWOTL_ARGS
 # Before the first published guest frame both allocated bitmaps are black.
 dd if=/dev/zero of="$run/latest.bin" bs=64000 count=1 2>/dev/null
+cp "$run/latest.bin" "$run/latest-frame.bin"
+dd if=/dev/zero of="$run/latest-pointer.bin" bs=276 count=1 2>/dev/null
 sed "s|@OUT@|$relative|g" amiga/display_audit.gdb > "$run/audit.gdb"
 printf 'Diagnostic logs: %s\n' "$run"
 bash amiga/debug.sh "" "$run/audit.gdb" > "$run/check.log" 2>&1

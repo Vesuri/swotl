@@ -133,6 +133,30 @@ stated before running (AGENTS.md validation scope). Evidence: `tmp/pointer/<step
   set) against a Python reference; plants clamp, trunc, bound, discard, serial, adopt
   caught.
 
+## Amiga sprites (P5, 2026-10-28)
+
+- `src/platform/amiga/Pointer.cpp`: per display buffer, sprites 4 and 6 (16 wide, 16 rows)
+  in Chip RAM; both lists set all eight `SPRxPT` before the palette (idle channels at an
+  empty sprite), `BPLCON4 $00FF`, sprite DMA on. A present (`finishDisplayUpdate`) records
+  the frame's state with its buffer and rewrites that buffer's sprite data only when the
+  shape changes (the last shape stays through frames without the pointer). Entry `F9`
+  holds the other colour in a frame with the pointer and in the next; otherwise sprite 4
+  stays off (the yellow part alone for a field if a frame with the pointer is replaced
+  before it is shown).
+- Vertical blank, after `Input` (newest mouse counts): `rt_pointer_visible` of the shown
+  buffer's state, position = lead + hotspot, `HSTART = $80 + x`, `VSTART = $38 + y`
+  (DIWSTRT `$3881`), SV8/EV8; then the handoff seam. `amiga_sprite_late` counts writes at
+  or after line 25 (the display audit fails on any).
+- Checks: `tests/amiga_sprites.py` decodes the dumped sprite words over the shown planes
+  (sprite 4 covers 6, the window clips). `test-amiga` and the replays: shown + sprites =
+  the DOSBox frame, entry `F9` = the stolen colour's DAC (the capture waits up to two blanks
+  while the sprite's state settles). Display audit: bitmap = presented frame, presented
+  frame = A0000h outside the masked pointer, shown + sprites = A0000h, palette with `F9`.
+  Results: `test-amiga` (m1b) ok; replays m2-choose-side and c9-mouse-menu composed
+  (stolen `00`), equal to DOSBox; display audit 68030 and 68040 40 captures ok, no late
+  sprite write (the audit's screens have no pointer). Plant `HSTART = $81 + x` on the c9
+  replay: 12 pixels differ.
+
 ## Steps
 
 | Step | Work | Checks |

@@ -28,6 +28,8 @@ public:
     // added to the hardware's.
     static void moveMouse(int16_t dx, int16_t dy);
     static void setScriptButtons(uint8_t buttons);
+    // From the vertical blank: the counts plat_mouse has not taken yet.
+    static void pendingMotion(int32_t* dx, int32_t* dy);
 };
 
 #endif

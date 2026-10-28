@@ -28,6 +28,8 @@ dump binary memory @OUT@/state.bin $g+1 $g+17
 dump binary memory @OUT@/ram.bin $g-0xfffff $g+1
 set $d = (char *)rt_dac
 dump binary memory @OUT@/dac.bin $d $d+768
+set $pt = (unsigned char *)amiga_pointer_state
+dump binary memory @OUT@/pointer.bin $pt $pt+amiga_pointer_bytes
 set $display = Swotl::application->display
 if $display->queue.pending >= 0
   set $serial = $display->queuedSerial
@@ -37,6 +39,28 @@ if $display->queue.pending >= 0
     printf "SWOTL_MILESTONE_WRONG_HANDOFF\n"
     quit 1
   end
+end
+# The sprites over the shown frame (Pointer.cpp): sprite 4 then sprite 6, 36
+# words each. A frame with the pointer is shown with the sprite once the state
+# has held for a field: up to two more blanks, no other frame handed off.
+set $count = amiga_display_count
+if $pt[0] && amiga_sprites && !amiga_sprites[36] && !amiga_sprites[37]
+  break *amiga_sprite_placed
+  continue
+  if !amiga_sprites[36] && !amiga_sprites[37]
+    continue
+  end
+  disable $bpnum
+end
+if amiga_display_count != $count
+  printf "SWOTL_MILESTONE_WRONG_HANDOFF sprite wait\n"
+  quit 1
+end
+if amiga_sprites
+  set $s = (char *)amiga_sprites
+  dump binary memory @OUT@/sprites.bin $s $s+144
+  set $s = (char *)&amiga_sprite_stolen
+  dump binary memory @OUT@/stolen.bin $s $s+2
 end
 if $bm
   set $n = $bm->BytesPerRow * 200

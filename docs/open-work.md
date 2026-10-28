@@ -84,7 +84,7 @@ speed work: [speed-plan.md](speed-plan.md).
     position plus lead written at the vertical blank, on every pointer screen incl. the film
     room; no toggle; the sprite toggles only on a state held for a field (user 2026-10-27).
     Authorized: observe-only HLE row at tracker exit `0320:1011`. Two sprites, `F9` as the
-    black (user 2026-10-27). P1–P4 done; next: P5.
+    black (user 2026-10-27). P1–P5 done; next: P6.
 
 ## Release
 

@@ -40,7 +40,7 @@ LDFLAGS  = -Wl,--emit-relocs,--gc-sections,-Ttext=0,-Map=$(OUT).map
 
 # start.o first: DOS enters the first hunk at offset 0, and the link check below
 # holds _start there.
-OBJECTS = obj/start.o obj/main.o obj/Swotl.o obj/Input.o obj/Audio.o obj/GCCRuntime.o \
+OBJECTS = obj/start.o obj/main.o obj/Swotl.o obj/Input.o obj/Pointer.o obj/Audio.o obj/GCCRuntime.o \
 	obj/framework_amiga_hardware.o obj/framework_bitmap.o \
 	obj/framework_copper_list.o obj/framework_palette24.o \
 	obj/gcc8_c_support.o obj/gcc8_a_support.o obj/memory.o obj/version.o \
@@ -92,6 +92,9 @@ obj/main.o: $(REPO)/src/main.cpp | obj
 	$(CC) $(CPPFLAGS) -c -o $@ $<
 
 obj/Swotl.o: $(AMIGA_SRC)/Swotl.cpp | obj
+	$(CC) $(CPPFLAGS) -c -o $@ $<
+
+obj/Pointer.o: $(AMIGA_SRC)/Pointer.cpp | obj
 	$(CC) $(CPPFLAGS) -c -o $@ $<
 
 obj/Audio.o: $(AMIGA_SRC)/Audio.cpp | obj

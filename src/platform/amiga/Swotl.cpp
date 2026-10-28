@@ -17,6 +17,7 @@ extern "C" {
 #include "DisplayQueue.h"
 #include "Input.h"
 #include "Audio.h"
+#include "Pointer.h"
 #include "AmigaHardware.h"
 #include "Bitmap.h"
 #include "CopperList.h"
@@ -73,6 +74,7 @@ struct DisplayState {
     volatile uint32_t queuedSerial;
     // Main-thread validity belongs to each physical copper list/colour table.
     bool paletteValid[2];
+    int16_t paletteStolen[2];   // the colour in entry F9h when built (Pointer::stolen)
 };
 
 extern "C" {
@@ -184,6 +186,9 @@ Swotl::Swotl() :
     display = new DisplayState{};
     if (!display) return;
     display->queue.pending = -1;
+    if (!Pointer::begin()) {
+        plat_log("SWOTL no Chip RAM for the pointer sprites");
+    }
     // Largest DMA allocations first; Exec AllocMem provides 8-byte alignment.
     for (uint16_t b = 0; b < 2; ++b) {
         display->screen[b] = (uint8_t*)AllocMem(SCREEN_BYTES, MEMF_CHIP | MEMF_CLEAR);
@@ -201,7 +206,10 @@ Swotl::Swotl() :
         }
         uint32_t at = display->list[b]->setPlayfield(1, SCREEN_WIDTH, SCREEN_HEIGHT,
             SCREEN_PLANES, false, false, false, false, false, true, 0x9c);
-        display->copper[b][at++] = copperMove(bplcon4, 0x0011);
+        // Sprite colours from bank F (Pointer.h); the pointers before the
+        // palette, final before sprite DMA starts.
+        display->copper[b][at++] = copperMove(bplcon4, 0x00ff);
+        at = Pointer::copper(display->copper[b], at, b);
         display->list[b]->showBitmap(at, *display->bitmap[b]);
         display->paletteIndex = at + SCREEN_PLANES * 2;
         at = buildPalette(b);
@@ -240,6 +248,7 @@ Swotl::~Swotl()
         delete display;
     }
     Audio::end();
+    Pointer::end();
     AmigaHardware::releaseBlitterQueue();
     if (GfxBase) {
         CloseLibrary((struct Library*)GfxBase);
@@ -303,7 +312,8 @@ void Swotl::takeOver()
     active = this;
 
     AmigaHardware::setCopperList(*display->list[display->queue.shown], true);
-    AmigaHardware::setDMAChannels(DMAF_MASTER | DMAF_COPPER | DMAF_RASTER, true);
+    AmigaHardware::setDMAChannels(DMAF_MASTER | DMAF_COPPER | DMAF_RASTER |
+                                  (rt_pointer_sprite ? DMAF_SPRITE : 0), true);
     Audio::takeOver();
     AmigaHardware::setInterrupts(TAKEOVER_INTERRUPTS, true);
     if (!Input::begin()) {
@@ -387,7 +397,8 @@ void Swotl::verticalBlank()
     // IRQs across the beam check and the pointer/strobe pair only.
     Disable();
     int16_t next = display->queue.pending;
-    if (next >= 0 && beamLine() < 8) {
+    bool shown = next >= 0 && beamLine() < 8;
+    if (shown) {
         display->queue.flip();
         AmigaHardware::setCopperList(*display->list[next], true);
         amiga_display_line = beamLine();
@@ -398,13 +409,20 @@ void Swotl::verticalBlank()
             amiga_colours[k] = display->colours[next][k];
         }
         ++amiga_display_count;
-        amiga_display_shown(display->queuedSerial);
     } else {
         if (next >= 0) ++amiga_display_deferred;
         Enable();
     }
     ++amiga_frames;
     Input::verticalBlank();
+    // The pointer sprites with the newest mouse counts, before sprite DMA
+    // reads their control words; the handoff seam then sees them.
+    int32_t dx, dy;
+    Input::pendingMotion(&dx, &dy);
+    Pointer::verticalBlank(display->queue.shown, dx, dy);
+    if (shown) {
+        amiga_display_shown(display->queuedSerial);
+    }
     Audio::verticalBlank();
     *intreqPointer = INTF_SETCLR | INTF_SOFTINT;
 }
@@ -466,6 +484,13 @@ uint32_t Swotl::buildPalette(uint16_t back)
         table[1 + k] = (display->dac[k] & 0x3f) * 0x04104104u;
     }
     table[1 + 256 * 3] = 0;
+    int16_t stolen = Pointer::stolen(back);
+    if (stolen >= 0) {
+        for (uint16_t k = 1; k <= 3; ++k) {
+            table[0xf9 * 3 + k] = table[stolen * 3 + k];
+        }
+    }
+    display->paletteStolen[back] = stolen;
     for (uint16_t k = 0; k < 256; ++k) {
         display->rgb[k] = ((table[1 + k * 3] >> 24) << 16) |
                          ((table[2 + k * 3] >> 24) << 8) | (table[3 + k * 3] >> 24);
@@ -525,7 +550,10 @@ void Swotl::finishDisplayUpdate(uint16_t back)
             end - y, r.lo, y, &display->bm[back]);
         for (; y < end; ++y) display->queue.clear(back, y);
     }
-    if (!display->paletteValid[back]) buildPalette(back);
+    Pointer::present(back);
+    if (!display->paletteValid[back] || display->paletteStolen[back] != Pointer::stolen(back)) {
+        buildPalette(back);
+    }
     Disable();
     display->queuedSerial = ++display->serial;
     display->queue.queue(back);

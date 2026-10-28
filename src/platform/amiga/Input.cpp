@@ -188,6 +188,12 @@ void Input::moveMouse(int16_t dx, int16_t dy)
     Enable();
 }
 
+void Input::pendingMotion(int32_t* dx, int32_t* dy)
+{
+    *dx = mouseDX;
+    *dy = mouseDY;
+}
+
 void Input::setScriptButtons(uint8_t buttons)
 {
     scriptButtons = buttons;
