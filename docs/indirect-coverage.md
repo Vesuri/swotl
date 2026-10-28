@@ -24,15 +24,16 @@ These are not excluded merely because current fixtures miss them.
 
 | Sites | Condition or existing evidence |
 |---|---|
-| FLIGHT+17DB4 | Requires `[9792]=1` (aircraft field AF28, copied at SWOTL+123C1); B-17 damage captures have 4. Also requires `[8452+4*player]>60` and nonzero engine-state words; the recorded P-47 dive satisfies `[9792]=1` but ends with damage byte 0. `[6A60]` resolves through PLINK to RTSVGA+44F1; target identity does not cover the call. |
+| FLIGHT+17DB4 | Engine overheat: `[9792]=1` (single engine, aircraft field AF28, copied at SWOTL+123C1; B-17 damage captures have 4), damage on (`[6312]=0`; flight school defaults to 1, `W` on its setup screen toggles it), `[8452+4*player]>60` and nonzero engine-state words. Heat (FLIGHT+14F6C) rises only while `(throttle*[AF2C]+8000h)>>16 + 160*[8452] > [AF2E]`; the P-47 at full throttle gives BFFFh against DC00h, so `[8452]` must first reach about 45 from hits (damage routine FLIGHT+0C410). Recorded missions end with `[8452]=0`; flight school with damage on and 40 `equals` presses to full throttle never heats (2026-10-28). Needs a P-47 sortie with an engine hit. `[6A60]` resolves through PLINK to RTSVGA+44F1; target identity does not cover the call. |
 | PANEL+33B2 | Cockpit damage display through `[AABC]`: pilot station `[6210]=0`, an active D4A0 slot and DD74 coordinate bit 15. Existing wing captures activate slots 0/2; engine slots 4/6 require a low engine-status nibble of 1..4, absent from those captures. |
 | FRONTEND+A4D1, +A629 | Special formatting branches. Inspected direct callers pass ordinary parameters; the required sentinel and complete incoming-flow proof remain open. |
 
 The c26 usage-exit reference needs exact EMS release on the host (DOSBox:
 retained mappings, reused handles, backing-page aliases); deferred by the
-user. It and the pending recorder/formatting-test approvals: open-work 9b.
+user. It and the pending formatting-test approval: open-work 9b.
 
 Damage investigation: the B-17 runs consumed all 40 shifted function-key
 codes, including a run with Shift visible at keyboard-status queries, but
 engine state did not change. Do not repeat those inputs as if delivery were
-unverified.
+unverified. The recorder has `equals`/`minus` (throttle up/down by 0800h,
+FLIGHT+030D8/+0315D; approved 2026-10-28).

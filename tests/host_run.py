@@ -68,7 +68,8 @@ KEYS = {"enter": 0x1C0D, "esc": 0x011B, "space": 0x3920, "tab": 0x0F09, "backspa
         **{c: s << 8 | ord(c) for c, s in zip("qwertyuiopasdfghjklzxcvbnm",
                                              list(range(0x10, 0x1A)) + list(range(0x1E, 0x27))
                                              + list(range(0x2C, 0x33)))},
-        **{str(k): (k + 1) << 8 | ord(str(k)) for k in range(1, 10)}, "0": 0x0B30}
+        **{str(k): (k + 1) << 8 | ord(str(k)) for k in range(1, 10)}, "0": 0x0B30,
+        "minus": 0x0C2D, "equals": 0x0D3D}
 GREY = {KEYS[k] for k in ("up", "down", "left", "right")}  # E0-prefixed (DOSBox KBD_up..)
 # Modifier bits belong to scripted input, above the base BIOS key word.
 KEY_MODIFIERS = {"shift": 1 << 16, "ctrl": 1 << 17, "alt": 1 << 18}

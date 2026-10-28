@@ -727,7 +727,7 @@ index 0000000..5d88c20
 +	        {"up", KBD_up}, {"down", KBD_down}, {"left", KBD_left}, {"right", KBD_right},
 +	        {"backspace", KBD_backspace}, {"f1", KBD_f1}, {"f2", KBD_f2}, {"f3", KBD_f3},
 +	        {"f4", KBD_f4}, {"f5", KBD_f5}, {"f6", KBD_f6}, {"f7", KBD_f7}, {"f8", KBD_f8},
-+	        {"f9", KBD_f9}, {"f10", KBD_f10}};
++	        {"f9", KBD_f9}, {"f10", KBD_f10}, {"minus", KBD_minus}, {"equals", KBD_equals}};
 +	const auto it = named.find(n);
 +	if (it != named.end()) return it->second;
 +	static const char *letters = "qwertyuiopasdfghjklzxcvbnm";
