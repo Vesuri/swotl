@@ -11,13 +11,13 @@ from amigaxdev.release import crc16  # noqa: F401  (check_release.py imports it 
 
 ROOT = Path(__file__).resolve().parent.parent
 ORIGINAL_HASHES = {line.split()[0] for line in (ROOT / 'release/originals.sha256').read_text().splitlines() if line.strip()}
-PREFIX = 'Swotl Install'
+PREFIX = 'SWotL Install'
 STAMP = release.dos_stamp(2026, 10, 24)
 ICONS = ROOT / 'release/icons'
 
 
 def installer_icon(game=False):
-    # Swotl.inf is distributed as is, renamed and configured by Installer, exactly
+    # SWotL.inf is distributed as is, renamed and configured by Installer, exactly
     # as RoF.inf in the reference package. No synthetic replacement artwork.
     return release.installer_icon(ICONS, 'Secret Weapons of the Luftwaffe', game=game)
 
@@ -32,10 +32,10 @@ def drawer_icon():
 
 def members(executable):
     return {
-        'Swotl': executable.read_bytes(),
-        'Swotl.slave': (ROOT / 'build/whdload/Swotl.slave').read_bytes(),
-        'Swotl.inf': installer_icon(game=True),
-        'SwotlInstallData': (ROOT / 'build/install-data/SwotlInstallData.exe').read_bytes(),
+        'SWotL': executable.read_bytes(),
+        'SWotL.slave': (ROOT / 'build/whdload/SWotL.slave').read_bytes(),
+        'SWotL.inf': installer_icon(game=True),
+        'SWotLInstallData': (ROOT / 'build/install-data/SWotLInstallData.exe').read_bytes(),
         'Install': (ROOT / 'release/Install').read_bytes(),
         'Install.info': installer_icon(),
         'ReadMe': (ROOT / 'release/ReadMe').read_bytes(),
@@ -53,7 +53,7 @@ def main():
     version = (ROOT / 'VERSION').read_text().strip()
     files = members(args.executable)
     release.refuse_originals(files, ORIGINAL_HASHES)
-    archive = release.write(args.output_directory / f'Swotl-{version}.lha',
+    archive = release.write(args.output_directory / f'SWotL-{version}.lha',
                             release.archive(PREFIX, files, drawer_icon(), STAMP))
     print(f'{archive}: {len(files)} drawer contents plus drawer icon, {archive.stat().st_size} bytes')
 

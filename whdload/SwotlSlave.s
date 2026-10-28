@@ -39,8 +39,8 @@ slv_info dc.b "Amiga port by Vesuri",10
         dc.b "Version 0.90 (24.10.2026)",10
         dc.b "Help quits",0
 slv_config dc.b "C1:B:Their Finest Hour sound effects;",0
-        dc.b "$VER: Swotl.slave 0.90 (24.10.2026)",0
-_program dc.b "Swotl",0
+        dc.b "$VER: SWotL.slave 0.90 (24.10.2026)",0
+_program dc.b "SWotL",0
 _args_fm dc.b 10,0
 _args_fm_end
 _args_tfh dc.b "TFH",10,0

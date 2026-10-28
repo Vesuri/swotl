@@ -2,7 +2,7 @@
 ; File-install flow with WHDLoad Install Template / RAY Pokeri conventions.
 ; $VER: Install 0.90 (24.10.2026)
 (set @app-name "Secret Weapons of the Luftwaffe")
-(set #prefix "Swotl")
+(set #prefix "SWotL")
 (if (< @installer-version (* 43 65536))
   (abort "This installation requires Amiga Installer 43 or newer."))
 (welcome)
@@ -30,19 +30,19 @@
 (if (getenv "WHDLInstPath")
   (set @default-dest (getenv "WHDLInstPath")))
 (set #parent
-  (askdir (prompt "Where should Secret Weapons of the Luftwaffe be installed? A Swotl drawer will be created here.")
+  (askdir (prompt "Where should Secret Weapons of the Luftwaffe be installed? A SWotL drawer will be created here.")
     (help "Choose a writable hard disk drawer with at least 12 MB free.")
     (default @default-dest)))
 (run ("setenv WHDLInstPath \"%s\"\ncopy ENV:WHDLInstPath ENVARC:" #parent))
 (set #dest (tackon #parent #prefix))
 (set #data (tackon #dest "data"))
-(set #helper (tackon #source "SwotlInstallData"))
+(set #helper (tackon #source "SWotLInstallData"))
 (set #staging (tackon #dest "InstallStaging"))
 (if (exists #dest)
   ((set #remove-existing
      (askbool
        (prompt ("The drawer \"%s\" already exists. Remove it, including pilots, films and missions, before installing?" #dest))
-       (help "Remove deletes the whole Swotl drawer. Keep updates the program and keeps your pilots, films and missions; you can then keep or replace the game files.")
+       (help "Remove deletes the whole SWotL drawer. Keep updates the program and keeps your pilots, films and missions; you can then keep or replace the game files.")
        (choices "Remove" "Keep") (default 0)))
    (if #remove-existing
      (delete #dest (all) (infos) (optional "force") (help @delete-help)))))
@@ -62,13 +62,13 @@
 (set #tfh
   (askchoice
     (prompt "Which sound effects should the game use?")
-    (help "The game's own sound effects use AdLib FM synthesis. Their Finest Hour sampled sound effects need the file sfx.rsc from your Amiga Their Finest Hour installation. Change later with the Custom1 tooltype of the Swotl icon.")
+    (help "The game's own sound effects use AdLib FM synthesis. Their Finest Hour sampled sound effects need the file sfx.rsc from your Amiga Their Finest Hour installation. Change later with the Custom1 tooltype of the SWotL icon.")
     (choices "Original AdLib" "Their Finest Hour")
     (default #tfh-ready)))
 (if (and #tfh (= #tfh-ready 0))
   (set #sfx
     (askfile (prompt "Select the file sfx.rsc in your Their Finest Hour installation.")
-      (help "Their Finest Hour for the Amiga keeps it in its data drawer, for example TheirFinestHour/data/sfx.rsc. It is checked and copied into the Swotl drawer.")
+      (help "Their Finest Hour for the Amiga keeps it in its data drawer, for example TheirFinestHour/data/sfx.rsc. It is checked and copied into the SWotL drawer.")
       (default #source))))
 (if (= (exists #dest) 0) (makedir #dest (infos) (help @makedir-help)))
 (if (= (exists #data) 0) (makedir #data (help @makedir-help)))
@@ -87,15 +87,15 @@
       (abort "This sfx.rsc is not supported. Select the file from the Amiga Their Finest Hour.")))
    (copyfiles (source (tackon #staging "sfx.rsc")) (dest #data) (help @copyfiles-help))
    (delete #staging (all) (optional "force") (help @delete-help))))
-(copyfiles (source (tackon #source "Swotl")) (dest #data) (help @copyfiles-help))
-(copyfiles (source (tackon #source "Swotl.slave")) (dest #dest) (help @copyfiles-help))
-(copyfiles (source (tackon #source "Swotl.inf")) (dest #dest) (newname "Swotl.info") (help @copyfiles-help))
+(copyfiles (source (tackon #source "SWotL")) (dest #data) (help @copyfiles-help))
+(copyfiles (source (tackon #source "SWotL.slave")) (dest #dest) (help @copyfiles-help))
+(copyfiles (source (tackon #source "SWotL.inf")) (dest #dest) (newname "SWotL.info") (help @copyfiles-help))
 (if #tfh
-  (tooltype (dest (tackon #dest "Swotl")) (setdefaulttool "WHDLoad")
-    (settooltype "Slave" "Swotl.slave") (settooltype "PreLoad" "") (settooltype "Custom1" "1")
+  (tooltype (dest (tackon #dest "SWotL")) (setdefaulttool "WHDLoad")
+    (settooltype "Slave" "SWotL.slave") (settooltype "PreLoad" "") (settooltype "Custom1" "1")
     (setstack 16384) (noposition))
-  (tooltype (dest (tackon #dest "Swotl")) (setdefaulttool "WHDLoad")
-    (settooltype "Slave" "Swotl.slave") (settooltype "PreLoad" "") (settooltype "Custom1")
+  (tooltype (dest (tackon #dest "SWotL")) (setdefaulttool "WHDLoad")
+    (settooltype "Slave" "SWotL.slave") (settooltype "PreLoad" "") (settooltype "Custom1")
     (setstack 16384) (noposition)))
 (copyfiles (source (tackon #source "ReadMe")) (dest #dest) (infos) (help @copyfiles-help))
 ; openwbobject was added after Installer 43; retain the template version gate.

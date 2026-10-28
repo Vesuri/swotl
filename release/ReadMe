@@ -81,6 +81,6 @@
  Lawrence Holland and Totally Games.
  Amiga port by Vesa Halttunen (Vesuri).
  WHDLoad kickemu by Wepl and the WHDLoad team.
- SwotlInstallData uses the AmigaXDev installer helpers (LGPL 2.1 or later,
+ SWotLInstallData uses the AmigaXDev installer helpers (LGPL 2.1 or later,
  see LICENSE.LGPL.txt; source at the address above) and blast by Mark Adler
  (zlib licence, see blast-license.txt).

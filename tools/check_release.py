@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Audit the exact minimal LHA release, its checksums and its members.
 
-    python3 tools/check_release.py dist/Swotl-$(cat VERSION).lha [--exe amiga/out/Swotl-release.exe]
+    python3 tools/check_release.py dist/SWotL-$(cat VERSION).lha [--exe amiga/out/Swotl-release.exe]
 
 Every member is decoded independently with Lhasa (`lha pq`) and must equal its
 build output. No member may equal an original (release/originals.sha256) or
@@ -74,12 +74,12 @@ def main():
     for name, data in payloads.items():
         assert hashlib.sha256(data).hexdigest() not in ORIGINAL_HASHES, 'original file: ' + name
         assert not contains_block(data, blocks), 'original EXE/OVL bytes in ' + name
-    for name in ('Swotl', 'Swotl.slave', 'SwotlInstallData'):
+    for name in ('SWotL', 'SWotL.slave', 'SWotLInstallData'):
         assert payloads[name][:4] == b'\0\0\3\xf3', 'not an Amiga HUNK executable: ' + name
-    for name, kind in (('Swotl.inf', 4), ('ReadMe.info', 4), ('Install.info', 4), ('@drawer', 2)):
+    for name, kind in (('SWotL.inf', 4), ('ReadMe.info', 4), ('Install.info', 4), ('@drawer', 2)):
         assert payloads[name][:4] == b'\xe3\x10\0\1' and payloads[name][48] == kind, 'bad icon: ' + name
     version = (ROOT / 'VERSION').read_text().strip().encode()
-    for name in ('Swotl', 'Swotl.slave', 'SwotlInstallData'):
+    for name in ('SWotL', 'SWotL.slave', 'SWotLInstallData'):
         assert b'$VER: ' + name.encode() + b' ' + version + b' (' + DATE.encode() + b')' in payloads[name], 'version: ' + name
     assert b'$VER: Install ' + version + b' (' + DATE.encode() + b')' in payloads['Install']
     assert b'version ' + version + b' (' + DATE.encode() + b'):' in payloads['ReadMe']
@@ -87,7 +87,7 @@ def main():
                     b'https://github.com/Vesuri/swotl'):
         assert heading in payloads['ReadMe'], heading
     # WHDLoadSlave header, whdload.i: flags +14, BaseMem +16, keyexit +31, ExpMem +32.
-    slave = payloads['Swotl.slave']
+    slave = payloads['SWotL.slave']
     signature = b'\x70\xff\x4e\x75WHDLOADS'
     assert slave.count(signature) == 1, 'ambiguous WHDLoad header'
     header = slave.index(signature)

@@ -16,7 +16,7 @@ VBR of a 68020) ends it with COREDUMP and the dump is judged:
   - Custom1 (--tfh): the TFH sfx.rsc PCM payload is in Chip RAM; without it,
     no sample block is. Their copy in Chip is what the TFH path makes.
 The MemFree slave's low-water marks (Chip, Fast) are read from its $100 slot.
---installed runs an installed Swotl drawer as it is (slave, data/Swotl, data).
+--installed runs an installed SWotL drawer as it is (slave, data/SWotL, data).
 --setup a1200-040: full 68040 with its MMU and FPU, JIT off, on $FSUAE_MMU;
 the report must show TC=8000 (translation on; AmigaXDev whdload-mmu.md).
 
@@ -41,7 +41,7 @@ WHDLOAD = Path(os.environ.get('WHDLOAD', AMIGA / 'WHDLoad')) / 'C/WHDLoad'
 WORKBENCH = Path(os.environ.get('WORKBENCH_ADF', AMIGA / 'Workbenchv2.04rev37.67Workbench.adf'))
 KICK31 = Path(os.environ.get('KICKSTART_A1200', KICKSTARTS / 'kick40068.A1200'))
 TFH_RSC = Path(os.environ.get('TFH_RSC', ROOT / 'tmp/tfh/TheirFinestHour&Missions/data/sfx.rsc'))
-SLAVES = {'smoke': 'Smoke.slave', 'boot': 'BootTest.slave', 'load': 'LoadTest.slave', 'run': 'Swotl.slave'}
+SLAVES = {'smoke': 'Smoke.slave', 'boot': 'BootTest.slave', 'load': 'LoadTest.slave', 'run': 'SWotL.slave'}
 
 
 def rsc_pcm(rsc):
@@ -71,7 +71,7 @@ def main():
     p.add_argument('--exe', type=Path, default=ROOT / 'amiga/out/Swotl-release.exe',
                    help='stripped (make amiga-release): LoadSeg reads symbol hunks in small pieces')
     p.add_argument('--data', type=Path, default=ROOT / 'ref')
-    p.add_argument('--installed', type=Path, help='installed Swotl drawer, used unchanged')
+    p.add_argument('--installed', type=Path, help='installed SWotL drawer, used unchanged')
     p.add_argument('--setup', choices=('a1200', 'a1200-040'), default='a1200')
     p.add_argument('--rom', type=Path, default=KICK31)
     p.add_argument('--fast', type=int, default=8192, help='host Fast RAM in KiB')
@@ -98,12 +98,12 @@ def main():
         d.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(WHDLOAD, game / 'WHDLoad')
     if not args.installed:
-        shutil.copyfile(args.slave or ROOT / 'build/whdload' / SLAVES[args.mode], game / 'Swotl.slave')
+        shutil.copyfile(args.slave or ROOT / 'build/whdload' / SLAVES[args.mode], game / 'SWotL.slave')
     if args.mode != 'smoke':
         shutil.copyfile(args.rom, boot / 'devs/Kickstarts' / args.rom.name)
         shutil.copyfile(args.rom.with_name(args.rom.name + '.RTB'), boot / 'devs/Kickstarts' / (args.rom.name + '.RTB'))
     if args.mode in ('load', 'run') and not args.installed:
-        shutil.copyfile(args.exe, data / 'Swotl')
+        shutil.copyfile(args.exe, data / 'SWotL')
     if args.mode == 'run' and not args.installed:
         shutil.copytree(args.data, data, dirs_exist_ok=True, ignore=shutil.ignore_patterns('*.pdf'))
         shutil.copyfile(TFH_RSC, data / 'sfx.rsc')
@@ -114,7 +114,7 @@ def main():
         options += ['COREDUMP', f'TIMEOUT={args.ticks}']
         if args.tfh:
             options.append('CUSTOM1=1')
-    command = 'WHDLoad Swotl.slave ' + ' '.join(options)
+    command = 'WHDLoad SWotL.slave ' + ' '.join(options)
     print('Command:', command, flush=True)
     (boot / 's/WHDLoad.prefs').write_text('Expert\nReadDelay=0\n')
     (boot / 's/startup-sequence').write_text(

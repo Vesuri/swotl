@@ -1,4 +1,4 @@
-# SwotlInstallData
+# SWotLInstallData
 
 Standalone C99 installer helper. Installs the SWOTL 2.2 files from the user's
 three Air Combat Classics floppies (`Disk1-3.img` FAT12 images or

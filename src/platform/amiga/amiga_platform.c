@@ -583,7 +583,7 @@ static int shell_options(int *tfh)
     shell_args = ReadArgs((CONST_STRPTR)"TFH/S,MUSIC/S,BENCH/S,KEYS/K", values, 0);
     if (!shell_args) {
         amiga_io_begin();
-        PrintFault(IoErr(), (CONST_STRPTR)"Swotl");
+        PrintFault(IoErr(), (CONST_STRPTR)"SWotL");
         amiga_io_end();
         return 0;
     }

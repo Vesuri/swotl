@@ -29,14 +29,14 @@ records remain and every loadable record matches `Swotl.exe`, including
 relocations and allocation headers. The debug executable and ELF remain
 unchanged; perf continues to use them. `make smoke-release` boots the separate
 artifact using the same smoke fixture and emulator options. The slave
-([whdload.md](whdload.md)) loads this stripped executable as `data/Swotl`.
+([whdload.md](whdload.md)) loads this stripped executable as `data/SWotL`.
 
 ## Make targets
 
 SWOTL: `make install-data`, `make test-install-data`, `make release` (refuses a
 tree with uncommitted tracked changes; `amiga-release whdload install-data`,
 `tools/originals.py --check`, `tools/package_release.py`, `tools/check_release.py`
-→ `dist/Swotl-$(cat VERSION).lha`), `make release-check`,
+→ `dist/SWotL-$(cat VERSION).lha`), `make release-check`,
 `make test-release-installer`. Sibling shape:
 
 | Target | Does | Prov |
@@ -133,7 +133,7 @@ Common: helper writes to staging, removes own partial outputs, rejects existing 
 - Archive (INSTALIT): one PKWARE DCL implode stream per file (zlib contrib `blast`). Logical stream = CLASSICS.001[:1,204,461] + 002 + 003; the catalog (`\x05[PVM]`, 46,547 B, 808 records) occupies the rest of 001 from 1,204,461.
 - Record (55 B, first at catalog+6): `0x1c`; +1 LE32 offset in start disk; `0xf0`; +6 name (13); +19 attr; +20 compressed size (spans volume splits); +24 DOS date/time; +28 CRC-32; +32 start disk; +35 size; +39 LE16 product (1 SWOTL, 2 BH1942, 3 TFH/BoB 1940); +51 LE16 directory (1 root, 2 AC, 3 CP, 4 FE, 5 FX, 6 MIS). Start offset = in-disk offset + 1,204,461 for disk 2, + 1,457,152 more for disk 3.
 - SWOTL: 542 records; 539 installed (INSTALL.EXE, INSTALL2.BAT, READ.ME skipped), equal to the drawer the DOS ACC INSTALL.EXE writes (DOSBox, 2026-10-24).
-- Helper `SwotlInstallData` (`tools/install-data/`): volume SHA-256 first, per-file size and CRC-32, new destination only, removes its own files on failure or Ctrl-C. Installer runs it into `Swotl/InstallStaging`, then copies into `data/`; Replace overwrites only archive files (pilots, films, missions survive).
+- Helper `SWotLInstallData` (`tools/install-data/`): volume SHA-256 first, per-file size and CRC-32, new destination only, removes its own files on failure or Ctrl-C. Installer runs it into `SWotL/InstallStaging`, then copies into `data/`; Replace overwrites only archive files (pilots, films, missions survive).
 - TFH mode: Installer asks for the user's Amiga TFH `sfx.rsc` (`TheirFinestHour/data/sfx.rsc`, 108,002 B, SHA-256 pinned); the helper checks and stages it; the game icon gets `Custom1=1` ([sound-plan.md](sound-plan.md)).
 - Tests: `tools/install-data/test_install.py` (host helper vs the DOS install; damaged/missing disks, refusal, cancel, sfx), `tools/test_release_installer.py` (Installer 43 + Amiga helper in FS-UAE: fresh, tfh, keep, replace, remove, bad-disks, bad-sfx; `INSTALL_SCRIPT` sabotage override; `--archive` installs from a release LHA, `--keep` keeps the drawer). `tools/pack_preinstalled.py` packs a kept drawer as a local-only preinstalled LHA (holds game data; never shared); `tools/test_whdload.py --installed DIR [--setup a1200-040]` runs it unchanged.
 

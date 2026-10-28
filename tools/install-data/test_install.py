@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""SwotlInstallData on the host: exact files, sources, refusals, cleanup, cancel.
+"""SWotLInstallData on the host: exact files, sources, refusals, cleanup, cancel.
 
-    python3 tools/install-data/test_install.py build/install-data/SwotlInstallData
+    python3 tools/install-data/test_install.py build/install-data/SWotLInstallData
 
 Inputs are local, never shipped: the three ACC floppy images (ACC_IMAGES,
 default tmp/acc/disk1-3.img) and TFH sfx.rsc (TFH_RSC). Oracle: the SWOTL

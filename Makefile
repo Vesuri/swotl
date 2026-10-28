@@ -45,9 +45,9 @@ help:
 	@echo "  make smoke-release  boot the stripped executable under FS-UAE"
 	@echo "  make whdload        assemble the WHDLoad slaves into build/whdload/"
 	@echo "  make test-whdload   run the slaves under WHDLoad: smoke, boot, load, game FM and TFH"
-	@echo "  make install-data   build SwotlInstallData (host and Amiga) into build/install-data/"
+	@echo "  make install-data   build SWotLInstallData (host and Amiga) into build/install-data/"
 	@echo "  make test-install-data  helper vs the DOS ACC install: sources, refusals, cleanup"
-	@echo "  make release        package and audit dist/Swotl-\$$(cat VERSION).lha (clean tree only)"
+	@echo "  make release        package and audit dist/SWotL-\$$(cat VERSION).lha (clean tree only)"
 	@echo "  make release-check  audit the existing archive again"
 	@echo "  make test-release-installer  real Installer 43 in FS-UAE: fresh, keep, replace, TFH, refusals"
 	@echo "  make size    account for code, data, symbols and relocations in the executable"
@@ -594,7 +594,7 @@ test-install-data:
 	. amiga/env.sh && $(MAKE) -C tools/install-data test
 
 # Release from committed sources only; never a diagnostic build.
-RELEASE_ARCHIVE = dist/Swotl-$$(cat VERSION).lha
+RELEASE_ARCHIVE = dist/SWotL-$$(cat VERSION).lha
 release:
 	@git diff --quiet HEAD && test -z "$$(git status --porcelain --untracked-files=no)" || \
 		{ echo "release needs a clean tree: commit or stash first"; exit 1; }

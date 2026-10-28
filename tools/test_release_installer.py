@@ -5,11 +5,11 @@
 
 The installation files are the package members (tools/package_release.py
 from the current build), or with --archive those decoded from a release
-archive. --keep copies the last mode's installed Swotl drawer to DIR.
+archive. --keep copies the last mode's installed SWotL drawer to DIR.
 
 Modes: fresh (images, AdLib), tfh (CLASSICS files, TFH sfx.rsc), keep (Use
 existing), replace (images over a damaged install), remove, bad-disks
-(Replace with a corrupted image), bad-sfx. SwotlInstallData runs on the emulated 68020; installed game files
+(Replace with a corrupted image), bad-sfx. SWotLInstallData runs on the emulated 68020; installed game files
 must equal the original DOS ACC install, pilots and films must survive Keep
 and Replace, and a refused source must leave the install as it was.
 Inputs are local: ACC images, the DOS ACC install and TFH sfx.rsc (as
@@ -122,7 +122,7 @@ def fixture(mode, base):
         rsc[1000] ^= 1
     (base / 'TheirFinestHour/data').mkdir(parents=True)
     (base / 'TheirFinestHour/data/sfx.rsc').write_bytes(rsc)
-    data = out / 'Swotl/data'
+    data = out / 'SWotL/data'
     if mode in ('keep', 'replace', 'remove', 'bad-disks', 'bad-sfx'):
         data.mkdir(parents=True)
         for name, path in REFERENCE_FILES.items():
@@ -132,13 +132,13 @@ def fixture(mode, base):
         (data / 'A.RPY').write_bytes(PILOT)
         if mode in ('keep', 'replace'):
             (data / 'AC/P38L.SPC').write_bytes(b'damaged')
-        (out / 'Swotl/old-marker').touch()
+        (out / 'SWotL/old-marker').touch()
     (out / 'unrelated').write_text('keep')
     (boot / 's/startup-sequence').write_text(
         'CD DH0:\nStack 16384\nDF0:C/Assign C: DF0:C\nDF0:C/Assign LIBS: DF0:Libs\n'
         'DF0:C/Assign DEVS: DH0:devs\nDF0:C/Assign ENV: RAM:\nDF0:C/Assign ENVARC: DH0:env\n'
         'Copy ENVARC:WHDLInstPath ENV:WHDLInstPath\nDF0:C/Assign T: RAM:\nPath DH0: ADD\nC:LoadWB\n'
-        'Installer SCRIPT DH0:Install APPNAME Swotl MINUSER NOVICE DEFUSER NOVICE '
+        'Installer SCRIPT DH0:Install APPNAME SWotL MINUSER NOVICE DEFUSER NOVICE '
         'LOGFILE DH2:installer.log NOPRETEND >DH2:console.log\nEcho done >DH2:finished\n')
 
 
@@ -170,7 +170,7 @@ def emulate(base, seconds):
 
 def check(mode, base):
     asked = lambda name: (base / name).exists()
-    dest = base / 'out/Swotl'
+    dest = base / 'out/SWotL'
     data = dest / 'data'
     assert (base / 'multiview-readme').read_text().strip() == 'DH0:ReadMe'
     assert asked('more-readme') == (mode == 'fresh')
@@ -189,13 +189,13 @@ def check(mode, base):
         assert asked('sfx-asked') == (mode == 'tfh')
     if mode in ('bad-disks', 'bad-sfx'):
         # Refused before anything was copied: the earlier install is unchanged.
-        assert not (data / 'Swotl').exists() and not (dest / 'Swotl.slave').exists()
+        assert not (data / 'SWotL').exists() and not (dest / 'SWotL.slave').exists()
         files = {k: p for k, p in tree(data).items() if k not in ('PILOT.PLT', 'A.RPY')}
         assert files.keys() == REFERENCE_FILES.keys()
         assert (data / 'PILOT.PLT').read_bytes() == PILOT
         return
     files = tree(data)
-    assert files.pop('SWOTL') and (data / 'Swotl').read_bytes() == PACKAGE['Swotl']
+    assert files.pop('SWOTL') and (data / 'SWotL').read_bytes() == PACKAGE['SWotL']
     kept = mode in ('keep', 'replace')
     for name in ('PILOT.PLT', 'A.RPY'):
         assert (files.pop(name, None) is not None) == kept, name
@@ -207,10 +207,10 @@ def check(mode, base):
     for name, path in REFERENCE_FILES.items():
         expected = b'damaged' if mode == 'keep' and name == 'AC/P38L.SPC' else path.read_bytes()
         assert files[name].read_bytes() == expected, name
-    assert (dest / 'Swotl.slave').read_bytes() == PACKAGE['Swotl.slave']
+    assert (dest / 'SWotL.slave').read_bytes() == PACKAGE['SWotL.slave']
     assert (dest / 'ReadMe').exists() and (dest / 'ReadMe.info').exists()
     assert (dest / 'old-marker').exists() == kept
-    icon = (dest / 'Swotl.info').read_bytes()
+    icon = (dest / 'SWotL.info').read_bytes()
     assert b'WHDLoad\0' in icon
     icon = icon.lower()
     assert b'slave=swotl.slave\0' in icon and b'preload\0' in icon
@@ -235,7 +235,7 @@ def main():
             if name.startswith(PREFIX + '/'):
                 PACKAGE[name[len(PREFIX) + 1:]] = subprocess.run(['lha', 'pq', str(args.archive), name],
                                                                  check=True, capture_output=True).stdout
-        assert {'Install', 'Swotl', 'Swotl.slave', 'SwotlInstallData'} <= PACKAGE.keys(), sorted(PACKAGE)
+        assert {'Install', 'SWotL', 'SWotL.slave', 'SWotLInstallData'} <= PACKAGE.keys(), sorted(PACKAGE)
     else:
         PACKAGE.update(members(ROOT / 'amiga/out/Swotl-release.exe'))
     REFERENCE_FILES.update((k, p) for k, p in host_tree(REFERENCE).items() if k not in SKIPPED)
@@ -249,8 +249,8 @@ def main():
         print(f'PASS: Installer {mode}', flush=True)
         if args.keep and mode == args.modes[-1]:
             shutil.rmtree(args.keep, ignore_errors=True)
-            shutil.copytree(base / 'out/Swotl', args.keep, ignore=shutil.ignore_patterns('*.uaem'))
-            shutil.copyfile(base / 'out/Swotl.info', args.keep.with_name(args.keep.name + '.info'))
+            shutil.copytree(base / 'out/SWotL', args.keep, ignore=shutil.ignore_patterns('*.uaem'))
+            shutil.copyfile(base / 'out/SWotL.info', args.keep.with_name(args.keep.name + '.info'))
             print('Installed drawer:', args.keep)
         shutil.rmtree(base)
 
