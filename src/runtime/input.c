@@ -304,8 +304,9 @@ static uint8_t mouse_buttons;
  * Scaled, AX=0Bh returns the motion over MOUSE_FRAME_MS instead: motion times
  * MOUSE_FRAME_MS over the game-clock time since the last AX=0Bh, remainders
  * carried. The same feel at any frame rate; tweak MOUSE_FRAME_MS for
- * sensitivity (larger: more). Not while the guest's pointer was shown within
- * MOUSE_POINTER_FIELDS (menus and film room move a pointer by the motion). */
+ * sensitivity (larger: more). Not while the last present showed the guest's
+ * pointer (a still menu presents nothing) or one within MOUSE_POINTER_FIELDS
+ * (menus and film room move a pointer by the motion). */
 #define MOUSE_FRAME_MS 100
 #define MOUSE_POINTER_FIELDS 25
 #define MOUSE_MOTION_MAX 2048            /* keeps the scaled product in 32 bits */
@@ -333,7 +334,7 @@ static void mouse_scale(void)
     uint32_t now = rt_irq0_runs + rt_irq0_bios;
     uint32_t ticks = now - mouse_ticks;
     mouse_ticks = now;
-    if (!rt_mouse_scale || rt_fields - rt_pointer_field <= MOUSE_POINTER_FIELDS) {
+    if (!rt_mouse_scale || rt_pointer.shown || rt_fields - rt_pointer_field <= MOUSE_POINTER_FIELDS) {
         mouse_rest_x = mouse_rest_y = 0;
         return;
     }

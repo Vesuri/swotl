@@ -9,12 +9,14 @@ mouse speed gives the same deflection at 5, 24 and 70 ticks per frame (the
 68060's 50 fps, about the reference frame, the 68020's): the motion over
 MOUSE_FRAME_MS, its rounding carried so long runs sum exactly; signs, the
 vertical counter (twice the counts), a frame with no tick, a reset; no scaling
-while the guest's pointer was shown within MOUSE_POINTER_FIELDS. Plants
+while the last present showed the guest's pointer or one within
+MOUSE_POINTER_FIELDS did. Plants
 (input.c or pointer.c rebuilt):
 
   rest     remainders dropped
   ticks    the frame time not measured since the last AX=0Bh
   guard    scaled while a pointer was just shown
+  shown    scaled while the last present showed the pointer
   stamp    the present with the pointer shown not recorded
   flag     scaled with rt_mouse_scale clear
 """
@@ -35,6 +37,7 @@ PLANTS = {
     "rest": ("input.c", "    *rest = n - q * elapsed;", "    *rest = 0;"),
     "ticks": ("input.c", "    mouse_ticks = now;\n", ""),
     "guard": ("input.c", "rt_fields - rt_pointer_field <= MOUSE_POINTER_FIELDS", "0"),
+    "shown": ("input.c", "rt_pointer.shown || ", ""),
     "stamp": ("pointer.c", "    rt_pointer_field = rt_fields;\n", ""),
     "flag": ("input.c", "if (!rt_mouse_scale ||", "if ("),
 }
@@ -137,6 +140,12 @@ def cases(m):
     m.put("rt_pointer_field", 0, 4)
     m.put("rt_fields", 2000, 4)
     want("pointer stamp", stamped(m), 2000)
+    # Still shown at the last present, however long ago (a still menu presents nothing).
+    m.put("rt_fields", 9000, 4)
+    want("pointer still shown", m.int33(0xB, 7, 3, 5), (7, 6))
+    m.h.e.write(m.h.syms["rt_pointer"], b"\0")
+    if m.int33(0xB, 7, 3, 5) == (7, 6):
+        out.append("pointer gone: not scaled")
     # Off: the reference's motion.
     m.put("rt_pointer_field", 0, 4)
     m.put("rt_mouse_scale", 0, 1)
