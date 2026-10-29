@@ -73,7 +73,7 @@
  version 0.90 (28.10.2026):
  - initial release
 
- version 0.91 (29.10.2026):
+ version 0.91 (30.10.2026):
  - data cache on under WHDLoad on 68040 and 68060, and on a 68030 with the
    WHDLoad MMU option
  - fixed an Access Fault under WHDLoad when creating a campaign, and when

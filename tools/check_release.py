@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 from package_release import ORIGINAL_HASHES, PREFIX, ROOT, crc16, members
 
-DATE = '29.10.2026'
+DATE = '30.10.2026'
 STAMP = (((2026 - 1980) << 9) | (10 << 5) | 24) << 16
 
 

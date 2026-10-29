@@ -12,7 +12,7 @@ bitplanes with a hardware sprite mouse pointer. The AdLib music and effects are
 resynthesised on Paula; optionally, the sampled effects of the Amiga
 **Their Finest Hour** replace the AdLib ones.
 
-Current Amiga release: **0.91 (29.10.2026)**.
+Current Amiga release: **0.91 (30.10.2026)**.
 
 ## Requirements and installation
 
