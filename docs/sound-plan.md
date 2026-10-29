@@ -123,5 +123,39 @@ records posted IRQ0 counts: `tick,o,reg,value`, `tick,s,slot,id`,
     the slot's F-number. Near/far volumes from the variants' FM levels.
     The user's TFH `sfx.rsc`, copied by the installer, parsed at startup;
     never committed. Replaces the 2026-10-14 plan to replace SPAZ's entries.
-- Rejected: real-time software OPL (15–35% CPU); whole-effect pre-renders
-  (Chip; kept as a per-effect fallback for FM).
+- Rejected: real-time software OPL (15–35% CPU). Whole-effect pre-renders,
+  first rejected for Chip, are now the plan below (user 2026-10-29).
+
+## Prerendered effects (plan, user 2026-10-29)
+
+Why: the live re-hoster renders a 4 KB loop per 0.75 dB modulator step; id 13
+(own heavy gun) renders 192,512 bytes per 0.88 s shot (id 7: 768), about
+19 M cycles: ~40% of a 50 MHz 68030, more than a 68020 (`tmp/fmcost`,
+fm_check with a byte counter). Every play of an effect id is the same SPAZ
+script, so each is rendered once at startup and played as a sample.
+
+Decisions (user 2026-10-29): render at startup from the user's own files,
+silently, before the title; every non-engine effect (ids 5–38; engines 0–4
+and music stay live FM); in TFH mode only the ids TFH lacks; SPAZ's own
+code runs out of the game's flow for it (approved); 0.91 waits for it.
+
+- **R1 capture.** Observe-only HLE row at SPAZ init's return (`+02ED`,
+  `retf`): the runtime holds the tick (game time pauses), saves the state
+  SPAZ, its timer and the BIOS chain touch (SPAZ data, game counters, BDA,
+  OPL shadow, PIC/PIT), then per id: stop all (`+0666`), play(id·4)
+  (`+03D5`), SPAZ's INT 08h handler (`+07CC`) per tick through a guest far
+  call/interrupt with a sentinel return (as `deliver_guest`), OPL writes to
+  a capture buffer, not `rt_opl`; until silent or 5 s. Then restore. Oracle:
+  the capture equals `tools/sfx_levels.py` (original SPAZ under Unicorn)
+  write for write and tick for tick; host milestones still match the
+  reference with the prerender on (restore complete).
+- **R2 render.** Per id, the captured stream through the re-hoster's
+  operator model, updated per tick, synthesised directly at the output rate
+  (16 kHz, phase continuous), the effect's channels mixed into one signed
+  8-bit sample in Chip. Oracle: per-effect fm_check metrics vs Nuked
+  (level within 3 dB, pitch within 10 cents) on the `sfx_levels` streams.
+- **R3 play.** `sfx_start` routes a prerendered id's slot to its sample, the
+  TFH path (slot channels masked, Paula voice, restart, stop). Oracle:
+  t-tfh-style routing tests; c6/c13 `--sound-log` renders.
+- **R4 Amiga.** Startup time (68020, 68030), Chip use, smoke, gates-audio,
+  WHDLoad; release 0.91.
