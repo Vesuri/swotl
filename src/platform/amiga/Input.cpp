@@ -29,6 +29,8 @@ static const uint16_t rawToScan[0x68] = {
     /* 60 */ 0x2a, 0x36, 0x3a, 0x1d, 0x38, E0 | 0x38, 0, 0,
 };
 #define CAPS_LOCK 0x62
+// Cursor keys, in the order of the joystick direction bits below.
+static const uint8_t cursorRaw[4] = {0x4c, 0x4d, 0x4f, 0x4e};
 
 // PC typematic defaults: the held key repeats after 500 ms at 10.9 per
 // second; fields are 1/50 s (PAL) or 1/60 s (NTSC).
@@ -52,6 +54,12 @@ static int32_t mouseDX = 0;
 static int32_t mouseDY = 0;
 static uint8_t mouseButtons = 0;
 static uint8_t scriptButtons = 0;
+static uint8_t joystickDirections = 0;  // bits 0-3: up, down, left, right
+static uint16_t potButtons = 0xffff;    // POTINP as read before the pot START
+static uint16_t potHistory[4];
+static uint8_t potIndex = 0;
+static bool potStarted = false;
+static bool potReady = false;
 
 // Sync builds post IRQ1 for each event; production has no keyboard interrupt,
 // the runtime drains the events at service entry (docs/irq-plan.md I8).
@@ -121,6 +129,9 @@ bool Input::begin()
     repeatKey = 0xff;
     mouseDX = mouseDY = 0;
     mouseButtons = scriptButtons = 0;
+    joystickDirections = 0;
+    potButtons = 0xffff;
+    potStarted = potReady = false;
     uint16_t counters = *joy0datPointer;
     mouseCounterX = (uint8_t)counters;
     mouseCounterY = (uint8_t)(counters >> 8);
@@ -150,9 +161,24 @@ void Input::end()
     ciaaBase = 0;
 }
 
+// Port 2's buttons as mouse buttons 1 and 2. A digital joystick: fire on
+// CIA-A PRA bit 7, the second button on pin 9 (POTINP bit 14). A proportional
+// one (rt_joystick) has its pots on pins 5 and 9 and its buttons on pins 3
+// and 4, JOY1DAT bits 9 and 1 (Hardware Manual table 8-1).
+static uint8_t joystickButtons(uint16_t pins)
+{
+    if (rt_joystick) {
+        uint16_t joy = *joy1datPointer;
+        return (uint8_t)((joy >> 9 & 1) | (joy & 2));
+    }
+    return (uint8_t)((*ciaapraPointer & 0x80 ? 0 : 1) | (pins & (1 << 14) ? 0 : 2));
+}
+
 // JOY0DAT's counters are 8 bits and wrap: the delta is taken every field
 // (L80) and at each INT 33h request, so a frame gets the motion up to its
-// poll. Buttons: left CIA-A PRA bit 6, right and middle POTINP bits 10 and 8.
+// poll. Buttons: left CIA-A PRA bit 6, right and middle POTINP bits 10 and 8,
+// or'd with port 2's. A pot START discharges the pins for a few lines, so
+// with the proportional stick POTINP is the vertical blank's copy.
 void Input::sample()
 {
     Disable();
@@ -162,10 +188,57 @@ void Input::sample()
     mouseDY += (int8_t)(y - mouseCounterY);
     mouseCounterX = x;
     mouseCounterY = y;
+    uint16_t pins = rt_joystick ? potButtons : *potinpPointer;
+    uint8_t joystick = joystickButtons(pins);
     mouseButtons = (uint8_t)((AmigaHardware::isLeftMouseButtonPressed() ? 1 : 0) |
-                             (AmigaHardware::isRightMouseButtonPressed() ? 2 : 0) |
-                             (*potinpPointer & (1 << 8) ? 0 : 4));
+                             (pins & (1 << 10) ? 0 : 2) |
+                             (pins & (1 << 8) ? 0 : 4) | joystick);
+    rt_joystick_buttons = joystick;
     Enable();
+}
+
+// Digital joystick in port 2: JOY1DAT's directions (L78) press and release
+// the cursor keys, so they repeat and combine as the keys do.
+static void digitalJoystick()
+{
+    uint16_t joy = *joy1datPointer;
+    uint8_t right = joy >> 1 & 1, left = joy >> 9 & 1;
+    uint8_t now = (uint8_t)(((joy >> 8 ^ left) & 1) | ((joy ^ right) & 1) << 1 |
+                            left << 2 | right << 3);
+    uint8_t changed = now ^ joystickDirections;
+    joystickDirections = now;
+    for (uint8_t d = 0; d < 4; ++d) {
+        if (changed & 1 << d) {
+            Input::key(cursorRaw[d], !(now & 1 << d));
+        }
+    }
+}
+
+// Proportional joystick in port 2 (Revs' RevsInput): POTGO START at each
+// vertical blank, POT1DAT read at the next; the mean of four fields (X low
+// byte, pin 5; Y high byte, pin 9) plus 16 is the gameport's one-shot reads,
+// inside the game's probe range of 16 to 1000 (root +042B0). The game's
+// calibration scales it.
+static void analogJoystick()
+{
+    if (potStarted) {
+        uint16_t raw = *pot1datPointer;
+        if (!potReady) {
+            potHistory[0] = potHistory[1] = potHistory[2] = potHistory[3] = raw;
+            potReady = true;
+        }
+        potHistory[potIndex] = raw;
+        potIndex = (uint8_t)((potIndex + 1) & 3);
+        uint16_t x = 0, y = 0;
+        for (uint8_t k = 0; k < 4; ++k) {
+            x += potHistory[k] & 0xff;
+            y += potHistory[k] >> 8;
+        }
+        rt_joystick_axis[0] = (uint16_t)(16 + ((x + 2) >> 2));
+        rt_joystick_axis[1] = (uint16_t)(16 + ((y + 2) >> 2));
+    }
+    *potgoPointer = 1;
+    potStarted = true;
 }
 
 void Input::verticalBlank()
@@ -174,7 +247,15 @@ void Input::verticalBlank()
     return;
 #endif
     keyboard();
+    if (rt_joystick) {
+        potButtons = *potinpPointer;
+    }
     Input::sample();
+    if (rt_joystick) {
+        analogJoystick();
+    } else {
+        digitalJoystick();
+    }
 
     if (repeatKey != 0xff) {
         if (repeatDelay) {

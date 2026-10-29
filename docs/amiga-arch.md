@@ -142,8 +142,17 @@ typematic repeat runs in the VBI (L77). The mouse (port 0) is sampled per VBI
 (L79–80) and at each INT 33h request (`Input::sample`), so a frame's motion runs up to
 its poll; its deltas feed the runtime's INT 33h driver (`plat_mouse`), and the counts
 not yet taken feed the pointer sprite's lead (`rt_pointer_lead`, the guest's own motion
-rule). No Amiga joystick:
-port `201h` answers as the reference's absent one (`src/runtime/ports.c`).
+rule). Port 2 (`Input.cpp`): by default a digital joystick whose directions are
+cursor-key edges (typematic as keys) and whose fire and pin-9 buttons are mouse
+buttons 1 and 2; port `201h` answers as the reference's absent one. With
+`ANALOGJOYSTICK` (`rt_joystick`) the launch's joystick argument is `Y` and port 2 is a
+proportional stick: POTGO START per field, POT1DAT averaged over four fields
+(Revs `RevsInput`) + 16 is the reads before each axis one-shot times out
+(`src/runtime/ports.c`; the game's probe wants 16–1000, its calibration scales);
+buttons on pins 3/4 reach both the gameport and the mouse buttons (the
+calibration screen waits for a gameport button). POTINP's mouse buttons are
+read before the START (its discharge pulls the pins low). Oracle:
+`tests/test_gameport.py` runs the game's probe, calibration and read on Unicorn.
 
 ## Files
 

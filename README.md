@@ -41,8 +41,11 @@ installation instructions.
 ## Controls
 
 Keyboard and mouse work as in the PC original, with keys at their US keyboard
-positions; see the original manual. There is no Amiga joystick support. Quit from
-the game's menus; the WHDLoad QuitKey (**Help**) quits immediately.
+positions; see the original manual. A joystick in port 2 works as the cursor keys,
+its two buttons as the left and right mouse buttons. With the `Custom2` tooltype
+(1), or `ANALOGJOYSTICK` without WHDLoad, port 2 takes a proportional (analog)
+joystick instead: the game calibrates it at start, and Alt+C recalibrates in
+flight. Quit from the game's menus; the WHDLoad QuitKey (**Help**) quits immediately.
 
 ## Building
 
@@ -58,7 +61,8 @@ make amiga            # standalone executable: amiga/out/Swotl.exe
 ```
 
 Without WHDLoad, the installed game runs from a Shell in its `data` drawer as
-`SWotL`, or `SWotL TFH` for the Their Finest Hour effects. Translator design, tests and the reference setup against the
+`SWotL`, adding `TFH` for the Their Finest Hour effects and `ANALOGJOYSTICK` for
+an analog joystick (also icon tooltypes). Translator design, tests and the reference setup against the
 original under DOSBox are in [architecture.md](docs/architecture.md),
 [toolchain.md](docs/toolchain.md) and [pc-reference-loop.md](docs/pc-reference-loop.md);
 remaining work is in [open-work.md](docs/open-work.md). The

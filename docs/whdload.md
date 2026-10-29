@@ -38,7 +38,7 @@ Pokeri, `RoF` Rescue on Fractalus, `P2` Prince of Persia 2 (each project's `docs
 | `slv_info` | "Amiga port by Vesuri", version line, quit-key line | Sl |
 | `$VER: <Name>.slave x.yy (dd.mm.yyyy)` | literal, bumped by hand → byte-identical rebuilds | RoF §5, Sl |
 | SWOTL: Slicks set verbatim; `slv_keyexit = $5f` (Help): Amiga F10 reaches the game as PC F10, Help has no entry in `src/platform/amiga/Input.cpp`'s key table | — |
-| SWOTL `slv_config "C1:B:Their Finest Hour sound effects;"`: Custom1 selects the argument line, `TFH` or empty, passed to `RunCommand` (below); the exe needs no hook | Sl, Ve |
+| SWOTL `slv_config "C1:B:Their Finest Hour sound effects;C2:B:Analog joystick in port 2;"`: Custom1 adds `TFH`, Custom2 `ANALOGJOYSTICK` to the argument line the slave builds and passes to `RunCommand` (below); the exe needs no hook | Sl, Ve |
 
 ## `_bootdos` sequence (Slicks, newest)
 
@@ -49,7 +49,7 @@ Pokeri, `RoF` Rescue on Fractalus, `P2` Prince of Persia 2 (each project's `docs
 5. `AllocMem` 16 KiB stack, Exec `StackSwap`, call entry (Ve, Sl, Po). SWOTL instead
    `RunCommand` with a 16 KiB stack: DOS allocates and swaps the stack and puts the
    argument line in `Input()`'s buffer, which `ReadArgs` reads (its `?` prompt does not
-   work from an `RDA_Source`, so `SetArgStr` alone is not enough); FM and TFH pass
+   work from an `RDA_Source`, so `SetArgStr` alone is not enough); FM, TFH and analog pass
    `make test-whdload`.
 6. On return: restore stack/args/PROGDIR, `UnLoadSeg`, `resload_Abort(TDREASON_OK)` — not back to CLI (BLACKSCREEN hides it; 68000 has no QuitKey) (RoF §1, Sl).
 7. Exe return 20 (missing/bad originals) → `TDREASON_FAILMSG` with readable text (Rv).
@@ -129,7 +129,7 @@ Pokeri, `RoF` Rescue on Fractalus, `P2` Prince of Persia 2 (each project's `docs
 | `FILELOG` on 68000 can outlast timeouts (LoadSeg's many small reads) | Rv |
 | Harness: isolated `tmp/whdload-test-*` fixture per run, kill only own emulator, `--no-preload` variant, 4 MiB Fast default | Ve, Sl |
 | SWOTL harness: `--installed DIR` runs an installed drawer unchanged; `--setup a1200-040`/`-060` = 68040/060 + MMU + FPU on `$FSUAE_MMU`, requires TC=8000 in the report; `--setup a1200-030` (+ `--whdload-mmu`) = full 68030. These emulate the data cache (compatible core, indirect UAE board; a FS-UAE fixup fails the run) | — |
-| SWOTL harness: `--mode run` ends by `TIMEOUT` + `COREDUMP` (reported as "DEBUG caused" at the CIA-A event count); oracles: original SWOTL.EXE/RTSVGA.OVL blocks in guest RAM (byte-reversed), TFH PCM in Chip only with `--tfh`. The quit key needs a Lua FS-UAE to press; not tested headlessly | Rv |
+| SWOTL harness: `--mode run` ends by `TIMEOUT` + `COREDUMP` (reported as "DEBUG caused" at the CIA-A event count); oracles: original SWOTL.EXE/RTSVGA.OVL blocks in guest RAM (byte-reversed), TFH PCM in Chip only with `--tfh`, the PSP command tail's joystick argument `Y` only with `--analog` (Custom2). The quit key needs a Lua FS-UAE to press; not tested headlessly | Rv |
 | Headless emulator mechanics: [headless-fsuae.md](headless-fsuae.md) | — |
 
 ## Common failures

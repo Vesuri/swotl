@@ -43,15 +43,21 @@ extern uint16_t rt_key_ring[RT_KEY_RING];
 extern uint8_t rt_irq_ring[RT_IRQ_RING];
 extern unsigned rt_key_tail, rt_irq_tail, raises;
 #define RT_RAISE_IRQ() (++raises)
+extern uint8_t rt_joystick;
+extern volatile uint16_t rt_joystick_axis[2];
+extern volatile uint8_t rt_joystick_buttons;
 ''',
     'platform.h': '',
     'AmigaHardware.h': '''#pragma once
 #include <stdint.h>
 extern volatile uint8_t sdr, cra, pra;
-extern volatile uint16_t joy, pot, potgo;
+extern volatile uint16_t joy, joy1, pot, pot1, potgo;
 #define ciaasdrPointer (&sdr)
 #define ciaacraPointer (&cra)
+#define ciaapraPointer (&pra)
 #define joy0datPointer (&joy)
+#define joy1datPointer (&joy1)
+#define pot1datPointer (&pot1)
 #define potinpPointer (&pot)
 #define potgoPointer (&potgo)
 class AmigaHardware {
@@ -64,6 +70,7 @@ public:
 HARNESS = r'''
 #include <cassert>
 #include <cstdio>
+#include <vector>
 #include <proto/cia.h>
 #include "Input.h"
 #include "AmigaHardware.h"
@@ -74,9 +81,12 @@ uint16_t rt_key_ring[RT_KEY_RING];
 uint8_t rt_irq_ring[RT_IRQ_RING];
 unsigned rt_key_tail, rt_irq_tail, raises;
 uint8_t amiga_ntsc;
+uint8_t rt_joystick;
+volatile uint16_t rt_joystick_axis[2];
+volatile uint8_t rt_joystick_buttons;
 }
 volatile uint8_t sdr, cra, pra = 255;
-volatile uint16_t joy, pot = 65535, potgo = 65535;
+volatile uint16_t joy, joy1, pot = 65535, pot1, potgo = 65535;
 static Library resource;
 static unsigned enabled = 0x0c, icr = 0x08;   // keyboard.device's SP on, a stale byte
 static int depth;
@@ -145,6 +155,77 @@ static void mouse(unsigned counters, unsigned buttons, int dx, int dy) {
     assert(x == dx && y == dy && depth == 0);
     assert(plat_mouse(&x, &y) == buttons && x == 0 && y == 0);
 }
+// Port 2 at a vertical blank: JOY1DAT, then the PC codes posted.
+static void stick(unsigned value, std::vector<unsigned> scans) {
+    unsigned k = rt_key_tail;
+    joy1 = value;
+    Input::verticalBlank();
+    assert(rt_key_tail == k + scans.size() && depth == 0);
+    for (size_t n = 0; n < scans.size(); ++n) {
+        assert(rt_key_ring[(k + n) % RT_KEY_RING] == scans[n]);
+    }
+}
+static unsigned buttons() {
+    int32_t x, y;
+    return plat_mouse(&x, &y);
+}
+// Digital joystick: JOY1DAT (L78: up b8^b9, left b9, down b0^b1, right b1)
+// presses the cursor keys; fire (PRA bit 7) and pin 9 (POTINP bit 14) are
+// mouse buttons 1 and 2.
+static void digital() {
+    pra = 0xff; pot = 0xffff;      // mouse buttons released
+    stick(0x0100, {0x148}); stick(0, {0x1c8});
+    stick(0x0001, {0x150}); stick(0, {0x1d0});
+    stick(0x0300, {0x14b}); stick(0, {0x1cb});
+    stick(0x0003, {0x14d}); stick(0, {0x1cd});
+    stick(0x0200, {0x148, 0x14b}); stick(0x0002, {0x1c8, 0x150, 0x1cb, 0x14d});
+    stick(0x0002, {}); stick(0, {0x1d0, 0x1cd});
+    // A held direction repeats as its key does.
+    stick(0x0100, {0x148});
+    unsigned k = rt_key_tail;
+    for (unsigned f = 0; f < 29; ++f) Input::verticalBlank();
+    assert(rt_key_tail == k + 1 && rt_key_ring[k % RT_KEY_RING] == 0x148);
+    stick(0, {0x1c8});
+    pra = 0x7f; assert(buttons() == 1 && rt_joystick_buttons == 1);
+    pra = 0x3f; assert(buttons() == 1);
+    pra = 0xff; pot = 0xffff ^ 1 << 14; assert(buttons() == 2 && rt_joystick_buttons == 2);
+    pot = 0xffff ^ 1 << 14 ^ 1 << 10; assert(buttons() == 2);
+    pot = 0xffff; assert(buttons() == 0 && rt_joystick_buttons == 0);
+}
+// Proportional joystick: POTGO START at each vertical blank, POT1DAT read at
+// the next, four fields averaged, plus 16; buttons on pins 3 and 4 (JOY1DAT
+// bits 9 and 1); directions post nothing; POTINP's buttons as read before
+// the START.
+static void analog() {
+    rt_joystick = 1;
+    potgo = 0;
+    pot1 = 0x6040;
+    stick(0, {});
+    assert(potgo == 1 && rt_joystick_axis[0] == 0 && rt_joystick_axis[1] == 0);
+    potgo = 0;
+    stick(0, {});
+    assert(potgo == 1 && rt_joystick_axis[0] == 16 + 0x40 && rt_joystick_axis[1] == 16 + 0x60);
+    pot1 = 0x7050;
+    stick(0, {});
+    assert(rt_joystick_axis[0] == 16 + 68 && rt_joystick_axis[1] == 16 + 100);
+    for (unsigned f = 0; f < 3; ++f) stick(0, {});
+    assert(rt_joystick_axis[0] == 16 + 0x50 && rt_joystick_axis[1] == 16 + 0x70);
+    stick(0x0100, {}); stick(0x0003, {}); stick(0, {});
+    joy1 = 0x0200; assert(buttons() == 1 && rt_joystick_buttons == 1);
+    joy1 = 0x0002; assert(buttons() == 2 && rt_joystick_buttons == 2);
+    joy1 = 0x0202; assert(buttons() == 3 && rt_joystick_buttons == 3);
+    joy1 = 0x0101; assert(buttons() == 0 && rt_joystick_buttons == 0);
+    pra = 0x7f; pot = 0xffff ^ 1 << 14; assert(buttons() == 0);
+    pra = 0xff;
+    pot = 0xffff ^ 1 << 10;        // the START's discharge: not a right button
+    assert(buttons() == 0);
+    Input::verticalBlank();
+    assert(buttons() == 2);
+    pot = 0xffff;
+    Input::verticalBlank();
+    assert(buttons() == 0);
+    rt_joystick = 0;
+}
 int main() {
     joy = 0xfafa;
     assert(Input::begin());
@@ -172,6 +253,8 @@ int main() {
     joy = 0x0101;
     assert(plat_mouse(&x, &y) == 6 && x == -4 && y == -3);
     assert(plat_mouse(&x, &y) == 6 && x == 0 && y == 0);
+    digital();
+    analog();
     icr = 0x08;
     Input::end();
     assert(enabled == 0x0c && icr == 0 && depth == 0);
@@ -215,7 +298,18 @@ if __name__ == '__main__':
         for old, new in [('(code >> 1) | (code << 7)', '(code << 1) | (code >> 7)'),
                          ('#endif\n    Input::sample();\n', '#endif\n'),
                          ('(int8_t)(x - mouseCounterX)', '(int16_t)(x - mouseCounterX)'),
-                         ('isRightMouseButtonPressed() ? 2 : 0', 'isRightMouseButtonPressed() ? 4 : 0'),
+                         ('(pins & (1 << 10) ? 0 : 2)', '(pins & (1 << 10) ? 0 : 4)'),
+                         ('{0x4c, 0x4d, 0x4f, 0x4e}', '{0x4c, 0x4d, 0x4e, 0x4f}'),
+                         ('(joy >> 8 ^ left) & 1', '(joy >> 8) & 1'),
+                         ('(joy ^ right) & 1) << 1', '(joy & 1)) << 1'),
+                         ('pins & (1 << 14) ? 0 : 2', 'pins & (1 << 12) ? 0 : 2'),
+                         ('*ciaapraPointer & 0x80 ? 0 : 1', '*ciaapraPointer & 0x40 ? 0 : 1'),
+                         ('(joy >> 9 & 1) | (joy & 2)', '(joy >> 9 & 1) | (joy << 1 & 2)'),
+                         ('rt_joystick ? potButtons : *potinpPointer', '*potinpPointer'),
+                         ('16 + ((x + 2) >> 2)', '((x + 2) >> 2)'),
+                         ('potHistory[potIndex] = raw;', '(void)raw;'),
+                         ('    *potgoPointer = 1;\n', ''),
+                         ('        digitalJoystick();\n', ''),
                          ('    SetICR(ciaaBase, CIAICRF_SP);\n    uint8_t code', '    uint8_t code'),
                          ('    AbleICR(ciaaBase, CIAICRF_SP);\n', ''),
                          ('!(SetICR(ciaaBase, 0) & CIAICRF_SP)', 'false'),

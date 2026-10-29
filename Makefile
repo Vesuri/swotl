@@ -44,7 +44,7 @@ help:
 	@echo "  make amiga-release  build and verify separate stripped amiga/out/Swotl-release.exe"
 	@echo "  make smoke-release  boot the stripped executable under FS-UAE"
 	@echo "  make whdload        assemble the WHDLoad slaves into build/whdload/"
-	@echo "  make test-whdload   run the slaves under WHDLoad: smoke, boot, load, game FM and TFH, caches 030-060, campaign and pilot files"
+	@echo "  make test-whdload   run the slaves under WHDLoad: smoke, boot, load, game FM, TFH and analog joystick, caches 030-060, campaign and pilot files"
 	@echo "  make install-data   build SWotLInstallData (host and Amiga) into build/install-data/"
 	@echo "  make test-install-data  helper vs the DOS ACC install: sources, refusals, cleanup"
 	@echo "  make release        package and audit dist/SWotL-\$$(cat VERSION).lha (clean tree only)"
@@ -588,6 +588,7 @@ test-whdload: whdload amiga-release
 	. amiga/env.sh && for m in smoke boot load; do $(PYTHON) tools/test_whdload.py --mode $$m || exit 1; done
 	. amiga/env.sh && $(PYTHON) tools/test_whdload.py --mode run
 	. amiga/env.sh && $(PYTHON) tools/test_whdload.py --mode run --tfh
+	. amiga/env.sh && $(PYTHON) tools/test_whdload.py --mode run --analog
 	. amiga/env.sh && for s in "a1200-030" "a1200-030 --whdload-mmu" "a1200-040" "a1200-060"; do \
 		$(PYTHON) tools/test_whdload.py --mode run --setup $$s || exit 1; done
 	. amiga/env.sh && for t in Campaign Tour; do for s in a1200 a1200-060; do \
@@ -719,12 +720,14 @@ t-joystick:
 	$(call RUN,joystick-link,$(PYTHON) tests/test_joystick_link.py)
 	$(call RUN,joystick-replay,$(PYTHON) tests/test_joystick_replay.py)
 	$(call RUN,joystick-events,$(PYTHON) tests/test_joystick_events.py)
+	$(call RUN,gameport,$(PYTHON) tests/test_gameport.py)
 	$(call RUN,joystick-recorder,$(PYTHON) tests/test_joystick_recorder.py)
 t-sab-joystick:
 	$(call RUN,sabotage-joystick-cli,$(PYTHON) tests/test_joystick_cli.py --sabotage)
 	$(call RUN,sabotage-joystick-link,$(PYTHON) tests/test_joystick_link.py --sabotage)
 	$(call RUN,sabotage-joystick-replay,$(PYTHON) tests/test_joystick_replay.py --sabotage)
 	$(call RUN,sabotage-joystick-events,$(PYTHON) tests/test_joystick_events.py --sabotage)
+	$(call RUN,sabotage-gameport,$(PYTHON) tests/test_gameport.py --sabotage)
 	$(call RUN,sabotage-joystick-recorder,$(PYTHON) tests/test_joystick_recorder.py --sabotage)
 
 build/host/compute_native.o: src/runtime/compute_native.s src/runtime/compute_sprite.s src/runtime/compute_line.s src/runtime/compute_raster.s src/runtime/compute_edge.s src/runtime/compute_opl.s src/runtime/compute_classify.s src/runtime/compute_ground.s src/runtime/compute_terrain.s src/runtime/compute_polygons.s build/gen/equates.i

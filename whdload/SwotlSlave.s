@@ -1,8 +1,9 @@
 ; WHDLoad/Kickstart 3.1 launcher for the Amiga port. Cross-assembled with vasm.
 ; The executable uses Exec/graphics/DOS; kickfs supplies ordinary file access.
-; Custom1 selects Their Finest Hour sound: the slave passes the game's own TFH
-; argument (docs/sound-plan.md) through RunCommand, as a Shell does, so the
-; same executable runs from a Shell.
+; Custom1 selects Their Finest Hour sound, Custom2 the proportional joystick:
+; the slave passes the game's own TFH and ANALOGJOYSTICK arguments
+; (docs/sound-plan.md, docs/amiga-arch.md) through RunCommand, as a Shell
+; does, so the same executable runs from a Shell.
 
         INCLUDE whdload.i
         INCLUDE whdmacros.i
@@ -38,23 +39,23 @@ slv_copy dc.b "1991 Lucasfilm Games",0
 slv_info dc.b "Amiga port by Vesuri",10
         dc.b "Version 0.90 (28.10.2026)",10
         dc.b "Help quits",0
-slv_config dc.b "C1:B:Their Finest Hour sound effects;",0
+slv_config dc.b "C1:B:Their Finest Hour sound effects;C2:B:Analog joystick in port 2;",0
         dc.b "$VER: SWotL.slave 0.90 (28.10.2026)",0
 _program dc.b "SWotL",0
 ; Test only, keys of pc-reference-loop.md scripts: CAMPAIGN creates campaign
 ; file A.CBA (c10); TOUR creates pilot A, then rewrites it with O_TRUNC (c11).
         IFD CAMPAIGN
-_args_fm dc.b "KEYS=300:enter,p300:enter,p200:u,p200:b,p200:s,p600:1,p600:2,p600:a,p100:enter",10,0
+_args_tail dc.b "KEYS=300:enter,p300:enter,p200:u,p200:b,p200:s,p600:1,p600:2,p600:a,p100:enter",10,0
         ELSE
         IFD TOUR
-_args_fm dc.b "KEYS=300:enter,p300:enter,p200:u,p200:t,p200:s,p600:2,p600:c,p600:a,p100:enter,p600:s,p600:1,p600:m",10,0
+_args_tail dc.b "KEYS=300:enter,p300:enter,p200:u,p200:t,p200:s,p600:2,p600:c,p600:a,p100:enter,p600:s,p600:1,p600:m",10,0
         ELSE
-_args_fm dc.b 10,0
+_args_tail dc.b 10,0
         ENDC
         ENDC
-_args_fm_end
-_args_tfh dc.b "TFH",10,0
-_args_tfh_end
+_args_tfh dc.b "TFH ",0
+_args_analog dc.b "ANALOGJOYSTICK ",0
+_line   ds.b 160                  ; the argument line, built at start
         EVEN
 
 _bootdos
@@ -81,14 +82,25 @@ _bootdos
         lea (_bootmark,pc),a0
         bsr _mark
         ENDC
-        ; The argument line and its length without the terminating zero.
-        lea (_args_fm,pc),a0
-        move.l #_args_fm_end-_args_fm-1,d0
-        tst.l (_tfh,pc)
-        beq .args
+        ; The argument line, the Custom keywords then the tail, and its length
+        ; without the terminating zero.
+        lea (_line,pc),a1
         lea (_args_tfh,pc),a0
-        move.l #_args_tfh_end-_args_tfh-1,d0
-.args   lea (_args,pc),a1
+        tst.l (_tfh,pc)
+        beq .notfh
+        bsr _append
+.notfh  lea (_args_analog,pc),a0
+        tst.l (_analog,pc)
+        beq .noanalog
+        bsr _append
+.noanalog
+        lea (_args_tail,pc),a0
+        bsr _append
+        clr.b (a1)
+        lea (_line,pc),a0
+        move.l a1,d0
+        sub.l a0,d0
+        lea (_args,pc),a1
         move.l a0,(a1)+
         move.l d0,(a1)
         IFD TEST
@@ -182,6 +194,11 @@ _bootdos
 _getcacr
         movec cacr,d0
         rte
+; Copies the zero-terminated string at a0 to a1, which ends past its last byte.
+_append move.b (a0)+,(a1)+
+        bne _append
+        subq.l #1,a1
+        rts
 _failed dc.b "Secret Weapons of the Luftwaffe could not start. Check the installed original data files.",0
         IFD MEMFREE
 _memfreename dc.b "memfree",0
@@ -190,6 +207,8 @@ _current dc.b 0
         EVEN
 _config_tags dc.l WHDLTAG_CUSTOM1_GET
 _tfh    dc.l 0
+        dc.l WHDLTAG_CUSTOM2_GET
+_analog dc.l 0
         dc.l 0
 _args   dc.l 0
 _argslen dc.l 0

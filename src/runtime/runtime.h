@@ -235,6 +235,14 @@ extern uint8_t rt_opl_keyon[9];     /* per channel: key-on edges, wrapping (FM r
 extern uint8_t rt_music_skip;        /* 1: HLE music_skip skips song starts */
 extern uint8_t rt_sfx_id[3];         /* per SPAZ slot: the effect id last started (HLE sfx_start) */
 extern uint8_t rt_sfx_starts[3];     /* per SPAZ slot: starts, wrapping */
+/* Gameport (port 201h), set by the platform before rt_start: 0 answers as the
+ * reference's absent joystick; 1 is stick A, whose axis one-shots time out
+ * after rt_joystick_axis[] (X, Y) reads following the trigger and whose
+ * buttons are rt_joystick_buttons (bit 0 button 1, bit 1 button 2). 1 also
+ * makes the launch's joystick argument (4th) Y (docs/source-inventory.md). */
+extern uint8_t rt_joystick;
+extern volatile uint16_t rt_joystick_axis[2];
+extern volatile uint8_t rt_joystick_buttons;
 
 /* Hardware-sprite pointer (pointer.c, docs/pointer-plan.md). At each present,
  * shown: the guest's pointer was complete in VGA memory and is masked out of

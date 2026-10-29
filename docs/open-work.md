@@ -90,8 +90,9 @@ speed work: [speed-plan.md](speed-plan.md).
     `tests/test_display_queue.py`. Confirm on the tester's 68060. If the
     mouse still feels wrong, the user picks a sensitivity setting or
     frame-time scaling.
-43. Analogue joystick: not implemented. Needs user decisions (port and
-    hardware, mapping onto the game's velocity stick, calibration).
+43. Joystick: digital and analog modes in port 2 are checked by register
+    and game-code tests only. Confirm both with real sticks (analog axis
+    polarity and range, the startup calibration).
 44. NTSC: window, CIA timer, Paula clock, FM and TFH field rates and key
     repeat follow graphics' NTSC flag (checked in FS-UAE). Confirm the
     centring on the tester's NTSC machine.

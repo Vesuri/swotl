@@ -4,7 +4,7 @@
     python3 tools/test_whdload.py --mode smoke     # Smoke.slave: harness only
     python3 tools/test_whdload.py --mode boot      # BootTest.slave: Kickstart 3.1 kickemu boots
     python3 tools/test_whdload.py --mode load      # LoadTest.slave: LoadSeg + PROGDIR
-    python3 tools/test_whdload.py --mode run [--tfh] [--slave build/whdload/MemFree.slave]
+    python3 tools/test_whdload.py --mode run [--tfh] [--analog] [--slave build/whdload/MemFree.slave]
     python3 tools/test_whdload.py --mode run --installed DIR [--setup a1200-040]
     python3 tools/test_whdload.py --mode run --setup a1200-030 [--whdload-mmu]
     python3 tools/test_whdload.py --mode run --slave build/whdload/CampaignTest.slave --ticks 15000
@@ -18,6 +18,8 @@ VBR of a 68020) ends it with COREDUMP and the dump is judged:
     (overlays come and go; relocated and patched blocks differ);
   - Custom1 (--tfh): the TFH sfx.rsc PCM payload is in Chip RAM; without it,
     no sample block is. Their copy in Chip is what the TFH path makes.
+  - Custom2 (--analog): the game's PSP command tail has the joystick argument
+    Y (ANALOGJOYSTICK), N without.
 The MemFree slave's low-water marks (Chip, Fast) are read from its $100 slot.
 --installed runs an installed SWotL drawer as it is (slave, data/SWotL, data).
 --setup a1200-040: full 68040 with its MMU and FPU, JIT off, on $FSUAE_MMU;
@@ -79,6 +81,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--mode', choices=tuple(SLAVES), default='run')
     p.add_argument('--tfh', action='store_true', help='set Custom1 (Their Finest Hour sound)')
+    p.add_argument('--analog', action='store_true', help='set Custom2 (analog joystick)')
     p.add_argument('--slave', type=Path, help='slave override (default: build/whdload/ per mode)')
     p.add_argument('--exe', type=Path, default=ROOT / 'amiga/out/Swotl-release.exe',
                    help='stripped (make amiga-release): LoadSeg reads symbol hunks in small pieces')
@@ -130,6 +133,8 @@ def main():
         options += ['COREDUMP', f'TIMEOUT={args.ticks}']
         if args.tfh:
             options.append('CUSTOM1=1')
+        if args.analog:
+            options.append('CUSTOM2=1')
     if args.whdload_mmu:
         options.append('MMU')
     command = 'WHDLoad SWotL.slave ' + ' '.join(options)
@@ -235,11 +240,17 @@ def main():
             int.from_bytes(chip[0x100:0x104], 'big'), int.from_bytes(chip[0x104:0x108], 'big')))
     if not resident:
         raise SystemExit('FAIL: the game is not resident in guest RAM')
+    tail = b' V S 5 %s Y Y 64\r' % (b'Y' if args.analog else b'N')
+    print('command tail:', tail.decode().strip(), 'in guest RAM' if tail[::-1] in memory else 'missing')
+    if tail[::-1] not in memory:
+        raise SystemExit('FAIL: Custom2 did not set the joystick argument' if args.analog
+                         else 'FAIL: the joystick argument is not N without Custom2')
     if args.tfh and in_chip != len(pcm):
         raise SystemExit('FAIL: Custom1 set but the TFH samples are not in Chip')
     if not args.tfh and in_chip:
         raise SystemExit('FAIL: TFH samples in Chip without Custom1')
     print('PASS: game runs under WHDLoad, sound ' + ('TFH' if args.tfh else 'FM')
+          + (', analog joystick' if args.analog else '')
           + (f', {args.cpu} MMU' + (' in use' if dcache else ' unused') if mmu else '')
           + f', CACR={cacr:X}')
 

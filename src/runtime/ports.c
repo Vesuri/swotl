@@ -29,6 +29,25 @@ uint8_t rt_music_skip = 0;
 uint8_t rt_sfx_id[3] = {0xff, 0xff, 0xff};
 uint8_t rt_sfx_starts[3];
 
+/* Gameport: with rt_joystick, the trigger latches the axes and each read
+ * counts; an axis bit stays 1 for its latched number of reads, so the game's
+ * timing loop (root +04466) measures the latch on any CPU. Stick B's axes
+ * never time out and its buttons read released, as the reference's. */
+uint8_t rt_joystick;
+volatile uint16_t rt_joystick_axis[2];
+volatile uint8_t rt_joystick_buttons;
+static uint16_t joystick_latch[2], joystick_reads;
+
+static uint8_t joystick_in(void)
+{
+    if (joystick_reads < 0xffff) {
+        ++joystick_reads;
+    }
+    return (uint8_t)(0xcc | (~rt_joystick_buttons & 3) << 4 |
+                     (joystick_reads <= joystick_latch[0]) |
+                     (joystick_reads <= joystick_latch[1]) << 1);
+}
+
 static void pit_control(uint8_t v)
 {
     uint8_t ch = v >> 6, access = (v >> 4) & 3;
@@ -63,7 +82,7 @@ uint32_t rt_port_in(uint32_t port, uint32_t width)
     if (width == 8) {
         switch (port) {
         case 0x21: return pic_mask;
-        case 0x201: return 0xff;    /* reference: no joystick, axes never time out */
+        case 0x201: return rt_joystick ? joystick_in() : 0xff;  /* reference: no joystick, axes never time out */
         }
     }
     rt_stop("unsupported port in (port, width)", port, width);
@@ -78,7 +97,11 @@ void rt_port_out(uint32_t port, uint32_t value, uint32_t width)
         case 0x21: pic_mask = v; return;
         case 0x40: case 0x41: case 0x42: pit_data((uint8_t)(port - 0x40), v); return;
         case 0x43: pit_control(v); return;
-        case 0x201: return;         /* joystick one-shots */
+        case 0x201:                 /* joystick one-shots */
+            joystick_latch[0] = rt_joystick_axis[0];
+            joystick_latch[1] = rt_joystick_axis[1];
+            joystick_reads = 0;
+            return;
         }
     }
     rt_stop("unsupported port out (port, width)", port, width);

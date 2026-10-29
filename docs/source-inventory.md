@@ -44,7 +44,7 @@ arguments prints "Run INSTALL".
 | 1 | `V` | graphics driver: `V/v` VGA (3, RTSVGA), `E/e` EGA (0), `T/t` Tandy (2); other: interactive prompt | `+3BB6` switch → `[9936]` |
 | 2 | `S` | sound: `S`/`A` AdLib FM (SPAZ + `ADLIB.SFX`, port `388h`; no SB DSP access seen); `I`/`N` PC speaker (SFXA + `SFX.SFX`, ports `42h/61h`); default `I` | `+0122` → PLINK thunk, overlay 9; runs with each value |
 | 3 | `5` | initial graphics detail level: `atoi−1` (0–4) → `[9DB0]`; FLIGHT cycles it in flight; objects drawn when level ≥ their minimum; with VGA, DS byte table `[078C+n]` → `[233E]` | `+3C36`, FLIGHT `+1D63`, root `+F379`, FLIGHT `+B9EB` |
-| 4 | `N` | joystick: `N/n` clears `[A6C6]` (joystick present) after the port `201h` probe | `+3560`, probe `+42B0` |
+| 4 | `N` | joystick: `N/n` clears `[A6C6]` (joystick present) after the port `201h` probe; otherwise a found stick is calibrated at once (centre, upper left, lower right, a button each); Alt+C in flight asks "Are you using a joystick? (Y/N)" and does the same. The Amiga passes `Y` with `ANALOGJOYSTICK` | `+3560`, probe `+42B0`, called from `main+022B` |
 | 5 | `Y` | mouse: `N/n` → `[A71A]=0`, else 1, after INT 33h vector check | `+3545`, `+44C0` |
 | 6 | `Y` | film disk cache: `N/n` → `[612A]=0` (film room "DISK CACHE: OFF"), else 1 | `+0152`, film room run with `Y N 32` |
 | 7 | `64` | film cache size in KB: if arg 6 ≠ N `[61E6]=max(atol,16)`, else `3FFh`; film room "CACHE SIZE: 64K" | `+01C2`, film room run with `Y Y 32` |

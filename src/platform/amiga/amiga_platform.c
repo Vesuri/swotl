@@ -586,6 +586,7 @@ static int wb_options(int *tfh)
         *tfh = FindToolType(types, (STRPTR)"TFH") != 0;
         if (FindToolType(types, (STRPTR)"BENCH")) rt_bench = 1;
         if (FindToolType(types, (STRPTR)"MUSIC")) rt_music_skip = 0;
+        if (FindToolType(types, (STRPTR)"ANALOGJOYSTICK")) rt_joystick = 1;
         const char *keys = (const char *)FindToolType(types, (STRPTR)"KEYS");
         if (keys) {
             ULONG n = 0;
@@ -619,9 +620,9 @@ static struct RDArgs *shell_args = 0;
 
 static int shell_options(int *tfh)
 {
-    enum { ARG_TFH, ARG_MUSIC, ARG_BENCH, ARG_KEYS, ARG_COUNT };
-    LONG values[ARG_COUNT] = {0, 0, 0, 0};
-    shell_args = ReadArgs((CONST_STRPTR)"TFH/S,MUSIC/S,BENCH/S,KEYS/K", values, 0);
+    enum { ARG_TFH, ARG_MUSIC, ARG_BENCH, ARG_KEYS, ARG_ANALOGJOYSTICK, ARG_COUNT };
+    LONG values[ARG_COUNT] = {0, 0, 0, 0, 0};
+    shell_args = ReadArgs((CONST_STRPTR)"TFH/S,MUSIC/S,BENCH/S,KEYS/K,ANALOGJOYSTICK/S", values, 0);
     if (!shell_args) {
         amiga_io_begin();
         PrintFault(IoErr(), (CONST_STRPTR)"SWotL");
@@ -632,6 +633,7 @@ static int shell_options(int *tfh)
     if (values[ARG_MUSIC]) rt_music_skip = 0;   /* diagnostic: music records start their songs */
     if (values[ARG_BENCH]) rt_bench = 1;        /* frame bench: ticks from guest progress, no CIA timer */
     if (values[ARG_KEYS]) key_script = (const char *)values[ARG_KEYS];
+    if (values[ARG_ANALOGJOYSTICK]) rt_joystick = 1;   /* proportional stick in port 2; joystick argument Y */
     return 1;
 }
 
