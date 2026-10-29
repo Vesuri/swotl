@@ -34,6 +34,7 @@ extern const uint16_t pointer_guest[];
 uint16_t rt_pointer_ds;
 uint8_t rt_pointer_sprite;
 struct rt_pointer rt_pointer;
+uint32_t rt_pointer_field;
 int16_t rt_pointer_predicted[3];
 
 static volatile struct {
@@ -117,6 +118,7 @@ void rt_pointer_mask(uint8_t *frame)
     rt_pointer.hot_x = (int8_t)word(POINTER_HOT_X);
     rt_pointer.hot_y = (int8_t)word(POINTER_HOT_Y);
     rt_pointer.shown = 1;
+    rt_pointer_field = rt_fields;
     adopt((int16_t)word(POINTER_X), (int16_t)word(POINTER_Y));
 }
 

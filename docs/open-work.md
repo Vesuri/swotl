@@ -85,11 +85,11 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## User report (A1200, 68060, 2026-10-29)
 
-42. Speed and mouse: caches and per-request mouse counters with the field
-    cap are in; the cap above 50 fps is proven only by
-    `tests/test_display_queue.py`. Confirm on the tester's 68060. If the
-    mouse still feels wrong, the user picks a sensitivity setting or
-    frame-time scaling.
+42. Speed and mouse: caches, per-request mouse counters with the field cap
+    and flight mouse scaling to a 100 ms frame are in; the cap above 50 fps
+    and the scaling are proven only by `tests/test_display_queue.py` and
+    `tests/test_mouse_scale.py`. Confirm on the tester's 68060 and the
+    68020; tune `MOUSE_FRAME_MS` (input.c) by feel.
 43. Joystick: digital and analog modes in port 2 are checked by register
     and game-code tests only. Confirm both with real sticks (analog axis
     polarity and range, the startup calibration).

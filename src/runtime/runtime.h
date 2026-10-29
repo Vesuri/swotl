@@ -151,6 +151,10 @@ void rt_video_frame(void);      /* INT 33h AX=3: the game's frame boundary */
  * builds and the host leave it 0. */
 extern volatile uint32_t rt_fields;
 extern uint8_t rt_frame_cap;
+/* Production platforms set rt_mouse_scale: in flight, AX=0Bh motion is scaled
+ * to a fixed frame time (input.c MOUSE_FRAME_MS). Sync builds and the host
+ * leave it 0. */
+extern uint8_t rt_mouse_scale;
 /* Where a field task may interrupt the display path: empty; a test seam
  * (tests/test_display_queue.py runs the field task there). */
 #define RT_FIELD_POINT() ((void)0)
@@ -260,6 +264,7 @@ struct rt_pointer {
     int8_t hot_x, hot_y;
 };
 extern struct rt_pointer rt_pointer;
+extern uint32_t rt_pointer_field;    /* rt_fields at the last present with `shown` */
 extern uint16_t rt_pointer_ds;       /* DGROUP, from the tracker's exit (HLE pointer_tracked); 0 before */
 extern uint8_t rt_pointer_sprite;    /* set by a platform that shows the pointer as sprites */
 void rt_pointer_mask(uint8_t *frame);

@@ -299,9 +299,48 @@ static int16_t mouse_x = 320, mouse_y = 100;
 int16_t rt_mickey_x, rt_mickey_y;     /* motion since the last AX=0Bh (the pointer lead reads it) */
 static uint8_t mouse_buttons;
 
+/* Flight scaling (production, rt_mouse_scale): the flight takes each frame's
+ * AX=0Bh motion as the stick, so deflection is mouse speed times frame time.
+ * Scaled, AX=0Bh returns the motion over MOUSE_FRAME_MS instead: motion times
+ * MOUSE_FRAME_MS over the game-clock time since the last AX=0Bh, remainders
+ * carried. The same feel at any frame rate; tweak MOUSE_FRAME_MS for
+ * sensitivity (larger: more). Not while the guest's pointer was shown within
+ * MOUSE_POINTER_FIELDS (menus and film room move a pointer by the motion). */
+#define MOUSE_FRAME_MS 100
+#define MOUSE_POINTER_FIELDS 25
+#define MOUSE_MOTION_MAX 2048            /* keeps the scaled product in 32 bits */
+uint8_t rt_mouse_scale;
+static uint32_t mouse_ticks;             /* IRQ0 deliveries at the last AX=0Bh */
+static int32_t mouse_rest_x, mouse_rest_y;
+
 static int16_t clamp(int32_t v, int16_t max)
 {
     return v < 0 ? 0 : v > max ? max : (int16_t)v;
+}
+
+static int16_t scale(int16_t m, int32_t *rest, int32_t frame, int32_t elapsed)
+{
+    int32_t n = (m < -MOUSE_MOTION_MAX ? -MOUSE_MOTION_MAX : m > MOUSE_MOTION_MAX ? MOUSE_MOTION_MAX : m) *
+                frame + *rest;
+    int32_t q = n / elapsed;
+    *rest = n - q * elapsed;
+    return (int16_t)q;
+}
+
+/* AX=0Bh's motion, scaled in flight; both in 1/256 game-clock ticks. */
+static void mouse_scale(void)
+{
+    uint32_t now = rt_irq0_runs + rt_irq0_bios;
+    uint32_t ticks = now - mouse_ticks;
+    mouse_ticks = now;
+    if (!rt_mouse_scale || rt_fields - rt_pointer_field <= MOUSE_POINTER_FIELDS) {
+        mouse_rest_x = mouse_rest_y = 0;
+        return;
+    }
+    int32_t frame = (int32_t)(MOUSE_FRAME_MS * (1193182u * 256 / 1000) / rt_pit_divisor);
+    int32_t elapsed = (int32_t)(ticks ? ticks : 1) * 256;
+    rt_mickey_x = scale(rt_mickey_x, &mouse_rest_x, frame, elapsed);
+    rt_mickey_y = scale(rt_mickey_y, &mouse_rest_y, frame, elapsed);
 }
 
 static void mouse_poll(void)
@@ -328,6 +367,7 @@ void rt_int33(void)
         rt_pointer_open();
         rt_mickey_x = rt_mickey_y = 0;
         rt_pointer_close();
+        mouse_rest_x = mouse_rest_y = 0;
         break;
     case 0x0003:  /* position and buttons */
         rt_r.bx = mouse_buttons;
@@ -341,9 +381,10 @@ void rt_int33(void)
         rt_video_frame();
         break;
     case 0x000b:  /* motion since last call */
+        rt_pointer_open();
+        mouse_scale();
         rt_r.cx = (uint16_t)rt_mickey_x;
         rt_r.dx = (uint16_t)rt_mickey_y;
-        rt_pointer_open();
         rt_pointer_read(rt_mickey_x, rt_mickey_y);
         rt_mickey_x = rt_mickey_y = 0;
         rt_pointer_close();

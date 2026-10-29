@@ -59,9 +59,10 @@
  Playing:
  --------
  Keyboard and mouse work as in the PC original; keys are at their US
- keyboard positions. See the original manual for the controls. A joystick in
- port 2 works as the cursor keys; its two buttons work as the left and right
- mouse buttons. Set the Custom2 tooltype to 1 for a proportional (analog)
+ keyboard positions. See the original manual for the controls. In flight
+ the mouse is equally sensitive at any frame rate (as the original at 10
+ frames per second). A joystick in port 2 works as the cursor keys; its two
+ buttons work as the left and right mouse buttons. Set the Custom2 tooltype to 1 for a proportional (analog)
  joystick in port 2 instead: the game calibrates it at start, and Alt+C
  recalibrates it in flight. Quit from the game's menus. The WHDLoad QuitKey
  (Help) quits immediately.

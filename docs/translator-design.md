@@ -277,7 +277,12 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   (`rt_fields`), waiting with the service's tick hold lifted so IRQ0 runs; the
   game's loop never reads the retrace, so on a fast CPU it would outpace the
   display, and each frame takes at least a field of mouse motion (AX=0Bh, the
-  flight stick). Sync builds and the host leave it off. Mode set marks the whole
+  flight stick). Sync builds and the host leave it off. Flight mouse scaling
+  (production Amiga, `rt_mouse_scale`; user 2026-10-29): AX=0Bh returns the
+  motion times `MOUSE_FRAME_MS` (input.c, 100 ms, the tweakable sensitivity)
+  over the game-clock time since the last AX=0Bh, remainders carried, so the
+  stick's deflection follows mouse speed alone at any frame rate; off while the
+  guest's pointer was shown within 25 fields (menus, film room). Mode set marks the whole
   frame; DAC block sets go to `plat_palette` at once. No frame is read to
   find changes. Amiga (machine taken over, `Swotl.cpp`): an 8-plane copper
   display (framework `CopperList`/`Bitmap`), Kalms `c2p1x1_8_c5_bm` per

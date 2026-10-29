@@ -657,6 +657,7 @@ int amiga_guest_open(void)
         return 0;
     }
     rt_frame_cap = 1;       /* one game frame per field (runtime.h) */
+    rt_mouse_scale = 1;     /* flight mouse at a fixed frame time (runtime.h) */
 #endif
     if (tfh) load_tfh();
     else plat_log("SWOTL sound FM");
