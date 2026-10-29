@@ -73,6 +73,19 @@
  version 0.90 (28.10.2026):
  - initial release
 
+ version 0.91 (29.10.2026):
+ - data cache on under WHDLoad on 68040 and 68060, and on a 68030 with the
+   WHDLoad MMU option
+ - fixed an Access Fault under WHDLoad when creating a campaign, and when
+   saving a tour pilot or film
+ - mouse read when the game asks for it: steady flight control at high
+   frame rates
+ - in flight the mouse is equally sensitive at any frame rate
+ - vertical mouse movement as sensitive as horizontal, as on a real PC
+ - NTSC machines get a centred NTSC display with correct timing and sound
+ - joystick in port 2: works as the cursor keys, buttons as the mouse
+   buttons; Custom2 (ANALOGJOYSTICK) for a proportional joystick
+
 
  Contact:
  --------
