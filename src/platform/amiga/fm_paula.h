@@ -1,7 +1,7 @@
 /* FM re-hoster (docs/sound-plan.md): the AdLib register file as the game
  * wrote it (runtime.h rt_opl) -> commands for the four Paula voices, once
- * per PAL field. Plain C, no Amiga headers: tools/fm_check.cpp runs it on
- * the host against Nuked OPL. */
+ * per field (PAL, or NTSC with fm_ntsc). Plain C, no Amiga headers:
+ * tools/fm_check.cpp runs it on the host against Nuked OPL. */
 #ifndef SWOTL_FM_PAULA_H
 #define SWOTL_FM_PAULA_H
 
@@ -22,6 +22,8 @@ struct fm_voice {
     int8_t channel;         /* OPL channel, -1 none */
 };
 
+/* Set before fm_init and tfh_init: 1 for NTSC fields and Paula clock, 0 (default) PAL. */
+extern uint8_t fm_ntsc;
 /* Loop storage (Chip RAM on the Amiga): `bytes` a multiple of 4 pages. */
 void fm_init(int8_t *pool, uint32_t bytes);
 /* One field: `opl` the 256 register bytes, `keyon` per channel a count of

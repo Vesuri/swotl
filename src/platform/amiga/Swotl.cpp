@@ -12,6 +12,7 @@ extern "C" {
 #include "runtime.h"
 #include "platform.h"
 #include "amiga_platform.h"
+#include "fm_paula.h"
 }
 #include "Swotl.h"
 #include "DisplayQueue.h"
@@ -95,6 +96,8 @@ void __attribute__((noinline)) amiga_display_shown(uint32_t serial) {
 static uint16_t beamLine() {
     return (uint16_t)((*(volatile uint32_t*)vposrPointer >> 8) & 511);
 }
+
+uint8_t amiga_ntsc = 0;
 
 Swotl* Swotl::application = 0;
 Swotl* Swotl::active = 0;
@@ -182,6 +185,8 @@ Swotl::Swotl() :
         return;
     }
     AmigaHardware::hasAGAChipSet = true;
+    amiga_ntsc = (GfxBase->DisplayFlags & NTSC) != 0;
+    fm_ntsc = amiga_ntsc;
 
     display = new DisplayState{};
     if (!display) return;
@@ -205,7 +210,7 @@ Swotl::Swotl() :
             display->bm[b].Planes[plane] = display->screen[b] + plane * PLANE_BYTES;
         }
         uint32_t at = display->list[b]->setPlayfield(1, SCREEN_WIDTH, SCREEN_HEIGHT,
-            SCREEN_PLANES, false, false, false, false, false, true, 0x9c);
+            SCREEN_PLANES, false, false, false, false, false, true, AMIGA_TOP_LINE + SCREEN_HEIGHT / 2);
         // The framework's AGA fetch ($20-$98) takes the DMA slots of sprites
         // 3-7; FMODE 3 fetches the same 320 pixels at the same place from $38.
 #ifndef SWOTL_PLANT_FETCH_WINDOW  // replay plant (tests/amiga_replay.py)

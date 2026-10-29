@@ -73,6 +73,7 @@ uint32_t plat_mouse(int32_t *, int32_t *);
 uint16_t rt_key_ring[RT_KEY_RING];
 uint8_t rt_irq_ring[RT_IRQ_RING];
 unsigned rt_key_tail, rt_irq_tail, raises;
+uint8_t amiga_ntsc;
 }
 volatile uint8_t sdr, cra, pra = 255;
 volatile uint16_t joy, pot = 65535, potgo = 65535;
@@ -112,6 +113,27 @@ static void edge(unsigned wire, unsigned scan, unsigned irq) {
     (void)irq;
 #endif
 }
+// A held key's repeats over 1.5 s of fields, PAL (50 Hz) or NTSC (60 Hz):
+// the first after the same time (within a field), the same count.
+static void repeat(uint8_t ntsc) {
+    amiga_ntsc = ntsc;
+    unsigned hz = ntsc ? 60 : 50, first = 0, n = 0;
+    edge(0x77, 0x1c, 9);
+    unsigned k = rt_key_tail;
+    for (unsigned f = 1; f <= hz * 3 / 2; ++f) {
+        Input::verticalBlank();
+        if (rt_key_tail != k) {
+            assert(rt_key_tail == k + 1 && rt_key_ring[k % RT_KEY_RING] == 0x1c);
+            if (!first) first = f;
+            ++n;
+            k = rt_key_tail;
+        }
+    }
+    edge(0x76, 0x9c, 0x89);
+    printf("repeat %u Hz: first %u fields, %u\n", hz, first, n);
+    assert(first == (ntsc ? 35u : 29u) && n == 11);   // 580 and 583 ms
+    amiga_ntsc = 0;
+}
 static void mouse(unsigned counters, unsigned buttons, int dx, int dy) {
     joy = counters;
     pra = buttons & 1 ? 0xbf : 0xff;
@@ -132,6 +154,7 @@ int main() {
     edge(0x77, 0x1c, 9); edge(0x76, 0x9c, 0x89);
     edge(0x61, 0x14b, 9); edge(0x60, 0x1cb, 0x89);
     edge(0x3f, 0x2a, 9); edge(0x3e, 0xaa, 0x89);
+    repeat(0); repeat(1);
     // Both wrap directions, then every combination of three hardware buttons.
     mouse(0x0302, 0, 8, 9);
     mouse(0xfcfe, 1, -4, -7);

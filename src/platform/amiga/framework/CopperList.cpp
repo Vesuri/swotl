@@ -190,7 +190,8 @@ uint32_t CopperList::setPlayfield(uint32_t listIndex, uint16_t width, uint16_t h
     data_[listIndex++] = copperMove(bplcon0, (uint16_t)(((bitplaneCount & 8) << 1) | ((bitplaneCount & 7) << PLNCNTSHFT) | (hires ? MODE_640 : 0) | (interlace ? INTERLACE : 0) | (dualPlayfield ? DBLPF : 0) | (holdAndModify ? HOLDNMODIFY : 0) | USE_BPLCON3));
     data_[listIndex++] = copperMove(diwstrt, (uint16_t)(((centerY - halfHeight) << 8) | (0x121 - (width >> (hires ? 2 : 1)))));
     data_[listIndex++] = copperMove(diwstop, (uint16_t)(((centerY + halfHeight) << 8) | (0x21 + (width >> (hires ? 2 : 1)))));
-    data_[listIndex++] = copperMove(diwhigh, 0x2100);
+    // H8 of the stop; V8 of start and stop (an NTSC window ends above line 256)
+    data_[listIndex++] = copperMove(diwhigh, (uint16_t)(0x2000 | (((centerY + halfHeight) >> 8) << 8) | ((centerY - halfHeight) >> 8)));
     if (AmigaHardware::hasAGAChipSet) {
         data_[listIndex++] = copperMove(ddfstrt, (uint16_t)(0x48 - halfFetchWidth + (hires ? 16 : 0)));
         data_[listIndex++] = copperMove(ddfstop, (uint16_t)(0x70 + halfFetchWidth + (hires ? 32 : 0)));

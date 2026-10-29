@@ -19,7 +19,7 @@ class Voice(C.Structure):
                 ('restart', C.c_uint8), ('channel', C.c_int8)]
 
 
-def resource():
+def resource(sustain=0xffff):
     data = bytearray(4)
     entries = []
     for k in range(13):
@@ -27,7 +27,7 @@ def resource():
         struct.pack_into('>I', d, 12, 4 if k in (0, 10) else 0)
         struct.pack_into('>H', d, 18, 800)
         d[22:28] = bytes([255, 64, 64, 255, 64, 32])
-        struct.pack_into('>H', d, 28, 0xffff)
+        struct.pack_into('>H', d, 28, sustain)
         d[30:33] = bytes([255, 8, 0])
         for rid, payload in [(1001 + k, d), (2001 + k, bytes([k + 1] * 16))]:
             entries.append((rid, len(data)))
@@ -124,14 +124,34 @@ def checks(lib):
         for k in range(3):
             if mask & (7 << (3*k)) == 7 << (3*k):
                 assert v[k].volume == 0
-    print('TFH: 117 slot/id mappings, segments/envelopes/restarts/pitch, parser, 512 FM masks: ok')
+    # A timed sustain (60 fields in the file, at 60 Hz): one second held on
+    # PAL (50 fields) and NTSC (60), the key held throughout.
+    raw = resource(60)
+    rsc = (C.c_uint8 * len(raw)).from_buffer_copy(raw)
+    ntsc = C.c_uint8.in_dll(lib, 'fm_ntsc')
+    held = []
+    for mode in (0, 1):
+        ntsc.value = mode
+        lib.tfh_init(rsc, len(raw), chip)
+        ids[:] = [0, 255, 255]
+        starts[:] = [1, 0, 0]
+        opl[0xa0], opl[0xb0] = 0, 0x20
+        volumes = []
+        for _ in range(100):
+            lib.tfh_field(opl, ids, starts, v)
+            volumes.append(v[0].volume)
+        held.append(volumes.count(volumes[2]))
+    ntsc.value = 0
+    assert held == [51, 61], f'sustain fields PAL/NTSC {held}'
+    print('TFH: 117 slot/id mappings, segments/envelopes/restarts/pitch, parser, 512 FM masks, NTSC sustain: ok')
 
 
 def main():
     plants = {'mask': ('fm_paula.c', 'taken = mute_mask;', 'taken = 0; (void)mute_mask;'),
               'routing': ('tfh_paula.c', 'mask | 7u <<', 'mask | 3u <<'),
               'restart': ('tfh_paula.c', 'p->segment == 0;', 'p->segment == 9;'),
-              'volume': ('tfh_paula.c', ' / VOLUME_FULL);', ' / (VOLUME_FULL * 2));')}
+              'volume': ('tfh_paula.c', ' / VOLUME_FULL);', ' / (VOLUME_FULL * 2));'),
+              'ntsc': ('tfh_paula.c', '|| fm_ntsc ?', '|| 0 ?')}
     cases = plants.items() if '--sabotage' in sys.argv else [('normal', None)]
     for name, plant in cases:
         with tempfile.TemporaryDirectory(prefix='swotl-tfh-') as tmp:

@@ -129,8 +129,8 @@ int tfh_init(const uint8_t *rsc, uint32_t size, int8_t *chip)
             s->step[i] = d[23 + 3 * i];
             s->level[i] = d[24 + 3 * i];
         }
-        /* fields at 60 Hz in the file: PAL 5/6 */
-        s->sustain = be16(d + 28) == FOREVER ? FOREVER : (uint16_t)(be16(d + 28) * 5u / 6);
+        /* fields at 60 Hz in the file: PAL 5/6, NTSC as they are */
+        s->sustain = be16(d + 28) == FOREVER || fm_ntsc ? be16(d + 28) : (uint16_t)(be16(d + 28) * 5u / 6);
         s->rate[2] = d[30];
         s->step[2] = d[31];
         s->level[2] = d[32];

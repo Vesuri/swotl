@@ -2,6 +2,7 @@
 #include <exec/memory.h>
 extern "C" {
 #include "runtime.h"
+#include "amiga_platform.h"
 }
 #include "Pointer.h"
 #include "AmigaHardware.h"
@@ -14,10 +15,10 @@ extern "C" {
 #define SPRITE_FILL 1               // sprite 6: colour 2
 #define POINTER_TRANSPARENT 0xfd
 #define POINTER_FILL 0xfe
-// Beam position of pixel (0, 0): DIWSTRT $3881 (setPlayfield, centre line $9C),
-// a sprite's HSTART $80 shows at the window's first pixel.
+// Beam position of pixel (0, 0): DIWSTRT $3881 PAL, $2C81 NTSC (setPlayfield,
+// AMIGA_TOP_LINE), a sprite's HSTART $80 shows at the window's first pixel.
 #define SPRITE_X 0x80
-#define SPRITE_Y 0x38
+#define SPRITE_Y AMIGA_TOP_LINE
 
 extern "C" {
 // The shown buffer's sprites 4 and 6 and the colour in entry F9h (-1: none),

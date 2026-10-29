@@ -38,7 +38,7 @@ Music stays enabled through the FM re-hoster in both effect modes.
   offset); each resource a word length, 2 unused bytes, the payload.
   Descriptors 1001–1013 (33 bytes): +12 loop offset (0 one-shot, the loop
   runs to the sample end), +18 period, +20 priority, +22/+25 attack/decay
-  rate, step, level, +28 sustain (60 Hz fields, FFFFh forever; PAL ×5/6),
+  rate, step, level, +28 sustain (60 Hz fields, FFFFh forever; PAL ×5/6, NTSC as is),
   +30 release. Samples 2001–2013: signed 8-bit PCM. Envelope once a field:
   acc += rate, over 255 one step. Engine period 800 → 320 with airspeed.
 - Effects use 2-op FM only (never additive), waveforms 0-3, feedback 7 in

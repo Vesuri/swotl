@@ -10,11 +10,11 @@ slave: [whdload.md](whdload.md).
 
 | Item | Value |
 | --- | --- |
-| Machine | PAL A1200, 68020, AGA required (`GFXF_AA_LISA` after `SetPatch`), L8 |
+| Machine | PAL or NTSC A1200, 68020, AGA required (`GFXF_AA_LISA` after `SetPatch`), L8 |
 | Memory | 2 MiB Chip for DMA data; Fast RAM required (D15, [translator-design.md](translator-design.md)); default 4 KiB Shell stack, L52 |
 | Launch | Shell, Workbench (L84: the icon's tool types and drawer) and a WHDLoad slave (kickemu, INITAGA; [whdload.md](whdload.md)), the same executable |
 | Display | 320×200, 8 non-interleaved planes, 256 colours from the 18-bit VGA palette, L31 |
-| Timebase | PAL vblank (50 Hz) for display, input and audio; PIT channel 0 on a CIA-B timer (D8) |
+| Timebase | vblank (50 Hz PAL, 60 Hz NTSC: graphics' `DisplayFlags`, `amiga_ntsc`) for display, input and audio; PIT channel 0 on a CIA-B timer (D8) |
 
 ## Layers
 
@@ -118,7 +118,7 @@ by `Disable`/`Enable` (L20).
 ## Timing
 
 Game time is the original's own PIT channel 0 at the rate the guest programs
-(`plat_timer_rate`: CIA latch = PIT divisor scaled to the PAL E-clock), one posted INT 08h
+(`plat_timer_rate`: CIA latch = PIT divisor scaled to the PAL or NTSC E-clock), one posted INT 08h
 per period (L44). Publication never feeds back into simulation; missed slots are not queued
 (L43). `BENCH` replaces the timer by ticks from guest progress for deterministic benchmarks
 ([speed-plan.md](speed-plan.md) §4).

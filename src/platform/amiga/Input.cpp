@@ -6,6 +6,7 @@
 extern "C" {
 #include "runtime.h"
 #include "platform.h"
+#include "amiga_platform.h"
 #ifdef SWOTL_REPLAY
 uint32_t replay_mouse(int32_t*, int32_t*);
 #endif
@@ -30,10 +31,10 @@ static const uint16_t rawToScan[0x68] = {
 #define CAPS_LOCK 0x62
 
 // PC typematic defaults: the held key repeats after 500 ms at 10.9 per
-// second; fields are 1/50 s.
-#define REPEAT_DELAY_FIELDS 25
+// second; fields are 1/50 s (PAL) or 1/60 s (NTSC).
+#define REPEAT_DELAY_FIELDS (amiga_ntsc ? 30 : 25)
 #define REPEAT_RATE_TENTHS 109
-#define FIELD_TENTHS 500
+#define FIELD_TENTHS (amiga_ntsc ? 600 : 500)
 
 extern "C" {
 volatile uint32_t amiga_mouse_reads = 0;    // plat_mouse calls: the guest's INT 33h requests

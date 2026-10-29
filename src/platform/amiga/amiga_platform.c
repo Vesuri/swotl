@@ -269,12 +269,13 @@ int32_t plat_file_info(const char *path, struct plat_file_info *info)
 }
 
 /* PIT channel 0 on a CIA-B timer (D8): one CIA period per PIT period, the
- * latch scaled from the PIT clock (1193182 Hz) to the PAL E-clock (709379 Hz,
- * 35469/59659 within 1e-5). The interrupt runs the guest handler at once when
- * the runtime allows it (docs/irq-plan.md I6), with EXTER acknowledged and
- * the mask lowered to 2 so the vertical blank preempts a long tick (a nested
- * tick is posted); else it posts vector 08h for the next poll point. Replay
- * builds post only (deliveries at the recorded polls). */
+ * latch scaled from the PIT clock (1193182 Hz) to the E-clock: PAL 709379 Hz,
+ * 35469/59659 within 1e-5; NTSC 715909 Hz, 3/5 (both colour clock / 5). The
+ * interrupt runs the guest handler at once when the runtime allows it
+ * (docs/irq-plan.md I6), with EXTER acknowledged and the mask lowered to 2 so
+ * the vertical blank preempts a long tick (a nested tick is posted); else it
+ * posts vector 08h for the next poll point. Replay builds post only
+ * (deliveries at the recorded polls). */
 #define CIAB ((volatile struct CIA *)0xbfd000)
 static struct Library *cia_base = 0;
 static struct Interrupt cia_interrupt;
@@ -322,7 +323,7 @@ static ULONG cia_tick(void)
 
 static void cia_load(uint32_t divisor)
 {
-    uint32_t latch = (divisor * 35469u + 29829u) / 59659u;
+    uint32_t latch = amiga_ntsc ? (divisor * 3u + 2u) / 5u : (divisor * 35469u + 29829u) / 59659u;
     volatile UBYTE *cr = cia_bit == CIAICRB_TA ? &CIAB->ciacra : &CIAB->ciacrb;
     volatile UBYTE *lo = cia_bit == CIAICRB_TA ? &CIAB->ciatalo : &CIAB->ciatblo;
     volatile UBYTE *hi = cia_bit == CIAICRB_TA ? &CIAB->ciatahi : &CIAB->ciatbhi;

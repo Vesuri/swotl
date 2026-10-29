@@ -142,7 +142,9 @@ them here. Structure for this port: [amiga-arch.md](amiga-arch.md). Elsewhere:
 
 31. **Reuse SL's proven mode exactly:** `setPlayfield(1,320,200,8,true,false,false,false,
     false,true,0x9c)` → FMODE 3, interleaved 320-byte rows, BPL1/2MOD 280, DIWSTRT `$3881`,
-    DIWSTOP `$00c1`, DIWHIGH `$2100` (window `$38..$ff`), then validate those words. — the
+    DIWSTOP `$00c1`, DIWHIGH `$2100` (window `$38..$ff`), then validate those words. NTSC:
+    centre `$90`, window `$2C..$F3`, DIWHIGH `$2000` (the framework wrote `$2100` for any
+    window, V8 set). — the
     framework's AGA DDF branch is unverified by derivation (`[ASSUMED]` in VT); SL's call is
     the only exercised one. — *SL `docs/rendering.md`, `validate_framework_view`;
     git:56032f5 VT `docs/amiga-arch.md`*

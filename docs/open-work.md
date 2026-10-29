@@ -92,7 +92,8 @@ speed work: [speed-plan.md](speed-plan.md).
     frame-time scaling.
 43. Analogue joystick: not implemented. Needs user decisions (port and
     hardware, mapping onto the game's velocity stick, calibration).
-44. NTSC: screen not centred. Also E-clock timer scaling, Paula periods,
-    60 Hz fields.
+44. NTSC: window, CIA timer, Paula clock, FM and TFH field rates and key
+    repeat follow graphics' NTSC flag (checked in FS-UAE). Confirm the
+    centring on the tester's NTSC machine.
 45. EGA for non-AGA Amigas: out of scope (VGA only); awaiting the user's
     decision to decline.

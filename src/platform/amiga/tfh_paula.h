@@ -13,7 +13,8 @@
 /* Chip bytes the samples of `rsc` (sfx.rsc, `size` bytes) need; 0: not a
  * TFH sfx.rsc. */
 uint32_t tfh_chip_bytes(const uint8_t *rsc, uint32_t size);
-/* The samples into `chip` (tfh_chip_bytes of it); 0 on success. */
+/* The samples into `chip` (tfh_chip_bytes of it), fields for fm_ntsc; 0 on
+ * success. */
 int tfh_init(const uint8_t *rsc, uint32_t size, int8_t *chip);
 /* One field: `id`, `starts` per slot as the HLE sfx_start reports them
  * (runtime.h rt_sfx_id, rt_sfx_starts), `opl` the register file. Fills

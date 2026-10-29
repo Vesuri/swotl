@@ -84,8 +84,11 @@ static const uint8_t kslshift[4] = {8, 1, 2, 0};
 /* register offset of each channel's modulator; its carrier is 3 above */
 static const uint8_t op_off[9] = {0, 1, 2, 8, 9, 10, 16, 17, 18};
 
-#define RATE_FIELD 31869u           /* envelope clock / 4 per field, 8.8 */
-#define PERIOD_NUM 149617386u       /* Paula clock * 2^21 / OPL rate */
+/* fm_init sets them for PAL or NTSC (fm_ntsc) */
+#define RATE_FIELD_PAL 31869u       /* envelope clock / 4 per field, 8.8 */
+#define RATE_FIELD_NTSC 26592u
+#define PERIOD_NUM_PAL 149617386u   /* Paula clock * 2^21 / OPL rate */
+#define PERIOD_NUM_NTSC 150994649u
 #define PERIOD_MIN 124
 #define ATT_SILENT 224              /* voltab ends */
 #define STICKY 16                   /* 3 dB before a voice changes channel */
@@ -96,7 +99,8 @@ static const uint8_t op_off[9] = {0, 1, 2, 8, 9, 10, 16, 17, 18};
 #define NOISE_BYTES 4096            /* per table; feedback 6 and 7 */
 #define NOISE_SETTLE 512
 #define NOISE_X (0x1fbu << 4)       /* odd F-number avoids short phase/feedback locking */
-#define NOISE_PERIOD 18264u         /* Paula clock / OPL rate, 8.8 */
+#define NOISE_PERIOD_PAL 18264u     /* Paula clock / OPL rate, 8.8 */
+#define NOISE_PERIOD_NTSC 18432u
 #define NOISE_MOD6 24               /* modulator attenuation below which feedback 6 is chaotic */
 #define NOISE_MOD7 56               /* and feedback 7 (10.5 dB) */
 #define CACHE 64
@@ -106,6 +110,9 @@ static const uint8_t op_off[9] = {0, 1, 2, 8, 9, 10, 16, 17, 18};
 #define FB_SETTLE 32                /* samples before a feedback loop's period */
 
 enum { ATTACK, DECAY, SUSTAIN, RELEASE };
+
+uint8_t fm_ntsc = 0;
+static uint32_t rate_field, period_num, noise_period;
 
 struct op {
     uint32_t rout;                  /* envelope attenuation, 8.8 */
@@ -174,7 +181,7 @@ static void build_steps(void)
         if (h >= 15) {
             lo = 0;
         }
-        steps[rate] = h >= 12 ? ((4u + lo) * RATE_FIELD) << (h - 12) : ((4u + lo) * RATE_FIELD) >> (12 - h);
+        steps[rate] = h >= 12 ? ((4u + lo) * rate_field) << (h - 12) : ((4u + lo) * rate_field) >> (12 - h);
     }
 }
 
@@ -407,6 +414,9 @@ static void render_noise(int8_t *dst, uint8_t fb)
 void fm_init(int8_t *p, uint32_t bytes)
 {
     uint16_t i;
+    rate_field = fm_ntsc ? RATE_FIELD_NTSC : RATE_FIELD_PAL;
+    period_num = fm_ntsc ? PERIOD_NUM_NTSC : PERIOD_NUM_PAL;
+    noise_period = fm_ntsc ? NOISE_PERIOD_NTSC : NOISE_PERIOD_PAL;
     build_steps();
     build_wave();
     pool = p;
@@ -573,16 +583,16 @@ static void voice_cmd(struct fm_voice *v, uint8_t i, const uint8_t *opl, int8_t 
         if (m->x != x) {
             if (m->key & NOISE_KEY) {
                 uint32_t xm = x * mt[opl[0x20 + mo] & 15] >> 1;
-                period = xm ? (NOISE_X * NOISE_PERIOD / 256 + xm / 2) / xm : 0xffff;
+                period = xm ? (NOISE_X * noise_period / 256 + xm / 2) / xm : 0xffff;
             } else {
                 lg = (uint8_t)((m->key >> 25) & 15);
                 d = x * m->g;
                 /* Check before shifting: high pitches can overflow 32 bits. */
-                if (d > (PERIOD_NUM / PERIOD_MIN >> lg)) {
+                if (d > (period_num / PERIOD_MIN >> lg)) {
                     period = 0;
                 } else {
                     d <<= lg;
-                    period = (PERIOD_NUM + d / 2) / d;
+                    period = (period_num + d / 2) / d;
                 }
                 if (period < PERIOD_MIN || (period >= 2 * PERIOD_MIN && ((m->key >> 25) & 15) < LOOP_LOG)) {
                     period = 0;
@@ -612,7 +622,7 @@ static void voice_cmd(struct fm_voice *v, uint8_t i, const uint8_t *opl, int8_t 
     if (fb >= NOISE_FB && raw < (fb == 7 ? NOISE_MOD7 : NOISE_MOD6)) {
         /* chaotic: the noise table at the modulator's pitch */
         uint32_t xm = x * mt[opl[0x20 + mo] & 15] >> 1;
-        period = xm ? (NOISE_X * NOISE_PERIOD / 256 + xm / 2) / xm : 0xffff;
+        period = xm ? (NOISE_X * noise_period / 256 + xm / 2) / xm : 0xffff;
         if (period < PERIOD_MIN) {
             period = PERIOD_MIN;
         }
@@ -631,9 +641,9 @@ static void voice_cmd(struct fm_voice *v, uint8_t i, const uint8_t *opl, int8_t 
     m->g = g;
     for (lg = LOOP_LOG; lg >= 3; --lg) {
         d = x * g;
-        if (d > (PERIOD_NUM / PERIOD_MIN >> lg)) continue;
+        if (d > (period_num / PERIOD_MIN >> lg)) continue;
         d <<= lg;
-        period = (PERIOD_NUM + d / 2) / d;
+        period = (period_num + d / 2) / d;
         if (period >= PERIOD_MIN) {
             break;
         }
