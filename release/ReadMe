@@ -18,7 +18,9 @@
  6.5 MB OtherMem, including its Kickstart image; 8 MB Fast RAM is enough.
  With 8 MB, PreLoad can hold only part of the game files and the screen
  blanks briefly while the rest load; about 12 MB Fast RAM preloads them all.
- Flight is slow on a 68020; a 68030 or better is recommended.
+ Flight is slow on a 68020; a 68030 or better is recommended. The data cache
+ needs the MMU: WHDLoad uses it on a 68040 or 68060, on a 68030 only with the
+ WHDLoad option MMU (add the tooltype MMU to the icon).
 
  The game requires an installed A600/A1200/A4000 Kickstart 3.1 image.
  The kickstart image must be located in the directory "Devs:Kickstarts" and

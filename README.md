@@ -17,7 +17,8 @@ Current Amiga release: **0.90 (28.10.2026)**.
 ## Requirements and installation
 
 - PAL AGA Amiga, 68020 or better; **68030 or better recommended**. Flight is slow
-  on a 68020; the world still runs at real-time speed.
+  on a 68020; the world still runs at real-time speed. On a 68030, add the WHDLoad
+  tooltype `MMU` so the data cache is used (68040 and 68060 use it without).
 - **2 MB Chip RAM and 8 MB Fast RAM**; about 12 MB Fast RAM lets PreLoad hold all
   game files.
 - WHDLoad 17+, Installer 43+, and a supported Kickstart 3.1 image with its RTB.
