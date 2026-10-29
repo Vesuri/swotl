@@ -86,7 +86,7 @@ speed work: [speed-plan.md](speed-plan.md).
 ## User report (A1200, 68060, 2026-10-29)
 
 42. Speed and mouse: caches, per-request mouse counters with the field cap
-    and flight mouse scaling to a 100 ms frame are in; the cap above 50 fps
+    and flight mouse scaling to a 300 ms frame are in; the cap above 50 fps
     and the scaling are proven only by `tests/test_display_queue.py` and
     `tests/test_mouse_scale.py`. Confirm on the tester's 68060 and the
     68020; tune `MOUSE_FRAME_MS` (input.c) by feel.

@@ -279,7 +279,7 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   display, and each frame takes at least a field of mouse motion (AX=0Bh, the
   flight stick). Sync builds and the host leave it off. Flight mouse scaling
   (production Amiga, `rt_mouse_scale`; user 2026-10-29): AX=0Bh returns the
-  motion times `MOUSE_FRAME_MS` (input.c, 100 ms, the tweakable sensitivity)
+  motion times `MOUSE_FRAME_MS` (input.c, 300 ms, the tweakable sensitivity)
   over the game-clock time since the last AX=0Bh, remainders carried, so the
   stick's deflection follows mouse speed alone at any frame rate; off while the
   guest's pointer was shown at the last present or within 25 fields (menus,

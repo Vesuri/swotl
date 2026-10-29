@@ -23,6 +23,7 @@ MOUSE_POINTER_FIELDS did. Plants
 """
 import argparse
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -33,7 +34,8 @@ sys.path.insert(0, str(ROOT / "tests"))
 import host_run as H  # noqa: E402
 
 DIVISOR = 5041                       # SPAZ's 236.7 Hz
-FRAME = 100 * (1193182 * 256 // 1000) // DIVISOR / 256   # MOUSE_FRAME_MS in ticks
+MS = int(re.search(r'#define MOUSE_FRAME_MS (\d+)', (ROOT / 'src/runtime/input.c').read_text())[1])
+FRAME = MS * (1193182 * 256 // 1000) // DIVISOR / 256   # MOUSE_FRAME_MS in ticks
 PLANTS = {
     "rest": ("input.c", "    *rest = n - q * elapsed;", "    *rest = 0;"),
     "ticks": ("input.c", "    mouse_ticks = now;\n", ""),
@@ -137,7 +139,7 @@ def cases(m):
     want("no tick", m.int33(0xB, 2, 0, 0)[0], int(2 * FRAME))
     # The pointer shown within 25 fields: motion as counted.
     m.put("rt_pointer_field", 990, 4)
-    want("pointer shown", m.int33(0xB, 7, 3, 70), (7, 6))
+    want("pointer shown", m.int33(0xB, 7, 3, 5), (7, 6))
     # The present that shows a pointer stamps rt_pointer_field.
     m.put("rt_pointer_field", 0, 4)
     m.put("rt_fields", 2000, 4)
@@ -151,10 +153,10 @@ def cases(m):
     # Off: the reference's motion.
     m.put("rt_pointer_field", 0, 4)
     m.put("rt_mouse_scale", 0, 1)
-    want("off", m.int33(0xB, 7, -3, 70), (7, -6))
+    want("off", m.int33(0xB, 7, -3, 5), (7, -6))
     # Vertical counts 1:1 (production Amiga) instead of DOSBox-X's two.
     m.put("rt_mickeys_y", 1, 1)
-    want("vertical 1:1", m.int33(0xB, 7, -3, 70), (7, -3))
+    want("vertical 1:1", m.int33(0xB, 7, -3, 5), (7, -3))
     m.put("rt_mickeys_y", 2, 1)
     return out
 

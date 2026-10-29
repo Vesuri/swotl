@@ -42,7 +42,7 @@ installation instructions.
 
 Keyboard and mouse work as in the PC original, with keys at their US keyboard
 positions; see the original manual. In flight the mouse's sensitivity is the
-same at any frame rate (as the original at 10 fps). A joystick in port 2 works as the cursor keys,
+same at any frame rate (as the original at about 3 fps). A joystick in port 2 works as the cursor keys,
 its two buttons as the left and right mouse buttons. With the `Custom2` tooltype
 (1), or `ANALOGJOYSTICK` without WHDLoad, port 2 takes a proportional (analog)
 joystick instead: the game calibrates it at start, and Alt+C recalibrates in

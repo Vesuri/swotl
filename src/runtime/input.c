@@ -309,7 +309,7 @@ static uint8_t mouse_buttons;
  * sensitivity (larger: more). Not while the last present showed the guest's
  * pointer (a still menu presents nothing) or one within MOUSE_POINTER_FIELDS
  * (menus and film room move a pointer by the motion). */
-#define MOUSE_FRAME_MS 100
+#define MOUSE_FRAME_MS 300
 #define MOUSE_POINTER_FIELDS 25
 #define MOUSE_MOTION_MAX 2048            /* keeps the scaled product in 32 bits */
 uint8_t rt_mouse_scale;
