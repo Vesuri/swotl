@@ -199,7 +199,7 @@ void rt_pointer_lead(int32_t dx, int32_t dy, int16_t *x, int16_t *y)
         }
         if (reads < 2) {
             px = advance(px, (int16_t)(rt_mickey_x + dx), POINTER_X_LIMIT, POINTER_X_MIN, POINTER_X_END);
-            py = advance(py, (int16_t)(rt_mickey_y + 2 * dy), POINTER_Y_LIMIT, POINTER_Y_MIN, POINTER_Y_END);
+            py = advance(py, (int16_t)(rt_mickey_y + rt_mickeys_y * dy), POINTER_Y_LIMIT, POINTER_Y_MIN, POINTER_Y_END);
         }
         if (lead.serial == serial) {
             lead_x = px;

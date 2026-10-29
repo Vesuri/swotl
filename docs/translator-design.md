@@ -282,7 +282,10 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   motion times `MOUSE_FRAME_MS` (input.c, 100 ms, the tweakable sensitivity)
   over the game-clock time since the last AX=0Bh, remainders carried, so the
   stick's deflection follows mouse speed alone at any frame rate; off while the
-  guest's pointer was shown within 25 fields (menus, film room). Mode set marks the whole
+  guest's pointer was shown at the last present or within 25 fields (menus,
+  film room). Vertical mickeys (`rt_mickeys_y`): 2 per count as DOSBox-X
+  (host pixels), 1 on the production Amiga, as a real PC mouse's equal counts
+  per inch (user 2026-10-29). Mode set marks the whole
   frame; DAC block sets go to `plat_palette` at once. No frame is read to
   find changes. Amiga (machine taken over, `Swotl.cpp`): an 8-plane copper
   display (framework `CopperList`/`Bitmap`), Kalms `c2p1x1_8_c5_bm` per

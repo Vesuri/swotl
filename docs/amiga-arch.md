@@ -141,7 +141,8 @@ vector 09h; unmapped codes are counted (`amiga_unmapped_keys`, L76). Presses sta
 typematic repeat runs in the VBI (L77). The mouse (port 0) is sampled per VBI
 (L79–80) and at each INT 33h request (`Input::sample`), so a frame's motion runs up to
 its poll; its deltas feed the runtime's INT 33h driver (`plat_mouse`; in flight scaled to
-a fixed frame time, `rt_mouse_scale`, [translator-design](translator-design.md) D9), and the counts
+a fixed frame time, `rt_mouse_scale`; vertical counts 1:1, `rt_mickeys_y`;
+[translator-design](translator-design.md) D9), and the counts
 not yet taken feed the pointer sprite's lead (`rt_pointer_lead`, the guest's own motion
 rule). Port 2 (`Input.cpp`): by default a digital joystick whose directions are
 cursor-key edges (typematic as keys) and whose fire and pin-9 buttons are mouse

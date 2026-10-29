@@ -10,7 +10,8 @@ tests/host_run.py.
 
 Lead: the position at the tracker's exit advanced by the guest's rule (clamp
 +-BFh/+-7Fh, halve toward zero unless 0, hold in [min, end)) by an unapplied
-read, then by the motion not read yet (runtime and platform counts); two reads
+read, then by the motion not read yet (runtime and platform counts, vertical
+counts doubled as DOSBox-X or 1:1); two reads
 before an exit discard the lead; the prediction at an exit; a write open at
 the blank keeps the last result; a pointer shown away from the last exit
 (set directly) is the lead's new start, its pending read dropped; a move
@@ -27,6 +28,7 @@ it holds at two blanks in a row. Plants (pointer.c rebuilt):
   bound       x held below x_end instead of x_end - 1
   discard     a second read keeps the lead
   serial      the lead computed while a write is open
+  ratio       the platform's vertical counts doubled whatever rt_mickeys_y
   adopt       a shown pointer away from the last exit not adopted
 """
 import argparse
@@ -54,6 +56,7 @@ PLANTS = {
     "bound": ("v >= hi ? (int16_t)(hi - 1)", "v >= hi ? hi"),
     "discard": ("        if (reads < 2) {", "        if (reads < 3) {"),
     "serial": ("if (!(serial & 1) && lead.tracked)", "if (lead.tracked)"),
+    "ratio": ("rt_mickey_y + rt_mickeys_y * dy", "rt_mickey_y + 2 * dy"),
     "adopt": ("    if (lead.x != x || lead.y != y) {\n        consume", "    if (0 && (lead.x != x || lead.y != y)) {\n        consume"),
 }
 
@@ -200,7 +203,8 @@ def lead_cases(m):
              ("bound high", [(40, 30)], (0, 0), (0, 0), (300, 190)),
              ("bound low", [(-40, -30)], (0, 0), (0, 0), (12, 6)),
              ("discard", [(8, 4), (6, 2)], (5, 5), (2, 2), (100, 50))]
-    for name, reads, mickeys, counts, start in cases:
+    for ratio, name, reads, mickeys, counts, start in [(r, *c) for r in (2, 1) for c in cases]:
+        h.e.write(h.syms["rt_mickeys_y"], bytes([ratio]))
         for n, v in zip(("x_min", "x_end", "y_min", "y_end"), bounds):
             m.gw(DS * 16 + H.POINTER[n], struct.pack("<H", v))
         m.gw(DS * 16 + H.POINTER["x"], struct.pack("<H", start[0]))
@@ -218,7 +222,7 @@ def lead_cases(m):
                 x = rule(x, reads[0][0], 0xBF, bounds[0], bounds[1])
                 y = rule(y, reads[0][1], 0x7F, bounds[2], bounds[3])
             x = rule(x, mickeys[0] + counts[0], 0xBF, bounds[0], bounds[1])
-            y = rule(y, mickeys[1] + 2 * counts[1], 0x7F, bounds[2], bounds[3])
+            y = rule(y, mickeys[1] + ratio * counts[1], 0x7F, bounds[2], bounds[3])
         problems = [] if got == (x, y) else [f"lead {got}, expected {(x, y)}"]
         if len(reads) == 1:     # the exit after the read: the prediction
             px = rule(start[0], reads[0][0], 0xBF, bounds[0], bounds[1])
@@ -229,7 +233,8 @@ def lead_cases(m):
                 problems.append(f"prediction {pred}, expected {(1, px, py)}")
         h.e.write(h.syms["rt_mickey_x"], b"\0\0")
         h.e.write(h.syms["rt_mickey_y"], b"\0\0")
-        out[f"lead {name}"] = problems
+        out[f"lead {name}" + ("" if ratio == 2 else " 1:1")] = problems
+    h.e.write(h.syms["rt_mickeys_y"], b"\2")
     # A write open at the blank (INT 33h between rt_pointer_open and close): the
     # last result, not the half-written state.
     m.call("rt_pointer_tracked")

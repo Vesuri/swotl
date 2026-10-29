@@ -292,11 +292,13 @@ void rt_int16(void)
 /* Mouse: DOSBox-X's INT 33h with the mouse captured. Ranges 0-639 and 0-199
  * in text mode 3 and mode 13h; a reset centres the pointer and sets 8 and 16
  * mickeys per 8 pixels, so one host count moves the pointer one unit and the
- * vertical motion counter two. Position reads mask to the mode's cell (8x8
+ * vertical motion counter rt_mickeys_y: two as DOSBox-X (host pixels), one as
+ * a real mouse's equal counts per inch (production Amiga). Position reads mask to the mode's cell (8x8
  * in text, 2 horizontally in mode 13h). The platform's counts are taken at
  * each call, so clamping sees their sum rather than each event. */
 static int16_t mouse_x = 320, mouse_y = 100;
 int16_t rt_mickey_x, rt_mickey_y;     /* motion since the last AX=0Bh (the pointer lead reads it) */
+uint8_t rt_mickeys_y = 2;
 static uint8_t mouse_buttons;
 
 /* Flight scaling (production, rt_mouse_scale): the flight takes each frame's
@@ -350,7 +352,7 @@ static void mouse_poll(void)
     rt_pointer_open();
     mouse_buttons = (uint8_t)plat_mouse(&dx, &dy);
     rt_mickey_x = (int16_t)(rt_mickey_x + dx);
-    rt_mickey_y = (int16_t)(rt_mickey_y + 2 * dy);
+    rt_mickey_y = (int16_t)(rt_mickey_y + rt_mickeys_y * dy);
     rt_pointer_close();
     mouse_x = clamp(mouse_x + dx, 639);
     mouse_y = clamp(mouse_y + dy, 199);

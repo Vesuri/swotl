@@ -8,7 +8,7 @@ Checks: off (the reference) the motion is returned as counted; on, a steady
 mouse speed gives the same deflection at 5, 24 and 70 ticks per frame (the
 68060's 50 fps, about the reference frame, the 68020's): the motion over
 MOUSE_FRAME_MS, its rounding carried so long runs sum exactly; signs, the
-vertical counter (twice the counts), a frame with no tick, a reset; no scaling
+vertical counter (twice the counts, or 1:1 with rt_mickeys_y 1), a frame with no tick, a reset; no scaling
 while the last present showed the guest's pointer or one within
 MOUSE_POINTER_FIELDS did. Plants
 (input.c or pointer.c rebuilt):
@@ -19,6 +19,7 @@ MOUSE_POINTER_FIELDS did. Plants
   shown    scaled while the last present showed the pointer
   stamp    the present with the pointer shown not recorded
   flag     scaled with rt_mouse_scale clear
+  ratio    vertical counts doubled whatever rt_mickeys_y
 """
 import argparse
 import os
@@ -40,6 +41,7 @@ PLANTS = {
     "shown": ("input.c", "rt_pointer.shown || ", ""),
     "stamp": ("pointer.c", "    rt_pointer_field = rt_fields;\n", ""),
     "flag": ("input.c", "if (!rt_mouse_scale ||", "if ("),
+    "ratio": ("input.c", "rt_mickey_y + rt_mickeys_y * dy", "rt_mickey_y + 2 * dy"),
 }
 
 
@@ -150,6 +152,10 @@ def cases(m):
     m.put("rt_pointer_field", 0, 4)
     m.put("rt_mouse_scale", 0, 1)
     want("off", m.int33(0xB, 7, -3, 70), (7, -6))
+    # Vertical counts 1:1 (production Amiga) instead of DOSBox-X's two.
+    m.put("rt_mickeys_y", 1, 1)
+    want("vertical 1:1", m.int33(0xB, 7, -3, 70), (7, -3))
+    m.put("rt_mickeys_y", 2, 1)
     return out
 
 

@@ -155,6 +155,10 @@ extern uint8_t rt_frame_cap;
  * to a fixed frame time (input.c MOUSE_FRAME_MS). Sync builds and the host
  * leave it 0. */
 extern uint8_t rt_mouse_scale;
+/* Vertical mickeys per platform count (input.c): 2 as DOSBox-X, the
+ * reference; production platforms with a real mouse set 1 (a PC driver's
+ * AX=0Bh counts are equal per inch on both axes). */
+extern uint8_t rt_mickeys_y;
 /* Where a field task may interrupt the display path: empty; a test seam
  * (tests/test_display_queue.py runs the field task there). */
 #define RT_FIELD_POINT() ((void)0)
