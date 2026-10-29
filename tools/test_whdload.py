@@ -7,6 +7,8 @@
     python3 tools/test_whdload.py --mode run [--tfh] [--slave build/whdload/MemFree.slave]
     python3 tools/test_whdload.py --mode run --installed DIR [--setup a1200-040]
     python3 tools/test_whdload.py --mode run --setup a1200-030 [--whdload-mmu]
+    python3 tools/test_whdload.py --mode run --slave build/whdload/CampaignTest.slave --ticks 15000
+    (also TourTest.slave: game files written through kickfs)
 
 `run` starts the game under the release slave; WHDLoad TIMEOUT (needs the moved
 VBR of a 68020) ends it with COREDUMP and the dump is judged:
@@ -48,6 +50,9 @@ WHDLOAD = Path(os.environ.get('WHDLOAD', AMIGA / 'WHDLoad')) / 'C/WHDLoad'
 WORKBENCH = Path(os.environ.get('WORKBENCH_ADF', AMIGA / 'Workbenchv2.04rev37.67Workbench.adf'))
 KICK31 = Path(os.environ.get('KICKSTART_A1200', KICKSTARTS / 'kick40068.A1200'))
 TFH_RSC = Path(os.environ.get('TFH_RSC', ROOT / 'tmp/tfh/TheirFinestHour&Missions/data/sfx.rsc'))
+# Test slaves whose key script writes game files through kickfs: the new
+# files and their sizes, as in DOSBox (c10, c11; A.USA byte-identical).
+WRITES = {'CampaignTest.slave': ['A.CBA 11183'], 'TourTest.slave': ['A.USA 540']}
 SLAVES = {'smoke': 'Smoke.slave', 'boot': 'BootTest.slave', 'load': 'LoadTest.slave', 'run': 'SWotL.slave'}
 
 
@@ -196,6 +201,14 @@ def main():
     event = re.search(r'event=([0-9A-F]+)', report)
     if 'DEBUG caused' not in report or not event or int(event[1], 16) < args.ticks:
         raise SystemExit('FAIL: the run did not end by TIMEOUT\n' + report[:2000])
+    if args.slave and args.slave.name in WRITES:
+        # Files the key script makes the game write (kickfs: docs/whdload.md).
+        made = sorted(f'{f.name} {f.stat().st_size}' for f in data.iterdir()
+                      if not (args.data / f.name).exists() and f.suffix != '.uaem'
+                      and f.name not in ('SWotL', 'sfx.rsc'))
+        print('written:', ', '.join(made) or 'none')
+        if made != WRITES[args.slave.name]:
+            raise SystemExit(f'FAIL: expected {WRITES[args.slave.name]} ({base})\n' + report[:2000])
     if args.cpu in ('68040', '68060') and 'TC=8000' not in report:
         raise SystemExit(f'FAIL: {args.cpu} MMU translation was not enabled (no TC=8000)\n' + report[:2000])
     # CACR alone does not show the policy: with the MMU, WHDLoad enables both

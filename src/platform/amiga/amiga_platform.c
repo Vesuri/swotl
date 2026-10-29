@@ -26,9 +26,11 @@ struct DosLibrary *DOSBase = 0;
 struct Library *IconBase = 0;
 
 #define MAX_FILES 16
+#define PATH_BYTES 128
 #define GUEST_STACK_BYTES 0x10000
 
 static BPTR files[MAX_FILES];
+static char file_paths[MAX_FILES][PATH_BYTES];
 static uint8_t file_stamped[MAX_FILES], file_modified[MAX_FILES];
 static struct DateStamp file_stamps[MAX_FILES];
 
@@ -52,18 +54,36 @@ void plat_free(void *p)
     amiga_io_end();
 }
 
+/* WHDLoad's kickfs has no ACTION_CHANGE_MODE or ACTION_SET_FILE_SIZE and
+ * crashes on a packet it does not know (docs/whdload.md). A new or emptied
+ * file is therefore made with MODE_NEWFILE, closed and opened again with
+ * MODE_OLDFILE: DOS permits another open (including an attribute query)
+ * while a created file is live, and MODE_NEWFILE starts exclusive. */
+static BPTR open_new(const char *path)
+{
+    BPTR f = Open((CONST_STRPTR)path, MODE_NEWFILE);
+    if (!f) {
+        return 0;
+    }
+    Close(f);
+    return Open((CONST_STRPTR)path, MODE_OLDFILE);
+}
+
 static int32_t open_as(const char *path, LONG mode)
 {
     for (int32_t k = 0; k < MAX_FILES; ++k) {
         if (!files[k]) {
-            BPTR f = Open((CONST_STRPTR)path, mode);
-            if (!f) {
+            int n = 0;
+            while (path[n] && n < PATH_BYTES - 1) {
+                file_paths[k][n] = path[n];
+                ++n;
+            }
+            if (path[n]) {
                 return -1;
             }
-            /* DOS permits another open (including an attribute query) while
-             * a created file is live. MODE_NEWFILE starts exclusive on Amiga. */
-            if (mode == MODE_NEWFILE && !ChangeMode(CHANGE_FH, f, SHARED_LOCK)) {
-                Close(f);
+            file_paths[k][n] = 0;
+            BPTR f = mode == MODE_NEWFILE ? open_new(path) : Open((CONST_STRPTR)path, mode);
+            if (!f) {
                 return -1;
             }
             files[k] = f;
@@ -73,6 +93,26 @@ static int32_t open_as(const char *path, LONG mode)
         }
     }
     return -1;
+}
+
+/* DOS write of 0 bytes: truncate at the position. The game's C library opens
+ * for writing with O_TRUNC so (AX=3D01h, then 40h with CX=0 at position 0):
+ * the file is made anew in place, no temporary file or rename. MODE_NEWFILE
+ * fails while another handle holds the file on a disk filesystem, which has
+ * SetFileSize; kickfs grants it always. Elsewhere only SetFileSize, which
+ * kickfs lacks and no reference run needs. */
+static int32_t truncate_at(int32_t handle)
+{
+    if (Seek(files[handle], 0, OFFSET_CURRENT) != 0) {
+        return SetFileSize(files[handle], 0, OFFSET_CURRENT) < 0 ? -1 : 0;
+    }
+    Close(files[handle]);
+    files[handle] = open_new(file_paths[handle]);
+    if (files[handle]) {
+        return 0;
+    }
+    files[handle] = Open((CONST_STRPTR)file_paths[handle], MODE_OLDFILE);
+    return !files[handle] ? -1 : SetFileSize(files[handle], 0, OFFSET_CURRENT) < 0 ? -1 : 0;
 }
 
 /* MODE_OLDFILE reads and writes an existing file. */
@@ -96,10 +136,10 @@ int32_t plat_create(const char *path)
 int32_t plat_write(int32_t handle, const void *buffer, uint32_t length)
 {
     amiga_io_begin();
-    int32_t n = length ? Write(files[handle], (APTR)buffer, (LONG)length)
-                       : SetFileSize(files[handle], 0, OFFSET_CURRENT) < 0 ? -1 : 0;
+    int32_t n = length ? Write(files[handle], (APTR)buffer, (LONG)length) : truncate_at(handle);
     if (n >= 0) file_modified[handle] = 1;
     amiga_io_end();
+    if (!files[handle]) rt_stop("cannot reopen a truncated file", handle, 0);
     return n;
 }
 
@@ -160,14 +200,14 @@ void plat_close(int32_t handle)
     if (REPLAY_FILE_DATE && file_modified[handle] && !file_stamped[handle])
         plat_file_stamp(handle, REPLAY_FILE_TIME, REPLAY_FILE_DATE);
 #endif
-    char path[512];
     amiga_io_begin();
-    /* Resolve before closing; apply after Close so its filesystem stamp cannot
-     * overwrite the DOS timestamp. NameFromFH also survives a changed cwd. */
-    int named = !file_stamped[handle] || NameFromFH(files[handle], (STRPTR)path, sizeof path);
+    /* After Close, so its filesystem stamp cannot overwrite the DOS timestamp.
+     * By the opened path: NameFromFH needs ACTION_PARENT_FH, which kickfs
+     * lacks; the current directory changes only around the run. kickfs
+     * accepts SetFileDate without setting the date. */
     int closed = Close(files[handle]);
     int stamped = !file_stamped[handle] ||
-                  (named && closed && SetFileDate((CONST_STRPTR)path, &file_stamps[handle]));
+                  (closed && SetFileDate((CONST_STRPTR)file_paths[handle], &file_stamps[handle]));
     amiga_io_end();
     files[handle] = 0;
     if (!stamped) rt_stop("cannot set file timestamp", handle, 0);

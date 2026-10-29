@@ -41,7 +41,17 @@ slv_info dc.b "Amiga port by Vesuri",10
 slv_config dc.b "C1:B:Their Finest Hour sound effects;",0
         dc.b "$VER: SWotL.slave 0.90 (28.10.2026)",0
 _program dc.b "SWotL",0
+; Test only, keys of pc-reference-loop.md scripts: CAMPAIGN creates campaign
+; file A.CBA (c10); TOUR creates pilot A, then rewrites it with O_TRUNC (c11).
+        IFD CAMPAIGN
+_args_fm dc.b "KEYS=300:enter,p300:enter,p200:u,p200:b,p200:s,p600:1,p600:2,p600:a,p100:enter",10,0
+        ELSE
+        IFD TOUR
+_args_fm dc.b "KEYS=300:enter,p300:enter,p200:u,p200:t,p200:s,p600:2,p600:c,p600:a,p100:enter,p600:s,p600:1,p600:m",10,0
+        ELSE
 _args_fm dc.b 10,0
+        ENDC
+        ENDC
 _args_fm_end
 _args_tfh dc.b "TFH",10,0
 _args_tfh_end
@@ -73,11 +83,11 @@ _bootdos
         ENDC
         ; The argument line and its length without the terminating zero.
         lea (_args_fm,pc),a0
-        moveq #_args_fm_end-_args_fm-1,d0
+        move.l #_args_fm_end-_args_fm-1,d0
         tst.l (_tfh,pc)
         beq .args
         lea (_args_tfh,pc),a0
-        moveq #_args_tfh_end-_args_tfh-1,d0
+        move.l #_args_tfh_end-_args_tfh-1,d0
 .args   lea (_args,pc),a1
         move.l a0,(a1)+
         move.l d0,(a1)

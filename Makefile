@@ -44,7 +44,7 @@ help:
 	@echo "  make amiga-release  build and verify separate stripped amiga/out/Swotl-release.exe"
 	@echo "  make smoke-release  boot the stripped executable under FS-UAE"
 	@echo "  make whdload        assemble the WHDLoad slaves into build/whdload/"
-	@echo "  make test-whdload   run the slaves under WHDLoad: smoke, boot, load, game FM and TFH, caches 030-060"
+	@echo "  make test-whdload   run the slaves under WHDLoad: smoke, boot, load, game FM and TFH, caches 030-060, campaign and pilot files"
 	@echo "  make install-data   build SWotLInstallData (host and Amiga) into build/install-data/"
 	@echo "  make test-install-data  helper vs the DOS ACC install: sources, refusals, cleanup"
 	@echo "  make release        package and audit dist/SWotL-\$$(cat VERSION).lha (clean tree only)"
@@ -581,7 +581,7 @@ smoke-release: amiga-release
 	. amiga/env.sh && amiga/debug.sh "" "$(CURDIR)/amiga/diag_smoke.gdb" "$(CURDIR)/amiga/out/Swotl-release.exe" | grep -q '^SWOTL_SMOKE_OK'
 
 whdload:
-	$(MAKE) -C whdload all test smoke boot-test load-test memfree
+	$(MAKE) -C whdload all test smoke boot-test load-test memfree campaign tour
 
 # tools/test_whdload.py: Kickstart 3.1 A1200 + RTB, WHDLoad, ref/ and TFH_RSC.
 test-whdload: whdload amiga-release
@@ -590,6 +590,8 @@ test-whdload: whdload amiga-release
 	. amiga/env.sh && $(PYTHON) tools/test_whdload.py --mode run --tfh
 	. amiga/env.sh && for s in "a1200-030" "a1200-030 --whdload-mmu" "a1200-040" "a1200-060"; do \
 		$(PYTHON) tools/test_whdload.py --mode run --setup $$s || exit 1; done
+	. amiga/env.sh && for t in Campaign Tour; do for s in a1200 a1200-060; do \
+		$(PYTHON) tools/test_whdload.py --mode run --slave build/whdload/$${t}Test.slave --ticks 15000 --setup $$s || exit 1; done; done
 
 install-data:
 	. amiga/env.sh && $(MAKE) -C tools/install-data all amiga

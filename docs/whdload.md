@@ -3,7 +3,7 @@
 Lessons from the sibling slaves, with SWOTL's use. Source:
 `whdload/SwotlSlave.s` (`make whdload` → `build/whdload/`); test:
 `tools/test_whdload.py` (`make test-whdload`). Provenance: `Sl` Slicks, `Ve` Vette, `Rv` Revs, `Po`
-Pokeri, `RoF` Rescue on Fractalus (each project's `docs/whdload*.md` and
+Pokeri, `RoF` Rescue on Fractalus, `P2` Prince of Persia 2 (each project's `docs/whdload*.md` and
 `whdload/*.s`; the merged rules are in AmigaXDev `docs/playbooks/new-port-playbook.md` §13), `SDK` `~/.local/share/amiga/WHDLoad` (`Src/sources/whdload/kick.readme`,
 `Docs/en/{howto,opt,cache}.html`). Release packaging: [release.md](release.md).
 
@@ -100,6 +100,8 @@ Pokeri, `RoF` Rescue on Fractalus (each project's `docs/whdload*.md` and
 | Every OS switch is a visible pause; each physical write adds WHDLoad write delay (3 s default) | Sl |
 | Whole-file reads/writes, minimum op count; no `.new`/`.bak`/rename/delete; rewrite only changed bytes (CRC+length) | Sl, Po |
 | Saves via one `resload_SaveFile` through slave hook | Sl, Po, RoF §6 |
+| kickfs has no `ACTION_CHANGE_MODE` ($404), `ACTION_SET_FILE_SIZE` ($3FE), `ACTION_PARENT_FH` ($407, `NameFromFH`) or `ACTION_RENAME_OBJECT`; without `DEBUG` an unknown packet runs its lookup past the action table (Access Fault in task `DH0`) | P2 `docs/release.md`, SDK `kickfs.s` |
+| SWOTL: create = `MODE_NEWFILE`, `Close`, `MODE_OLDFILE` (shared, as DOS); O_TRUNC (`3D01h`, 0-byte write at 0) makes the file anew the same way; close stamps by the opened path. `CampaignTest`/`TourTest.slave` write A.CBA and A.USA (c10, c11) on 68020 and 68060 | — |
 | `WHDLF_NoError`: `resload_SaveFile`/`LoadFile` return only on success (error requester otherwise); use `resload_GetFileSize` for optional files | RoF §6 |
 | resload names relative to the slave's data dir | RoF §6 |
 | Creating **new** files via write cache hung at exit in low-memory fixtures; Installer pre-creates fixed-size save slots, game refuses if missing | Po |

@@ -1,8 +1,11 @@
-"""Amiga create handles must permit c27's create -> attributes sequence.
+"""Amiga file handles: c27's create -> attributes sequence, and kickfs.
 
-The unchanged c27 DOSBox replay supplies the end-to-end oracle. These controls
-compile the production handle allocator against the DOS handle API, including
-failure cleanup. They do not replace the original-game replay.
+The unchanged c27 DOSBox replay supplies the end-to-end oracle for sharing.
+These controls compile the production handle code against a modelled DOS:
+a disk filesystem (MODE_NEWFILE exclusive, SetFileSize) and WHDLoad's kickfs,
+which has no ACTION_CHANGE_MODE or ACTION_SET_FILE_SIZE (an unknown packet
+crashes it; here it aborts). Creates and the C library's O_TRUNC (a 0-byte
+write at position 0) must use neither. Includes failure cleanup.
 """
 import argparse
 from pathlib import Path
@@ -15,56 +18,88 @@ SOURCE = ROOT / 'src/platform/amiga/amiga_platform.c'
 PREFIX = r'''
 #include <stdint.h>
 #include <assert.h>
+#include <stdlib.h>
+#include <string.h>
 typedef long LONG;
 typedef long BPTR;
 typedef const char *CONST_STRPTR;
 #define MAX_FILES 16
+#define PATH_BYTES 128
 #define MODE_NEWFILE 1006
 #define MODE_OLDFILE 1005
-#define CHANGE_FH 1
-#define SHARED_LOCK -2
+#define OFFSET_CURRENT 0
 static BPTR files[MAX_FILES];
+static char file_paths[MAX_FILES][PATH_BYTES];
 static uint8_t file_stamped[MAX_FILES], file_modified[MAX_FILES];
-static int opens, changes, closes, reject_open, reject_change, exclusive;
+/* One file "X": size, live handles (one exclusive at most), positions. */
+static int kickfs, opens, closes, live, exclusive, reject_open, size, sets;
+static long pos[64];
 static BPTR Open(CONST_STRPTR path, LONG mode) {
-    assert(path[0] == 'X'); ++opens;
-    if (reject_open || exclusive) return 0;
-    if (mode == MODE_NEWFILE) exclusive = 1;
-    return 42;
+    assert(!strcmp(path, "X")); ++opens;
+    if (reject_open || (!kickfs && (exclusive || (mode == MODE_NEWFILE && live)))) return 0;
+    if (mode == MODE_NEWFILE) { size = 0; exclusive = !kickfs; }
+    ++live;
+    BPTR f = 10 + opens; pos[f] = 0;
+    return f;
 }
-static LONG ChangeMode(LONG type, BPTR f, LONG mode) {
-    assert(type == CHANGE_FH && f == 42 && mode == SHARED_LOCK);
-    ++changes;
-    if (reject_change) return 0;
-    exclusive = 0;
-    return 1;
+static void Close(BPTR f) { assert(f > 10 && live > 0); ++closes; --live; exclusive = 0; pos[f] = -1; }
+static LONG Seek(BPTR f, LONG offset, LONG mode) {
+    assert(f > 10 && pos[f] >= 0 && mode == OFFSET_CURRENT && offset == 0);
+    return pos[f];
 }
-static void Close(BPTR f) { assert(f == 42); ++closes; exclusive = 0; }
+static LONG SetFileSize(BPTR f, LONG offset, LONG mode) {
+    if (kickfs) abort();
+    assert(f > 10 && pos[f] >= 0 && mode == OFFSET_CURRENT && offset == 0);
+    ++sets; size = pos[f];
+    return size;
+}
 '''
 
 MAIN = r'''
 int main(void) {
-    file_stamped[0] = 1;
-    assert(open_as("X", MODE_NEWFILE) == 0);
-    assert(changes == 1 && closes == 0 && files[0] == 42);
-    assert(file_modified[0] == 1 && file_stamped[0] == 0);
-    /* Attribute query opens the same file while the create handle is live. */
-    assert(open_as("X", MODE_OLDFILE) == 1);
-    assert(changes == 1 && file_modified[1] == 0);
-    files[0] = files[1] = 0;
-    reject_change = 1;
-    file_stamped[0] = 1; file_modified[0] = 7;
-    assert(open_as("X", MODE_NEWFILE) == -1);
-    assert(closes == 1 && !files[0] && !exclusive);
-    assert(file_stamped[0] == 1 && file_modified[0] == 7);
-    reject_change = 0; reject_open = 1;
-    assert(open_as("X", MODE_NEWFILE) == -1);
-    assert(changes == 2 && closes == 1 && !files[0]);
-    reject_open = 0;
-    assert(open_as("X", MODE_NEWFILE) == 0);
-    for (int k = 0; k < MAX_FILES; ++k) files[k] = 42;
-    int old_opens = opens;
-    assert(open_as("X", MODE_NEWFILE) == -1 && opens == old_opens);
+    for (kickfs = 0; kickfs < 2; ++kickfs) {
+        memset(files, 0, sizeof files);
+        live = exclusive = sets = 0;
+        size = 9;
+        file_stamped[0] = 1;
+        assert(open_as("X", MODE_NEWFILE) == 0);
+        assert(files[0] && size == 0 && live == 1 && !exclusive);
+        assert(file_modified[0] == 1 && file_stamped[0] == 0);
+        /* Attribute query opens the same file while the create handle is live. */
+        assert(open_as("X", MODE_OLDFILE) == 1 && file_modified[1] == 0);
+        Close(files[1]); files[1] = 0;
+        /* O_TRUNC: a 0-byte write at position 0 of a reopened file. */
+        Close(files[0]); files[0] = 0;
+        size = 9;
+        assert(open_as("X", MODE_OLDFILE) == 0 && size == 9);
+        assert(truncate_at(0) == 0 && files[0] && size == 0 && sets == 0);
+        assert(live == 1 && !exclusive && !strcmp(file_paths[0], "X"));
+        /* Another handle holds it: a disk filesystem refuses MODE_NEWFILE. */
+        size = 9;
+        assert(open_as("X", MODE_OLDFILE) == 1);
+        assert(truncate_at(0) == 0 && files[0] && size == 0 && live == 2);
+        assert(sets == !kickfs);
+        Close(files[1]); files[1] = 0;
+        if (!kickfs) {
+            /* Past the start only SetFileSize truncates. */
+            pos[files[0]] = 5; size = 9;
+            assert(truncate_at(0) == 0 && size == 5 && sets == 2);
+            pos[files[0]] = 0;
+        }
+        /* A reopen that fails leaves no handle. */
+        reject_open = 1;
+        assert(truncate_at(0) == -1 && !files[0] && live == 0);
+        assert(open_as("X", MODE_NEWFILE) == -1 && !files[0] && live == 0);
+        reject_open = 0;
+        file_stamped[0] = 1; file_modified[0] = 7;
+        char longer[PATH_BYTES + 1];
+        memset(longer, 'X', PATH_BYTES); longer[PATH_BYTES] = 0;
+        int old_opens = opens;
+        assert(open_as(longer, MODE_OLDFILE) == -1 && opens == old_opens);
+        assert(file_stamped[0] == 1 && file_modified[0] == 7);
+        for (int k = 0; k < MAX_FILES; ++k) files[k] = 42;
+        assert(open_as("X", MODE_NEWFILE) == -1 && opens == old_opens);
+    }
     return 0;
 }
 '''
@@ -84,12 +119,15 @@ def main():
     p.add_argument('--sabotage', action='store_true')
     args = p.parse_args()
     source = SOURCE.read_text()
-    body = source[source.index('static int32_t open_as('):source.index('/* MODE_OLDFILE')]
-    assert run(body) == 0, 'create sharing / failure cleanup mismatch'
-    print('Amiga file sharing: create, reopen, metadata, API failures, full table passed')
+    body = source[source.index('static BPTR open_new('):source.index('/* MODE_OLDFILE')]
+    assert run(body) == 0, 'create sharing / truncation / failure cleanup mismatch'
+    print('Amiga file sharing: create, query, O_TRUNC, held file, kickfs, API failures, full table passed')
     if args.sabotage:
-        for old, new in [('!ChangeMode(CHANGE_FH, f, SHARED_LOCK)', '0'),
-                         ('Close(f);', '(void)f;')]:
+        for old, new in [('    Close(f);\n', '    (void)f;\n'),
+                         ('if (Seek(files[handle], 0, OFFSET_CURRENT) != 0)', 'if (1)'),
+                         ('    if (files[handle]) {\n        return 0;', '    if (0) {\n        return 0;'),
+                         ('if (path[n]) {', 'if (0) {'),
+                         ('return !files[handle] ? -1 :', 'return')]:
             assert old in body
             assert run(body.replace(old, new, 1)) != 0, f'plant escaped: {old}'
             print('caught:', old)

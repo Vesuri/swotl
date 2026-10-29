@@ -82,3 +82,17 @@ speed work: [speed-plan.md](speed-plan.md).
     `test-amiga-replay`.
 41. `alignas(4)` on even-sized globals of 4 bytes or more, with a link audit
     (L104): not applied; m68k GCC aligns them to 2.
+
+## User report (A1200, 68060, 2026-10-29)
+
+42. Speed and mouse: caches and per-request mouse counters with the field
+    cap are in; the cap above 50 fps is proven only by
+    `tests/test_display_queue.py`. Confirm on the tester's 68060. If the
+    mouse still feels wrong, the user picks a sensitivity setting or
+    frame-time scaling.
+43. Analogue joystick: not implemented. Needs user decisions (port and
+    hardware, mapping onto the game's velocity stick, calibration).
+44. NTSC: screen not centred. Also E-clock timer scaling, Paula periods,
+    60 Hz fields.
+45. EGA for non-AGA Amigas: out of scope (VGA only); awaiting the user's
+    decision to decline.
