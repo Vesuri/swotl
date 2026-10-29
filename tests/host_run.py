@@ -55,6 +55,9 @@ POINTER_BYTES, POINTER_PIXELS, POINTER_SIZE = 276, 18, 16
 # The tracker's motion words at its exit (SWOTL.EXE 0320:0D1A): the mouse's after
 # halving (A8F8, A9A8) and the one applied (C37C, C37E; keys or joystick may set
 # it instead); 0320:0C64 sets the position directly.
+# Prerendered effects (docs/sound-plan.md R1): played non-engine ids; 5, 6,
+# 22, 27, 33, 36 are never played and 35 is the anthem.
+SFX_PRERENDERED = frozenset(set(range(7, 39)) - {22, 27, 33, 35, 36})
 TRACKER_MOUSE, TRACKER_APPLIED, POSITION_SET = (0xA8F8, 0xA9A8), (0xC37C, 0xC37E), 0x3E64
 SFX_SLOT_IDS = 0x1DE   # SPAZ DS: per OPL channel the effect id·4 (stored at hle.csv sfx_start)
 TOP = BLOCK + GUEST_BYTES - 1   # rt_guest: guest linear L at TOP - L (reversed)
@@ -331,7 +334,7 @@ class Host:
         self.stubs = {self.syms[n]: n for n in ("plat_alloc", "plat_free", "plat_open", "plat_create", "plat_read", "plat_write",
                                                 "plat_delete", "plat_seek",
                                                 "plat_calendar_date", "plat_file_stamp", "plat_close", "plat_dir_names", "plat_file_info", "plat_timer_rate", "plat_mouse", "plat_present", "plat_palette",
-                                                "plat_service", "plat_log", "plat_exit")}
+                                                "plat_service", "plat_sfx_wanted", "plat_sfx_captured", "plat_log", "plat_exit")}
         if '__wrap_rt_port_in' in self.syms:
             @U.CODE_CB
             def joystick_epoch(h, addr, size, user):
@@ -351,6 +354,19 @@ class Host:
         e.write(self.syms["rt_music_skip"], bytes([music_skip]))
         self.sound_log = None
         self.sound_tick = 0
+        self.sfx_captured = 0
+        self.sfx_phase = None
+        self.in_capture = False     # rt_sfx_prerender to plat_sfx_captured (ticks held)
+
+        @U.CODE_CB
+        def capture_entry(h, addr, size, user):
+            self.in_capture = self.mem(self.syms["rt_sfx_prerender_on"], 1)[0] != 0
+            if self.in_capture:     # SPAZ's effect tick countdown (data [176]) at the start
+                cs = int.from_bytes(self.gmem(8 * 4 + 2, 2), "little")
+                self.sfx_phase = int.from_bytes(self.gmem((cs + 0x11A) * 16 + 0x176, 2), "little")
+
+        a = self.syms["rt_sfx_prerender"]
+        e.hook_range(U.HOOK_CODE, capture_entry, a, a)
         self.music_skip = music_skip
         self.skips = self.moved = 0
         self.skipped_ran: set[str] = set()
@@ -456,6 +472,8 @@ class Host:
 
         @U.CODE_CB
         def out8(h, addr, size, user):
+            if self.capturing():
+                return              # the effect capture's own writes (sfx.c)
             port, v = self.r("d7") & 0xFFFF, self.r("d6") & 0xFF
             if port in (0x388, 0x389):
                 self.opl_ports.append((port, v))
@@ -474,6 +492,8 @@ class Host:
 
         @U.CODE_CB
         def sfx_stored(h, addr, size, user):
+            if self.in_capture:
+                return              # the capture's plays; the runtime restores its reports
             g = self.guest_regs(0)
             slot, rest = divmod(g["bx"], 6)
             stored = int.from_bytes(self.gmem(g["ds"] * 16 + ((SFX_SLOT_IDS + g["bx"]) & 0xFFFF), 2),
@@ -821,6 +841,11 @@ class Host:
         elif n == "plat_palette":
             if self.sabotage == "dac":
                 self.e.write(args[0] + 300, bytes([self.mem(args[0] + 300, 1)[0] ^ 1]))
+        elif n == "plat_sfx_wanted":
+            res = 1 if args[0] in SFX_PRERENDERED else 0
+        elif n == "plat_sfx_captured":
+            self.sfx_captured += 1
+            self.in_capture = False
         elif n == "plat_log":
             self.log.append(self.cstr(args[0]))
             print(self.log[-1])
@@ -898,6 +923,9 @@ class Host:
     def sound_event(self, kind: str, a: int, b: int) -> None:
         if self.sound_log is not None:
             self.sound_log.write(f"{self.sound_tick},{kind},{a},{b}\n")
+
+    def capturing(self) -> bool:
+        return self.in_capture
 
     def post(self, vector: int) -> None:
         if vector == 8:
@@ -992,7 +1020,7 @@ class Host:
                 self.e.stop()
 
         def replay(addr):
-            if self.irq_i == len(self.irqs):
+            if self.irq_i == len(self.irqs) or self.capturing():
                 return
             n = len(self.services)
             if n != self.visit_n:  # executions of each poll point since the service event
@@ -1376,6 +1404,8 @@ def main(argv=None) -> int:
                     help="each planted runtime fault (SABOTAGE) must fail the check")
     ap.add_argument("--music-skip", action="store_true",
                     help="HLE music_skip on: song starts skipped, SPAZ's data not compared")
+    ap.add_argument("--sfx-capture", type=Path, metavar="OUT",
+                    help="effect capture on (sound-plan R1): each id's OPL writes to OUT (tick,id,reg,value)")
     ap.add_argument("--stress", type=int, metavar="SEED",
                     help="I6: recorded ticks injected asynchronously (tests/irq_stress.py)")
     args = ap.parse_args(argv)
@@ -1399,7 +1429,7 @@ def main(argv=None) -> int:
     if args.stress is not None and (args.music_skip or args.amiga):
         ap.error("--stress runs alone")
     problems = check(args.milestone, args.timeout, args.amiga, None, args.music_skip, args.sound_log,
-                     stress=args.stress)
+                     stress=args.stress, sfx_capture=args.sfx_capture)
     for p in problems:
         print(p)
     print(f"host run to {args.milestone}: {'ok' if not problems else 'FAIL'}")
@@ -1497,9 +1527,30 @@ def reference_clocks(trace):
     return calendar, clock
 
 
+def dump_sfx_capture(h, out: Path) -> list[str]:
+    """The effect capture (src/runtime/sfx.c) as tick,id,reg,value rows."""
+    if h.sfx_captured != 1:
+        return [f"effect capture: plat_sfx_captured called {h.sfx_captured} times, expected once"]
+    ids = 39
+    first = struct.unpack(f">{ids}H", h.mem(h.syms["rt_sfx_first"], 2 * ids))
+    writes = struct.unpack(f">{ids}H", h.mem(h.syms["rt_sfx_writes"], 2 * ids))
+    rows = ["tick,id,reg,value"]
+    for i in range(ids):
+        data = h.mem(h.syms["rt_sfx_capture"] + 4 * first[i], 4 * writes[i])
+        for k in range(writes[i]):
+            tick, reg, value = struct.unpack_from(">HBB", data, 4 * k)
+            rows.append(f"{tick},{i},0x{reg:02x},0x{value:02x}")
+    rows.insert(1, f"# phase {h.sfx_phase}")
+    out.write_text("\n".join(rows) + "\n")
+    print(f"effect capture: {sum(writes)} writes, {sum(1 for w in writes if w)} ids, "
+          f"effect countdown {h.sfx_phase} -> {out}")
+    return []
+
+
 def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None,
           music_skip: bool = False, sound_log: Path | None = None,
-          trace: Path | None = None, stress: int | None = None) -> list[str]:
+          trace: Path | None = None, stress: int | None = None,
+          sfx_capture: Path | None = None, elf: Path | None = None) -> list[str]:
     class args:  # noqa: N801
         pass
     args.milestone, args.timeout, args.amiga = milestone, timeout, amiga
@@ -1520,8 +1571,10 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
     if sabotage in ("pointer-clamp", "pointer-trunc"):
         import test_pointer_model
         diagnostic_elf = test_pointer_model.planted_elf(sabotage[len("pointer-"):])
-    h = Host(image.M.REF, sabotage, music_skip, elf=diagnostic_elf, stress=stress)
+    h = Host(image.M.REF, sabotage, music_skip, elf=diagnostic_elf or elf, stress=stress)
     h.deleted.update(("TARGETS.DEF",) if sabotage == "missing-file" else script["missing_files"])
+    if sfx_capture:
+        h.e.write(h.syms["rt_sfx_prerender_on"], b"\1")
     h.calendar_date, h.file_clock = reference_clocks(trace)
     label = script["snapshots"][-1][0]
     script["irqs"], script["releases"] = reference_inputs(trace, exact_releases=True)
@@ -1561,6 +1614,8 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
         for lo, hi, mod, off in image.M.residency(snap / "residency.csv"):
             if mod == "SPAZ.OVL":
                 h.music_masked |= set(range(max(lo, lo + SPAZ_DATA - off), hi))
+    if sfx_capture:
+        problems += dump_sfx_capture(h, sfx_capture)
     if h.display_miss:
         problems.append(h.display_miss)
     problems += h.irq.finish(REPO / "tmp/test" / f"irq-monitor-{milestone}{'-' + sabotage if sabotage else ''}"

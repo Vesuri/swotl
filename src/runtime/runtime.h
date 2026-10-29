@@ -243,6 +243,24 @@ extern uint8_t rt_opl_keyon[9];     /* per channel: key-on edges, wrapping (FM r
 extern uint8_t rt_music_skip;        /* 1: HLE music_skip skips song starts */
 extern uint8_t rt_sfx_id[3];         /* per SPAZ slot: the effect id last started (HLE sfx_start) */
 extern uint8_t rt_sfx_starts[3];     /* per SPAZ slot: starts, wrapping */
+/* Effect capture (sfx.c, docs/sound-plan.md R1): at SPAZ init's return, when
+ * the platform set rt_sfx_prerender_on, every id plat_sfx_wanted asks for is
+ * played through SPAZ with the timer stepped by hand. Its OPL data writes
+ * (tick 0: during play, n: during the n-th handler call) are
+ * rt_sfx_capture[rt_sfx_first[id]..] (rt_sfx_writes[id] of them, the last in
+ * tick rt_sfx_ticks[id] - 1), from the registers rt_sfx_opl; then
+ * plat_sfx_captured. rt_sfx_capturing: the capture runs (no tick delivered,
+ * OPL writes captured instead of reaching rt_opl). */
+#define RT_SFX_IDS 39
+#define RT_SFX_WRITES 16384
+struct rt_sfx_write { uint16_t tick; uint8_t reg, value; };
+extern uint8_t rt_sfx_prerender_on;
+extern volatile uint8_t rt_sfx_capturing;
+extern struct rt_sfx_write rt_sfx_capture[RT_SFX_WRITES];
+extern uint16_t rt_sfx_first[RT_SFX_IDS], rt_sfx_writes[RT_SFX_IDS], rt_sfx_ticks[RT_SFX_IDS];
+extern uint8_t rt_sfx_opl[256];
+extern uint16_t rt_deliver_cs, rt_deliver_ip;
+extern void *rt_deliver_code;
 /* Gameport (port 201h), set by the platform before rt_start: 0 answers as the
  * reference's absent joystick; 1 is stick A, whose axis one-shots time out
  * after rt_joystick_axis[] (X, Y) reads following the trigger and whose

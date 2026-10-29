@@ -139,7 +139,10 @@ silently, before the title; every non-engine effect (ids 5–38; engines 0–4
 and music stay live FM); in TFH mode only the ids TFH lacks; SPAZ's own
 code runs out of the game's flow for it (approved); 0.91 waits for it.
 
-- **R1 capture.** Observe-only HLE row at SPAZ init's return (`+02ED`,
+- **R1 capture** (done: `src/runtime/sfx.c`, `t-sfx-capture`; SPAZ steps
+  effects on every second tick, countdown `[176]`, 3 at init; 27 ids, 7,901
+  writes).
+  Observe-only HLE row at SPAZ init's return (`+02ED`,
   `retf`): the runtime holds the tick (game time pauses), saves the state
   SPAZ, its timer and the BIOS chain touch (SPAZ data, game counters, BDA,
   OPL shadow, PIC/PIT), then per id: stop all (`+0666`), play(id·4)

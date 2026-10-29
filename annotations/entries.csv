@@ -1,2 +1,4 @@
 module,offset,reason
 SPAZ.OVL,0x007cc,"INT 08h handler (1770:058C), installed by AH=25h at +0266; delivered by the runtime (D8), chains to the BIOS handler via jmp far cs:[0] at +0A79"
+SPAZ.OVL,0x003d5,"play(id * 4): far-called by the effect capture (src/runtime/sfx.c, docs/sound-plan.md R1)"
+SPAZ.OVL,0x00666,"stop all: far-called by the effect capture (src/runtime/sfx.c, docs/sound-plan.md R1)"

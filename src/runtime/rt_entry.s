@@ -24,6 +24,8 @@ G_DS	equ	1
 	xdef	rt_trap
 	xdef	rt_hle_music_skip
 	xdef	rt_hle_sfx_start
+	xdef	rt_hle_sfx_prerender
+	xdef	rt_guest_call
 	xdef	rt_hle_pointer_tracked
 	xdef	rt_in8
 	xdef	rt_in16
@@ -70,6 +72,9 @@ G_DS	equ	1
 	xref	rt_music_skip
 	xref	rt_sfx_id
 	xref	rt_sfx_starts
+	xref	rt_sfx_capturing
+	xref	rt_sfx_write
+	xref	rt_sfx_prerender
 	xref	rt_pointer_ds
 	xref	rt_pointer_tracked
 	xref	rt_irq0_enter
@@ -350,6 +355,54 @@ rt_hle_sfx_start:
 	cmp.w	d7,d7
 	rts
 
+; HLE sfx_prerender (annotations/hle.csv): SPAZ init's return. The effect
+; capture (sfx.c) runs guest code: the 68k registers, the state block and
+; rt_r are saved around it and restored. Observe only: EQ.
+rt_hle_sfx_prerender:
+	movem.l	d0-d7/a0-a6,-(a7)
+	bsr	save_regs
+	lea	-32(a7),a7
+	movea.l	a7,a0
+	move.l	1(a6),(a0)+
+	move.l	5(a6),(a0)+
+	move.l	9(a6),(a0)+
+	move.l	13(a6),(a0)+
+	lea	rt_r,a1
+	move.l	(a1)+,(a0)+
+	move.l	(a1)+,(a0)+
+	move.l	(a1)+,(a0)+
+	move.l	(a1)+,(a0)+
+	jsr	rt_sfx_prerender
+	movea.l	rt_guest,a6
+	movea.l	a7,a0
+	move.l	(a0)+,1(a6)
+	move.l	(a0)+,5(a6)
+	move.l	(a0)+,9(a6)
+	move.l	(a0)+,13(a6)
+	lea	rt_r,a1
+	move.l	(a0)+,(a1)+
+	move.l	(a0)+,(a1)+
+	move.l	(a0)+,(a1)+
+	move.l	(a0)+,(a1)+
+	lea	32(a7),a7
+	movem.l	(a7)+,d0-d7/a0-a6
+	cmp.w	d7,d7
+	rts
+
+; Effect capture (sfx.c): the translated far entry rt_deliver_code
+; (rt_deliver_cs:ip) with the guest registers of rt_r and the state block;
+; its far return (RETF or IRET) must pop the sentinel CS:IP, the argument.
+; The guest registers back in rt_r. C calling convention.
+rt_guest_call:
+	movem.l	d2-d7/a2-a6,-(a7)
+	movea.l	rt_guest,a6
+	bsr	load_regs
+	move.l	48(a7),d7		; the sentinel (load_regs clobbers d7)
+	bsr	deliver_guest
+	bsr	save_regs
+	movem.l	(a7)+,d2-d7/a2-a6
+	rts
+
 ; HLE pointer_tracked (annotations/hle.csv): the pointer tracker's exit, DS =
 ; DGROUP; the lead's motion applied (src/runtime/pointer.c). Observe only: EQ.
 ; Registers preserved.
@@ -405,6 +458,8 @@ rt_out8:
 .opl_handler:
 	rts
 .opl_data:
+	tst.b	rt_sfx_capturing
+	bne.s	opl_capture
 	tst.b	rt_irq0_running
 	bne.s	.opl_pair_done
 	sf	rt_opl_pair
@@ -430,6 +485,18 @@ rt_out8:
 .port:	movem.l	d0-d1/a1,-(a7)
 	pea	8.w
 	bra.s	port_out
+; The effect capture (sfx.c) runs: the data write goes to rt_sfx_write.
+opl_capture:
+	movem.l	d0-d1/a0-a1,-(a7)
+	moveq	#0,d0
+	move.b	d6,d0
+	move.l	d0,-(a7)
+	move.b	rt_opl_index,d0
+	move.l	d0,-(a7)
+	jsr	rt_sfx_write
+	addq.l	#8,a7
+	movem.l	(a7)+,d0-d1/a0-a1
+	rts
 rt_out16:
 	movem.l	d0-d1/a1,-(a7)
 	pea	16.w

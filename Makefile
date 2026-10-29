@@ -117,7 +117,7 @@ t-fm: build/tools/fm_check
 # Isolated audio changes: original-derived sound checks and their plants.
 .PHONY: gates-audio
 gates-audio:
-	@$(MAKE) -s -k -j$(JOBS) t-fm t-fm-quality t-fm-render t-fm-envelope t-fm-allocation t-fm-cache t-fm-phase t-tfh t-audio t-sab-fm t-sab-fm-quality t-sab-fm-render t-sab-fm-envelope t-sab-fm-allocation t-sab-fm-cache t-sab-fm-phase t-sab-tfh t-sab-audio
+	@$(MAKE) -s -k -j$(JOBS) t-fm t-fm-quality t-fm-render t-fm-envelope t-fm-allocation t-fm-cache t-fm-phase t-tfh t-audio t-sfx-capture t-sab-fm t-sab-fm-quality t-sab-fm-render t-sab-fm-envelope t-sab-fm-allocation t-sab-fm-cache t-sab-fm-phase t-sab-tfh t-sab-audio t-sab-sfx-capture
 
 t-fm-quality:
 	$(call RUN,fm-quality,$(PYTHON) tests/test_fm_quality.py)
@@ -158,6 +158,10 @@ sound-tfh: host build/tools/tfh_render
 	for r in $(FM_RUNS); do $(PYTHON) tests/host_run.py --table reference/coverage.csv --milestone $$r --timeout 2400 --sound-log tmp/sound/$$r-tfh.csv && build/tools/tfh_render tmp/sound/$$r-tfh.csv "$(TFH_RSC)" tmp/sound/$$r-tfh.wav || exit 1; done
 t-tfh:
 	$(call RUN,tfh,$(PYTHON) tests/test_tfh.py)
+t-sfx-capture:
+	$(call RUN,sfx-capture,$(PYTHON) tests/test_sfx_capture.py)
+t-sab-sfx-capture:
+	$(call RUN,sabotage-sfx-capture,$(PYTHON) tests/test_sfx_capture.py --sabotage)
 t-sab-tfh:
 	$(call RUN,sabotage-tfh,$(PYTHON) tests/test_tfh.py --sabotage)
 

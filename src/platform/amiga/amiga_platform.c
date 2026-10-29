@@ -287,6 +287,9 @@ volatile ULONG amiga_ticks = 0, amiga_ticks_async = 0;
 static ULONG cia_tick(void)
 {
     ++amiga_ticks;
+    if (rt_sfx_capturing) {
+        return 0;               /* the effect capture holds the tick: game time pauses */
+    }
 #ifndef SWOTL_SYNC
     /* Production has no poll checks (docs/irq-plan.md I8): ticks posted while
      * IRQ0 could not run go first, then this one. */
@@ -319,6 +322,18 @@ static ULONG cia_tick(void)
     ++rt_irq_tail;
     RT_RAISE_IRQ();
     return 0;
+}
+
+/* Effect capture (runtime.h rt_sfx_*): off until the prerender renders it
+ * (docs/sound-plan.md R2, R3). */
+int plat_sfx_wanted(uint8_t id)
+{
+    (void)id;
+    return 0;
+}
+
+void plat_sfx_captured(void)
+{
 }
 
 static void cia_load(uint32_t divisor)

@@ -21,6 +21,8 @@
 	xdef	plat_present
 	xdef	plat_palette
 	xdef	plat_service
+	xdef	plat_sfx_wanted
+	xdef	plat_sfx_captured
 	xdef	plat_log
 	xdef	plat_exit
 	xdef	host_stubs
@@ -69,6 +71,10 @@ plat_present:	nop
 plat_palette:	nop
 	rts
 plat_service:	nop
+	rts
+plat_sfx_wanted:	nop
+	rts
+plat_sfx_captured:	nop
 	rts
 plat_log:	nop
 	rts

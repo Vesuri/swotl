@@ -51,6 +51,10 @@ void plat_present(const uint8_t *frame, const struct plat_rect *rects, int32_t n
 void plat_palette(const uint8_t *dac);
 /* The platform's own work from the main program at a vertical blank. */
 void plat_service(void);
+/* Effect capture (runtime.h rt_sfx_*): whether to capture effect id; the
+ * capture is complete. */
+int plat_sfx_wanted(uint8_t id);
+void plat_sfx_captured(void);
 void plat_log(const char *line);
 void plat_exit(int32_t code) __attribute__((noreturn));
 

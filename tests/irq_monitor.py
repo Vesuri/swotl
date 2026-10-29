@@ -202,6 +202,8 @@ class Monitor:
             self.main_access(True, lin, size)
 
     def access(self, write: bool, lin: int, size: int):
+        if self.h.in_capture:
+            return              # the effect capture holds the tick (src/runtime/sfx.c)
         if self.mask is None or (self.dirty and not self.in_handler):
             self.layout()
         if self.in_handler:
@@ -233,6 +235,8 @@ class Monitor:
             return
 
     def main_access(self, write: bool, lin: int, size: int):
+        if self.h.in_capture:
+            return
         bits = 0
         for a in range(lin, lin + size):
             bits |= self.mask[a]
