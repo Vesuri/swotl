@@ -152,11 +152,22 @@ code runs out of the game's flow for it (approved); 0.91 waits for it.
   the capture equals `tools/sfx_levels.py` (original SPAZ under Unicorn)
   write for write and tick for tick; host milestones still match the
   reference with the prerender on (restore complete).
-- **R2 render.** Per id, the captured stream through the re-hoster's
-  operator model, updated per tick, synthesised directly at the output rate
-  (16 kHz, phase continuous), the effect's channels mixed into one signed
-  8-bit sample in Chip. Oracle: per-effect fm_check metrics vs Nuked
-  (level within 3 dB, pitch within 10 cents) on the `sfx_levels` streams.
+- **R2 render** (done: `fm_effect` in `fm_paula.c`, `t-fm-effect`; 27 ids,
+  36.8 s, 610,581 bytes at 16,572 Hz). Per id, the captured stream through
+  the re-hoster's operator model, updated per tick, synthesised directly at
+  the output rate (phase continuous; a same-tick key-off/on retriggers, as
+  on the bus), the effect's channels mixed into one signed 8-bit sample
+  normalised to its peak; `*level` the peak in OPL units (a full-scale voice
+  is one channel at 0 dB, 4095). A channel is silent 42 dB under the peak
+  (the scaled sample's 8-bit floor). Oracle `tools/fm_effect_check.cpp` vs
+  Nuked sampled every third chip sample (the same waveform): AC level per
+  20 ms within 3 dB on >= 90% and 6 dB on all, pitch within 10 cents where
+  the reference is tonal (ids 20, 32, 38; feedback noise and sub-audio
+  rumble have none). Plants: pitch, level. Known: direct synthesis aliases
+  partials above 8.3 kHz (mult 15 modulators, feedback 7): ids 19, 30, 31
+  are up to 5 dB louder than the chip output band-limited by a 3-sample
+  average. Twelve ids peak above one channel (up to +9.4 dB, id 13): R3
+  decides how Paula volume (64 at most) handles them.
 - **R3 play.** `sfx_start` routes a prerendered id's slot to its sample, the
   TFH path (slot channels masked, Paula voice, restart, stop). Oracle:
   t-tfh-style routing tests; c6/c13 `--sound-log` renders.

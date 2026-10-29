@@ -86,6 +86,7 @@ def cases(elf=None):
     got = {}
     lines = out.read_text().splitlines()
     phase = int(lines.pop(1).split()[-1])
+    lines.pop(1)                    # the OPL registers at the start (R2's input)
     for r in csv.DictReader(lines):
         got.setdefault(int(r["id"]), []).append((int(r["tick"]), int(r["reg"], 16), int(r["value"], 16)))
     if set(got) != set(H.SFX_PRERENDERED):

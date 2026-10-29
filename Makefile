@@ -100,6 +100,12 @@ build/tools/fm_check: tools/fm_check.cpp src/platform/amiga/fm_paula.c src/platf
 	c++ -O2 -std=c++17 -Isrc/platform/amiga -Itools/vendor/dosbox-x/src/hardware -o $@ $< \
 		build/tools/fm_paula.o tools/vendor/dosbox-x/src/hardware/nukedopl.cpp
 
+build/tools/fm_effect_check: tools/fm_effect_check.cpp src/platform/amiga/fm_paula.c src/platform/amiga/fm_paula.h
+	mkdir -p build/tools
+	cc -O2 -std=c99 -Wall -Wextra -Werror -c -o build/tools/fm_effect_paula.o src/platform/amiga/fm_paula.c
+	c++ -O2 -std=c++17 -Wall -Isrc/platform/amiga -Itools/vendor/dosbox-x/src/hardware -o $@ $< \
+		build/tools/fm_effect_paula.o tools/vendor/dosbox-x/src/hardware/nukedopl.cpp
+
 sound-reference: check-ref build/tools/opl_render
 	$(PYTHON) tools/sound_reference.py
 
@@ -117,7 +123,7 @@ t-fm: build/tools/fm_check
 # Isolated audio changes: original-derived sound checks and their plants.
 .PHONY: gates-audio
 gates-audio:
-	@$(MAKE) -s -k -j$(JOBS) t-fm t-fm-quality t-fm-render t-fm-envelope t-fm-allocation t-fm-cache t-fm-phase t-tfh t-audio t-sfx-capture t-sab-fm t-sab-fm-quality t-sab-fm-render t-sab-fm-envelope t-sab-fm-allocation t-sab-fm-cache t-sab-fm-phase t-sab-tfh t-sab-audio t-sab-sfx-capture
+	@$(MAKE) -s -k -j$(JOBS) t-fm t-fm-quality t-fm-render t-fm-envelope t-fm-allocation t-fm-cache t-fm-phase t-tfh t-audio t-sfx-capture t-fm-effect t-sab-fm t-sab-fm-quality t-sab-fm-render t-sab-fm-envelope t-sab-fm-allocation t-sab-fm-cache t-sab-fm-phase t-sab-tfh t-sab-audio t-sab-sfx-capture t-sab-fm-effect
 
 t-fm-quality:
 	$(call RUN,fm-quality,$(PYTHON) tests/test_fm_quality.py)
@@ -143,6 +149,12 @@ t-sab-fm-envelope:
 	$(call RUN,sabotage-fm-envelope,$(PYTHON) tests/test_fm_envelope.py --sabotage)
 t-sab-fm-quality:
 	$(call RUN,sabotage-fm-quality,$(PYTHON) tests/test_fm_quality.py --sabotage)
+# Prerendered effects (sound-plan R2) on t-sfx-capture's capture; WAVs in tmp/sfx-wav.
+t-fm-effect: build/tools/fm_effect_check t-sfx-capture
+	$(call RUN,fm-effect,mkdir -p tmp/sfx-wav && build/tools/fm_effect_check tmp/sfx-capture.csv tmp/sfx-wav)
+t-sab-fm-effect: build/tools/fm_effect_check t-sfx-capture
+	$(call RUN,sabotage-fm-effect,mkdir -p tmp/test/sfx-wav && for s in pitch level; do \
+		! build/tools/fm_effect_check tmp/sfx-capture.csv tmp/test/sfx-wav --sabotage $$s || exit 1; done)
 t-sab-fm: build/tools/fm_check
 	$(call RUN,sabotage-fm-paula,for s in pitch level; do \
 		! build/tools/fm_check $(call FM_OPL,c6-flight-keys) tmp/test/fm-sabotage.wav --sabotage $$s || exit 1; done)

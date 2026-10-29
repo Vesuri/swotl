@@ -1541,6 +1541,7 @@ def dump_sfx_capture(h, out: Path) -> list[str]:
             tick, reg, value = struct.unpack_from(">HBB", data, 4 * k)
             rows.append(f"{tick},{i},0x{reg:02x},0x{value:02x}")
     rows.insert(1, f"# phase {h.sfx_phase}")
+    rows.insert(2, "# opl " + h.mem(h.syms["rt_sfx_opl"], 256).hex())
     out.write_text("\n".join(rows) + "\n")
     print(f"effect capture: {sum(writes)} writes, {sum(1 for w in writes if w)} ids, "
           f"effect countdown {h.sfx_phase} -> {out}")
