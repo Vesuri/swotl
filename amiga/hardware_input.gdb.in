@@ -45,7 +45,7 @@ set $edge = 0
   set $edge = $edge + 1
 # END REPEAT
 delete 4
-break *((char *)Input::verticalBlank + @JOY_OFFSET@)
+break *((char *)Input::sample + @JOY_OFFSET@)
 set $n = 0
 set $totalx = 0
 set $totaly = 0

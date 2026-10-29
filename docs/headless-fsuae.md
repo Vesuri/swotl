@@ -74,6 +74,11 @@ palette values and conversion targets, and rejects late copper switches.
 `AMIGA_CPU=68040` exercises the faster CPU as well. Logs and captures use a
 private `tmp/display-audit.*` directory.
 
+`amiga/frame_pace.gdb` (`AMIGA_SETUP=a1200-060 bash amiga/debug.sh "" frame_pace.gdb`)
+counts, over 300 frames of the attract demo flight, the frame-end polls returning in the
+previous one's field (0 under the frame cap), the fields spanned and the CIA ticks run at
+once.
+
 ## Machine settings
 
 | Setting | Use |

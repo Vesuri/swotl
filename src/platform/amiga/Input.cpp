@@ -150,25 +150,30 @@ void Input::end()
 }
 
 // JOY0DAT's counters are 8 bits and wrap: the delta is taken every field
-// (L80). Buttons: left CIA-A PRA bit 6, right and middle POTINP bits 10 and 8.
+// (L80) and at each INT 33h request, so a frame gets the motion up to its
+// poll. Buttons: left CIA-A PRA bit 6, right and middle POTINP bits 10 and 8.
+void Input::sample()
+{
+    Disable();
+    uint16_t counters = *joy0datPointer;
+    uint8_t x = (uint8_t)counters, y = (uint8_t)(counters >> 8);
+    mouseDX += (int8_t)(x - mouseCounterX);
+    mouseDY += (int8_t)(y - mouseCounterY);
+    mouseCounterX = x;
+    mouseCounterY = y;
+    mouseButtons = (uint8_t)((AmigaHardware::isLeftMouseButtonPressed() ? 1 : 0) |
+                             (AmigaHardware::isRightMouseButtonPressed() ? 2 : 0) |
+                             (*potinpPointer & (1 << 8) ? 0 : 4));
+    Enable();
+}
+
 void Input::verticalBlank()
 {
 #ifdef SWOTL_REPLAY
     return;
 #endif
     keyboard();
-    uint16_t counters = *joy0datPointer;
-    uint8_t x = (uint8_t)counters, y = (uint8_t)(counters >> 8);
-    uint8_t buttons = (uint8_t)((AmigaHardware::isLeftMouseButtonPressed() ? 1 : 0) |
-                                (AmigaHardware::isRightMouseButtonPressed() ? 2 : 0) |
-                                (*potinpPointer & (1 << 8) ? 0 : 4));
-    Disable();
-    mouseDX += (int8_t)(x - mouseCounterX);
-    mouseDY += (int8_t)(y - mouseCounterY);
-    mouseButtons = buttons;
-    Enable();
-    mouseCounterX = x;
-    mouseCounterY = y;
+    Input::sample();
 
     if (repeatKey != 0xff) {
         if (repeatDelay) {
@@ -204,6 +209,7 @@ extern "C" uint32_t plat_mouse(int32_t* dx, int32_t* dy)
 #ifdef SWOTL_REPLAY
     return replay_mouse(dx, dy);
 #endif
+    Input::sample();
     Disable();
     *dx = mouseDX;
     *dy = mouseDY;

@@ -272,7 +272,12 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   BIOS call runs; publications between polls are not presented, so an erase
   and its redraw (PANEL gauges) are never shown apart (user 2026-10-28).
   Before the first poll, or after one second of IRQ0 deliveries without one,
-  each publication presents as before; mode set marks the whole
+  each publication presents as before. Frame cap (production Amiga,
+  `rt_frame_cap`; user 2026-10-29): a poll returns at most once per field
+  (`rt_fields`), waiting with the service's tick hold lifted so IRQ0 runs; the
+  game's loop never reads the retrace, so on a fast CPU it would outpace the
+  display, and each frame takes at least a field of mouse motion (AX=0Bh, the
+  flight stick). Sync builds and the host leave it off. Mode set marks the whole
   frame; DAC block sets go to `plat_palette` at once. No frame is read to
   find changes. Amiga (machine taken over, `Swotl.cpp`): an 8-plane copper
   display (framework `CopperList`/`Bitmap`), Kalms `c2p1x1_8_c5_bm` per
@@ -286,7 +291,7 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   (every guest A0000h store lies in the next present's rectangles; sabotage
   `vram`), `tests/test_display_queue.py` (inheritance and queue races; production
   `video.c` with the field task interrupting driver calls, presents and video BIOS
-  calls, plants), and
+  calls, the cap's once-per-field return and lifted hold, plants), and
   `amiga/display_audit.sh` (40 handoffs against published guest snapshots
   and DAC, no conversion into the shown bitmap, zero late handoffs).
 - Interrupts (D8; [irq-plan](irq-plan.md)): poll points (`build/gen/poll-points.csv`,

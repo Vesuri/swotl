@@ -138,8 +138,9 @@ per period (L44). Publication never feeds back into simulation; missed slots are
 The vertical blank's keyboard read (L72; in I/O windows a VERTB server) maps each raw key
 edge through one table to a PC set 1 make/break code and posts it to `rt_key_ring` with
 vector 09h; unmapped codes are counted (`amiga_unmapped_keys`, L76). Presses stay pending until the original reads them (L75);
-typematic repeat runs in the VBI (L77). The mouse (port 0) is sampled once per VBI
-(L79–80); its deltas feed the runtime's INT 33h driver (`plat_mouse`), and the counts
+typematic repeat runs in the VBI (L77). The mouse (port 0) is sampled per VBI
+(L79–80) and at each INT 33h request (`Input::sample`), so a frame's motion runs up to
+its poll; its deltas feed the runtime's INT 33h driver (`plat_mouse`), and the counts
 not yet taken feed the pointer sprite's lead (`rt_pointer_lead`, the guest's own motion
 rule). No Amiga joystick:
 port `201h` answers as the reference's absent one (`src/runtime/ports.c`).

@@ -145,6 +145,12 @@ extern uint8_t rt_dac[768];      /* video.c: 6-bit R, G, B */
 extern volatile uint8_t rt_present_due;
 void rt_video_refresh(void);
 void rt_video_frame(void);      /* INT 33h AX=3: the game's frame boundary */
+/* Production platforms with a vertical blank counter (rt_fields) set
+ * rt_frame_cap: the frame boundary returns at most once per field, so each
+ * frame takes at least one field of mouse motion (translator-design D9). Sync
+ * builds and the host leave it 0. */
+extern volatile uint32_t rt_fields;
+extern uint8_t rt_frame_cap;
 /* Where a field task may interrupt the display path: empty; a test seam
  * (tests/test_display_queue.py runs the field task there). */
 #define RT_FIELD_POINT() ((void)0)

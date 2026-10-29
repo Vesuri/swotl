@@ -420,6 +420,7 @@ void Swotl::verticalBlank()
         Enable();
     }
     ++amiga_frames;
+    ++rt_fields;
     Input::verticalBlank();
     // The pointer sprites with the newest mouse counts, before sprite DMA
     // reads their control words; the handoff seam then sees them.
@@ -473,6 +474,7 @@ void Swotl::endIO()
     takeVectors();
     uint32_t fields = GfxBase->VBCounter - ioFrames;
     amiga_frames += fields;
+    rt_fields += fields;
     amiga_io_frames += fields;
     AmigaHardware::setDMAChannels(DMAF_DISK | DMAF_BLITTER, false);
     AmigaHardware::setInterrupts(TAKEOVER_INTERRUPTS, true);

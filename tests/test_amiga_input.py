@@ -141,6 +141,14 @@ int main() {
     joy = 0x0002; Input::verticalBlank();
     int32_t x, y;
     assert(plat_mouse(&x, &y) == 7 && x == 4 && y == 4);
+    // A request takes the counters at once: motion since the last field and
+    // a button change reach the guest without a vertical blank, both wraps.
+    joy = 0x0405; pra = 0xff;
+    assert(plat_mouse(&x, &y) == 6 && x == 3 && y == 4 && depth == 0);
+    joy = 0xfefc; Input::verticalBlank();
+    joy = 0x0101;
+    assert(plat_mouse(&x, &y) == 6 && x == -4 && y == -3);
+    assert(plat_mouse(&x, &y) == 6 && x == 0 && y == 0);
     icr = 0x08;
     Input::end();
     assert(enabled == 0x0c && icr == 0 && depth == 0);
@@ -182,6 +190,7 @@ if __name__ == '__main__':
         run(source.replace(posting, '#if 1\n    rt_irq_ring'), False, False)
         run(source.replace(posting, '#if 0\n    rt_irq_ring'), False, True)
         for old, new in [('(code >> 1) | (code << 7)', '(code << 1) | (code >> 7)'),
+                         ('#endif\n    Input::sample();\n', '#endif\n'),
                          ('(int8_t)(x - mouseCounterX)', '(int16_t)(x - mouseCounterX)'),
                          ('isRightMouseButtonPressed() ? 2 : 0', 'isRightMouseButtonPressed() ? 4 : 0'),
                          ('    SetICR(ciaaBase, CIAICRF_SP);\n    uint8_t code', '    uint8_t code'),

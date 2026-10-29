@@ -83,6 +83,9 @@ extern uint8_t rt_dac[768];
 extern volatile uint8_t rt_present_due;
 extern volatile uint32_t rt_irq0_runs, rt_irq0_bios;
 extern uint32_t rt_pit_divisor;
+extern volatile uint32_t rt_fields;
+extern uint8_t rt_frame_cap;
+extern volatile uint8_t rt_irq0_running, rt_irq_mask;
 struct rt_pointer { uint16_t masked_x0, masked_y0, masked_x1, masked_y1; };
 extern struct rt_pointer rt_pointer;
 void rt_pointer_mask(uint8_t *frame);
@@ -117,6 +120,7 @@ struct rt_regs rt_r;
 uint16_t g_es;
 volatile uint32_t rt_irq0_runs, rt_irq0_bios;
 uint32_t rt_pit_divisor = 65536;    /* 18 deliveries a second */
+volatile uint8_t rt_irq0_running, rt_irq_mask;
 struct rt_pointer rt_pointer;
 void rt_pointer_mask(uint8_t *frame) {}
 static uint8_t shown[64000];
@@ -124,6 +128,7 @@ static unsigned seed = 14, fielding, driving, spanning, display;
 static unsigned fields, raced, presents, owed, polls, framed_presents;
 static unsigned polled, poll_irq0, since_poll, poll_owed, deferred, blanked;
 static unsigned rate = 3;           /* 1 in rate field points takes a field; 30: the game outpaces fields */
+static unsigned waiting, opened, capped, capped_polls, capped_waits, last_return; /* rt_frame_cap: polls return once per field */
 /* the frame boundary holds: a poll within the last second of IRQ0 */
 static int framed(void) { return polled && rt_irq0_runs - poll_irq0 < 18; }
 static unsigned next(unsigned n) { seed = seed * 1103515245u + 12345u; return (seed >> 8) % n; }
@@ -135,7 +140,9 @@ static void field(void)
     if (fielding) return;
     fielding = 1;
     ++fields;
+    ++rt_fields;
     blanked = 1;
+    opened += waiting && !rt_irq_mask;
     raced += driving || spanning || display;
     rt_video_refresh();
     fielding = 0;
@@ -218,8 +225,31 @@ static void poll(void)
     poll_irq0 = rt_irq0_runs;
     poll_owed = owed;
     since_poll = 0;
-    unsigned before = presents, due = blanked;
+    unsigned before = presents, due = blanked, at = fields, open = opened;
+    unsigned wait = rt_frame_cap && capped && at == last_return;   /* no field since the last return */
+    rt_irq_mask = 1;                /* inside the INT 33h service */
+    waiting = rt_frame_cap;
     rt_video_frame();
+    waiting = 0;
+    if (rt_irq_mask != 1) {
+        fprintf(stderr, "the service's tick hold was not restored\n");
+        exit(1);
+    }
+    rt_irq_mask = 0;
+    if (rt_frame_cap) {
+        if (capped && fields == last_return) {
+            fprintf(stderr, "two capped polls returned in one field\n");
+            exit(1);
+        }
+        if (wait && opened == open) {
+            fprintf(stderr, "a capped poll waited holding the tick\n");
+            exit(1);
+        }
+        ++capped;
+        ++capped_polls;
+        capped_waits += wait;
+    }
+    last_return = fields;
     if (owed && due && presents == before) {
         fprintf(stderr, "a poll after a field held its frame\n");
         exit(1);
@@ -230,13 +260,15 @@ int main(void)
 {
     video_bios(0x0013);
     unsigned checked = 0;
-    for (unsigned step = 0; step < 20000; ++step) {
+    for (unsigned step = 0; step < 28000; ++step) {
         unsigned what = next(100);
         if (what < 60) driver(0);
         else if (what < 75) video_bios(0x1012);
         else if (what < 76) video_bios(0x0013);
         else if (step > 2000 && what < 90 && (step / 4000) % 2 == 0) poll();
         if (!next(40)) ++rt_irq0_runs;
+        rt_frame_cap = step >= 24000;     /* a poll phase of its own */
+        if (!rt_frame_cap) capped = 0;
         rate = (step / 4000) % 2 == 0 && (step / 1000) % 2 ? 30 : 3;
         if (next(rate == 3 ? 2 : 10)) continue;
         field();
@@ -251,10 +283,12 @@ int main(void)
             for (unsigned k = 0; k < 64000; ++k) assert(shown[k] == rd8(0xa0000 + k));
         }
     }
-    printf("fields %u, %u inside the main display path, presents %u (%u framed by %u polls, %u deferred)\n",
-           fields, raced, presents, framed_presents, polls, deferred);
+    printf("fields %u, %u inside the main display path, presents %u (%u framed by %u polls, %u deferred), "
+           "%u capped polls (%u waited)\n",
+           fields, raced, presents, framed_presents, polls, deferred, capped_polls, capped_waits);
     assert(raced > 1000 && presents > 1000 && framed_presents > 500 && presents - framed_presents > 1000);
     assert(deferred > 100);
+    assert(capped_waits > 100);
     return 0;
 }
 '''
@@ -309,6 +343,11 @@ if __name__ == '__main__':
                          # between polls: a publication presents; a poll's frame is not shown
                          ('    published = 1;\n    ready = 0;', '    published = 1;'),
                          ('if (rt_present_due && !framed()) {', 'if (rt_present_due) {'),
-                         ('    } else {\n        ready = 1;', '    } else {\n        ready = 0;')]:
+                         ('        } else {\n            ready = 1;', '        } else {\n            ready = 0;'),
+                         # the cap: never waits, waits holding the tick, does not restore it, waits once
+                         ('if (rt_frame_cap) {\n        pace();', 'if (0) {\n        pace();'),
+                         ('        --rt_irq_mask;\n', ''),
+                         ('        ++rt_irq_mask;\n', ''),
+                         ('    frame_field = rt_fields;\n', '')]:
             assert old in video
             run_video(video.replace(old, new, 1), False)

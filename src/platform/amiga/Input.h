@@ -5,7 +5,7 @@
 
 // Keyboard and mouse with the machine taken over (docs/amiga-lessons.md
 // L72-L80): the keyboard from CIA-A's serial port and the mouse counters and
-// buttons sampled at each vertical blank. Keys reach the runtime as PC set 1
+// buttons sampled at each vertical blank and INT 33h request. Keys reach the runtime as PC set 1
 // make and break codes (vector 09h), the mouse as counts plat_mouse takes.
 class Input {
 public:
@@ -20,6 +20,9 @@ public:
     // From the vertical blank: a byte from the keyboard, if one arrived. Also
     // from the I/O windows' VERTB server.
     static void __attribute__((noinline)) keyboard();
+    // From the vertical blank and plat_mouse: the mouse counters' motion and
+    // the buttons.
+    static void __attribute__((noinline)) sample();
 
     // An Amiga raw key edge, from the keyboard or a diagnostic
     // script.

@@ -9,8 +9,9 @@
  * calls) never reach the screen apart. Before the first poll and once a
  * second of IRQ0 ticks passes without one, a frame is published when the
  * outermost driver call returns and presented at the first vertical blank
- * after that while no driver call runs. DAC block sets reach the platform at
- * once, as on the VGA. The vertical blank's work runs at a poll point or in
+ * after that while no driver call runs. A platform that counts vertical
+ * blanks may cap the loop at one pass per field (rt_frame_cap). DAC block
+ * sets reach the platform at once, as on the VGA. The vertical blank's work runs at a poll point or in
  * the platform's field task (an interrupt, docs/irq-plan.md I5); `busy`
  * keeps it off the main thread's display path. */
 #include "runtime.h"
@@ -99,6 +100,9 @@ static uint8_t polled;           /* the game polls the mouse: frames end there *
 static uint8_t ready;            /* rows unchanged since the poll's frame */
 static uint32_t poll_irq0;       /* IRQ0 deliveries at the last poll */
 volatile uint8_t rt_present_due;
+volatile uint32_t rt_fields;
+uint8_t rt_frame_cap;
+static uint32_t frame_field;     /* rt_fields when the last poll returned */
 static volatile uint8_t busy;    /* the main thread presents or sets the video mode or DAC */
 static struct plat_rect rects[200];
 /* Persistent guest-order pixels, plus 32 bytes of Kalms C2P lookahead. */
@@ -216,21 +220,38 @@ void rt_video_publish(void)
     set_busy(0);
 }
 
+/* Capped: a poll returns at most once per field. The wait holds no tick: the
+ * guest's IRQ0 handler touches no runtime state (docs/irq-plan.md), and its
+ * delivery saves the service's registers. */
+static void pace(void)
+{
+    if (rt_fields == frame_field && rt_irq_mask == 1 && !rt_irq0_running) {
+        --rt_irq_mask;
+        while (rt_fields == frame_field) {
+            RT_FIELD_POINT();
+        }
+        ++rt_irq_mask;
+    }
+}
+
 /* INT 33h AX=3: the frame the game drew since its last poll is finished. */
 void rt_video_frame(void)
 {
+    if (rt_frame_cap) {
+        pace();
+    }
     polled = 1;
     poll_irq0 = rt_irq0_runs + rt_irq0_bios;
-    if (!published) {
-        return;
+    if (published) {
+        set_busy(1);
+        if (rt_present_due) {
+            present();
+        } else {
+            ready = 1;
+        }
+        set_busy(0);
     }
-    set_busy(1);
-    if (rt_present_due) {
-        present();
-    } else {
-        ready = 1;
-    }
-    set_busy(0);
+    frame_field = rt_fields;
 }
 
 static void dac_block(int set)

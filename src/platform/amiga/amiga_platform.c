@@ -613,6 +613,7 @@ int amiga_guest_open(void)
         plat_log("SWOTL frame bench needs the sync image (make amiga-sync)");
         return 0;
     }
+    rt_frame_cap = 1;       /* one game frame per field (runtime.h) */
 #endif
     if (tfh) load_tfh();
     else plat_log("SWOTL sound FM");
