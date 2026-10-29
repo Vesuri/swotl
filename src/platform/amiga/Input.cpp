@@ -56,10 +56,7 @@ static uint8_t mouseButtons = 0;
 static uint8_t scriptButtons = 0;
 static uint8_t joystickDirections = 0;  // bits 0-3: up, down, left, right
 static uint16_t potButtons = 0xffff;    // POTINP as read before the pot START
-static uint16_t potHistory[4];
-static uint8_t potIndex = 0;
 static bool potStarted = false;
-static bool potReady = false;
 
 // Sync builds post IRQ1 for each event; production has no keyboard interrupt,
 // the runtime drains the events at service entry (docs/irq-plan.md I8).
@@ -131,7 +128,7 @@ bool Input::begin()
     mouseButtons = scriptButtons = 0;
     joystickDirections = 0;
     potButtons = 0xffff;
-    potStarted = potReady = false;
+    potStarted = false;
     uint16_t counters = *joy0datPointer;
     mouseCounterX = (uint8_t)counters;
     mouseCounterY = (uint8_t)(counters >> 8);
@@ -215,27 +212,16 @@ static void digitalJoystick()
 }
 
 // Proportional joystick in port 2 (Revs' RevsInput): POTGO START at each
-// vertical blank, POT1DAT read at the next; the mean of four fields (X low
-// byte, pin 5; Y high byte, pin 9) plus 16 is the gameport's one-shot reads,
+// vertical blank, POT1DAT read at the next; each field's count (X low byte,
+// pin 5; Y high byte, pin 9) plus 16 is the gameport's one-shot reads,
 // inside the game's probe range of 16 to 1000 (root +042B0). The game's
 // calibration scales it.
 static void analogJoystick()
 {
     if (potStarted) {
-        uint16_t raw = *pot1datPointer;
-        if (!potReady) {
-            potHistory[0] = potHistory[1] = potHistory[2] = potHistory[3] = raw;
-            potReady = true;
-        }
-        potHistory[potIndex] = raw;
-        potIndex = (uint8_t)((potIndex + 1) & 3);
-        uint16_t x = 0, y = 0;
-        for (uint8_t k = 0; k < 4; ++k) {
-            x += potHistory[k] & 0xff;
-            y += potHistory[k] >> 8;
-        }
-        rt_joystick_axis[0] = (uint16_t)(16 + ((x + 2) >> 2));
-        rt_joystick_axis[1] = (uint16_t)(16 + ((y + 2) >> 2));
+        uint16_t counts = *pot1datPointer;
+        rt_joystick_axis[0] = (uint16_t)(16 + (counts & 0xff));
+        rt_joystick_axis[1] = (uint16_t)(16 + (counts >> 8));
     }
     *potgoPointer = 1;
     potStarted = true;
