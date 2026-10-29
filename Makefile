@@ -44,7 +44,7 @@ help:
 	@echo "  make amiga-release  build and verify separate stripped amiga/out/Swotl-release.exe"
 	@echo "  make smoke-release  boot the stripped executable under FS-UAE"
 	@echo "  make whdload        assemble the WHDLoad slaves into build/whdload/"
-	@echo "  make test-whdload   run the slaves under WHDLoad: smoke, boot, load, game FM and TFH"
+	@echo "  make test-whdload   run the slaves under WHDLoad: smoke, boot, load, game FM and TFH, caches 030-060"
 	@echo "  make install-data   build SWotLInstallData (host and Amiga) into build/install-data/"
 	@echo "  make test-install-data  helper vs the DOS ACC install: sources, refusals, cleanup"
 	@echo "  make release        package and audit dist/SWotL-\$$(cat VERSION).lha (clean tree only)"
@@ -588,6 +588,8 @@ test-whdload: whdload amiga-release
 	. amiga/env.sh && for m in smoke boot load; do $(PYTHON) tools/test_whdload.py --mode $$m || exit 1; done
 	. amiga/env.sh && $(PYTHON) tools/test_whdload.py --mode run
 	. amiga/env.sh && $(PYTHON) tools/test_whdload.py --mode run --tfh
+	. amiga/env.sh && for s in "a1200-030" "a1200-030 --whdload-mmu" "a1200-040" "a1200-060"; do \
+		$(PYTHON) tools/test_whdload.py --mode run --setup $$s || exit 1; done
 
 install-data:
 	. amiga/env.sh && $(MAKE) -C tools/install-data all amiga

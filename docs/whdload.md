@@ -25,7 +25,7 @@ Pokeri, `RoF` Rescue on Fractalus (each project's `docs/whdload*.md` and
 | `BLACKSCREEN` | hide kickemu boot screen | Sl, Po, Ve |
 | `INITAGA` | **essential** for a direct-AGA exe | Sl |
 | `BOOTDOS` + `HDINIT` | `_bootdos` runs as CLI process; `slv_CurrentDir` drawer mounted via kickfs | Sl, RoF §1 |
-| `CACHECHIP` | see Caches | all |
+| `CACHE` | see Caches; the five siblings use `CACHECHIP` | Alone in the Dark, Prince of Persia 2, TFH |
 | `SEGTRACKER` | symbolised dumps | Sl, Po |
 | `NO68020` | portable kickemu patches even when game needs 020 | Sl, Ve |
 | `NUMDRIVES=0`, `WPDRIVES=0` | no floppy emulation | Sl |
@@ -85,8 +85,11 @@ Pokeri, `RoF` Rescue on Fractalus (each project's `docs/whdload*.md` and
 | 68020: 256-byte I-cache only, no data cache | SDK cache.html |
 | WHDLoad default: BaseMem NonCachable, ExpMem/slave CopyBack; without MMU any noncacheable region → all caches off | SDK cache.html |
 | kickemu without any `CACHE*` symbol = **all caches off** | SDK kick.readme |
-| `CACHECHIP` = I-cache on for chip+exp, D-cache off; MMU-independent. Used by every sibling | SDK, all |
+| `CACHECHIP` = I-cache on for chip+exp, D-cache off; MMU-independent. Used by Sl, Ve, Rv, Po, RoF | SDK, all |
 | `CACHE` = full caches on ExpMem only (needs MMU to split); `CACHECHIPDATA` caches chip data → blitter/DMA incoherence | SDK kick.readme |
+| WHDLoad uses the MMU on 68040/060 by default, on 68030 only with its `MMU` option | SDK opt.html |
+| SWOTL: `CACHE`; `_bootdos` reads CACR and, if the instruction cache is off (no MMU in use: CACR 0), sets `CACHECHIP`'s value. Measured CACR: 68020 `1`, 68030 `2011`, 68030 + `MMU` `2111`, 68040 `80008000`, 68060 `A0808000` | — |
+| Cache policy check: `.whdl_register` holds `setcpu=` (the slave's request) and `CACR=`; `test_whdload.py` requires both. 0.90's `CACHECHIP` left the D-cache off on 68040/060 (CACR `8000`, `20808000`) | — |
 | `resload_FlushCache` after LoadSeg/patching code | Sl, Po |
 | User options `NoCache`/`Cache` override slave; release icon must not need them | SDK cache.html, Sl, Po |
 
@@ -123,7 +126,7 @@ Pokeri, `RoF` Rescue on Fractalus (each project's `docs/whdload*.md` and
 | Dump tools: waiting-task inspector, planar-buffer decoder from real dump (not reference images) | Ve, Sl |
 | `FILELOG` on 68000 can outlast timeouts (LoadSeg's many small reads) | Rv |
 | Harness: isolated `tmp/whdload-test-*` fixture per run, kill only own emulator, `--no-preload` variant, 4 MiB Fast default | Ve, Sl |
-| SWOTL harness: `--installed DIR` runs an installed drawer unchanged; `--setup a1200-040` = 68040 + MMU + FPU on `$FSUAE_MMU`, requires TC=8000 in the report | — |
+| SWOTL harness: `--installed DIR` runs an installed drawer unchanged; `--setup a1200-040`/`-060` = 68040/060 + MMU + FPU on `$FSUAE_MMU`, requires TC=8000 in the report; `--setup a1200-030` (+ `--whdload-mmu`) = full 68030. These emulate the data cache (compatible core, indirect UAE board; a FS-UAE fixup fails the run) | — |
 | SWOTL harness: `--mode run` ends by `TIMEOUT` + `COREDUMP` (reported as "DEBUG caused" at the CIA-A event count); oracles: original SWOTL.EXE/RTSVGA.OVL blocks in guest RAM (byte-reversed), TFH PCM in Chip only with `--tfh`. The quit key needs a Lua FS-UAE to press; not tested headlessly | Rv |
 | Headless emulator mechanics: [headless-fsuae.md](headless-fsuae.md) | — |
 

@@ -6,6 +6,7 @@
     python3 tools/test_whdload.py --mode load      # LoadTest.slave: LoadSeg + PROGDIR
     python3 tools/test_whdload.py --mode run [--tfh] [--slave build/whdload/MemFree.slave]
     python3 tools/test_whdload.py --mode run --installed DIR [--setup a1200-040]
+    python3 tools/test_whdload.py --mode run --setup a1200-030 [--whdload-mmu]
 
 `run` starts the game under the release slave; WHDLoad TIMEOUT (needs the moved
 VBR of a 68020) ends it with COREDUMP and the dump is judged:
@@ -19,6 +20,12 @@ The MemFree slave's low-water marks (Chip, Fast) are read from its $100 slot.
 --installed runs an installed SWotL drawer as it is (slave, data/SWotL, data).
 --setup a1200-040: full 68040 with its MMU and FPU, JIT off, on $FSUAE_MMU;
 the report must show TC=8000 (translation on; AmigaXDev whdload-mmu.md).
+--setup a1200-030: full 68030 with its MMU on $FSUAE_MMU; WHDLoad uses the MMU
+only with its MMU option (--whdload-mmu). --setup a1200-060: as the 68040, TC=8000 too.
+These setups emulate the data cache.
+The dump's CACR must match the slave's cache policy (docs/whdload.md, Caches):
+data cache on where WHDLoad uses the MMU (68040/060, 68030 with MMU), otherwise the
+instruction cache alone.
 
 Inputs are local, never shipped: Kickstart 3.1 A1200 + RTB, WHDLoad, the
 Workbench floppy, the original game files (ref/) and TFH sfx.rsc (TFH_RSC).
@@ -72,7 +79,8 @@ def main():
                    help='stripped (make amiga-release): LoadSeg reads symbol hunks in small pieces')
     p.add_argument('--data', type=Path, default=ROOT / 'ref')
     p.add_argument('--installed', type=Path, help='installed SWotL drawer, used unchanged')
-    p.add_argument('--setup', choices=('a1200', 'a1200-040'), default='a1200')
+    p.add_argument('--setup', choices=('a1200', 'a1200-030', 'a1200-040', 'a1200-060'), default='a1200')
+    p.add_argument('--whdload-mmu', action='store_true', help="WHDLoad's MMU option (68030)")
     p.add_argument('--rom', type=Path, default=KICK31)
     p.add_argument('--fast', type=int, default=8192, help='host Fast RAM in KiB')
     p.add_argument('--cpu', default='68020')
@@ -83,9 +91,12 @@ def main():
     if args.installed:
         assert args.mode == 'run' and not args.slave, '--installed runs its own slave'
         args.data = args.installed / 'data'
-    mmu = args.setup == 'a1200-040'
+    mmu = args.setup != 'a1200'
     if mmu:
-        args.cpu = '68040'
+        args.cpu = '68' + args.setup[-3:]
+    assert not args.whdload_mmu or args.cpu == '68030', '--whdload-mmu is for --setup a1200-030'
+    # Where WHDLoad uses the MMU, the slave's CACHE policy holds (data cache on).
+    dcache = args.cpu in ('68040', '68060') or args.whdload_mmu
 
     (ROOT / 'tmp').mkdir(exist_ok=True)
     base = Path(tempfile.mkdtemp(prefix='whdload-test-', dir=ROOT / 'tmp'))
@@ -114,6 +125,8 @@ def main():
         options += ['COREDUMP', f'TIMEOUT={args.ticks}']
         if args.tfh:
             options.append('CUSTOM1=1')
+    if args.whdload_mmu:
+        options.append('MMU')
     command = 'WHDLoad SWotL.slave ' + ' '.join(options)
     print('Command:', command, flush=True)
     (boot / 's/WHDLoad.prefs').write_text('Expert\nReadDelay=0\n')
@@ -124,7 +137,14 @@ def main():
         'If WARN\nEcho failed >DH0:failed\nElse\nEcho passed >DH0:passed\nEndIf\n')
 
     fsuae = os.environ.get('FSUAE_MMU' if mmu else 'FSUAE', 'fs-uae')
-    cpu = ['--uae_mmu_model=68040', '--uae_fpu_model=68040', '--uae_cpu_24bit_addressing=false'] if mmu else []
+    # Data-cache emulation needs the compatible core and, with directory drives, the
+    # indirect UAE board (AmigaXDev headless-fsuae.md); otherwise FS-UAE drops it.
+    cpu = {'68030': ['--uae_mmu_model=68030'],
+           '68040': ['--uae_mmu_model=68040', '--uae_fpu_model=68040'],
+           '68060': ['--uae_mmu_model=68060', '--uae_fpu_model=68060']}.get(args.cpu, []) if mmu else []
+    if mmu:
+        cpu += ['--uae_cpu_24bit_addressing=false', '--uae_cpu_compatible=true', '--uae_cpu_data_cache=true',
+                '--uae_uaeboard=full+indirect']
     with (base / 'emulator.log').open('w') as log:
         emu = subprocess.Popen([fsuae, '--amiga_model=A1200', '--cpu=' + args.cpu,
             '--uae_cpu_model=' + args.cpu, *cpu, '--jit_compiler=0',
@@ -152,6 +172,9 @@ def main():
                 emu.wait()
 
     output = (boot / 'result').read_text(errors='replace') if (boot / 'result').exists() else ''
+    fsuae_log = base / 'fsuae/Cache/Logs/fs-uae.log.txt'
+    if mmu and 'Data cache emulation' in (fsuae_log.read_text(errors='replace') if fsuae_log.exists() else 'Data cache emulation'):
+        raise SystemExit(f'FAIL: FS-UAE did not keep data-cache emulation ({fsuae_log})')
     report = (game / '.whdl_register').read_text(encoding='latin1') if (game / '.whdl_register').exists() else ''
     if not any((boot / n).exists() for n in ('passed', 'failed')):
         raise SystemExit(f'FAIL: WHDLoad did not return within {args.seconds} s ({base})\n{output}')
@@ -173,8 +196,17 @@ def main():
     event = re.search(r'event=([0-9A-F]+)', report)
     if 'DEBUG caused' not in report or not event or int(event[1], 16) < args.ticks:
         raise SystemExit('FAIL: the run did not end by TIMEOUT\n' + report[:2000])
-    if mmu and 'TC=8000' not in report:
-        raise SystemExit('FAIL: 68040 MMU translation was not enabled (no TC=8000)\n' + report[:2000])
+    if args.cpu in ('68040', '68060') and 'TC=8000' not in report:
+        raise SystemExit(f'FAIL: {args.cpu} MMU translation was not enabled (no TC=8000)\n' + report[:2000])
+    # CACR alone does not show the policy: with the MMU, WHDLoad enables both
+    # caches whatever the slave asks; setcpu= holds the slave's request.
+    cacr = int(re.search(r'CACR=([0-9A-F]+)', report)[1], 16)
+    setcpu = re.search(r'setcpu=\S+', report)[0]
+    ic, dc = (0x8000, 0x80000000) if args.cpu in ('68040', '68060') else (0x1, 0x100)
+    print(f'CACR={cacr:X}', setcpu)
+    if not cacr & ic or bool(cacr & dc) != dcache or (',DC,' in setcpu) != dcache:
+        raise SystemExit(f'FAIL: CACR={cacr:X}: expected the instruction cache'
+                         + (' and the data cache' if dcache else ' without the data cache'))
     memory = chip + exp
     resident = True
     for name in ('SWOTL.EXE', 'RTSVGA.OVL'):
@@ -195,7 +227,8 @@ def main():
     if not args.tfh and in_chip:
         raise SystemExit('FAIL: TFH samples in Chip without Custom1')
     print('PASS: game runs under WHDLoad, sound ' + ('TFH' if args.tfh else 'FM')
-          + (', 68040 MMU on' if mmu else ''))
+          + (f', {args.cpu} MMU' + (' in use' if dcache else ' unused') if mmu else '')
+          + f', CACR={cacr:X}')
 
 
 if __name__ == '__main__':
