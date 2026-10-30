@@ -9,9 +9,14 @@
 // >= 90%, none beyond 6 dB. Pitch where the reference is tonal (a peak >= 0.9
 // after the autocorrelation falls below 0, two periods in a 40 ms window):
 // within 10 cents on >= 99%, refined at the multiple nearest lag 250.
-// Feedback noise and sub-audio rumble have no pitch. Writes OUT/ID-nuked.wav
-// and OUT/ID-fx.wav. Build: make build/tools/fm_effect_check.
-// Usage: fm_effect_check capture.csv OUTDIR [--sabotage level|pitch]
+// Feedback noise and sub-audio rumble have no pitch. A fade (the last
+// FM_EFFECT_FADE samples of a cut effect) is not compared; the end is: the reference, run to
+// the last write and its release, has no window within FM_EFFECT_END_DB - 3
+// dB of its loudest after ours ends, and where it still sounds there (within
+// FM_EFFECT_END_DB + 10) ours ends faded: its last window FM_EFFECT_END_DB +
+// 6 dB under its loudest (the 8-bit floor). Writes OUT/ID-nuked.wav and OUT/ID-fx.wav.
+// Build: make build/tools/fm_effect_check.
+// Usage: fm_effect_check capture.csv OUTDIR [--sabotage level|pitch|end|fade]
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -109,7 +114,7 @@ static void periods(const std::vector<double> &a, const std::vector<double> &b, 
 int main(int argc, char **argv)
 {
     if (argc != 3 && !(argc == 5 && !strcmp(argv[3], "--sabotage"))) {
-        fprintf(stderr, "usage: %s capture.csv OUTDIR [--sabotage level|pitch]\n", argv[0]);
+        fprintf(stderr, "usage: %s capture.csv OUTDIR [--sabotage level|pitch|end|fade]\n", argv[0]);
         return 1;
     }
     const char *sabotage = argc == 5 ? argv[4] : "";
@@ -141,6 +146,10 @@ int main(int argc, char **argv)
         std::vector<double> ours(n), ref;
         for (uint32_t k = 0; k < n; k++) ours[k] = out[k] * peak / 127;
         if (!strcmp(sabotage, "level")) for (uint32_t k = n / 2; k < n; k++) ours[k] *= 0.5;
+        if (!strcmp(sabotage, "end")) n = ours.size() > 2u * FM_EFFECT_FADE ? n / 2 : n;     // cut early
+        if (!strcmp(sabotage, "fade") && n > (uint32_t)FM_EFFECT_FADE)   // the fade undone: held at its start
+            for (uint32_t k = n - FM_EFFECT_FADE; k < n; k++) ours[k] = ours[k - FM_EFFECT_FADE];
+        ours.resize(n);
         opl3_chip chip;
         OPL3_Reset(&chip, 49716);
         for (int r = 0x01; r < 0x100; r++) OPL3_WriteReg(&chip, (uint16_t)r, opl0[r]);
@@ -155,7 +164,7 @@ int main(int argc, char **argv)
             chip_n++;
             if (++a3 == 3) { ref.push_back(s[0]); a3 = 0; }
         };
-        for (uint32_t t = 0; ref.size() < n && t <= last + 2000; t++) {
+        for (uint32_t t = 0; t <= last + 474; t++) {         // fm_effect's span at most (FX_TAIL_TICKS)
             chip_pos += 5041.0 / 24;
             for (; at < w.size() && w[at].tick == t; at++) {   // AdLib bus timing: ~2 chip samples a write
                 OPL3_WriteReg(&chip, w[at].reg, w[at].value);
@@ -164,7 +173,22 @@ int main(int argc, char **argv)
             }
             while (chip_n < (long)chip_pos) generate();
         }
+        // the end: nothing near the threshold in the reference after ours ends
+        std::vector<double> full = ref;
+        full.resize(std::max(full.size(), (size_t)n + WIN));
         ref.resize(n);
+        double rtop = -1e9, after = -1e9;
+        for (size_t at = 0; at + WIN <= full.size(); at += WIN) {
+            double d = rms_db(full, at);
+            rtop = std::max(rtop, d);
+            if (at >= n) after = std::max(after, d);
+        }
+        double tail = n >= (uint32_t)WIN ? rms_db(ours, n - WIN) : -1e9, otop = -1e9;
+        for (size_t at = 0; at + WIN <= n; at += WIN) otop = std::max(otop, rms_db(ours, at));
+        bool end_ok = after <= rtop - (FM_EFFECT_END_DB - 3);
+        // cut while the reference still sounds (not SPAZ's own end): faded to the 8-bit floor
+        bool cut = after > rtop - (FM_EFFECT_END_DB + 10);
+        bool fade_ok = !cut || tail <= otop - (FM_EFFECT_END_DB + 6);
         if (!strcmp(sabotage, "pitch")) {   // ours a semitone up: resampled
             std::vector<double> up(n);
             for (uint32_t k = 0; k < n; k++) { double p = k * 1.059463; size_t q = (size_t)p; up[k] = q + 1 < n ? ours[q] + (p - q) * (ours[q + 1] - ours[q]) : 0; }
@@ -172,7 +196,7 @@ int main(int argc, char **argv)
         }
         wav(std::string(argv[2]) + "/" + std::to_string(id) + "-nuked.wav", ref, 4);
         wav(std::string(argv[2]) + "/" + std::to_string(id) + "-fx.wav", ours, 4);
-        size_t windows = n / WIN;
+        size_t windows = cut && n > (uint32_t)FM_EFFECT_FADE ? (n - FM_EFFECT_FADE) / WIN : n / WIN;
         std::vector<double> dr(windows), dq(windows);
         double top = -1e9;
         for (size_t k = 0; k < windows; k++) { dr[k] = rms_db(ref, k * WIN); dq[k] = rms_db(ours, k * WIN); top = std::max(top, dr[k]); }
@@ -199,10 +223,12 @@ int main(int argc, char **argv)
             }
         }
         double lf = checked ? 100.0 * ok / checked : 100, pf = pc ? 100.0 * pok / pc : 100;
-        bool pass = lf >= 90 && far <= 6 && pf >= 99;
+        bool pass = lf >= 90 && far <= 6 && pf >= 99 && end_ok && fade_ok;
         bad += !pass;
-        printf("id %2d: %5u samples, peak %5.1f dB FS; level %d/%d (%.1f%%, worst %.1f dB); pitch %d/%d (%.1f%%, worst %.1f cents) %s\n",
-               id, n, 20 * log10(level / (double)FM_EFFECT_FULL), ok, checked, lf, far, pok, pc, pf, worst, pass ? "ok" : "FAIL");
+        printf("id %2d: %5u samples, peak %5.1f dB FS; level %d/%d (%.1f%%, worst %.1f dB); pitch %d/%d (%.1f%%, worst %.1f cents); "
+               "after the end %.1f dB, tail %.1f dB%s %s\n",
+               id, n, 20 * log10(level / (double)FM_EFFECT_FULL), ok, checked, lf, far, pok, pc, pf, worst,
+               after - rtop, tail - otop, cut ? " (faded)" : "", pass ? "ok" : "FAIL");
         if (!pass) printf("  misses (window:reference/ours, dB or period):%s\n", misses.c_str());
     }
     printf("prerendered: %zu effects, %lu samples (%.1f s, %lu bytes) %s\n", fx.size(), total,

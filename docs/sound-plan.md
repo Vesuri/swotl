@@ -154,18 +154,27 @@ code runs out of the game's flow for it (approved); 0.91 waits for it.
   write for write and tick for tick; host milestones still match the
   reference with the prerender on (restore complete).
 - **R2 render** (done: `fm_effect` in `fm_paula.c`, `t-fm-effect`; 27 ids,
-  36.2 s, 600,219 bytes at 16,572 Hz). Per id, the captured stream through
+  28.1 s, 464,974 bytes at 16,572 Hz with the end below). Per id, the captured stream through
   the re-hoster's operator model, updated per tick, synthesised directly at
   the output rate in one pass (phase continuous; a same-tick key-off/on
   retriggers, as on the bus; one signed table lookup an operator), the
   effect's channels mixed in 16 bits, then one signed 8-bit sample
   normalised to its peak; `*level` the peak in OPL units (a full-scale voice
   is one channel at 0 dB, 4095). A channel is silent 42 dB under the peak so
-  far (the scaled sample's 8-bit floor); trailing zeros are cut. Oracle
+  far (the scaled sample's 8-bit floor). The end: SPAZ fades many effects
+  slowly before its key-off (cannon 13: 1.43 s; TFH's cannon 0.54 s), so an
+  effect ends `FM_EFFECT_FADE` (0.2 s) after its last 20 ms window within
+  `FM_EFFECT_END_DB` (30) of its loudest, faded out linearly (fm_paula.h,
+  tunable; bump `FM_EFFECT_VERSION`); 36.2 s uncut. Trailing zeros are cut. Oracle
   `tools/fm_effect_check.cpp` vs Nuked sampled every third chip sample (the
   same waveform): AC level per 20 ms within 3 dB on >= 90% and 6 dB on all,
   pitch within 10 cents where the reference is tonal (ids 20, 32, 38;
-  feedback noise and sub-audio rumble have none). Plants: pitch, level.
+  feedback noise and sub-audio rumble have none); the fade not compared.
+  The end: the reference (to the last write and its release) has no window
+  within 27 dB of its loudest after ours ends; where it still sounds within
+  40 dB there, ours ends faded (last window 36 dB under; 7 ids). Plants:
+  pitch, level, end (cut at half), fade (undone). `t-sab-sfx-capture`'s
+  plants write their own captures (tmp/sfx-capture.csv stays the real one).
   Known: direct synthesis aliases partials above 8.3 kHz (mult 15
   modulators, feedback 7): ids 19, 30, 31 are up to 5 dB louder than the
   chip output band-limited by a 3-sample average.
@@ -188,7 +197,9 @@ code runs out of the game's flow for it (approved); 0.91 waits for it.
   drawer), keyed on `FM_EFFECT_VERSION`, PAL/NTSC, the start registers and
   each wanted id's writes; written in one `Write` (under WHDLoad each write
   is a save and a write delay), refused whole if anything differs or is cut,
-  then rendered and rewritten. Measured (`SWOTL_EFFECTS`, m2-choose-side
-  matches the reference), A1200 model 68020: capture 140 fields, render 617
-  and cache write 11 at the first start (15 s); from the cache 7 (3 s with
-  the capture); 600,234 Chip bytes, file 600,466.
+  then rendered and rewritten. Measured (`SWOTL_EFFECTS`, m2-choose-side;
+  the end of R2 included), A1200 model 68020: capture 140 fields, render 654
+  and cache write 7 at the first start (16 s), from the cache 6 (3 s with the
+  capture); 68030: capture 40, render 285, write 1 (6.5 s), cached 4 (0.9 s);
+  464,994 Chip bytes, file 465,226 (TFH: id 19 alone, 39,368). The end saves
+  Chip, not render time: the effect is synthesised whole before its cut.

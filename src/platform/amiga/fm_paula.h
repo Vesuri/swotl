@@ -38,11 +38,16 @@ struct fm_write { uint16_t tick; uint8_t reg, value; };
 /* Renders the effect from registers `opl`, at most max samples: mixed in
  * buf[0..max) (16 bits), then signed 8-bit at full scale in place from
  * (int8_t *)buf; its peak in OPL units in *level (a full-scale voice is one
- * channel at 0 dB, FM_EFFECT_FULL). Returns the samples. */
+ * channel at 0 dB, FM_EFFECT_FULL). Returns the samples. The effect ends
+ * FM_EFFECT_FADE samples after its last 20 ms window within FM_EFFECT_END_DB
+ * of its loudest (mean |sample|), faded out linearly over them (SPAZ's slow fades:
+ * docs/sound-plan.md R4). Tunable; change FM_EFFECT_VERSION with them. */
 #define FM_EFFECT_FULL 4095
+#define FM_EFFECT_END_DB 30
+#define FM_EFFECT_FADE (FM_EFFECT_RATE / 5)
 /* Bumped whenever fm_effect's output for the same input changes: it keys the
  * Amiga's cache of rendered effects (Audio.cpp). */
-#define FM_EFFECT_VERSION 1
+#define FM_EFFECT_VERSION 2
 uint32_t fm_effect(const uint8_t *opl, const struct fm_write *w, uint32_t n, int16_t *buf, uint32_t max,
                    uint32_t *level);
 /* Loops rendered since fm_init (cost statistics). */

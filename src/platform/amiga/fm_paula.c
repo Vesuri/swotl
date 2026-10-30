@@ -839,11 +839,17 @@ publish_voices:
  * effect are mixed into buf (16 bits: three channels fit), then scaled to
  * full 8 bits in place, *level the peak. A channel is silent below the 8-bit
  * floor of the scaled sample: ATT_SILENT under the peak so far (never above
- * the final one, 32 units per halving); trailing samples that scale to 0 are
- * cut. */
+ * the final one, 32 units per halving). Then the end (fm_paula.h): 20 ms
+ * windows' mean |sample| (within 1 dB of RMS for these waveforms; summed in
+ * the peak's pass) against the loudest's, FM_EFFECT_END_DB in 1 dB steps of
+ * 1000/1122; the fade after the last window above it; trailing samples that
+ * scale to 0 are cut. */
 #define FX_TICK_NUM 5041u           /* output samples per tick, / FX_TICK_DEN */
 #define FX_TICK_DEN 72u
 #define FX_TAIL_TICKS 474u          /* release tail after the last write, 2 s at most */
+#define FX_WINDOW (FM_EFFECT_RATE / 50)     /* the end's 20 ms windows */
+#define FX_WINDOWS 512u            /* 10.3 s: past the capture's 8 s and the tail */
+static uint32_t fx_wins[FX_WINDOWS];
 
 struct fx_channel {
     uint32_t pm, pc;
@@ -938,6 +944,8 @@ uint32_t fm_effect(const uint8_t *opl0, const struct fm_write *w, uint32_t n, in
     struct fx_channel ch[9];
     uint16_t used = 0, c, silent = 0x1ff;
     uint32_t i = 0, tick, frac = 0, k = 0, len = 0, last = n ? w[n - 1].tick : 0, peak = 1, p = 1;
+    /* per 20 ms window the sum of |sample| (the end's level), filled as the peak is found */
+    uint32_t *wins = fx_wins, nw = 0, wsum = 0, wn = 0;
     /* the envelope's ticks in 1/256 field, 16.16 */
     uint32_t dt = (uint32_t)((fm_ntsc ? 59.826 : FM_FIELD_HZ) * 65536.0 * 256.0 / 236.7), dacc = 0;
     int8_t *out = (int8_t *)buf;
@@ -1013,6 +1021,11 @@ uint32_t fm_effect(const uint8_t *opl0, const struct fm_write *w, uint32_t n, in
             int32_t v = buf[k + s];
             uint32_t a = (uint32_t)(v < 0 ? -v : v);
             if (a > peak) peak = a;
+            wsum += a;
+            if (++wn == FX_WINDOW && nw < FX_WINDOWS) {
+                wins[nw++] = wsum;
+                wsum = wn = 0;
+            }
         }
         k += m_n;
         for (silent = ATT_SILENT, p = peak; p < FM_EFFECT_FULL && silent < 0x1ff; p <<= 1) silent += 32;
@@ -1023,6 +1036,19 @@ uint32_t fm_effect(const uint8_t *opl0, const struct fm_write *w, uint32_t n, in
         }
     }
     {
+        uint32_t top = 0, thr, cut = 0, d;
+        if (wn && nw < FX_WINDOWS) wins[nw++] = wsum;
+        for (d = 0; d < nw && d * FX_WINDOW < len; ++d) {
+            if (wins[d] > top) top = wins[d];
+        }
+        for (thr = top, d = 0; d < FM_EFFECT_END_DB; ++d) thr = thr / 1122 * 1000 + (thr % 1122) * 1000 / 1122;
+        for (d = 0; d < nw && d * FX_WINDOW < len; ++d) {
+            if (wins[d] > thr) cut = (d + 1) * FX_WINDOW;
+        }
+        if (cut + FM_EFFECT_FADE < len) {
+            len = cut + FM_EFFECT_FADE;
+            for (k = cut; k < len; ++k) buf[k] = (int16_t)(buf[k] * (int32_t)(len - k) / FM_EFFECT_FADE);
+        }
         int32_t scale = (int32_t)((127L << 16) / (int32_t)peak);
         uint32_t end = 0;
         for (k = 0; k < len; ++k) {
@@ -1030,9 +1056,7 @@ uint32_t fm_effect(const uint8_t *opl0, const struct fm_write *w, uint32_t n, in
             out[k] = (int8_t)(q > 127 ? 127 : q < -128 ? -128 : q);
             if (q) end = k + 1;
         }
-        /* the writes' own span stays */
-        last = (uint32_t)(((last + 1) * FX_TICK_NUM) / FX_TICK_DEN);
-        len = end > last ? end : last < len ? last : len;
+        len = end;
     }
     *level = peak;
     return len;

@@ -153,7 +153,7 @@ t-sab-fm-quality:
 t-fm-effect: build/tools/fm_effect_check t-sfx-capture
 	$(call RUN,fm-effect,mkdir -p tmp/sfx-wav && build/tools/fm_effect_check tmp/sfx-capture.csv tmp/sfx-wav)
 t-sab-fm-effect: build/tools/fm_effect_check t-sfx-capture
-	$(call RUN,sabotage-fm-effect,mkdir -p tmp/test/sfx-wav && for s in pitch level; do \
+	$(call RUN,sabotage-fm-effect,mkdir -p tmp/test/sfx-wav && for s in pitch level end fade; do \
 		! build/tools/fm_effect_check tmp/sfx-capture.csv tmp/test/sfx-wav --sabotage $$s || exit 1; done)
 # The prerender's assembly loop (fm_effect_run.s) on the 68020 core vs the C loop.
 t-fm-effect-asm: t-sfx-capture
