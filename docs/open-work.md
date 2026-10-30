@@ -85,9 +85,6 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## User report (A1200, 68060, 2026-10-29)
 
-46. Prerendered effects ([sound-plan](sound-plan.md) R4): the 0.91 release
-    package (`make release`) not yet rebuilt with the -30 dB end.
-
 42. Speed and mouse: caches, per-request mouse counters with the field cap
     and flight mouse scaling to a 300 ms frame are in; the cap above 50 fps
     and the scaling are proven only by `tests/test_display_queue.py` and
