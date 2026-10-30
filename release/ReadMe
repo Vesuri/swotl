@@ -88,6 +88,8 @@
  - AdLib sound effects are rendered at the first start (about 16 s on
    an A1200) and kept in sfx.cache in the game drawer; later starts load
    them. Firing (the heavier guns above all) no longer slows the game down
+ - quitting from the game's menu no longer stops with an unsupported EMS
+   function error
 
 
  Contact:
