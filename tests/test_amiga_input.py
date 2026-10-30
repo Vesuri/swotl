@@ -193,7 +193,8 @@ static void digital() {
     pot = 0xffff; assert(buttons() == 0 && rt_joystick_buttons == 0);
 }
 // Proportional joystick: POTGO START at each vertical blank, POT1DAT read at
-// the next, each field's count plus 16; buttons on pins 3 and 4 (JOY1DAT
+// the next, each field's count plus 16, X the high byte (pin 9), Y the low
+// (pin 5); buttons on pins 3 and 4 (JOY1DAT
 // bits 9 and 1); directions post nothing; POTINP's buttons as read before
 // the START.
 static void analog() {
@@ -204,13 +205,13 @@ static void analog() {
     assert(potgo == 1 && rt_joystick_axis[0] == 0 && rt_joystick_axis[1] == 0);
     potgo = 0;
     stick(0, {});
-    assert(potgo == 1 && rt_joystick_axis[0] == 16 + 0x40 && rt_joystick_axis[1] == 16 + 0x60);
+    assert(potgo == 1 && rt_joystick_axis[0] == 16 + 0x60 && rt_joystick_axis[1] == 16 + 0x40);
     pot1 = 0x7050;
     stick(0, {});
-    assert(rt_joystick_axis[0] == 16 + 0x50 && rt_joystick_axis[1] == 16 + 0x70);
+    assert(rt_joystick_axis[0] == 16 + 0x70 && rt_joystick_axis[1] == 16 + 0x50);
     pot1 = 0xff00;
     stick(0, {});
-    assert(rt_joystick_axis[0] == 16 && rt_joystick_axis[1] == 16 + 0xff);
+    assert(rt_joystick_axis[0] == 16 + 0xff && rt_joystick_axis[1] == 16);
     stick(0x0100, {}); stick(0x0003, {}); stick(0, {});
     joy1 = 0x0200; assert(buttons() == 1 && rt_joystick_buttons == 1);
     joy1 = 0x0002; assert(buttons() == 2 && rt_joystick_buttons == 2);
@@ -307,6 +308,8 @@ if __name__ == '__main__':
                          ('*ciaapraPointer & 0x80 ? 0 : 1', '*ciaapraPointer & 0x40 ? 0 : 1'),
                          ('(joy >> 9 & 1) | (joy & 2)', '(joy >> 9 & 1) | (joy << 1 & 2)'),
                          ('rt_joystick ? potButtons : *potinpPointer', '*potinpPointer'),
+                         ('rt_joystick_axis[0] = (uint16_t)(16 + (counts >> 8));',
+                          'rt_joystick_axis[0] = (uint16_t)(16 + (counts & 0xff));'),
                          ('16 + (counts & 0xff)', '(counts & 0xff)'),
                          ('16 + (counts >> 8)', '16 + (counts >> 8 & 0x7f)'),
                          ('    *potgoPointer = 1;\n', ''),

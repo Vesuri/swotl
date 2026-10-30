@@ -212,16 +212,17 @@ static void digitalJoystick()
 }
 
 // Proportional joystick in port 2 (Revs' RevsInput): POTGO START at each
-// vertical blank, POT1DAT read at the next; each field's count (X low byte,
-// pin 5; Y high byte, pin 9) plus 16 is the gameport's one-shot reads,
-// inside the game's probe range of 16 to 1000 (root +042B0). The game's
-// calibration scales it.
+// vertical blank, POT1DAT read at the next; each field's count plus 16 is
+// the gameport's one-shot reads, inside the game's probe range of 16 to 1000
+// (root +042B0). The game's calibration scales it. X is the high byte
+// (pin 9), Y the low byte (pin 5): the Hardware Manual's X/Y names swapped
+// the axes in flight on a real stick (user report, 0.91).
 static void analogJoystick()
 {
     if (potStarted) {
         uint16_t counts = *pot1datPointer;
-        rt_joystick_axis[0] = (uint16_t)(16 + (counts & 0xff));
-        rt_joystick_axis[1] = (uint16_t)(16 + (counts >> 8));
+        rt_joystick_axis[0] = (uint16_t)(16 + (counts >> 8));
+        rt_joystick_axis[1] = (uint16_t)(16 + (counts & 0xff));
     }
     *potgoPointer = 1;
     potStarted = true;
