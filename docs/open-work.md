@@ -86,8 +86,8 @@ speed work: [speed-plan.md](speed-plan.md).
 ## User report (A1200, 68060, 2026-10-29)
 
 46. Heavy-gun slowdown in FM mode: prerendered effects,
-    [sound-plan](sound-plan.md) R3–R4 open (R1 capture, R2 render in);
-    release 0.91 waits for it.
+    [sound-plan](sound-plan.md) R4 open: startup 19 s on a 68020 (capture
+    4 s, render 15 s); release 0.91 waits for it.
 
 42. Speed and mouse: caches, per-request mouse counters with the field cap
     and flight mouse scaling to a 300 ms frame are in; the cap above 50 fps

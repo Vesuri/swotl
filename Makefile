@@ -123,7 +123,7 @@ t-fm: build/tools/fm_check
 # Isolated audio changes: original-derived sound checks and their plants.
 .PHONY: gates-audio
 gates-audio:
-	@$(MAKE) -s -k -j$(JOBS) t-fm t-fm-quality t-fm-render t-fm-envelope t-fm-allocation t-fm-cache t-fm-phase t-tfh t-audio t-sfx-capture t-fm-effect t-sab-fm t-sab-fm-quality t-sab-fm-render t-sab-fm-envelope t-sab-fm-allocation t-sab-fm-cache t-sab-fm-phase t-sab-tfh t-sab-audio t-sab-sfx-capture t-sab-fm-effect
+	@$(MAKE) -s -k -j$(JOBS) t-fm t-fm-quality t-fm-render t-fm-envelope t-fm-allocation t-fm-cache t-fm-phase t-tfh t-audio t-sfx-capture t-fm-effect t-sfx-play t-sab-fm t-sab-fm-quality t-sab-fm-render t-sab-fm-envelope t-sab-fm-allocation t-sab-fm-cache t-sab-fm-phase t-sab-tfh t-sab-audio t-sab-sfx-capture t-sab-fm-effect t-sab-sfx-play
 
 t-fm-quality:
 	$(call RUN,fm-quality,$(PYTHON) tests/test_fm_quality.py)
@@ -174,6 +174,10 @@ t-sfx-capture:
 	$(call RUN,sfx-capture,$(PYTHON) tests/test_sfx_capture.py)
 t-sab-sfx-capture:
 	$(call RUN,sabotage-sfx-capture,$(PYTHON) tests/test_sfx_capture.py --sabotage)
+t-sfx-play:
+	$(call RUN,sfx-play,$(PYTHON) tests/test_sfx_play.py)
+t-sab-sfx-play:
+	$(call RUN,sabotage-sfx-play,$(PYTHON) tests/test_sfx_play.py --sabotage)
 t-sab-tfh:
 	$(call RUN,sabotage-tfh,$(PYTHON) tests/test_tfh.py --sabotage)
 

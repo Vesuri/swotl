@@ -324,16 +324,23 @@ static ULONG cia_tick(void)
     return 0;
 }
 
-/* Effect capture (runtime.h rt_sfx_*): off until the prerender renders it
- * (docs/sound-plan.md R2, R3). */
+/* Effect capture (runtime.h rt_sfx_*): the effects Audio prerenders
+ * (docs/sound-plan.md R3). */
+extern int amiga_audio_effect_wanted(uint8_t id);
+extern void amiga_audio_effects(void);
+volatile uint32_t amiga_sfx_capture_fields;  /* the capture's fields (diagnostics) */
 int plat_sfx_wanted(uint8_t id)
 {
-    (void)id;
-    return 0;
+    if (!id) {
+        amiga_sfx_capture_fields = amiga_frames;
+    }
+    return amiga_audio_effect_wanted(id);
 }
 
 void plat_sfx_captured(void)
 {
+    amiga_sfx_capture_fields = amiga_frames - amiga_sfx_capture_fields;
+    amiga_audio_effects();
 }
 
 static void cia_load(uint32_t divisor)
@@ -674,6 +681,7 @@ int amiga_guest_open(void)
     rt_frame_cap = 1;       /* one game frame per field (runtime.h) */
     rt_mouse_scale = 1;     /* flight mouse at a fixed frame time (runtime.h) */
     rt_mickeys_y = 1;       /* vertical counts 1:1, as a real PC mouse (runtime.h) */
+    rt_sfx_prerender_on = 1;  /* effects prerendered at SPAZ init (runtime.h) */
 #endif
     if (tfh) load_tfh();
     else plat_log("SWOTL sound FM");

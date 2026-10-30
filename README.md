@@ -9,8 +9,8 @@ duty and the full campaign.
 The port runs the original game code, translated offline from 16-bit x86 to 68020
 by this repository's static translator; there is no x86 emulator. Graphics use AGA
 bitplanes with a hardware sprite mouse pointer. The AdLib music and effects are
-resynthesised on Paula; optionally, the sampled effects of the Amiga
-**Their Finest Hour** replace the AdLib ones.
+resynthesised on Paula, the effects once at start into samples; optionally, the
+sampled effects of the Amiga **Their Finest Hour** replace the AdLib ones.
 
 Current Amiga release: **0.91 (30.10.2026)**.
 

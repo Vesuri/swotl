@@ -153,23 +153,31 @@ code runs out of the game's flow for it (approved); 0.91 waits for it.
   write for write and tick for tick; host milestones still match the
   reference with the prerender on (restore complete).
 - **R2 render** (done: `fm_effect` in `fm_paula.c`, `t-fm-effect`; 27 ids,
-  36.8 s, 610,581 bytes at 16,572 Hz). Per id, the captured stream through
+  36.2 s, 600,219 bytes at 16,572 Hz). Per id, the captured stream through
   the re-hoster's operator model, updated per tick, synthesised directly at
-  the output rate (phase continuous; a same-tick key-off/on retriggers, as
-  on the bus), the effect's channels mixed into one signed 8-bit sample
+  the output rate in one pass (phase continuous; a same-tick key-off/on
+  retriggers, as on the bus; one signed table lookup an operator), the
+  effect's channels mixed in 16 bits, then one signed 8-bit sample
   normalised to its peak; `*level` the peak in OPL units (a full-scale voice
-  is one channel at 0 dB, 4095). A channel is silent 42 dB under the peak
-  (the scaled sample's 8-bit floor). Oracle `tools/fm_effect_check.cpp` vs
-  Nuked sampled every third chip sample (the same waveform): AC level per
-  20 ms within 3 dB on >= 90% and 6 dB on all, pitch within 10 cents where
-  the reference is tonal (ids 20, 32, 38; feedback noise and sub-audio
-  rumble have none). Plants: pitch, level. Known: direct synthesis aliases
-  partials above 8.3 kHz (mult 15 modulators, feedback 7): ids 19, 30, 31
-  are up to 5 dB louder than the chip output band-limited by a 3-sample
-  average. Twelve ids peak above one channel (up to +9.4 dB, id 13): R3
-  decides how Paula volume (64 at most) handles them.
-- **R3 play.** `sfx_start` routes a prerendered id's slot to its sample, the
-  TFH path (slot channels masked, Paula voice, restart, stop). Oracle:
-  t-tfh-style routing tests; c6/c13 `--sound-log` renders.
-- **R4 Amiga.** Startup time (68020, 68030), Chip use, smoke, gates-audio,
-  WHDLoad; release 0.91.
+  is one channel at 0 dB, 4095). A channel is silent 42 dB under the peak so
+  far (the scaled sample's 8-bit floor); trailing zeros are cut. Oracle
+  `tools/fm_effect_check.cpp` vs Nuked sampled every third chip sample (the
+  same waveform): AC level per 20 ms within 3 dB on >= 90% and 6 dB on all,
+  pitch within 10 cents where the reference is tonal (ids 20, 32, 38;
+  feedback noise and sub-audio rumble have none). Plants: pitch, level.
+  Known: direct synthesis aliases partials above 8.3 kHz (mult 15
+  modulators, feedback 7): ids 19, 30, 31 are up to 5 dB louder than the
+  chip output band-limited by a 3-sample average.
+- **R3 play** (done: `tfh_paula.c`, `Audio.cpp`, `t-sfx-play`, `t-audio`).
+  Production (`rt_sfx_prerender_on`, not the sync image) renders the ids
+  `tfh_effect_wanted` names (without TFH the 27, with TFH id 19) into one
+  Chip block each at SPAZ init. A slot whose id has a sample (TFH's first)
+  plays it once on the slot's voice, slot channels muted, period 214 PAL /
+  216 NTSC, volume from the peak (64 at most: twelve ids peak above one
+  channel, up to +9.4 dB, id 13; the live re-hoster gives a slot one
+  voice); a new start restarts. Samples over one Paula loop (id 20, 72 KB)
+  play in equal chunks, each latched a field after the one before starts.
+- **R4 Amiga** (measured, A1200 model 68020, m2-choose-side matches the
+  reference with the prerender on): capture 201 fields (4 s), render 738
+  fields (15 s), 600,234 Chip bytes (`SWOTL_EFFECTS` in the milestone
+  fixture). Open: startup time, 68030 figures, WHDLoad; release 0.91.

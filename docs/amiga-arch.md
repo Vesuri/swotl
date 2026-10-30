@@ -129,7 +129,8 @@ per period (L44). Publication never feeds back into simulation; missed slots are
   (ports `388h/389h`; no SB DSP access traced).
 - **Music and effects**: SPAZ runs translated into the runtime's OPL register shadow; a
   Paula-only re-hoster (`fm_paula.c`, `Audio.cpp`) never decides what sounds (L71);
-  optional TFH samples. Facts and decisions: [sound-plan.md](sound-plan.md).
+  effects prerendered at SPAZ init into Chip samples (`sfx.c`, `fm_effect`,
+  `tfh_paula.c`); optional TFH samples. Facts and decisions: [sound-plan.md](sound-plan.md).
 - **Shared rules.** Channel ownership between music and effects is an explicit policy
   (L59); stereo placement deliberate (L68); the LED filter is off from the takeover and restored as found at the hand-back (L69).
 

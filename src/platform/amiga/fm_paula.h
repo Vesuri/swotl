@@ -35,11 +35,12 @@ void fm_field(const uint8_t *opl, const uint8_t *keyon, uint16_t mute_mask, stru
  * runtime's capture (runtime.h struct rt_sfx_write). */
 #define FM_EFFECT_RATE 16572        /* the OPL rate / 3; Paula period 214 PAL */
 struct fm_write { uint16_t tick; uint8_t reg, value; };
-/* Renders the effect from registers `opl` into out[0..max): signed 8-bit at
- * full scale, its peak in OPL units in *level (a full-scale voice is one
- * channel at 0 dB, FM_EFFECT_FULL). Returns the samples written. */
+/* Renders the effect from registers `opl`, at most max samples: mixed in
+ * buf[0..max) (16 bits), then signed 8-bit at full scale in place from
+ * (int8_t *)buf; its peak in OPL units in *level (a full-scale voice is one
+ * channel at 0 dB, FM_EFFECT_FULL). Returns the samples. */
 #define FM_EFFECT_FULL 4095
-uint32_t fm_effect(const uint8_t *opl, const struct fm_write *w, uint32_t n, int8_t *out, uint32_t max,
+uint32_t fm_effect(const uint8_t *opl, const struct fm_write *w, uint32_t n, int16_t *buf, uint32_t max,
                    uint32_t *level);
 /* Loops rendered since fm_init (cost statistics). */
 extern uint32_t fm_renders;

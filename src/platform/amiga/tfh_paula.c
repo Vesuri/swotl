@@ -1,8 +1,10 @@
-/* TFH sample player (tfh_paula.h, docs/sound-plan.md). The playback follows
- * Their Finest Hour's own driver: a start segment, then a repeat segment
- * (the loop, or a silent word for a one-shot), and its envelope once a field:
- * attack, decay, sustain for a count of fields (or until SPAZ keys the slot
- * off), release. */
+/* Effect sample player (tfh_paula.h, docs/sound-plan.md). TFH playback
+ * follows Their Finest Hour's own driver: a start segment, then a repeat
+ * segment (the loop, or a silent word for a one-shot), and its envelope once
+ * a field: attack, decay, sustain for a count of fields (or until SPAZ keys
+ * the slot off), release. A prerendered effect plays once at its level, in
+ * equal chunks of at most one Paula loop, each latched a field after the one
+ * before it starts. */
 #include "tfh_paula.h"
 
 #define SOUNDS 13
@@ -45,17 +47,37 @@ static const uint8_t volume_of[39] = {
 #define SINGLE_REF (800u * (161u << 3))
 #define MULTI_REF (400u * (280u << 2))
 
-enum { ATTACK, DECAY, SUSTAIN, DONE };
+enum { ATTACK, DECAY, SUSTAIN, DONE, EFFECT };
+
+/* Prerendered effects: Paula period and samples a field (24.8) for
+ * FM_EFFECT_RATE, PAL (313 lines of 227 colour clocks) and NTSC (263 of
+ * 227.5). */
+#define EFFECT_PERIOD_PAL 214
+#define EFFECT_PERIOD_NTSC 216
+#define EFFECT_FIELD_PAL (256u * 71051u / EFFECT_PERIOD_PAL)
+#define EFFECT_FIELD_NTSC (128u * 119665u / EFFECT_PERIOD_NTSC)
+#define EFFECT_LOOP_BYTES 65534u    /* Paula's 16-bit word count */
+
+struct effect {
+    const int8_t *pcm;
+    uint32_t bytes;
+    uint16_t chunk;                 /* bytes a chunk, even; the last may be shorter */
+    uint8_t chunks, volume;
+};
 
 struct play {
     const struct sound *s;
+    const struct effect *e;
     uint8_t id, starts, phase, segment;
     uint8_t volume, target[3];
     uint16_t acc, sustain;
+    uint32_t elapsed;               /* effect: samples since the start, 24.8 */
 };
 
 static struct sound sounds[SOUNDS];
+static struct effect effects[39];
 static const int8_t *silence;
+static uint8_t tfh_loaded;
 static struct play slots[TFH_SLOTS];
 
 static uint16_t be16(const uint8_t *p)
@@ -140,6 +162,7 @@ int tfh_init(const uint8_t *rsc, uint32_t size, int8_t *chip)
         chip[i] = 0;
     }
     silence = chip;
+    tfh_loaded = 1;
     for (k = 0; k < TFH_SLOTS; ++k) {
         slots[k].starts = 0;
         slots[k].s = 0;
@@ -211,6 +234,77 @@ static uint16_t engine_period(const uint8_t *opl, uint8_t id, uint16_t period)
     return period < PERIOD_FLOOR ? PERIOD_FLOOR : period;
 }
 
+int tfh_effect_wanted(uint8_t id)
+{
+    /* 22, 27, 33, 36 are never played, 35's slot holds the anthem */
+    if (id < 7 || id >= sizeof sound_of || id == 22 || id == 27 || id == 33 || id == 35 || id == 36) {
+        return 0;
+    }
+    return !tfh_loaded || sound_of[id] == FM;
+}
+
+void tfh_effect(uint8_t id, const int8_t *pcm, uint32_t bytes, uint8_t volume, const int8_t *zero)
+{
+    struct effect *e = &effects[id];
+    if (id >= sizeof sound_of || bytes < 2 || bytes > TFH_EFFECT_BYTES) {
+        return;
+    }
+    if (!silence) {
+        silence = zero;
+    }
+    e->bytes = bytes;
+    e->chunks = (uint8_t)((bytes + EFFECT_LOOP_BYTES - 1) / EFFECT_LOOP_BYTES);
+    e->chunk = (uint16_t)(((bytes + e->chunks - 1) / e->chunks + 1) & ~1u);
+    e->volume = volume;
+    e->pcm = pcm;                   /* last: the field task may be reading */
+}
+
+uint8_t tfh_effect_volume(uint32_t level)
+{
+    uint32_t v = (level * VOLUME_FULL + FM_EFFECT_FULL / 2) / FM_EFFECT_FULL;
+    return (uint8_t)(v > VOLUME_FULL ? VOLUME_FULL : v ? v : 1);
+}
+
+/* One field of a prerendered effect on slot voice v. */
+static void effect_field(struct play *p, struct fm_voice *v)
+{
+    const struct effect *e = p->e;
+    uint32_t field = fm_ntsc ? EFFECT_FIELD_NTSC : EFFECT_FIELD_PAL;
+    uint32_t at;
+    v->channel = -1;
+    v->restart = p->segment == 0 && p->phase == EFFECT;
+    v->period = fm_ntsc ? EFFECT_PERIOD_NTSC : EFFECT_PERIOD_PAL;
+    if (p->phase == EFFECT && p->segment) {
+        p->elapsed += field;
+        at = p->elapsed >> 8;
+        /* the latched chunk has played a field: latch the next */
+        if (p->segment <= e->chunks && at >= (uint32_t)(p->segment - 1) * e->chunk + (field >> 8)) {
+            ++p->segment;
+        }
+        if (p->segment > e->chunks && at >= e->bytes + (field >> 8)) {
+            p->phase = DONE;
+        }
+    }
+    if (p->phase != EFFECT) {
+        v->loop = silence;
+        v->bytes = SILENCE_BYTES;
+        v->volume = 0;
+        return;
+    }
+    if (p->segment == 0) {
+        p->segment = 1;
+    }
+    if (p->segment <= e->chunks) {
+        uint32_t off = (uint32_t)(p->segment - 1) * e->chunk;
+        v->loop = e->pcm + off;
+        v->bytes = (uint16_t)(e->bytes - off < e->chunk ? e->bytes - off : e->chunk);
+    } else {
+        v->loop = silence;
+        v->bytes = SILENCE_BYTES;
+    }
+    v->volume = e->volume;
+}
+
 uint16_t tfh_field(const uint8_t *opl, const uint8_t *id, const uint8_t *starts,
                    struct fm_voice *voice)
 {
@@ -220,12 +314,24 @@ uint16_t tfh_field(const uint8_t *opl, const uint8_t *id, const uint8_t *starts,
         struct play *p = &slots[k];
         struct fm_voice *v = &voice[k];
         uint8_t keyed = (opl[0xb0 + 3 * k] | opl[0xb1 + 3 * k] | opl[0xb2 + 3 * k]) & 0x20;
-        if (id[k] >= sizeof sound_of || sound_of[id[k]] == FM || !silence) {
+        int tfh = id[k] < sizeof sound_of && tfh_loaded && sound_of[id[k]] != FM;
+        if (!tfh && (id[k] >= sizeof sound_of || !effects[id[k]].pcm)) {
             p->starts = starts[k];
             p->phase = DONE;
             continue;
         }
         mask = (uint16_t)(mask | 7u << (3 * k));
+        if (!tfh) {
+            if (starts[k] != p->starts) {
+                p->starts = starts[k];
+                p->e = &effects[id[k]];
+                p->phase = EFFECT;
+                p->segment = 0;
+                p->elapsed = 0;
+            }
+            effect_field(p, v);
+            continue;
+        }
         if (starts[k] != p->starts) {
             p->starts = starts[k];
             start(p, id[k]);

@@ -836,130 +836,194 @@ publish_voices:
  * 5041/72 output samples each); a key-on edge restarts both operators'
  * phase and attack, as the chip. Envelopes advance per tick (eg_advance);
  * operators as op_out, feedback per output sample. Channels written by the
- * effect are mixed; the result is scaled to full 8 bits, *level its peak. */
+ * effect are mixed into buf (16 bits: three channels fit), then scaled to
+ * full 8 bits in place, *level the peak. A channel is silent below the 8-bit
+ * floor of the scaled sample: ATT_SILENT under the peak so far (never above
+ * the final one, 32 units per halving); trailing samples that scale to 0 are
+ * cut. */
 #define FX_TICK_NUM 5041u           /* output samples per tick, / FX_TICK_DEN */
 #define FX_TICK_DEN 72u
 #define FX_TAIL_TICKS 474u          /* release tail after the last write, 2 s at most */
 
 struct fx_channel {
     uint32_t pm, pc;
-    int16_t prev1, prev2;
+    int32_t prev1, prev2;
 };
 
-static int32_t fx_mix[FX_TICK_NUM / FX_TICK_DEN + 2];
+/* The effect synthesis' tables (built at its first call): per waveform the
+ * log-sine with the sign at bit 13 (levels <= 0x1000), and the exponent of
+ * level + attenuation (<= 0x1000 + 0x1ff << 3, below bit 13), negated in its
+ * upper half: one lookup an operator. */
+#define FX_SIGN 0x2000u
+static uint16_t fx_wave[4][1024];
+static int16_t fx_exp[2 * FX_SIGN];
+static uint8_t fx_tables;
 
-uint32_t fm_effect(const uint8_t *opl0, const struct fm_write *w, uint32_t n, int8_t *out, uint32_t max,
+static void fx_build(void)
+{
+    uint16_t p, wf;
+    for (wf = 0; wf < 4; ++wf) {
+        for (p = 0; p < 1024; ++p) {
+            uint16_t w = wave[wf][p];
+            fx_wave[wf][p] = (uint16_t)((w & 0x8000 ? FX_SIGN : 0) | (w & 0x7fff));
+        }
+    }
+    for (p = 0; p < FX_SIGN; ++p) {
+        fx_exp[p] = (int16_t)linear_exp[p];
+        fx_exp[FX_SIGN + p] = (int16_t)~linear_exp[p];
+    }
+    fx_tables = 1;
+}
+
+/* m samples of one channel added to mix, phases in 1/128 of op_out's units
+ * (the index the high word); specialised per feedback on and connection. */
+static inline __attribute__((always_inline)) void fx_run(struct fx_channel *x, int16_t *mix, uint32_t m,
+                                                         const uint16_t *wm, const uint16_t *wc,
+                                                         const int16_t *em, const int16_t *ec, uint32_t im,
+                                                         uint32_t ic, uint16_t sh, const int feedback,
+                                                         const int cnt)
+{
+    uint32_t pm = x->pm, pc = x->pc;
+    int32_t p1 = x->prev1, p2 = x->prev2;
+    int16_t mv, cv;
+    while (m--) {
+        uint16_t i = (uint16_t)(pm >> 16);
+        if (feedback) i = (uint16_t)(i + ((p1 + p2) >> sh));
+        mv = em[wm[i & 0x3ff]];
+        p2 = p1;
+        p1 = mv;
+        cv = ec[wc[(uint16_t)((pc >> 16) + (cnt ? 0 : mv)) & 0x3ff]];
+        *mix++ += (int16_t)(cnt ? cv + mv : cv);
+        pm += im;
+        pc += ic;
+    }
+    x->pm = pm;
+    x->pc = pc;
+    x->prev1 = p1;
+    x->prev2 = p2;
+}
+
+static __attribute__((noinline)) void fx_channel_run(struct fx_channel *x, int16_t *mix, uint32_t m, uint8_t wfm,
+                                                     uint8_t wfc, uint16_t am, uint16_t ac, uint32_t im,
+                                                     uint32_t ic, uint8_t fb, uint8_t cnt)
+{
+    const uint16_t *wm = fx_wave[wfm], *wc = fx_wave[wfc];
+    const int16_t *em = fx_exp + (am << 3), *ec = fx_exp + (ac << 3);
+    uint16_t sh = (uint16_t)(9 - fb);
+    im <<= 7;
+    ic <<= 7;
+    switch ((fb != 0) * 2 + cnt) {
+    case 0: fx_run(x, mix, m, wm, wc, em, ec, im, ic, sh, 0, 0); break;
+    case 1: fx_run(x, mix, m, wm, wc, em, ec, im, ic, sh, 0, 1); break;
+    case 2: fx_run(x, mix, m, wm, wc, em, ec, im, ic, sh, 1, 0); break;
+    default: fx_run(x, mix, m, wm, wc, em, ec, im, ic, sh, 1, 1); break;
+    }
+}
+
+uint32_t fm_effect(const uint8_t *opl0, const struct fm_write *w, uint32_t n, int16_t *buf, uint32_t max,
                    uint32_t *level)
 {
     uint8_t opl[256];
     struct op fop[18];
     struct fx_channel ch[9];
-    uint16_t used = 0, c;
-    uint32_t i = 0, tick = 0, frac = 0, len = 0, last = n ? w[n - 1].tick : 0, peak = 1;
+    uint16_t used = 0, c, silent = 0x1ff;
+    uint32_t i = 0, tick, frac = 0, k = 0, len = 0, last = n ? w[n - 1].tick : 0, peak = 1, p = 1;
     /* the envelope's ticks in 1/256 field, 16.16 */
     uint32_t dt = (uint32_t)((fm_ntsc ? 59.826 : FM_FIELD_HZ) * 65536.0 * 256.0 / 236.7), dacc = 0;
+    int8_t *out = (int8_t *)buf;
+    if (!fx_tables) {
+        fx_build();
+    }
     for (i = 0; i < n; ++i) {
         uint8_t r = w[i].reg;
         if (r >= 0xa0 && r <= 0xc8 && (r & 15) < 9) {
             used |= (uint16_t)(1u << (r & 15));
         }
     }
-    /* Two passes: the peak, then the samples scaled to it. A channel is
-     * silent below the 8-bit floor of the scaled sample: ATT_SILENT under
-     * the peak (32 units per halving), the chip's floor in the first pass. */
-    for (int pass = 0; pass < 2; ++pass) {
-        uint32_t k = 0, p = peak;
-        int32_t scale = pass ? (int32_t)((127L << 16) / (int32_t)peak) : 0;
-        uint16_t silent = pass ? ATT_SILENT : 0x1ff;
-        for (; pass && p < FM_EFFECT_FULL && silent < 0x1ff; p <<= 1) silent += 32;
-        for (c = 0; c < 256; ++c) opl[c] = opl0[c];
-        for (c = 0; c < 18; ++c) {
-            fop[c].rout = 0x1ffu << 8;
-            fop[c].acc = 0;
-            fop[c].gen = RELEASE;
+    for (c = 0; c < 256; ++c) opl[c] = opl0[c];
+    for (c = 0; c < 18; ++c) {
+        fop[c].rout = 0x1ffu << 8;
+        fop[c].acc = 0;
+        fop[c].gen = RELEASE;
+    }
+    for (c = 0; c < 9; ++c) {
+        ch[c].pm = ch[c].pc = 0;
+        ch[c].prev1 = ch[c].prev2 = 0;
+    }
+    i = 0;
+    for (tick = 0; tick <= last + FX_TAIL_TICKS && k < max; ++tick) {
+        uint32_t m_n, s;
+        int audible = 0;
+        for (; i < n && w[i].tick == tick; ++i) {
+            uint8_t r = w[i].reg, v = w[i].value;
+            if (r >= 0xb0 && r <= 0xb8) {
+                uint8_t cc = (uint8_t)(r - 0xb0);
+                if ((v & 0x20) && !(opl[r] & 0x20)) {
+                    fop[2 * cc].gen = fop[2 * cc + 1].gen = ATTACK;
+                    fop[2 * cc].acc = fop[2 * cc + 1].acc = 0;
+                    ch[cc].pm = ch[cc].pc = 0;
+                } else if (!(v & 0x20) && (opl[r] & 0x20)) {
+                    fop[2 * cc].gen = fop[2 * cc + 1].gen = RELEASE;
+                }
+            }
+            opl[r] = v;
         }
+        frac += FX_TICK_NUM;
+        m_n = frac / FX_TICK_DEN;
+        frac %= FX_TICK_DEN;
+        if (m_n > max - k) m_n = max - k;
+        dacc += dt;
+        uint32_t step = dacc >> 16;
+        dacc &= 0xffff;
+        for (s = 0; s < m_n; ++s) buf[k + s] = 0;
         for (c = 0; c < 9; ++c) {
-            ch[c].pm = ch[c].pc = 0;
-            ch[c].prev1 = ch[c].prev2 = 0;
+            if (!(used >> c & 1)) continue;
+            uint8_t b0 = opl[0xb0 + c], block = (b0 >> 2) & 7, mo = op_off[c], co = (uint8_t)(mo + 3);
+            uint16_t fnum = (uint16_t)(opl[0xa0 + c] | (b0 & 3) << 8);
+            uint8_t ksv = (uint8_t)(block << 1 | ((fnum >> 9) & 1));
+            uint8_t ws = (opl[1] & 0x20) != 0, c0 = opl[0xc0 + c], cnt = c0 & 1;
+            uint8_t wfm = ws ? opl[0xe0 + mo] & 3 : 0, wfc = ws ? opl[0xe0 + co] & 3 : 0;
+            uint16_t am, ac;
+            for (uint8_t k2 = 0; k2 < 2; ++k2) {
+                uint8_t off = (uint8_t)(mo + 3 * k2);
+                eg_advance(&fop[2 * c + k2], opl, off, (opl[0x20 + off] & 0x10) ? ksv : ksv >> 2, step);
+            }
+            am = op_att(&fop[2 * c], opl, mo, fnum, block);
+            ac = op_att(&fop[2 * c + 1], opl, co, fnum, block);
+            if (am > 0x1ff) am = 0x1ff;
+            if (ac > 0x1ff) ac = 0x1ff;
+            if (ac >= silent && (!cnt || am >= silent)) continue;
+            audible = 1;
+            uint32_t base = (uint32_t)(fnum << block) >> 1;
+            fx_channel_run(&ch[c], buf + k, m_n, wfm, wfc, am, ac,
+                           3 * (base * mt[opl[0x20 + mo] & 15] >> 1), 3 * (base * mt[opl[0x20 + co] & 15] >> 1),
+                           (c0 >> 1) & 7, cnt);
         }
-        i = 0;
-        frac = 0;
-        dacc = 0;
-        len = 0;
-        for (tick = 0; tick <= last + FX_TAIL_TICKS; ++tick) {
-            uint32_t m_n, s;
-            int audible = 0;
-            for (; i < n && w[i].tick == tick; ++i) {
-                uint8_t r = w[i].reg, v = w[i].value;
-                if (r >= 0xb0 && r <= 0xb8) {
-                    uint8_t cc = (uint8_t)(r - 0xb0);
-                    if ((v & 0x20) && !(opl[r] & 0x20)) {
-                        fop[2 * cc].gen = fop[2 * cc + 1].gen = ATTACK;
-                        fop[2 * cc].acc = fop[2 * cc + 1].acc = 0;
-                        ch[cc].pm = ch[cc].pc = 0;
-                    } else if (!(v & 0x20) && (opl[r] & 0x20)) {
-                        fop[2 * cc].gen = fop[2 * cc + 1].gen = RELEASE;
-                    }
-                }
-                opl[r] = v;
-            }
-            frac += FX_TICK_NUM;
-            m_n = frac / FX_TICK_DEN;
-            frac %= FX_TICK_DEN;
-            dacc += dt;
-            uint32_t step = dacc >> 16;
-            dacc &= 0xffff;
-            for (s = 0; s < m_n; ++s) fx_mix[s] = 0;
-            for (c = 0; c < 9; ++c) {
-                if (!(used >> c & 1)) continue;
-                uint8_t b0 = opl[0xb0 + c], block = (b0 >> 2) & 7, mo = op_off[c], co = (uint8_t)(mo + 3);
-                uint16_t fnum = (uint16_t)(opl[0xa0 + c] | (b0 & 3) << 8);
-                uint8_t ksv = (uint8_t)(block << 1 | ((fnum >> 9) & 1));
-                uint8_t ws = (opl[1] & 0x20) != 0, c0 = opl[0xc0 + c], fb = (c0 >> 1) & 7, cnt = c0 & 1;
-                uint8_t wfm = ws ? opl[0xe0 + mo] & 3 : 0, wfc = ws ? opl[0xe0 + co] & 3 : 0;
-                uint16_t am, ac;
-                for (uint8_t k2 = 0; k2 < 2; ++k2) {
-                    uint8_t off = (uint8_t)(mo + 3 * k2);
-                    eg_advance(&fop[2 * c + k2], opl, off, (opl[0x20 + off] & 0x10) ? ksv : ksv >> 2, step);
-                }
-                am = op_att(&fop[2 * c], opl, mo, fnum, block);
-                ac = op_att(&fop[2 * c + 1], opl, co, fnum, block);
-                if (am > 0x1ff) am = 0x1ff;
-                if (ac > 0x1ff) ac = 0x1ff;
-                if (ac >= silent && (!cnt || am >= silent)) continue;
-                audible = 1;
-                uint32_t base = (uint32_t)(fnum << block) >> 1;
-                uint32_t im = 3 * (base * mt[opl[0x20 + mo] & 15] >> 1);
-                uint32_t ic = 3 * (base * mt[opl[0x20 + co] & 15] >> 1);
-                struct fx_channel *x = &ch[c];
-                for (s = 0; s < m_n; ++s) {
-                    int16_t fbm = fb ? (int16_t)((x->prev1 + x->prev2) >> (9 - fb)) : 0;
-                    int16_t mv = op_out(wfm, (uint16_t)((x->pm >> 9) + fbm), am);
-                    x->prev2 = x->prev1;
-                    x->prev1 = mv;
-                    int16_t cv = op_out(wfc, (uint16_t)((x->pc >> 9) + (cnt ? 0 : mv)), ac);
-                    fx_mix[s] += cnt ? cv + mv : cv;
-                    x->pm += im;
-                    x->pc += ic;
-                }
-            }
-            for (s = 0; s < m_n; ++s, ++k) {
-                int32_t v = fx_mix[s];
-                if (!pass) {
-                    uint32_t a = (uint32_t)(v < 0 ? -v : v);
-                    if (a > peak) peak = a;
-                } else if (k < max) {
-                    int32_t q = (v * scale) >> 16;
-                    out[k] = (int8_t)(q > 127 ? 127 : q < -128 ? -128 : q);
-                }
-            }
-            if (audible || tick <= last) {
-                len = k;
-            } else {
-                break;
-            }
+        for (s = 0; s < m_n; ++s) {
+            int32_t v = buf[k + s];
+            uint32_t a = (uint32_t)(v < 0 ? -v : v);
+            if (a > peak) peak = a;
+        }
+        k += m_n;
+        for (silent = ATT_SILENT, p = peak; p < FM_EFFECT_FULL && silent < 0x1ff; p <<= 1) silent += 32;
+        if (audible || tick <= last) {
+            len = k;
+        } else {
+            break;
         }
     }
+    {
+        int32_t scale = (int32_t)((127L << 16) / (int32_t)peak);
+        uint32_t end = 0;
+        for (k = 0; k < len; ++k) {
+            int32_t q = (buf[k] * scale) >> 16;
+            out[k] = (int8_t)(q > 127 ? 127 : q < -128 ? -128 : q);
+            if (q) end = k + 1;
+        }
+        /* the writes' own span stays */
+        last = (uint32_t)(((last + 1) * FX_TICK_NUM) / FX_TICK_DEN);
+        len = end > last ? end : last < len ? last : len;
+    }
     *level = peak;
-    return len < max ? len : max;
+    return len;
 }

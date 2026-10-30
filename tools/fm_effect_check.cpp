@@ -132,9 +132,10 @@ int main(int argc, char **argv)
     int bad = 0;
     unsigned long total = 0;
     for (auto &[id, w] : fx) {
-        std::vector<int8_t> out(FM_EFFECT_RATE * 10);
+        std::vector<int16_t> buf(131068);
         uint32_t level = 0;
-        uint32_t n = fm_effect(opl0, w.data(), (uint32_t)w.size(), out.data(), (uint32_t)out.size(), &level);
+        uint32_t n = fm_effect(opl0, w.data(), (uint32_t)w.size(), buf.data(), (uint32_t)buf.size(), &level);
+        const int8_t *out = (const int8_t *)buf.data();
         total += n;
         double peak = level;
         std::vector<double> ours(n), ref;
