@@ -83,7 +83,8 @@ def original(ram, regs, seg, i, ticks, phase):
 
 
 def cases(elf=None):
-    out = ROOT / "tmp/sfx-capture.csv"
+    # a plant's capture beside its build: tmp/sfx-capture.csv (R2's input) stays the real one
+    out = elf.parent / "sfx-capture.csv" if elf else ROOT / "tmp/sfx-capture.csv"
     problems = H.check(MILESTONE, 600, None, None, sfx_capture=out, elf=elf)
     if problems:
         return [f"host {MILESTONE}: {problems[0]}"]
