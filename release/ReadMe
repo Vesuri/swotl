@@ -77,6 +77,7 @@
    Their Finest Hour gunfire is no longer lost on a 68040 or 68060
  - clearer installer and ReadMe wording: the Their Finest Hour sound
    effects need the sfx.rsc of the Amiga version, not a PC version
+ - analog joystick: horizontal and vertical axes are no longer swapped
 
  version 0.91 (30.10.2026):
  - data cache on under WHDLoad on 68040 and 68060, and on a 68030 with the
