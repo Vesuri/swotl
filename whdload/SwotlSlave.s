@@ -37,10 +37,10 @@ slv_CurrentDir dc.b "data",0
 slv_name dc.b "Secret Weapons of the Luftwaffe",0
 slv_copy dc.b "1991 Lucasfilm Games",0
 slv_info dc.b "Amiga port by Vesuri",10
-        dc.b "Version 0.91 (30.10.2026)",10
+        dc.b "Version 0.92 (30.10.2026)",10
         dc.b "Help quits",0
 slv_config dc.b "C1:B:Their Finest Hour sound effects;C2:B:Analog joystick in port 2;",0
-        dc.b "$VER: SWotL.slave 0.91 (30.10.2026)",0
+        dc.b "$VER: SWotL.slave 0.92 (30.10.2026)",0
 _program dc.b "SWotL",0
 ; Test only, keys of pc-reference-loop.md scripts: CAMPAIGN creates campaign
 ; file A.CBA (c10); TOUR creates pilot A, then rewrites it with O_TRUNC (c11).
