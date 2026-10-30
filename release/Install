@@ -62,13 +62,13 @@
 (set #tfh
   (askchoice
     (prompt "Which sound effects should the game use?")
-    (help "The game's own sound effects use AdLib FM synthesis. Their Finest Hour sampled sound effects need the file sfx.rsc from your Amiga Their Finest Hour installation. Change later with the Custom1 tooltype of the SWotL icon.")
+    (help "The game's own sound effects use AdLib FM synthesis. Their Finest Hour sampled sound effects need the file sfx.rsc (108,002 bytes) from an installed Amiga version of Their Finest Hour; files from the PC versions do not work. Change later with the Custom1 tooltype of the SWotL icon.")
     (choices "Original AdLib" "Their Finest Hour")
     (default #tfh-ready)))
 (if (and #tfh (= #tfh-ready 0))
   (set #sfx
-    (askfile (prompt "Select the file sfx.rsc in your Their Finest Hour installation.")
-      (help "Their Finest Hour for the Amiga keeps it in its data drawer, for example TheirFinestHour/data/sfx.rsc. It is checked and copied into the SWotL drawer.")
+    (askfile (prompt "Select the file sfx.rsc in your Amiga Their Finest Hour installation (not the PC version).")
+      (help "The Amiga version of Their Finest Hour keeps it in its data drawer, for example TheirFinestHour/data/sfx.rsc (108,002 bytes). Files from the PC versions of Their Finest Hour or Air Combat Classics do not work. It is checked and copied into the SWotL drawer.")
       (default #source))))
 (if (= (exists #dest) 0) (makedir #dest (infos) (help @makedir-help)))
 (if (= (exists #data) 0) (makedir #data (help @makedir-help)))
@@ -84,7 +84,7 @@
 (if (and #tfh (= #tfh-ready 0))
   ((if (<> 0 (run ("Stack 16384\n\"%s\" \"%s\" \"%s\"" #helper #sfx #staging)))
      ((if (exists #staging) (delete #staging (all) (optional "force") (help @delete-help)))
-      (abort "This sfx.rsc is not supported. Select the file from the Amiga Their Finest Hour.")))
+      (abort "This sfx.rsc is not supported. Select the file from the Amiga version of Their Finest Hour (108,002 bytes), not a PC version.")))
    (copyfiles (source (tackon #staging "sfx.rsc")) (dest #data) (help @copyfiles-help))
    (delete #staging (all) (optional "force") (help @delete-help))))
 (copyfiles (source (tackon #source "SWotL")) (dest #data) (help @copyfiles-help))

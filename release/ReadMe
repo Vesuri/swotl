@@ -46,9 +46,11 @@
  the "The Good Old Days" floppy image collection (ID 496).
 
  Optionally, the game can use the sampled sound effects of the Amiga version
- of "Their Finest Hour". Choose Their Finest Hour sound effects and select the
- file sfx.rsc in your Their Finest Hour installation, for example
- TheirFinestHour/data/sfx.rsc. The Custom1 tooltype switches between the
+ of "Their Finest Hour". They come from the file sfx.rsc (108,002 bytes) of
+ an installed Amiga Their Finest Hour, for example
+ TheirFinestHour/data/sfx.rsc. Files from the PC versions of Their Finest
+ Hour or Air Combat Classics do not work. Choose Their Finest Hour sound
+ effects and select that file. The Custom1 tooltype switches between the
  sound effects later: 1 for Their Finest Hour, 0 for the original AdLib.
 
  To update, select the same parent drawer and choose Keep. Use existing (the
