@@ -1,5 +1,7 @@
 #include <proto/exec.h>
+#include <proto/dos.h>
 #include <exec/memory.h>
+#include <dos/dos.h>
 #include <hardware/dmabits.h>
 extern "C" {
 #include "runtime.h"
@@ -34,6 +36,7 @@ static int8_t* tfhChip = 0;
 static uint32_t tfhBytes = 0;
 static int8_t* effectChip[RT_SFX_IDS];
 static uint32_t effectBytes[RT_SFX_IDS];
+static uint8_t effectVolume[RT_SFX_IDS];
 static volatile bool effects = false;
 static int8_t* pool = 0;
 static const int8_t* silence = 0;
@@ -47,7 +50,9 @@ static uint16_t shownBytes[FM_VOICES], shownPeriod[FM_VOICES];
 extern "C" {
 volatile uint32_t amiga_audio_restarts = 0;   // channel restarts (diagnostics)
 volatile uint32_t amiga_audio_effect_fields = 0;  // fields the prerender took (diagnostics)
+volatile uint32_t amiga_audio_effect_save_fields = 0;  // of them, the cache write (diagnostics)
 volatile uint32_t amiga_audio_effect_bytes = 0;   // its Chip bytes (diagnostics)
+volatile uint8_t amiga_audio_effect_cached = 0;   // 1 loaded from the cache, 2 written to it (diagnostics)
 }
 
 static_assert(sizeof(struct rt_sfx_write) == sizeof(struct fm_write), "capture and fm_effect write layouts");
@@ -81,40 +86,184 @@ extern "C" int amiga_audio_tfh(const uint8_t *rsc, uint32_t size)
     return Audio::loadTFH(rsc, size);
 }
 
-// Prerendered effects (docs/sound-plan.md R3), from the runtime's capture at
-// SPAZ init (plat_sfx_captured): each id through fm_effect in Fast, then
-// its own Chip block. The allocations in I/O windows, the rendering not.
+// The effect cache (docs/sound-plan.md R4): the rendered samples in the game
+// drawer, keyed by everything they come from (fm_effect's version, PAL/NTSC,
+// the wanted ids, the capture). Big-endian: "SWFX", version, key, count;
+// count entries (id, volume, 2 bytes 0, bytes); the samples in that order.
+#define CACHE_NAME "sfx.cache"
+#define CACHE_MAGIC 0x53574658u     // "SWFX"
+struct CacheEntry {
+    uint8_t id, volume, pad[2];
+    uint32_t bytes;
+};
+
+static uint32_t fnv(uint32_t h, const void* data, uint32_t n)
+{
+    const uint8_t* p = (const uint8_t*)data;
+    while (n--) h = (h ^ *p++) * 16777619u;
+    return h;
+}
+
+static uint32_t effectsKey()
+{
+    uint32_t h = 2166136261u, v = FM_EFFECT_VERSION;
+    h = fnv(h, &v, sizeof v);
+    h = fnv(h, &fm_ntsc, 1);
+    h = fnv(h, rt_sfx_opl, 256);
+    for (uint8_t id = 0; id < RT_SFX_IDS; ++id) {
+        uint8_t wanted = rt_sfx_writes[id] && tfh_effect_wanted(id);
+        h = fnv(h, &wanted, 1);
+        if (!wanted) continue;
+        h = fnv(h, &rt_sfx_writes[id], sizeof rt_sfx_writes[id]);
+        h = fnv(h, &rt_sfx_capture[rt_sfx_first[id]], rt_sfx_writes[id] * sizeof(struct rt_sfx_write));
+    }
+    return h;
+}
+
+static void freeEffects()
+{
+    for (uint8_t id = 0; id < RT_SFX_IDS; ++id) {
+        if (effectChip[id]) FreeMem(effectChip[id], effectBytes[id]);
+        effectChip[id] = 0;
+    }
+    amiga_audio_effect_bytes = 0;
+}
+
+static void registerEffects()
+{
+    for (uint8_t id = 0; id < RT_SFX_IDS; ++id) {
+        if (!effectChip[id]) continue;
+        amiga_audio_effect_bytes += effectBytes[id];
+        tfh_effect(id, effectChip[id], effectBytes[id], effectVolume[id], silence);
+        effects = true;
+    }
+}
+
+// The cache's samples straight into Chip, in one I/O window; false (nothing
+// kept) unless every wanted id comes back whole under this key.
+static bool loadCache(uint32_t key)
+{
+    uint32_t head[4], wanted = 0;
+    struct CacheEntry entry[RT_SFX_IDS];
+    bool ok = false;
+    for (uint8_t id = 0; id < RT_SFX_IDS; ++id) wanted += rt_sfx_writes[id] && tfh_effect_wanted(id);
+    amiga_io_begin();
+    BPTR f = Open((CONST_STRPTR)CACHE_NAME, MODE_OLDFILE);
+    if (f) {
+        ok = Read(f, head, sizeof head) == sizeof head && head[0] == CACHE_MAGIC &&
+             head[1] == FM_EFFECT_VERSION && head[2] == key && head[3] == wanted &&
+             Read(f, entry, wanted * sizeof entry[0]) == (LONG)(wanted * sizeof entry[0]);
+        for (uint32_t k = 0; ok && k < wanted; ++k) {
+            const struct CacheEntry& e = entry[k];
+            ok = e.id < RT_SFX_IDS && !effectChip[e.id] && tfh_effect_wanted(e.id) && e.bytes >= 2 &&
+                 e.bytes <= TFH_EFFECT_BYTES && !(e.bytes & 1) &&
+                 (effectChip[e.id] = (int8_t*)AllocMem(e.bytes, MEMF_CHIP)) != 0;
+            if (!ok) break;
+            effectBytes[e.id] = e.bytes;
+            effectVolume[e.id] = e.volume;
+            ok = Read(f, effectChip[e.id], e.bytes) == (LONG)e.bytes;
+        }
+        Close(f);
+    }
+    if (!ok) freeEffects();
+    amiga_io_end();
+    return ok;
+}
+
+// The rendered samples to the cache in one I/O window and one Write (under
+// WHDLoad each write is a save followed by its write delay; docs/whdload.md),
+// the file made as the game's are: MODE_NEWFILE, Close, MODE_OLDFILE. Without
+// Fast for the file's image nothing is written; a failed write leaves a file
+// the next load refuses.
+static void saveCache(uint32_t key)
+{
+    uint32_t head[4] = {CACHE_MAGIC, FM_EFFECT_VERSION, key, 0}, total = sizeof head;
+    struct CacheEntry entry[RT_SFX_IDS];
+    for (uint8_t id = 0; id < RT_SFX_IDS; ++id) {
+        if (!effectChip[id]) continue;
+        struct CacheEntry& e = entry[head[3]++];
+        e.id = id;
+        e.volume = effectVolume[id];
+        e.pad[0] = e.pad[1] = 0;
+        e.bytes = effectBytes[id];
+        total += sizeof e + e.bytes;
+    }
+    amiga_io_begin();
+    uint8_t* image = (uint8_t*)AllocMem(total, MEMF_ANY);
+    amiga_io_end();
+    if (!image) return;
+    uint8_t* p = image;
+    CopyMem(head, p, sizeof head);
+    p += sizeof head;
+    CopyMem(entry, p, head[3] * sizeof entry[0]);
+    p += head[3] * sizeof entry[0];
+    for (uint32_t k = 0; k < head[3]; ++k) {
+        CopyMem(effectChip[entry[k].id], p, entry[k].bytes);
+        p += entry[k].bytes;
+    }
+    amiga_io_begin();
+    BPTR f = Open((CONST_STRPTR)CACHE_NAME, MODE_NEWFILE);
+    if (f) {
+        Close(f);
+        f = Open((CONST_STRPTR)CACHE_NAME, MODE_OLDFILE);
+    }
+    if (f) {
+        if (Write(f, image, total) == (LONG)total) amiga_audio_effect_cached = 2;
+        Close(f);
+    }
+    FreeMem(image, total);
+    amiga_io_end();
+}
+
+// Prerendered effects (docs/sound-plan.md R3, R4), from the runtime's capture
+// at SPAZ init (plat_sfx_captured): from the cache when it holds this
+// capture's samples, else each id through fm_effect in Fast, then its own Chip
+// block, and the cache written. The allocations in I/O windows, the rendering
+// not. Every wanted id or none: all render or none is kept.
 void Audio::loadEffects()
 {
     if (!pool) return;
-    uint32_t start = amiga_frames;
+    uint32_t start = amiga_frames, key = effectsKey();
+    if (loadCache(key)) {
+        amiga_audio_effect_cached = 1;
+        registerEffects();
+        amiga_audio_effect_fields = amiga_frames - start;
+        return;
+    }
     amiga_io_begin();
     int16_t* render = (int16_t*)AllocMem(TFH_EFFECT_BYTES * 2, MEMF_ANY);
     amiga_io_end();
     if (!render) return;
-    for (uint8_t id = 0; id < RT_SFX_IDS; ++id) {
+    bool ok = true;
+    for (uint8_t id = 0; ok && id < RT_SFX_IDS; ++id) {
         if (!rt_sfx_writes[id] || !tfh_effect_wanted(id)) continue;
         uint32_t level = 0;
         uint32_t n = fm_effect(rt_sfx_opl, (const struct fm_write*)&rt_sfx_capture[rt_sfx_first[id]],
                                rt_sfx_writes[id], render, TFH_EFFECT_BYTES, &level);
         int8_t* pcm = (int8_t*)render;
-        uint32_t bytes = (n + 1) & ~1u;
-        if (bytes < 2) continue;
-        if (bytes > n) pcm[n] = 0;
+        uint32_t bytes = n < 2 ? 2 : (n + 1) & ~1u;
+        for (uint32_t k = n; k < bytes; ++k) pcm[k] = 0;
         amiga_io_begin();
         int8_t* chip = (int8_t*)AllocMem(bytes, MEMF_CHIP);
         amiga_io_end();
-        if (!chip) break;
+        if (!chip) {
+            ok = false;
+            break;
+        }
         CopyMem(pcm, chip, bytes);
         effectChip[id] = chip;
         effectBytes[id] = bytes;
-        amiga_audio_effect_bytes += bytes;
-        tfh_effect(id, chip, bytes, tfh_effect_volume(level), silence);
-        effects = true;
+        effectVolume[id] = tfh_effect_volume(level);
     }
     amiga_io_begin();
     FreeMem(render, TFH_EFFECT_BYTES * 2);
+    if (!ok) freeEffects();
     amiga_io_end();
+    if (!ok) return;
+    registerEffects();
+    uint32_t save = amiga_frames;
+    saveCache(key);
+    amiga_audio_effect_save_fields = amiga_frames - save;
     amiga_audio_effect_fields = amiga_frames - start;
 }
 
@@ -130,11 +279,8 @@ extern "C" void amiga_audio_effects(void)
 
 void Audio::end()
 {
-    for (uint8_t id = 0; id < RT_SFX_IDS; ++id) {
-        if (effectChip[id]) FreeMem(effectChip[id], effectBytes[id]);
-        effectChip[id] = 0;
-    }
     effects = false;
+    freeEffects();
     if (tfhChip) FreeMem(tfhChip, tfhBytes);
     tfhChip = 0;
     if (pool) FreeMem(pool, POOL_BYTES + SILENCE_BYTES);

@@ -85,8 +85,9 @@
  - NTSC machines get a centred NTSC display with correct timing and sound
  - joystick in port 2: works as the cursor keys, buttons as the mouse
    buttons; Custom2 (ANALOGJOYSTICK) for a proportional joystick
- - AdLib sound effects are rendered once at start: firing (the heavier
-   guns above all) no longer slows the game down
+ - AdLib sound effects are rendered at the first start (about 15 s on
+   an A1200) and kept in sfx.cache in the game drawer; later starts load
+   them. Firing (the heavier guns above all) no longer slows the game down
 
 
  Contact:

@@ -178,7 +178,17 @@ code runs out of the game's flow for it (approved); 0.91 waits for it.
   channel, up to +9.4 dB, id 13; the live re-hoster gives a slot one
   voice); a new start restarts. Samples over one Paula loop (id 20, 72 KB)
   play in equal chunks, each latched a field after the one before starts.
-- **R4 Amiga** (measured, A1200 model 68020, m2-choose-side matches the
-  reference with the prerender on): capture 201 fields (4 s), render 738
-  fields (15 s), 600,234 Chip bytes (`SWOTL_EFFECTS` in the milestone
-  fixture). Open: startup time, 68030 figures, WHDLoad; release 0.91.
+- **R4 Amiga** (done: `fm_effect_run.s`, `t-fm-effect-asm`; the cache in
+  `Audio.cpp`, `t-audio`, `test-whdload`). Each capture ends when SPAZ ends
+  the effect (R1). The render's channel loop is hand-written 68020
+  (`FM_EFFECT_ASM`, four variants: feedback x connection); oracle: fm_effect
+  with it on the Unicorn 68020 core equals the C build on the 27 captured
+  ids and one synthetic effect per variant, byte for byte. Plants: index
+  mask, feedback, modulator history. The samples go to `sfx.cache` (game
+  drawer), keyed on `FM_EFFECT_VERSION`, PAL/NTSC, the start registers and
+  each wanted id's writes; written in one `Write` (under WHDLoad each write
+  is a save and a write delay), refused whole if anything differs or is cut,
+  then rendered and rewritten. Measured (`SWOTL_EFFECTS`, m2-choose-side
+  matches the reference), A1200 model 68020: capture 140 fields, render 617
+  and cache write 11 at the first start (15 s); from the cache 7 (3 s with
+  the capture); 600,234 Chip bytes, file 600,466.

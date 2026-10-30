@@ -20,6 +20,9 @@ VBR of a 68020) ends it with COREDUMP and the dump is judged:
     no sample block is. Their copy in Chip is what the TFH path makes.
   - Custom2 (--analog): the game's PSP command tail has the joystick argument
     Y (ANALOGJOYSTICK), N without.
+  - the prerendered effects' cache (sfx.cache, docs/sound-plan.md R4) was
+    written through kickfs, whole: its header's count of effects (27 for FM,
+    1 with TFH) and the file's length agree.
 The MemFree slave's low-water marks (Chip, Fast) are read from its $100 slot.
 --installed runs an installed SWotL drawer as it is (slave, data/SWotL, data).
 --setup a1200-040: full 68040 with its MMU and FPU, JIT off, on $FSUAE_MMU;
@@ -210,10 +213,17 @@ def main():
         # Files the key script makes the game write (kickfs: docs/whdload.md).
         made = sorted(f'{f.name} {f.stat().st_size}' for f in data.iterdir()
                       if not (args.data / f.name).exists() and f.suffix != '.uaem'
-                      and f.name not in ('SWotL', 'sfx.rsc'))
+                      and f.name not in ('SWotL', 'sfx.rsc', 'sfx.cache'))
         print('written:', ', '.join(made) or 'none')
         if made != WRITES[args.slave.name]:
             raise SystemExit(f'FAIL: expected {WRITES[args.slave.name]} ({base})\n' + report[:2000])
+    cache = data / 'sfx.cache'
+    image = cache.read_bytes() if cache.exists() else b''
+    count = int.from_bytes(image[12:16], 'big') if len(image) >= 16 else 0
+    length = 16 + 8 * count + sum(int.from_bytes(image[16 + 8 * k + 4:16 + 8 * k + 8], 'big') for k in range(count))
+    print(f'sfx.cache: {len(image)} bytes, {count} effects')
+    if image[:4] != b'SWFX' or count != (1 if args.tfh else 27) or len(image) != length:
+        raise SystemExit(f'FAIL: the effect cache was not written whole ({base})')
     if args.cpu in ('68040', '68060') and 'TC=8000' not in report:
         raise SystemExit(f'FAIL: {args.cpu} MMU translation was not enabled (no TC=8000)\n' + report[:2000])
     # CACR alone does not show the policy: with the MMU, WHDLoad enables both

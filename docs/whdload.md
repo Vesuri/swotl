@@ -102,6 +102,7 @@ Pokeri, `RoF` Rescue on Fractalus, `P2` Prince of Persia 2 (each project's `docs
 | Saves via one `resload_SaveFile` through slave hook | Sl, Po, RoF §6 |
 | kickfs has no `ACTION_CHANGE_MODE` ($404), `ACTION_SET_FILE_SIZE` ($3FE), `ACTION_PARENT_FH` ($407, `NameFromFH`) or `ACTION_RENAME_OBJECT`; without `DEBUG` an unknown packet runs its lookup past the action table (Access Fault in task `DH0`) | P2 `docs/release.md`, SDK `kickfs.s` |
 | SWOTL: create = `MODE_NEWFILE`, `Close`, `MODE_OLDFILE` (shared, as DOS); O_TRUNC (`3D01h`, 0-byte write at 0) makes the file anew the same way; close stamps by the opened path. `CampaignTest`/`TourTest.slave` write A.CBA and A.USA (c10, c11) on 68020 and 68060 | — |
+| SWOTL: `sfx.cache` (prerendered effects, sound-plan R4) is written at the first start by one `Write`: one save, one write delay (two with the create); read per effect after. `test_whdload.py --mode run` requires it whole | — |
 | `WHDLF_NoError`: `resload_SaveFile`/`LoadFile` return only on success (error requester otherwise); use `resload_GetFileSize` for optional files | RoF §6 |
 | resload names relative to the slave's data dir | RoF §6 |
 | Creating **new** files via write cache hung at exit in low-memory fixtures; Installer pre-creates fixed-size save slots, game refuses if missing | Po |

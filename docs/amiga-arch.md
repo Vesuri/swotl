@@ -129,8 +129,8 @@ per period (L44). Publication never feeds back into simulation; missed slots are
   (ports `388h/389h`; no SB DSP access traced).
 - **Music and effects**: SPAZ runs translated into the runtime's OPL register shadow; a
   Paula-only re-hoster (`fm_paula.c`, `Audio.cpp`) never decides what sounds (L71);
-  effects prerendered at SPAZ init into Chip samples (`sfx.c`, `fm_effect`,
-  `tfh_paula.c`); optional TFH samples. Facts and decisions: [sound-plan.md](sound-plan.md).
+  effects prerendered at SPAZ init into Chip samples (`sfx.c`, `fm_effect` with
+  its loop in `fm_effect_run.s`, `tfh_paula.c`), kept in `sfx.cache`; optional TFH samples. Facts and decisions: [sound-plan.md](sound-plan.md).
 - **Shared rules.** Channel ownership between music and effects is an explicit policy
   (L59); stereo placement deliberate (L68); the LED filter is off from the takeover and restored as found at the hand-back (L69).
 
@@ -162,7 +162,8 @@ read before the START (its discharge pulls the pins low). Oracle:
 Each guest DOS file call (open, create, read, write, seek, delete, directory) is one
 dos.library call in its own I/O window, relative to the current directory (L7). Saves are
 the guest's own create/write calls; L83 and L88 are not applied. Any code loaded or patched
-at runtime is followed by `CacheClearU()` (L87).
+at runtime is followed by `CacheClearU()` (L87). The effect cache `sfx.cache` is read
+per effect straight into Chip and written by one `Write` from a Fast image (sound-plan R4).
 
 ## Build rules
 

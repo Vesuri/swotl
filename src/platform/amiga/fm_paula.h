@@ -40,6 +40,9 @@ struct fm_write { uint16_t tick; uint8_t reg, value; };
  * (int8_t *)buf; its peak in OPL units in *level (a full-scale voice is one
  * channel at 0 dB, FM_EFFECT_FULL). Returns the samples. */
 #define FM_EFFECT_FULL 4095
+/* Bumped whenever fm_effect's output for the same input changes: it keys the
+ * Amiga's cache of rendered effects (Audio.cpp). */
+#define FM_EFFECT_VERSION 1
 uint32_t fm_effect(const uint8_t *opl, const struct fm_write *w, uint32_t n, int16_t *buf, uint32_t max,
                    uint32_t *level);
 /* Loops rendered since fm_init (cost statistics). */
