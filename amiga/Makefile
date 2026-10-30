@@ -44,7 +44,7 @@ OBJECTS = obj/start.o obj/main.o obj/Swotl.o obj/Input.o obj/Pointer.o obj/Audio
 	obj/framework_amiga_hardware.o obj/framework_bitmap.o \
 	obj/framework_copper_list.o obj/framework_palette24.o \
 	obj/gcc8_c_support.o obj/gcc8_a_support.o obj/memory.o obj/version.o \
-	obj/amiga_platform.o obj/tfh_paula.o obj/fm_paula.o obj/amiga_run.o obj/c2p1x1_8_c5_bm.o obj/rt_entry.o \
+	obj/amiga_platform.o obj/tfh_paula.o obj/fm_paula.o obj/fm_effect_run.o obj/amiga_run.o obj/c2p1x1_8_c5_bm.o obj/rt_entry.o \
 	$(patsubst $(RUNTIME)/%.c,obj/rt_%.o,$(wildcard $(RUNTIME)/*.c)) obj/program.o obj/compute_projection.o obj/compute_normalise.o obj/compute_scenery.o obj/compute_native.o
 
 # Sync image (docs/irq-plan.md I8): the generated sync-point checks and the
@@ -141,7 +141,10 @@ obj/tfh_paula.o: $(AMIGA_SRC)/tfh_paula.c | obj
 	$(CC) $(CCFLAGS) -ffreestanding -c -o $@ $<
 
 obj/fm_paula.o: $(AMIGA_SRC)/fm_paula.c | obj
-	$(CC) $(CCFLAGS) -ffreestanding -c -o $@ $<
+	$(CC) $(CCFLAGS) -ffreestanding -DFM_EFFECT_ASM -c -o $@ $<
+
+obj/fm_effect_run.o: $(AMIGA_SRC)/fm_effect_run.s | obj
+	$(VASM) $(VASMFLAGS) -o $@ $<
 
 obj/amiga_run.o: $(AMIGA_SRC)/amiga_run.s | obj
 	$(VASM) $(VASMFLAGS) -o $@ $<

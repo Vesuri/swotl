@@ -123,7 +123,7 @@ t-fm: build/tools/fm_check
 # Isolated audio changes: original-derived sound checks and their plants.
 .PHONY: gates-audio
 gates-audio:
-	@$(MAKE) -s -k -j$(JOBS) t-fm t-fm-quality t-fm-render t-fm-envelope t-fm-allocation t-fm-cache t-fm-phase t-tfh t-audio t-sfx-capture t-fm-effect t-sfx-play t-sab-fm t-sab-fm-quality t-sab-fm-render t-sab-fm-envelope t-sab-fm-allocation t-sab-fm-cache t-sab-fm-phase t-sab-tfh t-sab-audio t-sab-sfx-capture t-sab-fm-effect t-sab-sfx-play
+	@$(MAKE) -s -k -j$(JOBS) t-fm t-fm-quality t-fm-render t-fm-envelope t-fm-allocation t-fm-cache t-fm-phase t-tfh t-audio t-sfx-capture t-fm-effect t-fm-effect-asm t-sfx-play t-sab-fm t-sab-fm-quality t-sab-fm-render t-sab-fm-envelope t-sab-fm-allocation t-sab-fm-cache t-sab-fm-phase t-sab-tfh t-sab-audio t-sab-sfx-capture t-sab-fm-effect t-sab-fm-effect-asm t-sab-sfx-play
 
 t-fm-quality:
 	$(call RUN,fm-quality,$(PYTHON) tests/test_fm_quality.py)
@@ -155,6 +155,11 @@ t-fm-effect: build/tools/fm_effect_check t-sfx-capture
 t-sab-fm-effect: build/tools/fm_effect_check t-sfx-capture
 	$(call RUN,sabotage-fm-effect,mkdir -p tmp/test/sfx-wav && for s in pitch level; do \
 		! build/tools/fm_effect_check tmp/sfx-capture.csv tmp/test/sfx-wav --sabotage $$s || exit 1; done)
+# The prerender's assembly loop (fm_effect_run.s) on the 68020 core vs the C loop.
+t-fm-effect-asm: t-sfx-capture
+	$(call RUN,fm-effect-asm,. amiga/env.sh && $(PYTHON) tests/test_fm_effect_asm.py)
+t-sab-fm-effect-asm: t-sfx-capture
+	$(call RUN,sabotage-fm-effect-asm,. amiga/env.sh && $(PYTHON) tests/test_fm_effect_asm.py --sabotage)
 t-sab-fm: build/tools/fm_check
 	$(call RUN,sabotage-fm-paula,for s in pitch level; do \
 		! build/tools/fm_check $(call FM_OPL,c6-flight-keys) tmp/test/fm-sabotage.wav --sabotage $$s || exit 1; done)

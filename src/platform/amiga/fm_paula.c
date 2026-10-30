@@ -903,6 +903,12 @@ static inline __attribute__((always_inline)) void fx_run(struct fx_channel *x, i
     x->prev2 = p2;
 }
 
+#ifdef FM_EFFECT_ASM
+/* fm_effect_run.s (the Amiga build): the same loop, mode = feedback on * 2 + connection. */
+void fx_run_asm(struct fx_channel *x, int16_t *mix, uint32_t m, const uint16_t *wm, const uint16_t *wc,
+                const int16_t *em, const int16_t *ec, uint32_t im, uint32_t ic, uint32_t sh, uint32_t mode);
+#endif
+
 static __attribute__((noinline)) void fx_channel_run(struct fx_channel *x, int16_t *mix, uint32_t m, uint8_t wfm,
                                                      uint8_t wfc, uint16_t am, uint16_t ac, uint32_t im,
                                                      uint32_t ic, uint8_t fb, uint8_t cnt)
@@ -912,6 +918,10 @@ static __attribute__((noinline)) void fx_channel_run(struct fx_channel *x, int16
     uint16_t sh = (uint16_t)(9 - fb);
     im <<= 7;
     ic <<= 7;
+#ifdef FM_EFFECT_ASM
+    fx_run_asm(x, mix, m, wm, wc, em, ec, im, ic, sh, (uint32_t)((fb != 0) * 2 + cnt));
+    return;
+#endif
     switch ((fb != 0) * 2 + cnt) {
     case 0: fx_run(x, mix, m, wm, wc, em, ec, im, ic, sh, 0, 0); break;
     case 1: fx_run(x, mix, m, wm, wc, em, ec, im, ic, sh, 0, 1); break;
