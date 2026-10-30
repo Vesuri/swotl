@@ -10,11 +10,13 @@ services, interrupts, OPL writes: the capture's state restored, its writes kept
 from rt_opl). Each captured id then equals tools/sfx_levels.py's run of the
 original SPAZ under Unicorn (stop all, play, the timer handler per tick) write
 for write, tick for tick, up to the capture's end, and the original writes
-nothing in the quiet second after it. Plants (sfx.c rebuilt):
+nothing in the quiet second after it (a capture ends when SPAZ ends the
+effect: its count at DGROUP 6564+id back to 0). Plants (sfx.c rebuilt):
 
   restore   SPAZ's data never restored
   tick      handler writes recorded one tick late
   play      the play writes (tick 0) dropped
+  end       a capture cut at tick 100, before SPAZ ends the effect
 """
 import argparse
 import csv
@@ -29,7 +31,7 @@ import host_run as H  # noqa: E402
 import sfx_levels as L  # noqa: E402
 
 MILESTONE = "m2-choose-side"
-QUIET = 237                         # sfx.c TICKS_QUIET
+QUIET = 237                         # 1 s: the original writes nothing after the capture ends
 PLANTS = {
     "restore": ("    copy(data, spaz_save, SPAZ_DATA_BYTES, restore);",
                 "    if (!restore) copy(data, spaz_save, SPAZ_DATA_BYTES, restore);"),
@@ -37,6 +39,8 @@ PLANTS = {
              "        rt_sfx_capture[capture_n].tick = capture_tick ? capture_tick + 1 : 0;"),
     "play": ("        spaz(cs, SPAZ_PLAY, 0, (uint16_t)(id * 4));\n",
              "        spaz(cs, SPAZ_PLAY, 0, (uint16_t)(id * 4));\n        capture_n = first;\n"),
+    "end": ("rd8(lin(game, (uint16_t)(EFFECT_COUNTS + id)));",
+            "rd8(lin(game, (uint16_t)(EFFECT_COUNTS + id))) && capture_tick < 100;"),
 }
 
 

@@ -148,7 +148,8 @@ code runs out of the game's flow for it (approved); 0.91 waits for it.
   OPL shadow, PIC/PIT), then per id: stop all (`+0666`), play(id·4)
   (`+03D5`), SPAZ's INT 08h handler (`+07CC`) per tick through a guest far
   call/interrupt with a sentinel return (as `deliver_guest`), OPL writes to
-  a capture buffer, not `rt_opl`; until silent or 5 s. Then restore. Oracle:
+  a capture buffer, not `rt_opl`; until SPAZ ends it (count DS:6564+id back
+  to 0) or 8 s. Then restore. Oracle:
   the capture equals `tools/sfx_levels.py` (original SPAZ under Unicorn)
   write for write and tick for tick; host milestones still match the
   reference with the prerender on (restore complete).

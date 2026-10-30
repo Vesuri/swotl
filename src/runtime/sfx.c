@@ -25,7 +25,7 @@ static const uint16_t game_ranges[][2] = {
 #define BDA_TICK 0x46c              /* 6C..70, the BIOS chain's (I2) */
 #define BDA_TICK_BYTES 5
 #define TICKS_MAX 1894              /* 8 s at 236.7 Hz */
-#define TICKS_QUIET 237             /* 1 s without a write ends an effect */
+#define EFFECT_COUNTS 0x6564        /* DGROUP byte per id: play +1 (SPAZ+64E), end -1 (+65E) */
 #define SENTINEL_CS RT_IRQ_SS
 #define SENTINEL_IP RT_IRQ_SP
 
@@ -140,8 +140,9 @@ void rt_sfx_prerender(void)
         rt_sfx_first[id] = first;
         spaz(cs, SPAZ_PLAY, 0, (uint16_t)(id * 4));
         last_write = 0;
+        /* until SPAZ ends the effect (its count back to 0) */
         for (capture_tick = 1; capture_tick <= TICKS_MAX &&
-                capture_tick - last_write <= TICKS_QUIET; ++capture_tick) {
+                rd8(lin(game, (uint16_t)(EFFECT_COUNTS + id))); ++capture_tick) {
             spaz(cs, handler, 1, 0);
         }
         rt_sfx_writes[id] = (uint16_t)(capture_n - first);
