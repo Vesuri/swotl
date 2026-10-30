@@ -71,8 +71,9 @@ Music stays enabled through the FM re-hoster in both effect modes.
 - Paula backend: `src/platform/amiga/Audio.cpp`. `fm_field` in
   `plat_service` (the field task, once a vertical blank, on an OPL snapshot); the vertical blank
   stages the commands: DMA on, silence volume 0, loop changes latched at
-  the loop's end, a key-on restarts its channel (DMA off, the outgoing
-  period's countdown waited out, ≤ 16 lines; Revs, Rescue on Fractalus);
+  the loop's end, a key-on restarts its channel (DMA off for two outgoing
+  periods, Paula's idle point, ≤ 16 lines, a VHPOSR wait the link audits;
+  Revs, Rescue on Fractalus);
   volume 0 in I/O windows. Voices 0, 3 left, 1, 2 right. Alt-S, Alt-E and
   pause are SPAZ's own key-offs. Cost before R34 (68020 A1200 model, demo
   flight, 100 fields, one capture per build): about 5.0% with short loops and

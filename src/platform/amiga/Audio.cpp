@@ -18,9 +18,10 @@ extern "C" {
 #define SILENCE_BYTES 4
 #define AUDIO_DMA (DMAF_AUD0 | DMAF_AUD1 | DMAF_AUD2 | DMAF_AUD3)
 #define PERIOD_FLOOR 124
-// A restart's DMA-off window: the outgoing period's countdown runs out first
-// (Revs, Rescue on Fractalus: AUDxPER does not cut it short), capped; a
-// loop restarted late still plays valid samples (fm_paula.c keeps the last
+// A restart's DMA-off window: Paula goes idle only at the end of a period in
+// its second-byte state, up to two outgoing periods (AUDxPER does not cut a
+// countdown short; Revs, Rescue on Fractalus, Vette), capped; a loop
+// restarted late still plays valid samples (fm_paula.c keeps the last
 // field's loops).
 #define RESTART_LINES_MAX 16
 
@@ -387,7 +388,7 @@ void Audio::verticalBlank()
     }
     if (!restart) return;
     *dmaconPointer = restart;
-    uint16_t lines = outgoing / 227 + 4;
+    uint16_t lines = (2u * outgoing + 226) / 227 + 2;
     waitLines(lines < RESTART_LINES_MAX ? lines : RESTART_LINES_MAX);
     for (uint16_t c = 0; c < FM_VOICES; ++c) {
         if (!(restart & (DMAF_AUD0 << c))) continue;

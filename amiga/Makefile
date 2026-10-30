@@ -183,6 +183,12 @@ $(OUT).elf: $(OBJECTS) | out verify-runtime
 	$(CC) $(CCFLAGS) $(LDFLAGS) $(OBJECTS) -o $@
 	@test "$$($(OBJDUMP) -t $@ | awk '$$NF == "_start" && $$4 == ".text" { print $$1 }')" = 00000000 || \
 		{ echo "_start is not at the hunk start" >&2; rm -f $@; exit 1; }
+	@# A restart's DMA-off window polls VHPOSR between the two DMACON writes
+	@# (a non-volatile poll compiled to nothing: 0.91 on a 68040).
+	@$(OBJDUMP) -d -C --no-show-raw-insn $@ | awk '/<Audio::verticalBlank\(\)>:/ { f = 1; next } \
+		f && /^$$/ { exit } f && /dff096/ { d++ } f && d == 1 && /dff006/ { w = 1 } \
+		END { exit !(d >= 2 && w) }' || \
+		{ echo "Audio::verticalBlank: no VHPOSR wait between the DMACON writes" >&2; rm -f $@; exit 1; }
 	$(OBJDUMP) --disassemble --no-show-raw-ins -S $@ > $(OUT).s 2>/dev/null || true
 
 $(OUT).exe: $(OUT).elf

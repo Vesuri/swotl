@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Production Paula backend: sample ownership, zero-volume attack, Chip lifetime,
+"""Production Paula backend: sample ownership, zero-volume attack, the restart's
+DMA-off window (two outgoing periods), Chip lifetime,
 the field's OPL snapshot (taken with interrupts disabled; a tick when they
 return must not reach it), prerendered effects (a Chip block per wanted
 captured id, even, the Fast render buffer released, the sample player run
@@ -126,9 +127,11 @@ void fm_init(int8_t *, uint32_t) {}
 uint32_t tfh_chip_bytes(const uint8_t *, uint32_t) { return 212; }
 int tfh_init(const uint8_t *, uint32_t, int8_t *) { return 0; }
 static unsigned effectFields;
+static bool retrigger;      // a new start over the running period-800 sample
 uint16_t tfh_field(const uint8_t *opl, const uint8_t *, const uint8_t *, fm_voice *v) {
     assert(opl != rt_opl && opl[0xb0] == snapshot);
     if (!tfhLoaded) { ++effectFields; v[0] = {pcm, 16, 214, 9, 0, -1}; return 7; }
+    if (retrigger) { v[0] = {pcm, 16, 800, 4, 1, -1}; return 7; }
     v[0] = {pcm + (field ? 4 : 0), (uint16_t)(field ? 12 : 16), 800,
             (uint8_t)(field > 1 ? 4 : 0), (uint8_t)!field, -1};
     ++field; return 7;
@@ -158,6 +161,16 @@ int main() {
     Audio::service();
     Audio::verticalBlank();
     assert(PAULA[0].lc == pcm+4 && PAULA[0].vol == 4);
+    // A restart keeps DMA off for two outgoing periods (Paula idles only at
+    // the end of its second-byte state): 1600 colour clocks, 10 lines with
+    // the margin; each mock VHPOSR read is a new line.
+    retrigger = true;
+    Audio::service();
+    unsigned reads = beam.n;
+    Audio::verticalBlank();
+    assert(amiga_audio_restarts == 2 && PAULA[0].lc == pcm && PAULA[0].len == 8);
+    assert(beam.n - reads >= 10);
+    retrigger = false;
     Audio::handBack();
     Audio::end();
     assert(allocations.empty());
@@ -238,10 +251,12 @@ def run(plant=None):
         result = subprocess.run([str(exe)], capture_output=True)
         assert bool(result.returncode) == bool(plant), result.stderr.decode()
         print(f'Audio: {plant} sabotage caught' if plant else
-              'Audio: sample merge, silent attack restart, Chip release, OPL snapshot, prerendered effects and their cache: ok')
+              'Audio: sample merge, silent attack restart, restart window, Chip release, OPL snapshot, prerendered effects and their cache: ok')
 
 
 PLANTS = {'silent-attack': ('if (muted || !v.loop)', 'if (muted || !v.loop || !v.volume)'),
+          'restart-period': ('(2u * outgoing + 226) / 227 + 2', 'outgoing / 227 + 4'),
+          'restart-wait': ('    waitLines(lines < RESTART_LINES_MAX', '    if (0) waitLines(lines < RESTART_LINES_MAX'),
           'live-opl': ('fm_field(opl, keyon, mask, v)', 'fm_field(rt_opl, rt_opl_keyon, mask, v)'),
           'effects-only': ('tfhChip || effects ?', 'tfhChip ?'),
           'effect-pad': ('for (uint32_t k = n; k < bytes; ++k) pcm[k] = 0;', ''),
