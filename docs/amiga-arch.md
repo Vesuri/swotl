@@ -12,7 +12,7 @@ slave: [whdload.md](whdload.md).
 | --- | --- |
 | Machine | PAL or NTSC A1200, 68020, AGA required (`GFXF_AA_LISA` after `SetPatch`), L8 |
 | Memory | 2 MiB Chip for DMA data; Fast RAM required (D15, [translator-design.md](translator-design.md)); default 4 KiB Shell stack, L52 |
-| Launch | Shell, Workbench (L84: the icon's tool types and drawer) and a WHDLoad slave (kickemu, INITAGA; [whdload.md](whdload.md)), the same executable |
+| Launch | Shell, Workbench (L84: the icon's tool types and drawer) and a WHDLoad slave (kickemu, INITAGA; [whdload.md](whdload.md)), the same executable; the release image takes the player options only |
 | Display | 320×200, 8 non-interleaved planes, 256 colours from the 18-bit VGA palette, L31 |
 | Timebase | vblank (50 Hz PAL, 60 Hz NTSC: graphics' `DisplayFlags`, `amiga_ntsc`) for display, input and audio; PIT channel 0 on a CIA-B timer (D8) |
 
@@ -36,10 +36,11 @@ DanceDiverse3 set (`Palette24Bit`, `setPalette24Bit`) is kept for it.
 1. **Entry.** `start.c`'s `_start` replaces the shared one (L86; the link holds it at the
    hunk start): without `pr_CLI` it takes the WBStartup message before the constructors
    (L84). Open dos/graphics outside `Forbid`; require AGA (L8); parse the arguments with
-   `ReadArgs` (`TFH/S,MUSIC/S,BENCH/S,KEYS/K` from `Input()`'s buffer, where the Shell and
-   the slave's `RunCommand` put the line; `?` prompts; a bad line: `PrintFault`, 20), or
-   from Workbench `CurrentDir` to the icon's drawer and read its tool types (same
-   keywords; `KEYS` copied).
+   `ReadArgs` (`TFH/S,ANALOGJOYSTICK/S,MUSIC/S,BENCH/S,KEYS/K` from `Input()`'s buffer,
+   where the Shell and the slave's `RunCommand` put the line; `?` prompts; a bad line:
+   `PrintFault`, 20), or from Workbench `CurrentDir` to the icon's drawer and read its
+   tool types (same keywords; `KEYS` copied). The release image (`SWOTL_RELEASE`,
+   [release.md](release.md)) takes `TFH` and `ANALOGJOYSTICK` only.
 2. **Reserve.** Every game-owned block, all-or-nothing, largest first; Chip only for DMA
    data (L53, L54); only find-first's name list and records are allocated later, inside
    their I/O window (`plat_alloc`): one directory pass (`plat_dir_names`), then one
@@ -178,7 +179,7 @@ link audit) not applied (open-work 41). Exact flags: [toolchain.md](toolchain.md
 | --- | --- | --- |
 | Restore status | OS view, vector, DMA and INTENA restored; LED filter off during the run and restored | `make test-amiga-restore` |
 | Beam watch | zero late display handoffs; no conversion into the shown bitmap | `amiga/display_audit.sh` |
-| Workbench start | icon start: tool types read, data from the icon's drawer, menu exit (EMS release, mode 3, console text) without a runtime stop restores, result 0 with the message held; `BENCH` from the icon and the Shell: 20; Shell arguments in lower case, after `?` and a bad one (IoErr 118, 20) | `make test-amiga-workbench` |
+| Workbench start | icon start: tool types read, data from the icon's drawer, menu exit (EMS release, mode 3, console text) without a runtime stop restores, result 0 with the message held; `BENCH` from the icon and the Shell: 20; Shell arguments in lower case, after `?` and a bad one (IoErr 118, 20); the release image: `tfh analogjoystick` taken, `KEYS`, `MUSIC`, `BENCH` refused (IoErr 118, 20) | `make test-amiga-workbench` |
 | Keyboard | `monitor key` edges read by the I/O windows' VERTB server and the takeover VBI, typematic 1 + 7 in 61 fields | `make test-amiga-keyboard` |
 | Audio VBI spills | Paula work stays in blanking | none here; Slicks `g_slicks_audio_vbi_spills` |
 | C2P store verifier | converters write only final, correct plane words | none here; Slicks `tools/verify_planar_writes.sh` |

@@ -599,7 +599,8 @@ static void load_tfh(void)
 
 /* Workbench start (L84): the icon's drawer becomes the current directory
  * (a Shell's is its own) and the icon's tool types are the arguments, the
- * same keywords; KEYS= is copied, the icon is freed before the run. */
+ * same keywords; KEYS= is copied, the icon is freed before the run. The
+ * release image reads TFH and ANALOGJOYSTICK only. */
 static BPTR wb_old_dir = 0;
 static char *wb_keys = 0;
 static ULONG wb_keys_bytes = 0;
@@ -617,9 +618,10 @@ static int wb_options(int *tfh)
     if (icon) {
         STRPTR *types = (STRPTR *)icon->do_ToolTypes;
         *tfh = FindToolType(types, (STRPTR)"TFH") != 0;
+        if (FindToolType(types, (STRPTR)"ANALOGJOYSTICK")) rt_joystick = 1;
+#ifndef SWOTL_RELEASE
         if (FindToolType(types, (STRPTR)"BENCH")) rt_bench = 1;
         if (FindToolType(types, (STRPTR)"MUSIC")) rt_music_skip = 0;
-        if (FindToolType(types, (STRPTR)"ANALOGJOYSTICK")) rt_joystick = 1;
         const char *keys = (const char *)FindToolType(types, (STRPTR)"KEYS");
         if (keys) {
             ULONG n = 0;
@@ -638,6 +640,7 @@ static int wb_options(int *tfh)
                 ok = 0;
             }
         }
+#endif
         FreeDiskObject(icon);
     }
     CloseLibrary(IconBase);
@@ -651,11 +654,19 @@ static int wb_options(int *tfh)
  * RunCommand put it. KEYS points into the RDArgs until the close. */
 static struct RDArgs *shell_args = 0;
 
+#ifdef SWOTL_RELEASE
+/* The release image (make amiga-release): the player's options only. */
+#define SHELL_TEMPLATE "TFH/S,ANALOGJOYSTICK/S"
+enum { ARG_TFH, ARG_ANALOGJOYSTICK, ARG_COUNT };
+#else
+#define SHELL_TEMPLATE "TFH/S,ANALOGJOYSTICK/S,MUSIC/S,BENCH/S,KEYS/K"
+enum { ARG_TFH, ARG_ANALOGJOYSTICK, ARG_MUSIC, ARG_BENCH, ARG_KEYS, ARG_COUNT };
+#endif
+
 static int shell_options(int *tfh)
 {
-    enum { ARG_TFH, ARG_MUSIC, ARG_BENCH, ARG_KEYS, ARG_ANALOGJOYSTICK, ARG_COUNT };
-    LONG values[ARG_COUNT] = {0, 0, 0, 0, 0};
-    shell_args = ReadArgs((CONST_STRPTR)"TFH/S,MUSIC/S,BENCH/S,KEYS/K,ANALOGJOYSTICK/S", values, 0);
+    LONG values[ARG_COUNT] = {0};
+    shell_args = ReadArgs((CONST_STRPTR)SHELL_TEMPLATE, values, 0);
     if (!shell_args) {
         amiga_io_begin();
         PrintFault(IoErr(), (CONST_STRPTR)"SWotL");
@@ -663,10 +674,12 @@ static int shell_options(int *tfh)
         return 0;
     }
     *tfh = values[ARG_TFH] != 0;
+    if (values[ARG_ANALOGJOYSTICK]) rt_joystick = 1;   /* proportional stick in port 2; joystick argument Y */
+#ifndef SWOTL_RELEASE
     if (values[ARG_MUSIC]) rt_music_skip = 0;   /* diagnostic: music records start their songs */
     if (values[ARG_BENCH]) rt_bench = 1;        /* frame bench: ticks from guest progress, no CIA timer */
     if (values[ARG_KEYS]) key_script = (const char *)values[ARG_KEYS];
-    if (values[ARG_ANALOGJOYSTICK]) rt_joystick = 1;   /* proportional stick in port 2; joystick argument Y */
+#endif
     return 1;
 }
 

@@ -55,6 +55,12 @@ CCFLAGS += -DSWOTL_SYNC
 VASMGEN += -DSWOTL_SYNC=1
 endif
 
+# Release image (make amiga-release): the player's options only, no diagnostic
+# arguments or tool types (amiga_platform.c).
+ifneq ($(RELEASE),)
+CCFLAGS += -DSWOTL_RELEASE
+endif
+
 # Diagnostic image is built in a separate working directory by the replay test.
 ifneq ($(REPLAY),)
 CCFLAGS += -DSWOTL_REPLAY -I"$(REPLAY)"

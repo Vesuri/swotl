@@ -25,7 +25,8 @@ RUN="$FSUAE_RUN"; DH0="$RUN/dh0"; DH1="$RUN/dh1"; GDBHOME="$RUN/gdbhome"
 mkdir -p "$DH0/c" "$DH0/s" "$DH1" "$RUN/state" "$GDBHOME"
 # Do not simplify to `dh1:Swotl`: with the path form gdb resolves symbols
 # against the wrong base and no breakpoint is ever hit (Rescue on Fractalus).
-# MUSIC: fixtures check the guest path, which the references hold (music_skip off).
+# MUSIC: fixtures check the guest path, which the references hold (music_skip off);
+# SWOTL_RELEASE=1 leaves it out for the release image, which refuses it.
 GAME="$DH1"; BOOT=()
 if [ -n "${SWOTL_WORKBENCH:-}" ]; then
   # Workbench 2.04's C: and Libs: (LoadWB); ENV: as a startup-sequence makes it.
@@ -41,7 +42,8 @@ else
   if [ -n "${SWOTL_INPUT+set}" ]; then
     printf '%s\n' "$SWOTL_INPUT" > "$DH0/s/swotl-input"; redirect=' <S:swotl-input'
   fi
-  printf 'C:SetPatch QUIET\ncd dh1:\nSwotl%s MUSIC %s\n' "$redirect" "${SWOTL_ARGS:-}" > "$DH0/s/startup-sequence"
+  music=' MUSIC'; [ -n "${SWOTL_RELEASE:-}" ] && music=
+  printf 'C:SetPatch QUIET\ncd dh1:\nSwotl%s%s %s\n' "$redirect" "$music" "${SWOTL_ARGS:-}" > "$DH0/s/startup-sequence"
 fi
 cp -f "$SETPATCH" "$DH0/c/SetPatch"
 cp -f "${3:-out/Swotl.exe}" "$GAME/Swotl" || exit 1

@@ -56,7 +56,9 @@ with a tool icon (`tools/tool_icon.py`, tool types from `SWOTL_TOOLTYPES`). Tool
 (refused by the production image): result 20, a message only from the icon. Shell
 arguments through `ReadArgs`, stopped at `rt_start`: `tfh keys=1:shot` in lower case opens
 `sfx.rsc` and sets the key script; `?` then `tfh` at the prompt (`SWOTL_INPUT`,
-the Shell start's redirected input); `foo` stops at `PrintFault` with IoErr 118, then result 20.
+the Shell start's redirected input); `foo` stops at `PrintFault` with IoErr 118, then result 20. The release image
+(`SWOTL_RELEASE=1`, its own `SWOTL_ELF`, no `MUSIC`): `tfh analogjoystick` taken,
+`KEYS=1:shot`, `MUSIC` and `BENCH` refused with IoErr 118. A runtime stop fails every case.
 
 `make test-amiga-keyboard` (`amiga/keyboard_check.sh`) presses Left Shift through
 `monitor key`: toggled at the I/O windows' VERTB server until that server has read a

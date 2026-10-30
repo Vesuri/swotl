@@ -590,7 +590,7 @@ test-amiga-restore: amiga
 	$(GATE_LAUNCH) bash amiga/restore_check.sh
 test-amiga-keyboard: amiga
 	$(GATE_LAUNCH) bash amiga/keyboard_check.sh
-test-amiga-workbench: amiga
+test-amiga-workbench: amiga amiga-release
 	$(GATE_LAUNCH) bash amiga/workbench_check.sh
 
 amiga: gen-check
@@ -602,12 +602,20 @@ amiga-sync: gen-check
 	mkdir -p build/amiga-sync && ln -sf ../../amiga/Makefile build/amiga-sync/Makefile
 	. amiga/env.sh && $(MAKE) -C build/amiga-sync REPO=../.. SYNC=1
 
+# Release image: built in build/amiga-release with RELEASE=1 (the player's
+# options only, amiga_platform.c), stripped to amiga/out/Swotl-release.exe.
+# The WHDLoad test slaves' KEYS scripts run the diagnostic image, stripped
+# too (WHDLoad's LoadSeg of the symbol hunks never returns): Swotl-diag.exe.
 amiga-release: amiga
-	. amiga/env.sh && elf2hunk amiga/out/Swotl.elf amiga/out/Swotl-release.exe -s
-	$(PYTHON) tools/hunk_size.py --release-of amiga/out/Swotl.exe amiga/out/Swotl-release.exe
+	mkdir -p build/amiga-release && ln -sf ../../amiga/Makefile build/amiga-release/Makefile
+	. amiga/env.sh && $(MAKE) -C build/amiga-release REPO=../.. RELEASE=1
+	. amiga/env.sh && elf2hunk build/amiga-release/out/Swotl.elf amiga/out/Swotl-release.exe -s
+	$(PYTHON) tools/hunk_size.py --release-of build/amiga-release/out/Swotl.exe amiga/out/Swotl-release.exe
+	. amiga/env.sh && elf2hunk amiga/out/Swotl.elf amiga/out/Swotl-diag.exe -s
+	$(PYTHON) tools/hunk_size.py --release-of amiga/out/Swotl.exe amiga/out/Swotl-diag.exe >/dev/null
 
 smoke-release: amiga-release
-	. amiga/env.sh && amiga/debug.sh "" "$(CURDIR)/amiga/diag_smoke.gdb" "$(CURDIR)/amiga/out/Swotl-release.exe" | grep -q '^SWOTL_SMOKE_OK'
+	. amiga/env.sh && SWOTL_RELEASE=1 SWOTL_ELF="$(CURDIR)/build/amiga-release/out/Swotl.elf" amiga/debug.sh "" "$(CURDIR)/amiga/diag_smoke.gdb" "$(CURDIR)/amiga/out/Swotl-release.exe" | grep -q '^SWOTL_SMOKE_OK'
 
 whdload:
 	$(MAKE) -C whdload all test smoke boot-test load-test memfree campaign tour
@@ -621,7 +629,8 @@ test-whdload: whdload amiga-release
 	. amiga/env.sh && for s in "a1200-030" "a1200-030 --whdload-mmu" "a1200-040" "a1200-060"; do \
 		$(PYTHON) tools/test_whdload.py --mode run --setup $$s || exit 1; done
 	. amiga/env.sh && for t in Campaign Tour; do for s in a1200 a1200-060; do \
-		$(PYTHON) tools/test_whdload.py --mode run --slave build/whdload/$${t}Test.slave --ticks 15000 --setup $$s || exit 1; done; done
+		$(PYTHON) tools/test_whdload.py --mode run --slave build/whdload/$${t}Test.slave --exe amiga/out/Swotl-diag.exe \
+		--ticks 15000 --setup $$s || exit 1; done; done
 
 install-data:
 	. amiga/env.sh && $(MAKE) -C tools/install-data all amiga

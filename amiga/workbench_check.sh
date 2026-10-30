@@ -11,6 +11,9 @@
 #   prompt `?`, then tfh read from the Shell input (SWOTL_INPUT)
 #   bad    an unknown argument: ReadArgs fails with IoErr 118 (wrong number of
 #          arguments) for PrintFault, result 20
+# The release image (make amiga-release), its own symbols:
+#   release      tfh analogjoystick: both chosen, no key script
+#   release-keys a diagnostic argument (KEYS, MUSIC, BENCH): IoErr 118, result 20
 # A runtime stop (rt_stop, rt_unsupported) fails every case: the program's
 # result does not carry it.
 set -euo pipefail
@@ -95,7 +98,8 @@ fault() {
 
 check() {
   local name=$1
-  FSUAE_RUN="../tmp/${run##*/}/$name" bash amiga/debug.sh "" "$run/$name.gdb" > "$run/$name.log" 2>&1 || true
+  FSUAE_RUN="../tmp/${run##*/}/$name" bash amiga/debug.sh "" "$run/$name.gdb" ${SWOTL_EXE:+"$SWOTL_EXE"} \
+    > "$run/$name.log" 2>&1 || true
   cat "$run/$name.log"
   # A disconnected debugger or an exhausted command file is not a pass.
   grep -q '^SWOTL_WB_OK$' "$run/$name.log" || { echo "FAIL: $name"; exit 1; }
@@ -113,4 +117,11 @@ options prompt '$tfh == 1'
 SWOTL_INPUT=tfh SWOTL_ARGS='?' check prompt
 fault bad 118
 SWOTL_ARGS=foo check bad
-echo 'PASS: Workbench and Shell starts return their results; Shell arguments parse'
+release=(SWOTL_RELEASE=1 SWOTL_ELF="$PWD/build/amiga-release/out/Swotl.elf" SWOTL_EXE="$PWD/amiga/out/Swotl-release.exe")
+options release '$tfh == 1 && rt_joystick == 1 && key_script == 0'
+env "${release[@]}" SWOTL_ARGS='tfh analogjoystick' bash -c "$(declare -f check); run='$run'; check release"
+for arg in 'KEYS=1:shot' MUSIC BENCH; do
+  fault release-keys 118
+  env "${release[@]}" SWOTL_ARGS="$arg" bash -c "$(declare -f check); run='$run'; check release-keys"
+done
+echo 'PASS: Workbench and Shell starts return their results; Shell arguments parse; the release image takes the player options only'

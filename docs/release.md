@@ -23,12 +23,18 @@ Converged sibling pipeline plus SWOTL's use (`SWOTL:` rows). Provenance: `Sl` Sl
 
 ## Local executable
 
-`make amiga-release` writes `amiga/out/Swotl-release.exe` using the installed
-converter's `elf2hunk input.elf output.exe -s`. It verifies no symbol/debug
-records remain and every loadable record matches `Swotl.exe`, including
-relocations and allocation headers. The debug executable and ELF remain
-unchanged; perf continues to use them. `make smoke-release` boots the separate
-artifact using the same smoke fixture and emulator options. The slave
+`make amiga-release` builds the release image in `build/amiga-release`
+(`RELEASE=1`, `-DSWOTL_RELEASE`): Shell template `TFH/S,ANALOGJOYSTICK/S` and
+the same two tool types; the diagnostic MUSIC, BENCH and KEYS are refused. It
+writes `amiga/out/Swotl-release.exe` with the installed converter's
+`elf2hunk input.elf output.exe -s` and verifies no symbol/debug records remain
+and every loadable record matches `build/amiga-release/out/Swotl.exe`,
+including relocations and allocation headers. The diagnostic executable and
+ELF (`amiga/out/Swotl.*`) remain for fixtures and perf; the WHDLoad
+Campaign/Tour test slaves (KEYS scripts) load its stripped copy
+`amiga/out/Swotl-diag.exe`. `make smoke-release` boots the
+release artifact with the smoke fixture and its own ELF, without MUSIC;
+`make test-amiga-workbench` checks its arguments. The slave
 ([whdload.md](whdload.md)) loads this stripped executable as `data/SWotL`.
 
 ## Make targets
