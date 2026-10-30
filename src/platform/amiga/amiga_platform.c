@@ -548,6 +548,17 @@ void plat_service(void)
     amiga_audio_service();
 }
 
+/* Shell start: the Shell's output; Workbench start: none. */
+void plat_console(const void *buffer, uint32_t length)
+{
+    amiga_io_begin();
+    BPTR out = Output();
+    if (out && length) {
+        Write(out, (APTR)buffer, (LONG)length);
+    }
+    amiga_io_end();
+}
+
 void plat_log(const char *line)
 {
     LONG n = 0;

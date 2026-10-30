@@ -56,6 +56,8 @@ void plat_service(void);
 int plat_sfx_wanted(uint8_t id);
 void plat_sfx_captured(void);
 void plat_log(const char *line);
+/* The game's console output (DOS writes to CON), as written. */
+void plat_console(const void *buffer, uint32_t length);
 void plat_exit(int32_t code) __attribute__((noreturn));
 
 #endif

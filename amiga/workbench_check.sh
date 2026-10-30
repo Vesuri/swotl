@@ -11,6 +11,8 @@
 #   prompt `?`, then tfh read from the Shell input (SWOTL_INPUT)
 #   bad    an unknown argument: ReadArgs fails with IoErr 118 (wrong number of
 #          arguments) for PrintFault, result 20
+# A runtime stop (rt_stop, rt_unsupported) fails every case: the program's
+# result does not carry it.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p tmp
@@ -26,6 +28,7 @@ fixture() {
     echo 'set pagination off'
     echo 'set confirm off'
     printf 'break *rt_stop\ncommands\n  silent\n  printf "SWOTL_WB_STOP\\n"\n  detach\n  quit 1\nend\n'
+    printf 'break *rt_unsupported\ncommands\n  silent\n  printf "SWOTL_WB_UNSUPPORTED %%s ax=%%04x\\n", *(char **)($sp + 4), rt_r.ax\n  detach\n  quit 1\nend\n'
     printf 'break *amiga_script_mark\ncommands\n  silent\n  printf "SWOTL_WB_TIMEOUT fields=%%u\\n", amiga_frames\n  detach\n  quit 1\nend\n'
     if [ "$4" = 1 ]; then
       echo 'break Swotl::handBack'

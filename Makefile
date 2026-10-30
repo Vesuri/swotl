@@ -546,7 +546,7 @@ HOST_COVERAGE = c1-historical c2-german-school c3-custom c4-tour c5-records \
 	c6-flight-keys c7-demo-dispatch c8-steep-bank c9-mouse-menu c10-campaign-weeks \
 	c12-b17-bombing c13-me262-gunnery c15-p51-gunnery c16-p51d-gunnery \
 	c17-p38-gunnery c18-p80-gunnery c19-fw190-gunnery c21-go229-gunnery \
-	c24-custom-create c27-campaign-flight c28-me163-map-return \
+	c24-custom-create c26-exit-usage c27-campaign-flight c28-me163-map-return \
 	c29-he162-map-return c30-do335-map-return c31-map-briefing-return c32-historical-high-view \
 	c33-b17-stations c34-custom-reload c35-custom-options c36-custom-flight c37-custom-roster c38-pilot-fighter c39-weapons-scroll \
 	c40-map-aircraft c41-briefing-scroll c42-flight-aircraft c43-german-campaign c44-german-map c45-german-records c46-pilot-record c47-pilot-delete \

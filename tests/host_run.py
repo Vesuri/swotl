@@ -328,13 +328,15 @@ class Host:
         self.file_stamps: dict[str, tuple[int, int]] = {}
         self.deleted: set[str] = set()
         self.log: list[str] = []
+        self.console = b""             # plat_console: the game's DOS console output
         self.exit: int | None = None
         self.services: list[tuple[str, dict]] = []
         self.stopped_at: str | None = None
         self.stubs = {self.syms[n]: n for n in ("plat_alloc", "plat_free", "plat_open", "plat_create", "plat_read", "plat_write",
                                                 "plat_delete", "plat_seek",
                                                 "plat_calendar_date", "plat_file_stamp", "plat_close", "plat_dir_names", "plat_file_info", "plat_timer_rate", "plat_mouse", "plat_present", "plat_palette",
-                                                "plat_service", "plat_sfx_wanted", "plat_sfx_captured", "plat_log", "plat_exit")}
+                                                "plat_service", "plat_sfx_wanted", "plat_sfx_captured", "plat_log", "plat_console",
+                                                "plat_exit")}
         if '__wrap_rt_port_in' in self.syms:
             @U.CODE_CB
             def joystick_epoch(h, addr, size, user):
@@ -849,6 +851,8 @@ class Host:
         elif n == "plat_log":
             self.log.append(self.cstr(args[0]))
             print(self.log[-1])
+        elif n == "plat_console":
+            self.console += self.mem(args[0], args[1])
         elif n == "plat_exit":
             self.exit = args[0]
             self.halted = True

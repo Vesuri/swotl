@@ -8,7 +8,10 @@ through a frame page, write-back on remap, the game's sliding four-page
 window (SWOTL+04918) with writes between maps, an identical remap after a
 write, unmapping (FFFFh), error codes, a page mapped at two frame pages
 without writes through either (ems.c keeps such aliases as separate copies,
-DOSBox does not), and a final read-back of every page.
+DOSBox does not), a final read-back of every page, and release: frame pages
+left mapped, freed pages reused (split across free runs, stale bytes kept),
+the free count and longest run apart, error codes. Release of the OS handle
+0 stops (its pages are outside the store).
   test_ems.py [--sabotage]
 """
 import argparse
@@ -23,7 +26,7 @@ import test_file_dates as T
 H = T.H
 FRAME = 0xE0000
 PAGE = 0x4000
-RESULTS = 0x1000
+RESULTS = 0x2000
 
 
 def ops():
@@ -42,6 +45,21 @@ def ops():
     for base in (0, 4, 8):
         o += [('map', k, base + k, 0) for k in range(4)] + [('dump',)]
     o += [('map', k, k, 1) for k in range(4)] + [('dump',)]
+    # release (the game's exit): mappings outlive the handle, freed pages are
+    # reused page by page, smallest free run first (DOSBox-X MEM_AllocatePages)
+    o += [('poke', 0, 5, 0x11), ('release', 1), ('pages',), ('release', 1), ('releaseh', 0x7F),
+          ('alloc', 3, 0), ('poke', 1, 7, 0x22), ('alloc', 2, 3), ('pages',), ('map', 3, 0, 2),
+          ('dump',), ('release', 0), ('pages',), ('alloc', 4, 20), ('pages',)]
+    for base in (0, 12):            # before filling: the pages' previous owners' bytes
+        o += [('map', k, base + k, 4) for k in range(4)] + [('dump',)]
+    o += [('map', k, 0xFFFF, 4) for k in range(1, 4)]  # no aliases of the pages filled next
+    for p in range(20):
+        o += [('map', 0, p, 4), ('fill', 0, (37 * p + 5) & 255, 2 * p + 7)]
+    for base in (0, 4, 8, 12, 16):
+        o += [('map', k, base + k, 4) for k in range(4)] + [('dump',)]
+    o += [('map', k, k, 2) for k in range(3)] + [('dump',)]
+    o += [('release', 4), ('release', 2), ('pages',), ('alloc', 5, 164), ('pages',),
+          ('release', 5), ('alloc', 6, 2), ('map', 0, 1, 6), ('dump',)]
     return o
 
 
@@ -61,26 +79,33 @@ def program(operations):
     word = lambda v: code.extend(struct.pack('<H', v))
 
     def record(regs):
-        emit('8b 3e 00 0f')                         # mov di,[0F00]
+        emit('8b 3e 00 1f')                         # mov di,[1F00]
         for r in regs:
             emit({'ax': '89 05', 'bx': '89 1d', 'dx': '89 15'}[r] + ' 47 47')
-        emit('89 3e 00 0f')                         # mov [0F00],di
+        emit('89 3e 00 1f')                         # mov [1F00],di
 
-    emit('fc c7 06 00 0f'); word(RESULTS)           # cld; results pointer
-    emit('ba'); word(0xe80); emit('31 c9 b4 3c cd 21 a3 02 0f')  # create RESULT.BIN
+    emit('fc c7 06 00 1f'); word(RESULTS)           # cld; results pointer
+    emit('ba'); word(0x1e80); emit('31 c9 b4 3c cd 21 a3 02 1f')  # create RESULT.BIN
     for op in operations:
         kind = op[0]
         if kind in ('status', 'frame', 'pages'):
             emit({'status': 'b8 00 40', 'frame': 'b8 00 41', 'pages': 'b8 00 42'}[kind] + ' cd 67')
             record({'status': ['ax'], 'frame': ['ax', 'bx'], 'pages': ['ax', 'bx', 'dx']}[kind])
         elif kind == 'alloc':
-            emit('bb'); word(op[2]); emit('b8 00 43 cd 67')
+            emit('ba ee ee bb'); word(op[2]); emit('b8 00 43 cd 67')  # DX kept on errors
             record(['ax', 'dx'])
-            emit('89 16'); word(0xe00 + 2 * op[1])  # mov [handle slot],dx
+            emit('89 16'); word(0x1e00 + 2 * op[1])  # mov [handle slot],dx
+        elif kind in ('release', 'releaseh'):
+            if kind == 'release':
+                emit('8b 16'); word(0x1e00 + 2 * op[1])
+            else:
+                emit('ba'); word(op[1])
+            emit('b4 45 cd 67')
+            record(['ax'])
         elif kind in ('map', 'maph'):
             emit('bb'); word(op[2])
             if kind == 'map':
-                emit('8b 16'); word(0xe00 + 2 * op[3])
+                emit('8b 16'); word(0x1e00 + 2 * op[3])
             else:
                 emit('ba'); word(op[3])
             emit('b0'); code.append(op[1]); emit('b4 44 cd 67')
@@ -92,13 +117,13 @@ def program(operations):
         elif kind == 'poke':
             emit('b8 00 e0 8e c0 26 c6 06'); word(op[1] * PAGE + op[2]); code.append(op[3])
         elif kind == 'dump':
-            emit('8b 1e 02 0f 1e b8 00 e0 8e d8 31 d2 b9 00 80 b4 40 cd 21 '
+            emit('8b 1e 02 1f 1e b8 00 e0 8e d8 31 d2 b9 00 80 b4 40 cd 21 '
                  'ba 00 80 b9 00 80 b4 40 cd 21 1f')
-    emit('8b 1e 02 0f ba'); word(RESULTS)
-    emit('8b 0e 00 0f 81 e9'); word(RESULTS)
+    emit('8b 1e 02 1f ba'); word(RESULTS)
+    emit('8b 0e 00 1f 81 e9'); word(RESULTS)
     emit('b4 40 cd 21 b4 3e cd 21 b8 00 4c cd 21')
-    assert len(code) < 0xd00, len(code)
-    code.extend(bytes(0xd80 - len(code)))
+    assert len(code) < 0x1d00, len(code)
+    code.extend(bytes(0x1d80 - len(code)))
     code.extend(b'RESULT.BIN\0')
     return code
 
@@ -148,10 +173,20 @@ def runtime(operations, plant=None):
                                           'pages': ['ax', 'bx', 'dx']}[kind]]
             if plant == 'constant-total' and kind == 'pages':
                 words[-1] = 0xA4    # total pages ignore allocations
+            if plant == 'free-run' and kind == 'pages':
+                words[-1] = words[-2]   # the longest free run taken as the free count
         elif kind == 'alloc':
-            ems(0x4300, op[2])
+            ems(0x4300, op[2], 0xEEEE)
             words += [reg(h, 'ax'), reg(h, 'dx')]
             handles[op[1]] = reg(h, 'dx')
+        elif kind in ('release', 'releaseh'):
+            ems(0x4500, 0, handles[op[1]] if kind == 'release' else op[1])
+            words.append(reg(h, 'ax'))
+            if plant == 'release-unmaps' and reg(h, 'ax') == 0:
+                for phys in range(4):   # frame pages written back and unmapped
+                    ems(0x4400 | phys, 0xFFFF)
+                    last.pop(phys, None)
+                    loaded.pop(phys, None)
         elif kind in ('map', 'maph'):
             phys, frame = op[1], FRAME + op[1] * PAGE
             same = last.get(phys) == op[2]
@@ -195,12 +230,18 @@ def main():
     operations = ops()
     expected = oracle(operations)
     if args.sabotage:
-        for plant in ('constant-total', 'lost-writeback', 'short-tail', 'stale-remap'):
+        for plant in ('constant-total', 'free-run', 'lost-writeback', 'short-tail', 'stale-remap',
+                      'release-unmaps'):
             assert compare(expected, runtime(operations, plant)), plant + ' plant escaped'
             print(f'EMS: {plant} plant caught')
         return
     errors = compare(expected, runtime(operations))
     assert not errors, errors
+    h = T.machine.machine()         # the OS handle's pages lie outside the store
+    for r, v in (('ax', 0x4500), ('dx', 0)):
+        h.e.write(h.syms['rt_r'] + 2 * H.REGS.index(r), struct.pack('>H', v))
+    T.machine.call(h, 'rt_int67')
+    assert h.halted and any('EMS release of handle 0' in line for line in h.log), h.log
     print(f'EMS: {len(expected[0])} result words and {len(expected[1])} 64 KB frame dumps '
           f'match DOSBox-X over {len(operations)} operations')
 

@@ -7,6 +7,7 @@
 #define HANDLES 20
 #define FILES 16
 #define FIRST_FILE_SFT 3        /* reference: SFT 0-2 are AUX, CON, PRN */
+#define CON_SFT 1
 
 static int32_t file_of_sft[FILES];   /* platform handle per SFT entry, -1 free */
 enum file_action { FILE_NONE, FILE_READ, FILE_WRITE };
@@ -231,13 +232,15 @@ static void delete_file(void)
     set_cf(0);
 }
 
-/* AH=40h to a file handle; CX=0 truncates at the position. */
+/* AH=40h to a file handle (CX=0 truncates at the position) or to CON, the
+ * exits' text (c26 usage), every byte answered as written. */
 static void write_file(uint16_t cs, uint16_t ip)
 {
-    if (rt_r.bx < 5) {
+    int con = rt_r.bx < HANDLES && rd8(jft(rt_r.bx)) == CON_SFT;
+    if (!con && rt_r.bx < 5) {
         rt_unsupported("write to a device handle", 0x21, cs, ip);
     }
-    int32_t f = file_of(rt_r.bx);
+    int32_t f = con ? 0 : file_of(rt_r.bx);
     if (f < 0) {
         fail(6);
         return;
@@ -248,13 +251,20 @@ static void write_file(uint16_t cs, uint16_t ip)
     }
     uint8_t *span = rt_span(a, rt_r.cx);
     rt_span_order(span, rt_r.cx);
-    int32_t put = plat_write(f, span, rt_r.cx);
+    int32_t put = rt_r.cx;
+    if (con) {
+        plat_console(span, rt_r.cx);
+    } else {
+        put = plat_write(f, span, rt_r.cx);
+    }
     rt_span_order(span, rt_r.cx);
     if (put < 0) {
         fail(5);
         return;
     }
-    file_action[rd8(jft(rt_r.bx))] = FILE_WRITE;
+    if (!con) {
+        file_action[rd8(jft(rt_r.bx))] = FILE_WRITE;
+    }
     rt_r.ax = (uint16_t)put;
     set_cf(0);
 }

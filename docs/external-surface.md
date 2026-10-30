@@ -114,7 +114,7 @@ port in DX), SPAZ `+02F1/+02F5` (`out 40h`). No guest VGA register access
 | Keyboard | BIOS INT 16h AH=02h, DOS AH=0Bh/08h (`kbhit`/`getch`) | root `+048F9`, `+13ED1`, `+13EEC` |
 | Mouse | INT 33h AX=0 reset, 3 position/buttons, 0Bh motion | root `+044D4/+044E0/+044F8` |
 | Joystick | port `201h` trigger + poll loop | root `+04442/+0446D/+0449D/+044A6` |
-| EMS 4.0 | INT 67h AH=40h status, 41h frame, 42h pages, 43h allocate (×3), 44h map, 45h release (usage exit) | root `+04682..+04997` |
+| EMS 4.0 | INT 67h AH=40h status, 41h frame, 42h pages, 43h allocate (×3), 44h map, 45h release (every exit, +04762) | root `+04682..+04997` |
 | Memory | DOS AH=48h allocate (`+04833`), AH=4Ah shrink (runtime) | |
 | Files | DOS 3Ch–44h, 4Eh/4Fh/1Ah (find first/next); overlays via PLINK | runtime, PLINK |
 | Time | DOS AH=2Ch (RNG seed) | root `+0DCB6` |

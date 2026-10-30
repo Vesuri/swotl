@@ -10,9 +10,6 @@ speed work: [speed-plan.md](speed-plan.md).
    [Coverage boundaries](indirect-coverage.md) document 13 video/default-runtime
    exclusions with fail-loud dispatch retained. The other 4 need VGA execution
    coverage: engine/cockpit damage (2), formatting (2). Do not infer unreachability from missed fixtures.
-   c26 usage exit also needs exact EMS release (AH=45h), including retained
-   mappings and backing-page aliases; clearing the handle alone is insufficient.
-   EMS implementation is explicitly deferred by the user.
    The engine sites need a single-engine sortie with an engine hit
    (indirect-coverage.md). Isolated original-code formatting tests await approval;
    they must not be presented as gameplay execution coverage.
@@ -98,3 +95,6 @@ speed work: [speed-plan.md](speed-plan.md).
     centring on the tester's NTSC machine.
 45. EGA for non-AGA Amigas: possible future work (user 2026-10-29); the
     current scope is VGA only.
+47. A runtime stop (`SWOTL_STOP`, plat_exit code 2) still ends the Amiga
+    program with result 0: `Swotl::run` drops `amiga_guest_run()`'s code.
+    `amiga/workbench_check.sh` breaks on `rt_stop`/`rt_unsupported` instead.

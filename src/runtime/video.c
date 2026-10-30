@@ -66,21 +66,26 @@ static const uint8_t default_palette[248 * 3] = {
 #define BDA_ROWS      0x484
 #define BDA_CHAR_H    0x485
 
-static void set_mode(void)
+static void bda_mode(uint8_t mode, uint16_t columns, uint16_t page_size, uint16_t char_h)
 {
-    if (AL(rt_r.ax) != 0x13) {
-        rt_unsupported("video mode", 0x10, 0, 0);
-    }
-    wr8(BDA_MODE, 0x13);
-    wr16(BDA_COLUMNS, 40);
-    wr16(BDA_PAGE_SIZE, 0x2000);
+    wr8(BDA_MODE, mode);
+    wr16(BDA_COLUMNS, columns);
+    wr16(BDA_PAGE_SIZE, page_size);
     wr16(BDA_PAGE_OFF, 0);
     for (uint32_t a = BDA_CURSOR; a < BDA_CURSOR + 16; ++a) {
         wr8(a, 0);
     }
     wr8(BDA_PAGE, 0);
     wr8(BDA_ROWS, 24);
-    wr16(BDA_CHAR_H, 8);
+    wr16(BDA_CHAR_H, char_h);
+}
+
+static void set_mode(void)
+{
+    if (AL(rt_r.ax) != 0x13) {
+        rt_unsupported("video mode", 0x10, 0, 0);
+    }
+    bda_mode(0x13, 40, 0x2000, 8);
     for (uint32_t a = 0xa0000; a < 0xb0000; ++a) {
         wr8(a, 0);
     }
@@ -274,6 +279,13 @@ void rt_int10(void)
     set_busy(1);
     switch (AH(rt_r.ax)) {
     case 0x00:
+        if (AL(rt_r.ax) == 0x03) {
+            /* The exit (SWOTL+047DD) restores the mode AH=0Fh read at start:
+             * the BIOS fields as DOSBox-X sets them (c26); text memory and
+             * the display are not modelled, nothing reads them after. */
+            bda_mode(0x03, 80, 0x1000, 16);
+            break;
+        }
         set_mode();
         vram_all();
         plat_palette(rt_dac);

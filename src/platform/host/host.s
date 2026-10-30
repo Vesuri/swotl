@@ -24,6 +24,7 @@
 	xdef	plat_sfx_wanted
 	xdef	plat_sfx_captured
 	xdef	plat_log
+	xdef	plat_console
 	xdef	plat_exit
 	xdef	host_stubs
 	xdef	host_stubs_end
@@ -77,6 +78,8 @@ plat_sfx_wanted:	nop
 plat_sfx_captured:	nop
 	rts
 plat_log:	nop
+	rts
+plat_console:	nop
 	rts
 plat_exit:	nop
 	illegal

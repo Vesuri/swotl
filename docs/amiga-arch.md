@@ -178,7 +178,7 @@ link audit) not applied (open-work 41). Exact flags: [toolchain.md](toolchain.md
 | --- | --- | --- |
 | Restore status | OS view, vector, DMA and INTENA restored; LED filter off during the run and restored | `make test-amiga-restore` |
 | Beam watch | zero late display handoffs; no conversion into the shown bitmap | `amiga/display_audit.sh` |
-| Workbench start | icon start: tool types read, data from the icon's drawer, menu exit restores, result 0 with the message held; `BENCH` from the icon and the Shell: 20; Shell arguments in lower case, after `?` and a bad one (IoErr 118, 20) | `make test-amiga-workbench` |
+| Workbench start | icon start: tool types read, data from the icon's drawer, menu exit (EMS release, mode 3, console text) without a runtime stop restores, result 0 with the message held; `BENCH` from the icon and the Shell: 20; Shell arguments in lower case, after `?` and a bad one (IoErr 118, 20) | `make test-amiga-workbench` |
 | Keyboard | `monitor key` edges read by the I/O windows' VERTB server and the takeover VBI, typematic 1 + 7 in 61 fields | `make test-amiga-keyboard` |
 | Audio VBI spills | Paula work stays in blanking | none here; Slicks `g_slicks_audio_vbi_spills` |
 | C2P store verifier | converters write only final, correct plane words | none here; Slicks `tools/verify_planar_writes.sh` |
