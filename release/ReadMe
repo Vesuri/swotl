@@ -72,6 +72,10 @@
 
  History:
  --------
+ version 0.93 (31.10.2026):
+ - analog joystick: buttons 1 and 2 are separate buttons; each of them
+   pressed both before
+
  version 0.92 (30.10.2026):
  - sound effects and music notes restart correctly on fast processors:
    Their Finest Hour gunfire is no longer lost on a 68040 or 68060
