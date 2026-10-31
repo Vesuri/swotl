@@ -195,8 +195,8 @@ static void digital() {
 // Proportional joystick: POTGO START at each vertical blank, POT1DAT read at
 // the next, each field's count plus 16, X the high byte (pin 9), Y the low
 // (pin 5); buttons on pins 3 and 4 (JOY1DAT
-// bits 9 and 1); directions post nothing; POTINP's buttons as read before
-// the START.
+// bits 9 and 1) reach the gameport, not the mouse buttons (the game ors the
+// two); directions post nothing; POTINP's buttons as read before the START.
 static void analog() {
     rt_joystick = 1;
     potgo = 0;
@@ -213,9 +213,9 @@ static void analog() {
     stick(0, {});
     assert(rt_joystick_axis[0] == 16 + 0xff && rt_joystick_axis[1] == 16);
     stick(0x0100, {}); stick(0x0003, {}); stick(0, {});
-    joy1 = 0x0200; assert(buttons() == 1 && rt_joystick_buttons == 1);
-    joy1 = 0x0002; assert(buttons() == 2 && rt_joystick_buttons == 2);
-    joy1 = 0x0202; assert(buttons() == 3 && rt_joystick_buttons == 3);
+    joy1 = 0x0200; assert(buttons() == 0 && rt_joystick_buttons == 1);
+    joy1 = 0x0002; assert(buttons() == 0 && rt_joystick_buttons == 2);
+    joy1 = 0x0202; assert(buttons() == 0 && rt_joystick_buttons == 3);
     joy1 = 0x0101; assert(buttons() == 0 && rt_joystick_buttons == 0);
     pra = 0x7f; pot = 0xffff ^ 1 << 14; assert(buttons() == 0);
     pra = 0xff;
@@ -308,6 +308,7 @@ if __name__ == '__main__':
                          ('*ciaapraPointer & 0x80 ? 0 : 1', '*ciaapraPointer & 0x40 ? 0 : 1'),
                          ('(joy >> 9 & 1) | (joy & 2)', '(joy >> 9 & 1) | (joy << 1 & 2)'),
                          ('rt_joystick ? potButtons : *potinpPointer', '*potinpPointer'),
+                         ('(rt_joystick ? 0 : joystick)', 'joystick'),
                          ('rt_joystick_axis[0] = (uint16_t)(16 + (counts >> 8));',
                           'rt_joystick_axis[0] = (uint16_t)(16 + (counts & 0xff));'),
                          ('16 + (counts & 0xff)', '(counts & 0xff)'),

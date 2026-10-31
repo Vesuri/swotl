@@ -154,8 +154,9 @@ proportional stick: POTGO START per field, each field's POT1DAT (X the high byte
 low, pin 5: the HRM's names swapped the axes on a real stick, user report 0.91; unaveraged:
 HRM 8-1-4-4's jitter is the stick's pots, the PC original reads raw) + 16 is the reads before each axis one-shot times out
 (`src/runtime/ports.c`; the game's probe wants 16–1000, its calibration scales);
-buttons on pins 3/4 reach both the gameport and the mouse buttons (the
-calibration screen waits for a gameport button). POTINP's mouse buttons are
+buttons on pins 3/4 reach the gameport only (the calibration screen waits for a
+gameport button; the game ors gameport and swapped mouse buttons, root `+037B6`,
+so a mouse copy made each stick button both, user report 0.92). POTINP's mouse buttons are
 read before the START (its discharge pulls the pins low). Oracle:
 `tests/test_gameport.py` runs the game's probe, calibration and read on Unicorn.
 

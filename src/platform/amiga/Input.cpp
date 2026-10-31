@@ -158,10 +158,10 @@ void Input::end()
     ciaaBase = 0;
 }
 
-// Port 2's buttons as mouse buttons 1 and 2. A digital joystick: fire on
-// CIA-A PRA bit 7, the second button on pin 9 (POTINP bit 14). A proportional
-// one (rt_joystick) has its pots on pins 5 and 9 and its buttons on pins 3
-// and 4, JOY1DAT bits 9 and 1 (Hardware Manual table 8-1).
+// Port 2's buttons 1 and 2. A digital joystick: fire on CIA-A PRA bit 7, the
+// second button on pin 9 (POTINP bit 14). A proportional one (rt_joystick)
+// has its pots on pins 5 and 9 and its buttons on pins 3 and 4, JOY1DAT bits
+// 9 and 1 (Hardware Manual table 8-1).
 static uint8_t joystickButtons(uint16_t pins)
 {
     if (rt_joystick) {
@@ -174,8 +174,11 @@ static uint8_t joystickButtons(uint16_t pins)
 // JOY0DAT's counters are 8 bits and wrap: the delta is taken every field
 // (L80) and at each INT 33h request, so a frame gets the motion up to its
 // poll. Buttons: left CIA-A PRA bit 6, right and middle POTINP bits 10 and 8,
-// or'd with port 2's. A pot START discharges the pins for a few lines, so
-// with the proportional stick POTINP is the vertical blank's copy.
+// or'd with a digital stick's. The proportional stick's are the gameport's
+// only: the game ors gameport and (swapped) mouse buttons, so a mouse copy
+// made each stick button both (user report, 0.92). A pot START discharges
+// the pins for a few lines, so with the proportional stick POTINP is the
+// vertical blank's copy.
 void Input::sample()
 {
     Disable();
@@ -189,7 +192,7 @@ void Input::sample()
     uint8_t joystick = joystickButtons(pins);
     mouseButtons = (uint8_t)((AmigaHardware::isLeftMouseButtonPressed() ? 1 : 0) |
                              (pins & (1 << 10) ? 0 : 2) |
-                             (pins & (1 << 8) ? 0 : 4) | joystick);
+                             (pins & (1 << 8) ? 0 : 4) | (rt_joystick ? 0 : joystick));
     rt_joystick_buttons = joystick;
     Enable();
 }
