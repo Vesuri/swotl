@@ -45,6 +45,14 @@
  The disk images are not provided here. They are available, for example, in
  the "The Good Old Days" floppy image collection (ID 496).
 
+ The game executable "SWotL" is not part of the install archive on the
+ WHDLoad WWW-Page. Download it from the matching release at
+
+ https://github.com/Vesuri/swotl/releases
+
+ and the installer will ask for it. The full release archive there already
+ includes it.
+
  Optionally, the game can use the sampled sound effects of the Amiga version
  of "Their Finest Hour". They come from the file sfx.rsc (108,002 bytes) of
  an installed Amiga Their Finest Hour, for example
@@ -72,6 +80,10 @@
 
  History:
  --------
+ version 1.0 (02.11.2026):
+ - the installer asks for the game executable if it is not in the install
+   archive, and checks its version
+
  version 0.93 (31.10.2026):
  - analog joystick: buttons 1 and 2 are separate buttons; each of them
    pressed both before

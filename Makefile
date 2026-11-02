@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-all test-amiga test-amiga-replay test-amiga-replay-plant test-amiga-restore test-amiga-keyboard test-amiga-workbench amiga amiga-sync amiga-release smoke smoke-release whdload test-whdload install-data test-install-data release release-check test-release-installer size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-all test-amiga test-amiga-replay test-amiga-replay-plant test-amiga-restore test-amiga-keyboard test-amiga-workbench amiga amiga-sync amiga-release smoke smoke-release whdload test-whdload install-data test-install-data release release-check github-release test-release-installer size clean
 
 PYTHON ?= python3
 # AmigaXDev's shared Python package (amigaxdev.dos.mz_info).
@@ -48,7 +48,8 @@ help:
 	@echo "  make install-data   build SWotLInstallData (host and Amiga) into build/install-data/"
 	@echo "  make test-install-data  helper vs the DOS ACC install: sources, refusals, cleanup"
 	@echo "  make release        package and audit dist/SWotL-\$$(cat VERSION).lha (clean tree only)"
-	@echo "  make release-check  audit the existing archive again"
+	@echo "  make release-check  audit the existing archives again"
+	@echo "  make github-release publish the tagged release: full archive and SWotL"
 	@echo "  make test-release-installer  real Installer 43 in FS-UAE: fresh, keep, replace, TFH, refusals"
 	@echo "  make size    account for code, data, symbols and relocations in the executable"
 	@echo "  make smoke   boot it under FS-UAE + GDB and check the takeover runs"
@@ -639,18 +640,30 @@ install-data:
 test-install-data:
 	. amiga/env.sh && $(MAKE) -C tools/install-data test
 
-# Release from committed sources only; never a diagnostic build.
-RELEASE_ARCHIVE = dist/SWotL-$$(cat VERSION).lha
+# Release from committed sources only; never a diagnostic build. Writes the full
+# archive, the whdload.de one (no SWotL executable) and dist/SWotL.
+RELEASE_VERSION = $$(cat VERSION)
 release:
 	@git diff --quiet HEAD && test -z "$$(git status --porcelain --untracked-files=no)" || \
 		{ echo "release needs a clean tree: commit or stash first"; exit 1; }
 	$(MAKE) amiga-release whdload install-data
 	$(PYTHON) tools/originals.py --check
 	$(PYTHON) tools/package_release.py amiga/out/Swotl-release.exe dist
-	$(PYTHON) tools/check_release.py $(RELEASE_ARCHIVE)
+	$(PYTHON) tools/check_release.py dist
 
 release-check:
-	$(PYTHON) tools/check_release.py $(RELEASE_ARCHIVE)
+	$(PYTHON) tools/check_release.py dist
+
+# GitHub: the full archive and the executable, from the tagged HEAD.
+github-release: release-check
+	@git rev-parse -q --verify "refs/tags/$(RELEASE_VERSION)" >/dev/null || \
+		{ echo "tag the release commit first"; exit 1; }
+	@[ "$$(git rev-parse "$(RELEASE_VERSION)^{commit}")" = "$$(git rev-parse HEAD)" ] || \
+		{ echo "HEAD is not the commit tagged $(RELEASE_VERSION)"; exit 1; }
+	@mkdir -p build
+	$(PYTHON) tools/check_release.py --notes > build/release-notes.md
+	gh release create $(RELEASE_VERSION) dist/SWotL-$(RELEASE_VERSION).lha dist/SWotL \
+		--title $(RELEASE_VERSION) --notes-file build/release-notes.md --verify-tag
 
 test-release-installer: whdload amiga-release install-data
 	. amiga/env.sh && $(PYTHON) tools/test_release_installer.py

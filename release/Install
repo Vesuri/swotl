@@ -1,8 +1,11 @@
 ; Secret Weapons of the Luftwaffe WHDLoad installation. Commodore Installer V43 or newer.
 ; File-install flow with WHDLoad Install Template / RAY Pokeri conventions.
-; $VER: Install 0.93 (31.10.2026)
+; $VER: Install 1.0 (02.11.2026)
 (set @app-name "Secret Weapons of the Luftwaffe")
 (set #prefix "SWotL")
+(set #exe-version 1)			;the game executable this install accepts: its $VER:
+(set #exe-revision 0)			;must read exactly #exe-version.#exe-revision
+(set #exe-url "https://github.com/Vesuri/swotl/releases")
 (if (< @installer-version (* 43 65536))
   (abort "This installation requires Amiga Installer 43 or newer."))
 (welcome)
@@ -27,6 +30,26 @@
    (if (and (exists "WHDCOMMON:kick40063.A600") (exists "WHDCOMMON:kick40063.A600.RTB")) (set #kick-ready 1))))
 (if (= #kick-ready 0)
   (message "WHDLoad needs a Kickstart 3.1 image and matching .RTB file in Devs:Kickstarts or WHDCOMMON: before playing. See ReadMe for supported image names." (all)))
+;The game executable: beside the script (the full archive) or asked for (the
+;whdload.de archive does not include it); Version checks it is this release's.
+(set #exe (tackon #source "SWotL"))
+(set #exe-prompt
+  (cat ("Select the Secret Weapons of the Luftwaffe %ld.%ld executable \"SWotL\".\n\n" #exe-version #exe-revision)
+    "It is not included in this install archive. Download it from the matching release at\n" #exe-url))
+(set #exe-valid 0)
+(while (= #exe-valid 0)
+  (if (= (exists #exe) 1)
+    (if (and (= 0 (run ("Version >NIL: \"%s\" %ld %ld FILE" #exe #exe-version #exe-revision)))
+             (<> 0 (run ("Version >NIL: \"%s\" %ld %ld FILE" #exe #exe-version (+ #exe-revision 1)))))
+      (set #exe-valid 1)
+      (set #exe-prompt
+        (cat ("\"%s\" is not the Secret Weapons of the Luftwaffe %ld.%ld executable.\n\n" #exe #exe-version #exe-revision)
+          "Please select the \"SWotL\" executable from the matching release at\n" #exe-url))))
+  (if (= #exe-valid 0)
+    (set #exe
+      (askfile (prompt #exe-prompt)
+        (help "The game executable SWotL is in the full release archive and beside it on the release page. Its version must match this install.")
+        (default #source)))))
 (if (getenv "WHDLInstPath")
   (set @default-dest (getenv "WHDLInstPath")))
 (set #parent
@@ -87,7 +110,7 @@
       (abort "This sfx.rsc is not supported. Select the file from the Amiga version of Their Finest Hour (108,002 bytes), not a PC version.")))
    (copyfiles (source (tackon #staging "sfx.rsc")) (dest #data) (help @copyfiles-help))
    (delete #staging (all) (optional "force") (help @delete-help))))
-(copyfiles (source (tackon #source "SWotL")) (dest #data) (help @copyfiles-help))
+(copyfiles (source #exe) (dest #data) (newname "SWotL") (help @copyfiles-help))
 (copyfiles (source (tackon #source "SWotL.slave")) (dest #dest) (help @copyfiles-help))
 (copyfiles (source (tackon #source "SWotL.inf")) (dest #dest) (newname "SWotL.info") (help @copyfiles-help))
 (if #tfh

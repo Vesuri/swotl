@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""Create the minimal deterministic Amiga LHA distribution (LH5).
+"""Create the minimal deterministic Amiga LHA distributions (LH5).
 
     python3 tools/package_release.py amiga/out/Swotl-release.exe dist
+
+  dist/SWotL-<version>.lha          full release (GitHub), with the SWotL executable
+  dist/SWotL-<version>-whdload.lha  for whdload.de: no SWotL executable; Install asks for it
+  dist/SWotL                        the executable, published beside the full archive
 """
 import argparse
 from pathlib import Path
@@ -14,6 +18,12 @@ ORIGINAL_HASHES = {line.split()[0] for line in (ROOT / 'release/originals.sha256
 PREFIX = 'SWotL Install'
 STAMP = release.dos_stamp(2026, 10, 24)
 ICONS = ROOT / 'release/icons'
+WHDLOAD_DE_OMITS = ('SWotL',)
+
+
+def archive_names(version):
+    """(archive name, omitted members) for the full and the whdload.de archive."""
+    return ((f'SWotL-{version}.lha', ()), (f'SWotL-{version}-whdload.lha', WHDLOAD_DE_OMITS))
 
 
 def installer_icon(game=False):
@@ -53,9 +63,14 @@ def main():
     version = (ROOT / 'VERSION').read_text().strip()
     files = members(args.executable)
     release.refuse_originals(files, ORIGINAL_HASHES)
-    archive = release.write(args.output_directory / f'SWotL-{version}.lha',
-                            release.archive(PREFIX, files, drawer_icon(), STAMP))
-    print(f'{archive}: {len(files)} drawer contents plus drawer icon, {archive.stat().st_size} bytes')
+    for name, omitted in archive_names(version):
+        contents = {k: v for k, v in files.items() if k not in omitted}
+        archive = release.write(args.output_directory / name,
+                                release.archive(PREFIX, contents, drawer_icon(), STAMP))
+        print(f'{archive}: {len(contents)} drawer contents plus drawer icon, {archive.stat().st_size} bytes')
+    executable = args.output_directory / 'SWotL'
+    executable.write_bytes(files['SWotL'])
+    print(f'{executable}: the release executable, {executable.stat().st_size} bytes')
 
 
 if __name__ == '__main__':

@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Audit the exact minimal LHA release, its checksums and its members.
+"""Audit the exact minimal LHA releases, their checksums and their members.
 
-    python3 tools/check_release.py dist/SWotL-$(cat VERSION).lha [--exe amiga/out/Swotl-release.exe]
+    python3 tools/check_release.py dist [--exe amiga/out/Swotl-release.exe]
+    python3 tools/check_release.py --notes   # the newest ReadMe entry, for GitHub
 
-Every member is decoded independently with Lhasa (`lha pq`) and must equal its
-build output. No member may equal an original (release/originals.sha256) or
+Both archives (package_release.archive_names): the full one with the SWotL
+executable, the whdload.de one without it; dist/SWotL must equal the
+executable. Every member is decoded independently with Lhasa (`lha pq`) and
+must equal its build output. No member may equal an original (release/originals.sha256) or
 hold any 64-byte block of the original SWOTL.EXE or overlays (ref/, local),
 forward or byte-reversed (guest RAM order).
 """
@@ -13,9 +16,10 @@ import hashlib
 import struct
 import subprocess
 from pathlib import Path
-from package_release import ORIGINAL_HASHES, PREFIX, ROOT, crc16, members
+import re
+from package_release import ORIGINAL_HASHES, PREFIX, ROOT, archive_names, crc16, members
 
-DATE = '31.10.2026'
+DATE = '02.11.2026'
 STAMP = (((2026 - 1980) << 9) | (10 << 5) | 24) << 16
 
 
@@ -36,13 +40,8 @@ def contains_block(data, blocks, size=64):
     return any(data[i:i + size] in blocks for i in range(len(data) - size + 1))
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('archive', type=Path)
-    parser.add_argument('--exe', type=Path, default=ROOT / 'amiga/out/Swotl-release.exe')
-    args = parser.parse_args()
-    expected = members(args.exe)
-    raw = args.archive.read_bytes()
+def check_archive(archive, expected, blocks):
+    raw = archive.read_bytes()
     pos, payloads = 0, {}
     while pos < len(raw) and raw[pos]:
         size = raw[pos]
@@ -62,7 +61,7 @@ def main():
         assert name in set(expected) | {'@drawer'} and name not in payloads, 'unexpected or duplicate file: ' + name
         pos += size + 2
         assert len(raw[pos:pos + packed]) == packed, 'truncated payload'
-        data = subprocess.run(['lha', 'pq', str(args.archive.resolve()), archive_name],
+        data = subprocess.run(['lha', 'pq', str(archive.resolve()), archive_name],
                               check=True, capture_output=True).stdout
         assert len(data) == unpacked and crc16(data) == struct.unpack_from('<H', header, 20 + n)[0], 'bad payload CRC'
         payloads[name] = data
@@ -70,18 +69,22 @@ def main():
     assert raw[pos:] == b'\0' and set(payloads) == set(expected) | {'@drawer'}, 'wrong archive contents'
     for name, data in expected.items():
         assert payloads[name] == data, 'member differs from build output: ' + name
-    blocks = original_blocks()
     for name, data in payloads.items():
         assert hashlib.sha256(data).hexdigest() not in ORIGINAL_HASHES, 'original file: ' + name
         assert not contains_block(data, blocks), 'original EXE/OVL bytes in ' + name
     for name in ('SWotL', 'SWotL.slave', 'SWotLInstallData'):
-        assert payloads[name][:4] == b'\0\0\3\xf3', 'not an Amiga HUNK executable: ' + name
+        assert name not in expected or payloads[name][:4] == b'\0\0\3\xf3', 'not an Amiga HUNK executable: ' + name
     for name, kind in (('SWotL.inf', 4), ('ReadMe.info', 4), ('Install.info', 4), ('@drawer', 2)):
         assert payloads[name][:4] == b'\xe3\x10\0\1' and payloads[name][48] == kind, 'bad icon: ' + name
     version = (ROOT / 'VERSION').read_text().strip().encode()
     for name in ('SWotL', 'SWotL.slave', 'SWotLInstallData'):
-        assert b'$VER: ' + name.encode() + b' ' + version + b' (' + DATE.encode() + b')' in payloads[name], 'version: ' + name
+        assert name not in expected or \
+            b'$VER: ' + name.encode() + b' ' + version + b' (' + DATE.encode() + b')' in payloads[name], 'version: ' + name
     assert b'$VER: Install ' + version + b' (' + DATE.encode() + b')' in payloads['Install']
+    # Install accepts only this release's executable (Version VERSION.REVISION, not the next).
+    major, minor = version.decode().split('.')
+    for field, value in (('exe-version', major), ('exe-revision', minor)):
+        assert re.search(rf'^\(set #{field} {value}\)'.encode(), payloads['Install'], re.M), 'Install #' + field
     assert b'version ' + version + b' (' + DATE.encode() + b'):' in payloads['ReadMe']
     for heading in (b'Requirements:', b'Installation:', b'Playing:', b'History:', b'Contact:', b'Credits:',
                     b'https://github.com/Vesuri/swotl'):
@@ -98,8 +101,39 @@ def main():
     assert slave[header + 31] == 0x5f, 'Help must be the quit key'
     assert b'APPNAME=Secret Weapons of the Luftwaffe\0' in payloads['Install.info']
     assert not any(n.lower().endswith(('.rpy', '.plt', '.cfg', '.dat', '.img', '.rsc', '.exe', '.ovl')) for n in payloads)
-    print(f'PASS: {len(payloads)} allowlisted LH5 members; independent decompression, CRCs, '
+    print(f'PASS: {archive.name}: {len(payloads)} allowlisted LH5 members; independent decompression, CRCs, '
           'build identity, no original files or EXE/OVL blocks, versions, slave header and icons')
+
+
+def release_notes(readme):
+    """The ReadMe's newest History entry as Markdown bullets."""
+    entry = readme[readme.index('\n version ') + 1:].split('\n\n', 1)[0].splitlines()[1:]
+    notes = []
+    for line in entry:
+        if line.startswith(' - '):
+            notes.append('- ' + line[3:])
+        else:
+            notes[-1] += ' ' + line.strip()
+    return '\n'.join(notes) + '\n'
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('dist', type=Path, nargs='?', default=ROOT / 'dist')
+    parser.add_argument('--exe', type=Path, default=ROOT / 'amiga/out/Swotl-release.exe')
+    parser.add_argument('--notes', action='store_true')
+    args = parser.parse_args()
+    if args.notes:
+        print(release_notes((ROOT / 'release/ReadMe').read_text('latin-1')), end='')
+        return
+    full = members(args.exe)
+    version = (ROOT / 'VERSION').read_text().strip()
+    assert b'$VER: SWotL ' + version.encode() + b' (' + DATE.encode() + b')' in full['SWotL'], 'version: SWotL'
+    assert (args.dist / 'SWotL').read_bytes() == full['SWotL'], 'dist/SWotL differs from the release executable'
+    blocks = original_blocks()
+    for name, omitted in archive_names(version):
+        check_archive(args.dist / name, {k: v for k, v in full.items() if k not in omitted}, blocks)
+    print('PASS: dist/SWotL is the release executable')
 
 
 if __name__ == '__main__':

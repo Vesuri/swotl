@@ -12,7 +12,7 @@ bitplanes with a hardware sprite mouse pointer. The AdLib music and effects are
 resynthesised on Paula, the effects once at start into samples; optionally, the
 sampled effects of the Amiga **Their Finest Hour** replace the AdLib ones.
 
-Current Amiga release: **0.93 (31.10.2026)**.
+Current Amiga release: **1.0 (02.11.2026)**.
 
 ## Requirements and installation
 
@@ -27,7 +27,9 @@ Current Amiga release: **0.93 (31.10.2026)**.
   The images are available, for example, in the "The Good Old Days" floppy image
   collection (ID 496). Other releases are not supported.
 
-Extract `SWotL-0.93.lha`, open its **SWotL Install** drawer and run **Install**.
+Extract `SWotL-1.0.lha`, open its **SWotL Install** drawer and run **Install**.
+The whdload.de archive leaves out the game executable: download `SWotL` from the
+matching [release](https://github.com/Vesuri/swotl/releases) and the installer asks for it.
 Select the destination and the drawer with the disks; every file is checked and
 damaged or other disks are refused. For Their Finest Hour effects, choose them in
 the installer and select `sfx.rsc` from your Their Finest Hour installation; the
@@ -57,7 +59,7 @@ LH5-capable LHa encoder. The environment comes from AmigaXDev's `make setup`
 
 ```sh
 . amiga/env.sh
-make release          # dist/SWotL-0.93.lha, needs a clean tree
+make release          # dist/SWotL-1.0.lha, -whdload.lha (no executable), dist/SWotL; clean tree
 make amiga            # standalone executable: amiga/out/Swotl.exe
 ```
 

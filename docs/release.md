@@ -42,8 +42,16 @@ release artifact with the smoke fixture and its own ELF, without MUSIC;
 SWOTL: `make install-data`, `make test-install-data`, `make release` (refuses a
 tree with uncommitted tracked changes; `amiga-release whdload install-data`,
 `tools/originals.py --check`, `tools/package_release.py`, `tools/check_release.py`
-→ `dist/SWotL-$(cat VERSION).lha`), `make release-check`,
-`make test-release-installer`. Sibling shape:
+→ `dist/SWotL-$(cat VERSION).lha`, `dist/SWotL-$(cat VERSION)-whdload.lha` and
+`dist/SWotL`), `make release-check`, `make github-release` (tagged HEAD: full archive
+and `SWotL`, notes = newest ReadMe entry), `make test-release-installer`.
+
+SWOTL archives (RoF pattern): the full one (GitHub) holds `SWotL`; the whdload.de one
+leaves it out and `Install` asks for it (askfile, default the install drawer).
+`Install` takes `SWotL` beside it if `Version FILE` reads exactly
+`#exe-version.#exe-revision` (≥ it, not ≥ revision + 1), else asks again; the checker
+asserts both fields equal `VERSION`. GitHub assets: full archive and `SWotL`, not the
+whdload.de archive. Sibling shape:
 
 | Target | Does | Prov |
 |---|---|---|
@@ -146,7 +154,7 @@ Common: helper writes to staging, removes own partial outputs, rejects existing 
 - SWOTL: 542 records; 539 installed (INSTALL.EXE, INSTALL2.BAT, READ.ME skipped), equal to the drawer the DOS ACC INSTALL.EXE writes (DOSBox, 2026-10-24).
 - Helper `SWotLInstallData` (`tools/install-data/`): volume SHA-256 first, per-file size and CRC-32, new destination only, removes its own files on failure or Ctrl-C. Installer runs it into `SWotL/InstallStaging`, then copies into `data/`; Replace overwrites only archive files (pilots, films, missions survive).
 - TFH mode: Installer asks for the user's Amiga TFH `sfx.rsc` (`TheirFinestHour/data/sfx.rsc`, 108,002 B, SHA-256 pinned); the helper checks and stages it; the game icon gets `Custom1=1` ([sound-plan.md](sound-plan.md)).
-- Tests: `tools/install-data/test_install.py` (host helper vs the DOS install; damaged/missing disks, refusal, cancel, sfx), `tools/test_release_installer.py` (Installer 43 + Amiga helper in FS-UAE: fresh, tfh, keep, replace, remove, bad-disks, bad-sfx; `INSTALL_SCRIPT` sabotage override; `--archive` installs from a release LHA, `--keep` keeps the drawer). `tools/pack_preinstalled.py` packs a kept drawer as a local-only preinstalled LHA (holds game data; never shared); `tools/test_whdload.py --installed DIR [--setup a1200-040]` runs it unchanged.
+- Tests: `tools/install-data/test_install.py` (host helper vs the DOS install; damaged/missing disks, refusal, cancel, sfx), `tools/test_release_installer.py` (Installer 43 + Amiga helper in FS-UAE: fresh, tfh, keep, replace, remove, bad-disks, bad-sfx, no-exe, wrong-exe; `INSTALL_SCRIPT` sabotage override; `--archive` installs from a release LHA, `--keep` keeps the drawer). `tools/pack_preinstalled.py` packs a kept drawer as a local-only preinstalled LHA (holds game data; never shared); `tools/test_whdload.py --installed DIR [--setup a1200-040]` runs it unchanged.
 
 ## Credits (ReadMe)
 

@@ -9,7 +9,10 @@ archive. --keep copies the last mode's installed SWotL drawer to DIR.
 
 Modes: fresh (images, AdLib), tfh (CLASSICS files, TFH sfx.rsc), keep (Use
 existing), replace (images over a damaged install), remove, bad-disks
-(Replace with a corrupted image), bad-sfx. SWotLInstallData runs on the emulated 68020; installed game files
+(Replace with a corrupted image), bad-sfx, no-exe (no SWotL beside the
+script, as the whdload.de archive: asked for), wrong-exe (a 0.9 SWotL beside
+it: Version refuses it, asked for). The answer is the release executable; an
+archive without SWotL (--archive of the whdload.de one) asks in every mode. SWotLInstallData runs on the emulated 68020; installed game files
 must equal the original DOS ACC install, pilots and films must survive Keep
 and Replace, and a refused source must leave the install as it was.
 Inputs are local: ACC images, the DOS ACC install and TFH sfx.rsc (as
@@ -39,7 +42,8 @@ WHDLOAD = Path(os.environ.get('WHDLOAD', AMIGA / 'WHDLoad')) / 'C/WHDLoad'
 KICK = Path(os.environ.get('KICKSTART_A1200', AMIGA / 'Kickstarts/kick40068.A1200'))
 SCRIPT = os.environ.get('INSTALL_SCRIPT')  # sabotage override of the package's Install
 PACKAGE = {}
-MODES = ('fresh', 'tfh', 'keep', 'replace', 'remove', 'bad-disks', 'bad-sfx')
+MODES = ('fresh', 'tfh', 'keep', 'replace', 'remove', 'bad-disks', 'bad-sfx', 'no-exe', 'wrong-exe')
+EXE = {}  # the release executable the requests answer with
 PILOT = b'pilot roster written by the game'
 
 
@@ -78,6 +82,7 @@ def script(mode):
     s = replace_form(s, '(welcome)', '(if 0 (welcome))')
     s = replace_form(s, '(set #source', '(set #source "DH0:")')
     s = s.replace('SYS:Utilities/MultiView', 'Execute DH0:multiview').replace('SYS:Utilities/More', 'Execute DH0:more')
+    s = replace_form(s, '(set #exe\n', mark('exe-asked', '(set #exe "DH2:download/SWotL")'))
     s = replace_form(s, '(set #parent', mark('parent-asked', '(set #parent "DH2:out")'))
     s = replace_form(s, '(set #remove-existing', mark('remove-asked', f'(set #remove-existing {int(mode == "remove")})'))
     s = replace_form(s, '(set #install-data\n', mark('reuse-asked', f'(set #install-data {int(mode in ("replace", "bad-disks"))})'))
@@ -99,7 +104,15 @@ def fixture(mode, base):
     shutil.copyfile(INSTALLER, boot / 'Installer')
     shutil.copyfile(WHDLOAD, boot / 'WHDLoad')
     for name, data in PACKAGE.items():
-        (boot / name).write_bytes(data)
+        if name != 'SWotL' or mode != 'no-exe':
+            (boot / name).write_bytes(data)
+    if mode == 'wrong-exe':
+        version = (ROOT / 'VERSION').read_text().strip()
+        marker = f'$VER: SWotL {version} ('.encode()
+        assert EXE['SWotL'].count(marker) == 1
+        (boot / 'SWotL').write_bytes(EXE['SWotL'].replace(marker, b'$VER: SWotL 0.9 ('))
+    (base / 'download').mkdir()
+    (base / 'download/SWotL').write_bytes(EXE['SWotL'])
     (boot / 'Install').write_bytes(script(mode))
     (boot / 'devs/Kickstarts/kick40068.A1200').touch()
     (boot / 'devs/Kickstarts/kick40068.A1200.RTB').touch()
@@ -177,7 +190,9 @@ def check(mode, base):
     assert (base / 'boot/env/WHDLInstPath').read_text().strip() == 'DH2:out'
     assert (base / 'out/unrelated').read_text() == 'keep'
     assert not (dest / 'InstallStaging').exists(), 'staging drawer left behind'
-    existing = mode != 'fresh' and mode != 'tfh'
+    existing = mode in ('keep', 'replace', 'remove', 'bad-disks', 'bad-sfx')
+    beside = 'SWotL' in PACKAGE and mode not in ('no-exe', 'wrong-exe')
+    assert asked('exe-asked') != beside, 'executable request'
     assert asked('remove-asked') == existing
     assert asked('reuse-asked') == (mode in ('keep', 'replace', 'bad-disks', 'bad-sfx'))
     if mode == 'bad-disks':
@@ -185,7 +200,7 @@ def check(mode, base):
     elif mode == 'bad-sfx':
         assert asked('sfx-refused') and not (data / 'sfx.rsc').exists()
     else:
-        assert asked('disks-asked') == (mode in ('fresh', 'tfh', 'replace', 'remove'))
+        assert asked('disks-asked') == (mode not in ('keep', 'bad-sfx'))
         assert asked('sfx-asked') == (mode == 'tfh')
     if mode in ('bad-disks', 'bad-sfx'):
         # Refused before anything was copied: the earlier install is unchanged.
@@ -195,7 +210,7 @@ def check(mode, base):
         assert (data / 'PILOT.PLT').read_bytes() == PILOT
         return
     files = tree(data)
-    assert files.pop('SWOTL') and (data / 'SWotL').read_bytes() == PACKAGE['SWotL']
+    assert files.pop('SWOTL') and (data / 'SWotL').read_bytes() == EXE['SWotL']
     kept = mode in ('keep', 'replace')
     for name in ('PILOT.PLT', 'A.RPY'):
         assert (files.pop(name, None) is not None) == kept, name
@@ -235,9 +250,10 @@ def main():
             if name.startswith(PREFIX + '/'):
                 PACKAGE[name[len(PREFIX) + 1:]] = subprocess.run(['lha', 'pq', str(args.archive), name],
                                                                  check=True, capture_output=True).stdout
-        assert {'Install', 'SWotL', 'SWotL.slave', 'SWotLInstallData'} <= PACKAGE.keys(), sorted(PACKAGE)
+        assert {'Install', 'SWotL.slave', 'SWotLInstallData'} <= PACKAGE.keys(), sorted(PACKAGE)
     else:
         PACKAGE.update(members(ROOT / 'amiga/out/Swotl-release.exe'))
+    EXE['SWotL'] = PACKAGE.get('SWotL') or (ROOT / 'amiga/out/Swotl-release.exe').read_bytes()
     REFERENCE_FILES.update((k, p) for k, p in host_tree(REFERENCE).items() if k not in SKIPPED)
     (ROOT / 'tmp').mkdir(exist_ok=True)
     for mode in args.modes:
