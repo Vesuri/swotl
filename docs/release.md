@@ -48,8 +48,8 @@ and `SWotL`, notes = newest ReadMe entry), `make test-release-installer`.
 
 SWOTL archives (RoF pattern): the full one (GitHub) holds `SWotL`; the whdload.de one
 leaves it out and `Install` asks for it (askfile, default the install drawer).
-`Install` takes `SWotL` beside it if `Version FILE` reads exactly
-`#exe-version.#exe-revision` (≥ it, not ≥ revision + 1), else asks again; the checker
+`Install` takes `SWotL` beside it if Installer's `getversion` (its `$VER:`, version × 65536
++ revision) equals `#exe-version.#exe-revision`, else asks again; the checker
 asserts both fields equal `VERSION`. GitHub assets: full archive and `SWotL`, not the
 whdload.de archive. Sibling shape:
 

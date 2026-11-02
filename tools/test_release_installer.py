@@ -11,7 +11,7 @@ Modes: fresh (images, AdLib), tfh (CLASSICS files, TFH sfx.rsc), keep (Use
 existing), replace (images over a damaged install), remove, bad-disks
 (Replace with a corrupted image), bad-sfx, no-exe (no SWotL beside the
 script, as the whdload.de archive: asked for), wrong-exe (a 0.9 SWotL beside
-it: Version refuses it, asked for). The answer is the release executable; an
+it: getversion refuses it, asked for). The answer is the release executable; an
 archive without SWotL (--archive of the whdload.de one) asks in every mode. SWotLInstallData runs on the emulated 68020; installed game files
 must equal the original DOS ACC install, pilots and films must survive Keep
 and Replace, and a refused source must leave the install as it was.

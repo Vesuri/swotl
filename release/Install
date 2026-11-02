@@ -31,7 +31,8 @@
 (if (= #kick-ready 0)
   (message "WHDLoad needs a Kickstart 3.1 image and matching .RTB file in Devs:Kickstarts or WHDCOMMON: before playing. See ReadMe for supported image names." (all)))
 ;The game executable: beside the script (the full archive) or asked for (the
-;whdload.de archive does not include it); Version checks it is this release's.
+;whdload.de archive does not include it); getversion (its $VER:, version * 65536
+;+ revision) must be exactly this release's.
 (set #exe (tackon #source "SWotL"))
 (set #exe-prompt
   (cat ("Select the Secret Weapons of the Luftwaffe %ld.%ld executable \"SWotL\".\n\n" #exe-version #exe-revision)
@@ -39,8 +40,7 @@
 (set #exe-valid 0)
 (while (= #exe-valid 0)
   (if (= (exists #exe) 1)
-    (if (and (= 0 (run ("Version >NIL: \"%s\" %ld %ld FILE" #exe #exe-version #exe-revision)))
-             (<> 0 (run ("Version >NIL: \"%s\" %ld %ld FILE" #exe #exe-version (+ #exe-revision 1)))))
+    (if (= (getversion #exe) (+ (* #exe-version 65536) #exe-revision))
       (set #exe-valid 1)
       (set #exe-prompt
         (cat ("\"%s\" is not the Secret Weapons of the Luftwaffe %ld.%ld executable.\n\n" #exe #exe-version #exe-revision)
