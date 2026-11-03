@@ -242,6 +242,18 @@ def main():
         h.e.write(h.syms['rt_r'] + 2 * H.REGS.index(r), struct.pack('>H', v))
     T.machine.call(h, 'rt_int67')
     assert h.halted and any('EMS release of handle 0' in line for line in h.log), h.log
+    # The store backs RT_EMS_STORE_PAGES (35) of the 164 pages: all 164 allocate,
+    # page 34 maps, page 35 stops.
+    h = T.machine.machine()
+    for regs in ((0x4300, 164, 0), (0x4400, 34, 1)):
+        for r, v in zip(('ax', 'bx', 'dx'), regs):
+            h.e.write(h.syms['rt_r'] + 2 * H.REGS.index(r), struct.pack('>H', v))
+        T.machine.call(h, 'rt_int67')
+        assert not h.halted and reg(h, 'ax') >> 8 == 0, h.log
+    for r, v in (('ax', 0x4401), ('bx', 35), ('dx', 1)):
+        h.e.write(h.syms['rt_r'] + 2 * H.REGS.index(r), struct.pack('>H', v))
+    T.machine.call(h, 'rt_int67')
+    assert h.halted and any('EMS page outside the store' in line for line in h.log), h.log
     print(f'EMS: {len(expected[0])} result words and {len(expected[1])} 64 KB frame dumps '
           f'match DOSBox-X over {len(operations)} operations')
 

@@ -13,7 +13,9 @@
  * only map site (SWOTL+04918) slides a 4-page window, which aliases one page
  * only until the next call. Handles take store pages as DOSBox-X's
  * MEM_AllocatePages does, so after a release a handle's pages can be split
- * across free runs; a release leaves the frame mapped (tests/test_ems.py). */
+ * across free runs; a release leaves the frame mapped (tests/test_ems.py).
+ * Only store pages below RT_EMS_STORE_PAGES have bytes; mapping any other
+ * stops (runtime.h). */
 #if RT_EMS_PAGES > 256
 #error "store page numbers are bytes"
 #endif
@@ -92,6 +94,10 @@ static uint8_t map(uint8_t phys, uint16_t page, uint16_t handle)
         return 0x8a;
     }
     uint16_t slot = page == 0xffff ? 0 : page_of[handle][page] + 1;
+    if (slot > RT_EMS_STORE_PAGES) {
+        rt_unsupported("EMS page outside the store", 0x67, 0, 0);
+        return 0;
+    }
     uint8_t *frame = frame_page(phys);
     if (slot && mapped[phys] == slot) {
         /* Write-back then reload of the same page leaves the frame unchanged

@@ -11,7 +11,7 @@
 ; Code, guest RAM and the EMS store need Fast RAM (D15); memory evidence:
 ; docs/whdload.md, Memory.
 CHIPMEMSIZE = $200000
-FASTMEMSIZE = $600000
+FASTMEMSIZE = $480000
 NUMDRIVES = 0
 WPDRIVES = 0
 BLACKSCREEN

@@ -15,7 +15,7 @@
  -------------
  This install requires WHDLoad version 17.0 or better and a PAL or NTSC
  Amiga with AGA and a 68020 or better. The installed program uses 2 MB
- ChipMem and 6.5 MB OtherMem, including its Kickstart image; 8 MB Fast RAM
+ ChipMem and 5 MB OtherMem, including its Kickstart image; 8 MB Fast RAM
  is enough. With 8 MB, PreLoad can hold only part of the game files and the
  screen blanks briefly while the rest load; about 12 MB Fast RAM preloads
  them all. Flight is slow on a 68020; a 68030 or better is recommended. The

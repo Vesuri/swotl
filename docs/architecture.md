@@ -69,7 +69,7 @@ root EXE + .OVL images (proved against DOSBox captures)
 - Overlays: each `.OVL` is a separately translated module at its proved load
   address, all resident in native code (D2); the translated PLINK manager
   loads the bytes into guest RAM and its thunks jump to the native module.
-- Memory: Fast RAM required (D15): ~1.36 MB code + 1.06 MiB guest RAM.
+- Memory: Fast RAM required (D15): ~1.36 MB code + 1.06 MiB guest RAM + 560 KiB EMS store.
 - Runtime (`src/runtime/`): the reference machine as the guest sees it
   (DOS 5 PSP/MCBs/environment, IVT values, BIOS/EMS answers) behind
   `platform.h`; one implementation for the host harness and the A1200.

@@ -97,7 +97,7 @@ def check_archive(archive, expected, blocks):
     flags = struct.unpack_from('>H', slave, header + 14)[0]
     assert flags & 0x32 == 0x32, 'slave must set NoError, Req68020 and ReqAGA'
     assert struct.unpack_from('>I', slave, header + 16)[0] == 0x200000, 'expected 2 MiB Chip'
-    assert struct.unpack_from('>I', slave, header + 32)[0] == 0x680000, 'expected 6 MiB game plus 512 KiB Kickstart'
+    assert struct.unpack_from('>I', slave, header + 32)[0] == 0x500000, 'expected 4.5 MiB game plus 512 KiB Kickstart'
     assert slave[header + 31] == 0x5f, 'Help must be the quit key'
     assert b'APPNAME=Secret Weapons of the Luftwaffe\0' in payloads['Install.info']
     assert not any(n.lower().endswith(('.rpy', '.plt', '.cfg', '.dat', '.img', '.rsc', '.exe', '.ovl')) for n in payloads)
