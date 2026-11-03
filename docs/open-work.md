@@ -79,6 +79,21 @@ speed work: [speed-plan.md](speed-plan.md).
     `test-amiga-replay`.
 41. `alignas(4)` on even-sized globals of 4 bytes or more, with a link audit
     (L104): not applied; m68k GCC aligns them to 2.
+45. OCS/ECS version from the EGA driver (user 2026-11-03), 68020 or better,
+    no 68000. Scope today is VGA only (AGENTS.md). Needs: EGA reference
+    corpus (`swotl E …`) with milestones and coverage for RTSEGA; EGA port
+    and A000 model (map mask, write modes, bit mask, latches, attribute
+    palette, CRTC start); EGA planes as 4 lowres Chip bitplanes (no C2P,
+    page flip by pointers); ECS copper/palette (EGA 6-bit → 12-bit exact);
+    AGA/ECS selection, slave, installer, FS-UAE ECS fixture. RTSEGA's own
+    chunky-to-planar loop may need a native replacement (authorization).
+48. PreLoad (WHDLoad caches all of `data/`, directory order, until memory
+    runs out): preload only what the game uses. Leave never-used files
+    uninstalled: `HF/` (SWOTL.MNL, UPSHOT.EXE), RTSEGA/RTSTANDY/SFXA.OVL,
+    SFX.SFX, READ.ME, FILE_ID.DIZ, sw.bat (420,975 bytes; DOSBox trace
+    opens, 98 runs; no game code names them). Investigate keeping the
+    1,381,812-byte `SWotL` out of the preload cache: it is LoadSeg'd once
+    but stays cached, ~all of the budget on 8 MiB Fast (whdload.md).
 
 ## User report (A1200, 68060, 2026-10-29)
 
@@ -93,8 +108,6 @@ speed work: [speed-plan.md](speed-plan.md).
 44. NTSC: window, CIA timer, Paula clock, FM and TFH field rates and key
     repeat follow graphics' NTSC flag (checked in FS-UAE). Confirm the
     centring on the tester's NTSC machine.
-45. EGA for non-AGA Amigas: possible future work (user 2026-10-29); the
-    current scope is VGA only.
 47. A runtime stop (`SWOTL_STOP`, plat_exit code 2) still ends the Amiga
     program with result 0: `Swotl::run` drops `amiga_guest_run()`'s code.
     `amiga/workbench_check.sh` breaks on `rt_stop`/`rt_unsupported` instead.
