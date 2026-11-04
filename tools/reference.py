@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Run every milestone in reference/milestones.csv and check its signal.
-`--table reference/coverage.csv` runs the coverage scripts the same way.
+`--table reference/coverage.csv` runs the coverage scripts the same way;
+`--explore` runs without `--polls` (ecs-plan D1 exploration pass: interrupts land
+as DOSBox-X delivers them) and keeps its hashes in tmp/reference-hashes-explore.csv.
 
 Each milestone is one tools/pc_run.py run. Snapshots (space-separated
 triggers, taken in order after the key script) are named <name>-0, -1, ...;
@@ -38,15 +40,16 @@ def resident(snapshot: Path) -> set[str]:
         return {r["module"] for r in csv.DictReader(f)}
 
 
-def run(m: dict) -> tuple[list[str], dict]:
+def run(m: dict, explore: bool = False) -> tuple[list[str], dict]:
     name = m["name"]
     triggers = m["snapshots"].split()
     names = [f"{name}-{i}" for i in range(len(triggers))]
     cmd = [sys.executable, str(REPO / "tools/pc_run.py"), f"ref-{name}",
            "--time-limit", m["time_limit"],
            "--snapshots", ",".join(f"{n}@{t}" for n, t in zip(names, triggers)),
-           "--exit-after", names[-1], "--keys", m["keys"].replace(";", ","), "--services",
-           "--polls", str(POLLS)]
+           "--exit-after", names[-1], "--keys", m["keys"].replace(";", ","), "--services"]
+    if not explore:
+        cmd += ["--polls", str(POLLS)]
     for path in fixture_inputs.missing_files(m.get("missing_files") or ""):
         cmd += ["--missing-file", path]
     if m.get("joystick") == "1":
@@ -90,17 +93,20 @@ def run(m: dict) -> tuple[list[str], dict]:
 def main() -> int:
     args = sys.argv[1:]
     table = REPO / "reference/milestones.csv"
+    explore = "--explore" in args
+    args = [a for a in args if a != "--explore"]
     if args[:1] == ["--table"]:
         table, args = REPO / args[1], args[2:]
     only = set(args)
+    hashes = HASHES.with_name("reference-hashes-explore.csv") if explore else HASHES
     previous = {}
-    if HASHES.exists():
-        previous = {r["name"]: r for r in csv.DictReader(HASHES.open())}
+    if hashes.exists():
+        previous = {r["name"]: r for r in csv.DictReader(hashes.open())}
     results, failed = [], False
     for m in csv.DictReader(table.open()):
         if only and m["name"] not in only:
             continue
-        problems, row = run(m)
+        problems, row = run(m, explore)
         old = previous.get(m["name"])
         if row["ram"] and old and any(old[k] != row[k] for k in ("ram", "vram", "dac")):
             problems.append("differs from previous run")
@@ -109,7 +115,7 @@ def main() -> int:
         print(f"{m['name']:16} {'FAIL ' + '; '.join(problems) if problems else 'ok'}  "
               f"icount={row['icount']} ram={row['ram']} vram={row['vram']}", flush=True)
     merged = {**previous, **{r["name"]: r for r in results}}
-    with HASHES.open("w", newline="") as f:
+    with hashes.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["name", "icount", "ram", "vram", "dac"])
         w.writeheader()
         w.writerows(merged.values())

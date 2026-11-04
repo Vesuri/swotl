@@ -85,7 +85,7 @@ Facts about the originals: [source-inventory.md](source-inventory.md).
 | Addresses | `(module, offset)`: root = image offset; overlay = `.OVL` file offset of the bytes the last DOS read put at that paragraph; `-` = unowned linear address |
 | Determinism | BIOS tick count set to `SWOTL_BIOS_TICKS` (0) at arming; DOS time and INT 1Ah derive from it, so the RNG seed (DOS time) is fixed. Every milestone repeats byte-identical |
 | Input | `SWOTL_KEYS=MODULE+HEX[#N]=key,...`: press when the guest reaches that instruction (Nth time since the previous key's release), release after `SWOTL_KEY_HOLD` instructions. `mx±N`/`my±N` inject signed logical mouse counts; `mb0`–`mb7` set the button mask through the DOS mouse driver, without a key-hold delay |
-| Snapshot | `SWOTL_SNAPSHOTS=name@MODULE+HEX[#N],...`: counted after the key script, each after the previous; `snap-<name>/` with `ram.bin` (1 MiB; the EMS frame E0000h–EFFFFh read through its page handlers, i.e. the mapped pages), `vram.bin`, `dac.bin`, `regs.txt`, `residency.csv`, `writes.csv` (last CPU writer per byte of module-owned paragraphs since load) |
+| Snapshot | `SWOTL_SNAPSHOTS=name@MODULE+HEX[#N],...`: counted after the key script, each after the previous; `snap-<name>/` with `ram.bin` (1 MiB; the EMS frame E0000h–EFFFFh read through its page handlers, i.e. the mapped pages), `vram.bin`, `dac.bin`, `regs.txt`, `ega.txt` (attribute palette, overscan, mode and colour select, sequencer, graphics controller 0–8, latches, CRTC start; `dosbox-x-swotl-ega.patch`), `residency.csv`, `writes.csv` (last CPU writer per byte of module-owned paragraphs since load) |
 | Summary | `make trace-summary RUN=name` |
 | Image proof | `tools/load_image.py <snap>` (gate 1, also run by `make reference`): rebuilds root + overlays from `ref/` with the loader model ([source-inventory.md](source-inventory.md)); every byte of every resident row equals the rebuilt byte, the last traced DOS read, or has a CPU writer. Lists self-modified executed bytes by writer |
 
@@ -148,6 +148,16 @@ runs once per frame in flight, every ~645 instructions in menus.
 | m7-campaign | K2, U, B, S | new campaign (CAMPAIGN) |
 
 All nine in-scope overlays are captured and pass the image proof.
+
+EGA ([ecs-plan.md](ecs-plan.md)): `reference/milestones-ega.csv` and
+`reference/coverage-ega.csv` are the VGA rows prefixed `ega-` with launch
+`swotl E S 5 N Y Y 64`, `RTSEGA.OVL` for `RTSVGA.OVL` and mode `0E`
+(`c26-exit-usage` loads no driver and is left out). `ega-m1-mode0eh` is
+`RTSEGA.OVL+4874` (after INT 10h AX=000Eh), `ega-m1b-logo` `RTSEGA.OVL+48E9`
+(palette DS:2897 restored over the logo). `make reference-ega-explore
+[EGA_RUNS=...]` runs them without poll points (`reference.py --explore`, hashes in
+`tmp/reference-hashes-explore.csv`). `snap_png.py` draws mode 0Eh: plane p of byte a
+is `vram.bin[a·4+p]`, from the CRTC start, through the attribute palette.
 
 Coverage scripts: `reference/coverage.csv`, run by `make coverage` (same
 checks; no determinism history needed). Menu keys are the red letters;

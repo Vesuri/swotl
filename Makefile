@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-all test-amiga test-amiga-replay test-amiga-replay-plant test-amiga-restore test-amiga-keyboard test-amiga-workbench amiga amiga-sync amiga-release smoke smoke-release whdload test-whdload install-data test-install-data release release-check github-release test-release-installer size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage reference-ega-explore sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-all test-amiga test-amiga-replay test-amiga-replay-plant test-amiga-restore test-amiga-keyboard test-amiga-workbench amiga amiga-sync amiga-release smoke smoke-release whdload test-whdload install-data test-install-data release release-check github-release test-release-installer size clean
 
 PYTHON ?= python3
 # AmigaXDev's shared Python package (amigaxdev.dos.mz_info).
@@ -23,6 +23,7 @@ help:
 	@echo "  make reference-run RUN=name [RUN_ARGS=...]  headless traced run -> tmp/pc-runs/name"
 	@echo "  make reference          run all milestones (reference/milestones.csv): signals, determinism, image proof"
 	@echo "  make coverage           run the coverage scripts (reference/coverage.csv)"
+	@echo "  make reference-ega-explore [EGA_RUNS=...]  EGA milestones + coverage without poll points (ecs-plan D1)"
 	@echo "  make sound-reference    OPL log + SPAZ probes + Nuked OPL WAVs (tmp/sound/)"
 	@echo "  make sound-tfh          hybrid sample/FM WAVs (user TFH_RSC, tmp/sound/*-tfh.wav)"
 	@echo "  make sound-fm           FM re-hoster Paula WAVs of the references (tmp/sound/*-paula.wav)"
@@ -89,6 +90,11 @@ reference: check-ref gen
 
 coverage: check-ref
 	$(PYTHON) tools/reference.py --table reference/coverage.csv
+
+# EGA exploration pass (docs/ecs-plan.md D1): every row, or the names in EGA_RUNS
+reference-ega-explore: check-ref
+	$(PYTHON) tools/reference.py --explore --table reference/milestones-ega.csv $(EGA_RUNS)
+	$(PYTHON) tools/reference.py --explore --table reference/coverage-ega.csv $(EGA_RUNS)
 
 build/tools/opl_render: tools/opl_render.cpp
 	mkdir -p build/tools

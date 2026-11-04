@@ -1,0 +1,29 @@
+diff --git a/src/misc/swotl_trace.cpp b/src/misc/swotl_trace.cpp
+--- a/src/misc/swotl_trace.cpp
++++ b/src/misc/swotl_trace.cpp
+@@ -595,6 +595,25 @@
+ 		fprintf(f, "load_seg=%04x vga_mode=%02x\n", load_seg, mem_readb(0x449));
+ 		fclose(f);
+ 	}
++	/* EGA/VGA register state for planar modes (mode 0Eh) */
++	if (auto *f = fopen(Path(prefix + "ega.txt").c_str(), "w")) {
++		fprintf(f, "attr_palette=");
++		for (int i = 0; i < 16; ++i) fprintf(f, "%02x", vga.attr.palette[i]);
++		fprintf(f, "\nattr_overscan=%02x attr_mode=%02x attr_color_select=%02x attr_plane_enable=%02x\n",
++		        vga.attr.overscan_color, vga.attr.mode_control, vga.attr.color_select,
++		        vga.attr.color_plane_enable);
++		fprintf(f, "seq_clocking=%02x seq_map_mask=%02x seq_memory_mode=%02x\n",
++		        vga.seq.clocking_mode, vga.seq.map_mask, vga.seq.memory_mode);
++		fprintf(f, "gc_set_reset=%02x gc_enable_set_reset=%02x gc_color_compare=%02x "
++		        "gc_data_rotate=%02x gc_read_map=%02x gc_mode=%02x gc_misc=%02x "
++		        "gc_color_dont_care=%02x gc_bit_mask=%02x\n",
++		        vga.gfx.set_reset, vga.gfx.enable_set_reset, vga.gfx.color_compare,
++		        vga.gfx.data_rotate, vga.gfx.read_map_select, vga.gfx.mode,
++		        vga.gfx.miscellaneous, vga.gfx.color_dont_care, vga.gfx.bit_mask);
++		fprintf(f, "latch=%08x crtc_start=%02x%02x\n", (unsigned)vga.latch.d,
++		        vga.crtc.start_address_high, vga.crtc.start_address_low);
++		fclose(f);
++	}
+ 	if (auto *f = fopen(Path(prefix + "residency.csv").c_str(), "w")) {
+ 		WriteModuleMap(f);
+ 		fclose(f);
