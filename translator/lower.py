@@ -628,8 +628,10 @@ class Lowering:
     # model's read (latches loaded) there before the instruction, which then
     # runs as lowered; rt_ega_write8/16 pass the bytes it stored to the
     # model's write logic. A linear address outside the window leaves RAM as
-    # it is. rt_ega_string (d7 = op | width << 8 | rep << 16) runs a whole
-    # string instruction with a possible EGA segment. They keep every
+    # it is. rt_ega_string (d7 = op | width << 8 | rep << 16 | source segment
+    # << 24, 0-3 DS, ES, SS, CS; a0 = the instruction as lowered) runs a whole
+    # string instruction with a possible EGA segment, or, if no element
+    # reaches the window, returns to a0 (the CCR as at entry). They keep every
     # register (rt_ega_string updates the guest registers as the instruction
     # does) and the CCR, X included.
     EGA_STRING = {"movs": 0, "stos": 1, "lods": 2, "cmps": 3, "scas": 4}
@@ -683,14 +685,16 @@ class Lowering:
             i = self.i
             if not ega[1]:
                 return
-            hit, plain = f"{self.c.label}_ega", self.local()
+            hit, plain = f"{self.c.label}_ega", f"{self.c.label}_egap"
             self.ega_end = f"{self.c.label}_egax"
             for s in ega[1]:
                 self.ega_test(s, hit, hit=True)
             self.e(f"bra {plain}")
             rep = 0 if not i.rep else 2 if i.rep == "repne" else 1
-            self.cold += [f"{hit}:", f"\tmove.l #{hx(self.EGA_STRING[i.op] | i.width // 8 << 8 | rep << 16)},d7",
-                          "\tjsr rt_ega_string"] + (["\tmove d6,ccr"] if keep else []) + [
+            src = ("ds", "es", "ss", "cs").index(i.seg or "ds")
+            self.cold += [f"{hit}:",
+                          f"\tmove.l #{hx(self.EGA_STRING[i.op] | i.width // 8 << 8 | rep << 16 | src << 24)},d7",
+                          f"\tlea {plain},a0", "\tjsr rt_ega_string"] + (["\tmove d6,ccr"] if keep else []) + [
                           f"\tbra {self.ega_end}"]
             self.at(plain)
         else:

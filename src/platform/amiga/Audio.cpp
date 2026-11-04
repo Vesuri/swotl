@@ -5,6 +5,7 @@
 #include <hardware/dmabits.h>
 extern "C" {
 #include "runtime.h"
+#include "platform.h"
 #include "fm_paula.h"
 #include "tfh_paula.h"
 #include "amiga_platform.h"
@@ -216,6 +217,48 @@ static void saveCache(uint32_t key)
     amiga_io_end();
 }
 
+// Effects by Chip (docs/ecs-plan.md D6): FM effects that do not fit in Chip
+// give way to the player's TFH samples (sfx.rsc) when present, else the
+// effects stay silent; music plays either way. The file is read and parsed in
+// I/O windows; tfhChip is published once its samples are whole.
+static void fallbackTFH()
+{
+    if (!pool || tfhChip) return;
+    uint8_t* rsc = 0;
+    LONG size = 0;
+    amiga_io_begin();
+    BPTR f = Open((CONST_STRPTR)"sfx.rsc", MODE_OLDFILE);
+    if (f) {
+        Seek(f, 0, OFFSET_END);
+        size = Seek(f, 0, OFFSET_BEGINNING);
+        if (size > 0 && (rsc = (uint8_t*)AllocMem((uint32_t)size, MEMF_ANY)) != 0 && Read(f, rsc, size) != size) {
+            FreeMem(rsc, (uint32_t)size);
+            rsc = 0;
+        }
+        Close(f);
+    }
+    uint32_t bytes = rsc ? tfh_chip_bytes(rsc, (uint32_t)size) : 0;
+    int8_t* chip = bytes ? (int8_t*)AllocMem(bytes, MEMF_CHIP) : 0;
+    amiga_io_end();
+    if (chip && tfh_init(rsc, (uint32_t)size, chip)) {
+        amiga_io_begin();
+        FreeMem(chip, bytes);
+        amiga_io_end();
+        chip = 0;
+    }
+    if (chip) {
+        tfhBytes = bytes;
+        tfhChip = chip;
+    }
+    if (rsc) {
+        amiga_io_begin();
+        FreeMem(rsc, (uint32_t)size);
+        amiga_io_end();
+    }
+    plat_log(chip ? "SWOTL FM effects do not fit in Chip; sound TFH"
+                  : "SWOTL FM effects do not fit in Chip; effects silent");
+}
+
 // Prerendered effects (docs/sound-plan.md R3, R4), from the runtime's capture
 // at SPAZ init (plat_sfx_captured): from the cache when it holds this
 // capture's samples, else each id through fm_effect in Fast, then its own Chip
@@ -234,7 +277,10 @@ void Audio::loadEffects()
     amiga_io_begin();
     int16_t* render = (int16_t*)AllocMem(TFH_EFFECT_BYTES * 2, MEMF_ANY);
     amiga_io_end();
-    if (!render) return;
+    if (!render) {
+        fallbackTFH();
+        return;
+    }
     bool ok = true;
     for (uint8_t id = 0; ok && id < RT_SFX_IDS; ++id) {
         if (!rt_sfx_writes[id] || !tfh_effect_wanted(id)) continue;
@@ -260,7 +306,10 @@ void Audio::loadEffects()
     FreeMem(render, TFH_EFFECT_BYTES * 2);
     if (!ok) freeEffects();
     amiga_io_end();
-    if (!ok) return;
+    if (!ok) {
+        fallbackTFH();
+        return;
+    }
     registerEffects();
     uint32_t save = amiga_frames;
     saveCache(key);

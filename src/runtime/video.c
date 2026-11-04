@@ -1,7 +1,9 @@
 /* INT 10h video BIOS as the reference machine answers it: chained mode 13h
- * at A000:0000 (guest RAM) and the DAC (docs/external-surface.md). Display
- * (D9): the graphics driver's stores to A000h mark changed rows
- * (rt_vram_mark). The game's mouse poll (INT 33h AX=3, once per pass of its
+ * at A000:0000 (guest RAM) and the DAC (docs/external-surface.md); mode 0Eh
+ * (the EGA version, docs/ecs-plan.md E4) in the EGA model's planes (ega.c)
+ * with the attribute palette. Display (D9): the graphics driver's stores to
+ * A000h mark changed rows (rt_vram_mark; in mode 0Eh the model's stores to
+ * page 0, in bytes). The game's mouse poll (INT 33h AX=3, once per pass of its
  * loop, after the frame's drawing) is the frame boundary: the frame is
  * presented there if a vertical blank is due, else at the next blank unless
  * a driver call changed rows first (then the next poll's frame). Between
@@ -80,8 +82,47 @@ static void bda_mode(uint8_t mode, uint16_t columns, uint16_t page_size, uint16_
     wr16(BDA_CHAR_H, char_h);
 }
 
+/* Mode 0Eh's DAC entries 0-63 as the reference's mode set leaves them: the
+ * CGA colours (bit 0 blue, 1 green, 2 red at 2Ah, bit 4 intensity 15h, bits
+ * 3 and 5 ignored; colour 6 brown) for each attribute value; 64-255 as they
+ * were (zero from power-on). */
+static void ega_dac(void)
+{
+    for (int k = 0; k < 64; ++k) {
+        uint8_t i = (k & 0x10) ? 0x15 : 0;
+        rt_dac[k * 3] = (uint8_t)((k & 4 ? 0x2a : 0) + i);
+        rt_dac[k * 3 + 1] = (uint8_t)((k & 0x17) == 6 ? 0x15 : (k & 2 ? 0x2a : 0) + i);
+        rt_dac[k * 3 + 2] = (uint8_t)((k & 1 ? 0x2a : 0) + i);
+    }
+}
+
+static int ega_mode(void)
+{
+    return rd8(BDA_MODE) == 0x0e;
+}
+
+/* Mode 0Eh: the 16 colours, each the DAC entry its attribute palette
+ * register selects (attribute mode 09h, colour select 0). */
+static void ega_palette(void)
+{
+    static uint8_t colours[16 * 3];
+    for (int k = 0; k < 16; ++k) {
+        uint8_t c = rt_ega_regs.attr[k] & 0x3f;
+        for (int g = 0; g < 3; ++g) {
+            colours[k * 3 + g] = rt_dac[c * 3 + g];
+        }
+    }
+    plat_palette_ega(colours);
+}
+
 static void set_mode(void)
 {
+    if (AL(rt_r.ax) == 0x0e) {
+        bda_mode(0x0e, 80, 0x4000, 8);
+        rt_ega_mode();
+        ega_dac();
+        return;
+    }
     if (AL(rt_r.ax) != 0x13) {
         rt_unsupported("video mode", 0x10, 0, 0);
     }
@@ -95,8 +136,7 @@ static void set_mode(void)
 }
 
 /* Changed columns [lo, hi) per row (hi 0: none) over rows [top, bottom);
- * written by rt_vram_mark (rt_entry.s) */
-struct vram_row { uint16_t lo, hi; };
+ * written by rt_vram_mark (rt_entry.s) and ega.c (runtime.h) */
 struct vram_row rt_vram_rows[200];
 uint16_t rt_vram_top = 200, rt_vram_bottom = 0;
 uint16_t rt_vdrv_depth;          /* calls into the graphics driver in progress */
@@ -110,7 +150,8 @@ uint8_t rt_frame_cap;
 static uint32_t frame_field;     /* rt_fields when the last poll returned */
 static volatile uint8_t busy;    /* the main thread presents or sets the video mode or DAC */
 static struct plat_rect rects[200];
-/* Persistent guest-order pixels, plus 32 bytes of Kalms C2P lookahead. */
+/* Persistent guest-order pixels, plus 32 bytes of Kalms C2P lookahead; in
+ * mode 0Eh the shown page's four planes, plane p at p * 16000. */
 static uint32_t frame[16000 + 8];
 
 /* The display path's memory accesses stay inside busy (a compiler barrier on
@@ -127,32 +168,33 @@ void rt_vram_stray(void)
     rt_stop("video memory store outside a graphics driver call", 0, 0);
 }
 
-/* rt_ega_* (rt_entry.s): an EGA driver operand whose segment may reach EGA
- * memory. The EGA model is ecs-plan E4; until then the access stops. */
-void rt_ega_stop_c(uint32_t entry, uint32_t value)
-{
-    rt_stop("EGA memory access without the EGA model", entry, value);
-}
-
 static void vram_all(void)
 {
     for (int r = 0; r < 200; ++r) {
         rt_vram_rows[r].lo = 0;
-        rt_vram_rows[r].hi = 320;
+        rt_vram_rows[r].hi = ega_mode() ? 80 : 320;
     }
     rt_vram_top = 0;
     rt_vram_bottom = 200;
 }
 
 /* The changed rows as rectangles of whole 32-pixel groups (the c2p's
- * unit), rows with equal columns merged; the marks are cleared. */
+ * unit; in mode 0Eh whole words of plane bytes), rows with equal columns
+ * merged; the marks are cleared. */
 static void present(void)
 {
     int32_t n = 0;
-    /* The pointer masked at the last present: from VGA memory again (pointer.c). */
+    int ega = ega_mode();
+    uint16_t group = ega ? 2 : 32;
+    /* The pointer masked at the last present: from video memory again
+     * (pointer.c; in mode 0Eh a logical pixel is two hires pixels). */
     for (uint16_t y = rt_pointer.masked_y0; y < rt_pointer.masked_y1; ++y) {
         struct vram_row *row = &rt_vram_rows[y];
         uint16_t lo = rt_pointer.masked_x0, hi = rt_pointer.masked_x1;
+        if (ega) {
+            lo = (uint16_t)(lo / 4);
+            hi = (uint16_t)((hi + 3) / 4);
+        }
         row->lo = row->hi && row->lo < lo ? row->lo : lo;
         row->hi = row->hi > hi ? row->hi : hi;
     }
@@ -167,7 +209,7 @@ static void present(void)
         if (!row->hi) {
             continue;
         }
-        uint16_t x0 = row->lo & ~31, x1 = (row->hi + 31) & ~31;
+        uint16_t x0 = row->lo & (uint16_t)-group, x1 = (row->hi + group - 1) & (uint16_t)-group;
         row->hi = 0;
         if (n && rects[n - 1].y1 == r && rects[n - 1].x0 == x0 && rects[n - 1].x1 == x1) {
             rects[n - 1].y1 = (uint16_t)(r + 1);
@@ -197,6 +239,22 @@ static void present(void)
         }
         rt_pointer_mask((uint8_t *)frame);
         plat_present((const uint8_t *)frame, rects, n);
+    } else if (n && ega) {
+        /* Page 0 (the CRTC start never changes) per plane. */
+        uint8_t *f = (uint8_t *)frame;
+        for (int32_t k = 0; k < n; ++k) {
+            for (uint16_t y = rects[k].y0; y < rects[k].y1; ++y) {
+                for (uint32_t p = 0; p < 4; ++p) {
+                    const uint8_t *s = rt_ega_planes + (p << 16) + y * 80u;
+                    uint8_t *d = f + p * 16000u + y * 80u;
+                    for (uint16_t x = rects[k].x0; x < rects[k].x1; ++x) {
+                        d[x] = s[x];
+                    }
+                }
+            }
+        }
+        rt_pointer_mask(f);
+        plat_present_ega(f, rects, n);
     }
 }
 
@@ -295,14 +353,28 @@ void rt_int10(void)
         }
         set_mode();
         vram_all();
-        plat_palette(rt_dac);
+        if (ega_mode()) {
+            ega_palette();
+        } else {
+            plat_palette(rt_dac);
+        }
         break;
     case 0x0f:  /* current mode, columns, page */
         rt_r.ax = (uint16_t)(rd8(BDA_COLUMNS) << 8 | rd8(BDA_MODE));
         SET_AH(rt_r.bx, rd8(BDA_PAGE));
         break;
     case 0x10:
-        if (AL(rt_r.ax) == 0x12) {
+        if (AL(rt_r.ax) == 0x02) {
+            /* all attribute palette registers and the overscan from ES:DX */
+            uint32_t a = lin(G_ES, rt_r.dx);
+            for (int k = 0; k < 16; ++k) {
+                rt_ega_regs.attr[k] = rd8(a + (uint32_t)k);
+            }
+            rt_ega_regs.overscan = rd8(a + 16);
+            if (ega_mode()) {
+                ega_palette();
+            }
+        } else if (AL(rt_r.ax) == 0x12) {
             dac_block(1);
             plat_palette(rt_dac);
         } else if (AL(rt_r.ax) == 0x17) {

@@ -20,6 +20,8 @@
 	xdef	plat_mouse
 	xdef	plat_present
 	xdef	plat_palette
+	xdef	plat_present_ega
+	xdef	plat_palette_ega
 	xdef	plat_service
 	xdef	plat_sfx_wanted
 	xdef	plat_sfx_captured
@@ -70,6 +72,10 @@ plat_mouse:	nop
 plat_present:	nop
 	rts
 plat_palette:	nop
+	rts
+plat_present_ega:	nop
+	rts
+plat_palette_ega:	nop
 	rts
 plat_service:	nop
 	rts

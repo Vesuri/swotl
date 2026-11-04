@@ -265,11 +265,15 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   instruction then runs as lowered on them; after one that writes it,
   `rt_ega_write8/16` passes the stored bytes to the model's write logic. A
   linear address outside the window leaves RAM alone. A string instruction
-  with such a segment runs whole in `rt_ega_string` (d7 = op, width, rep).
-  The entries keep every register and the CCR; the lowering keeps the CCR
-  around its tests where flags are carried. Far-pointer and two-operand
-  memory forms, `xlat`, and an `xchg` whose register is in the address fail
-  translation. The model is E4: until then the entries stop. `make
+  with such a segment goes to `rt_ega_string` (d7 = op, width, rep, source
+  segment; a0 = the instruction as lowered): if an element reaches the
+  window the runtime runs it whole, element by element through the model,
+  else it continues at a0. The entries keep every register and the CCR; the
+  lowering keeps the CCR around its tests where flags are carried.
+  Far-pointer and two-operand memory forms, `xlat`, and an `xchg` whose
+  register is in the address fail translation. The model is `ega.c`
+  ([ecs-plan.md](ecs-plan.md) E4); a word is two byte accesses, low first;
+  `cmps`/`scas` reaching the window stop (not in the surface). `make
   test-blocks` runs the read/write entries as plain RAM (as x86 at A0000h)
   and skips cases reaching `rt_ega_string` (user 2026-11-04).
 - Display (D9 slice): only the graphics drivers (`emit.GRAPHICS_DRIVERS`,

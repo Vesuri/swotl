@@ -597,6 +597,16 @@ extern "C" void plat_palette(const uint8_t* dac)
     }
 }
 
+// The EGA version's display (mode 0Eh planes, 16 colours) is ecs-plan E5c;
+// until then the Amiga never sets rt_ega, so mode 0Eh is never entered.
+extern "C" void plat_present_ega(const uint8_t*, const struct plat_rect*, int32_t)
+{
+}
+
+extern "C" void plat_palette_ega(const uint8_t*)
+{
+}
+
 extern "C" void amiga_io_begin(void)
 {
     if (Swotl::application) {

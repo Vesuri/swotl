@@ -33,8 +33,10 @@ extern uint8_t rt_sfx_opl[256];
 typedef void *BPTR; typedef const unsigned char *CONST_STRPTR; typedef int32_t LONG;
 BPTR Open(CONST_STRPTR, LONG); void Close(BPTR);
 LONG Read(BPTR, void *, LONG); LONG Write(BPTR, const void *, LONG);
+LONG Seek(BPTR, LONG, LONG);
 ''',
-    'dos/dos.h': '#define MODE_OLDFILE 1005\n#define MODE_NEWFILE 1006\n',
+    'dos/dos.h': '#define MODE_OLDFILE 1005\n#define MODE_NEWFILE 1006\n#define OFFSET_BEGINNING -1\n#define OFFSET_END 1\n',
+    'platform.h': 'void plat_log(const char *line);\n',
     'AmigaHardware.h': '''#include <stdint.h>
 extern unsigned char registers[128];
 extern volatile uint16_t dma;
@@ -74,13 +76,18 @@ static std::string disk;
 static bool exists;
 static size_t pos;
 static int opens, writes;
+// sfx.rsc (the D6 fallback's TFH samples) is absent: effects stay silent.
+static int fallbacks;
 BPTR Open(CONST_STRPTR name, LONG mode) {
+    if (!strcmp((const char *)name, "sfx.rsc")) { assert(ioDepth == 1 && mode == MODE_OLDFILE); return 0; }
     assert(ioDepth == 1 && !strcmp((const char *)name, "sfx.cache"));
     if (mode == MODE_NEWFILE) { disk.clear(); exists = true; }
     if (!exists) return 0;
     ++opens; pos = 0; return (BPTR)&disk;
 }
 void Close(BPTR) { assert(ioDepth == 1); --opens; }
+LONG Seek(BPTR, LONG, LONG) { abort(); }
+void plat_log(const char *) { ++fallbacks; }
 LONG Read(BPTR, void *b, LONG n) {
     LONG k = (LONG)std::min((size_t)n, disk.size() - pos);
     memcpy(b, disk.data() + pos, k); pos += k; return k;

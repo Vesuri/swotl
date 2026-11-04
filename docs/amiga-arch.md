@@ -22,7 +22,7 @@ slave: [whdload.md](whdload.md).
 | --- | --- | --- |
 | Framework | `src/platform/amiga/framework/`: `AmigaHardware`, `Bitmap`, `CopperList`, `Palette24Bit` (+ `Palette`, `Sprite`, `Util` headers) from SL's DanceDiverse3 set | C++ bodies only; every local change recorded in `framework/README.md` (L90, L95) |
 | Platform | takeover, VBI, display views, C2P, Paula, keyboard/mouse, PIT timer, I/O windows, allocation | single owner per hardware register group; no game logic |
-| Runtime | `src/runtime/`: the reference machine as the guest sees it (DOS, BIOS/EMS, INT 33h, IVT; PIC/PIT/AdLib/joystick ports in `ports.c`); RTSVGA and SPAZ run translated | behind `platform.h`, one implementation for host and A1200; any other port stops ([architecture.md](architecture.md)) |
+| Runtime | `src/runtime/`: the reference machine as the guest sees it (DOS, BIOS/EMS, INT 33h, IVT; PIC/PIT/AdLib/joystick ports in `ports.c`; the EGA version's planes and registers in `ega.c`, [ecs-plan.md](ecs-plan.md)); RTSVGA, RTSEGA and SPAZ run translated | behind `platform.h`, one implementation for host and A1200; any other port stops ([architecture.md](architecture.md)) |
 | Translated game | generated 68020 code | calls the runtime through explicit register contracts ([translator-design.md](translator-design.md)) |
 
 Not used: the framework's `Production`/`Part`/`Script` timeline and module player

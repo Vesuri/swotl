@@ -1,5 +1,6 @@
 /* I/O ports the game touches (docs/external-surface.md), as devices of the
- * reference machine: PIC, PIT, AdLib, joystick. Any other port stops. */
+ * reference machine: PIC, PIT, AdLib, joystick; in the EGA version the EGA
+ * sequencer and graphics controller (ega.c). Any other port stops. */
 #include "runtime.h"
 #include "platform.h"
 
@@ -103,6 +104,9 @@ void rt_port_out(uint32_t port, uint32_t value, uint32_t width)
             joystick_reads = 0;
             return;
         }
+    }
+    if (rt_ega && rt_ega_out(port, value, width)) {     /* EGA sequencer, graphics controller */
+        return;
     }
     rt_stop("unsupported port out (port, width)", port, width);
 }

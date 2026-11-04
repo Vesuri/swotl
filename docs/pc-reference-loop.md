@@ -151,7 +151,9 @@ All nine in-scope overlays are captured and pass the image proof.
 
 EGA ([ecs-plan.md](ecs-plan.md)): `reference/milestones-ega.csv` and
 `reference/coverage-ega.csv` are the VGA rows prefixed `ega-` with launch
-`swotl E S 5 N Y Y 64`, `RTSEGA.OVL` for `RTSVGA.OVL` and mode `0E`
+`swotl E S 5 N Y Y 64`, `RTSEGA.OVL` for `RTSVGA.OVL`, mode `0E` and
+`rep_chunks=1` (user 2026-11-04: DOSBox-X slices RTSEGA+4C2C's `repe cmpsw`,
+the converter's row compare, and interrupts land between slices)
 (`c26-exit-usage` loads no driver and `c7-demo-dispatch`'s +EC60 is VGA-only:
 left out; `ega-c20`, `-c22`, `-c23` expect NOTCAMP, the in-flight map they end on). `ega-m1-mode0eh` is
 `RTSEGA.OVL+4874` (after INT 10h AX=000Eh), `ega-m1b-logo` `RTSEGA.OVL+48E9`
@@ -160,6 +162,10 @@ left out; `ega-c20`, `-c22`, `-c23` expect NOTCAMP, the in-flight map they end o
 `tmp/reference-hashes-explore.csv`); `sweep.py` takes no interrupt-entry targets from
 these unpolled traces. `snap_png.py` draws mode 0Eh: plane p of byte a
 is `vram.bin[a·4+p]`, from the CRTC start, through the attribute palette.
+The provisional lockstep references (ecs-plan E5a: `ega-` m1, m1b, m2, m4,
+m5, `make reference` style with poll points and REP slices) feed `make
+test-host-ega`: `host_run.py` compares the model's planes, registers,
+latches, attribute palette and DAC with the snapshot (`compare_ega`).
 
 Coverage scripts: `reference/coverage.csv`, run by `make coverage` (same
 checks; no determinism history needed). Menu keys are the red letters;

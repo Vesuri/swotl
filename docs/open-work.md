@@ -86,8 +86,9 @@ speed work: [speed-plan.md](speed-plan.md).
 45. OCS/ECS version from the EGA driver (user 2026-11-03), 68020 or better,
     no 68000. Scope today is VGA only (AGENTS.md). Plan, facts and decisions D1–D8:
     [ecs-plan.md](ecs-plan.md) (mode 0Eh: four hires planes, no C2P; RTSEGA's
-    converters 4AC3/4BD0 likely need device natives). E1–E3 done; next E4 (the EGA
-    model: RTSEGA's video accesses stop until then). The installer leaves out
+    converters 4AC3/4BD0 likely need device natives). E1–E4 and E5a done (EGA
+    model on host: `make test-host-ega`); next E5 (ECS display, first light on
+    FS-UAE, converter pricing). The installer leaves out
     RTSEGA.OVL (unused under VGA; release.md).
 
 ## User report (A1200, 68060, 2026-10-29)

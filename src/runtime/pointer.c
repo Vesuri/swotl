@@ -2,7 +2,10 @@
  * pointer is complete in VGA memory at a present, its opaque pixels are
  * replaced in the presented frame by the save buffer's (what the guest's hide
  * restores) and rt_pointer describes it for the platform's sprites; otherwise
- * the frame is VGA memory as it is. Only for a platform that shows the sprites
+ * the frame is VGA memory as it is. In mode 0Eh (RTSEGA, ecs-plan E2, D4) a
+ * logical pixel is hires pixels 2x and 2x + 1 of page 0, each showing the
+ * shape colour's low nibble, and the save buffer holds the two as nibbles,
+ * high first. Only for a platform that shows the sprites
  * (rt_pointer_sprite). Guest addresses: annotations/pointer.csv, the DGROUP
  * offsets in pointer_guest (gen), DGROUP from the tracker's exit (HLE
  * pointer_tracked).
@@ -58,6 +61,51 @@ static int on_screen(int16_t x, int16_t y)
 
 static void adopt(int16_t x, int16_t y);
 
+#define BDA_MODE 0x449
+
+/* Mode 0Eh: hires pixel (hx, y) of a page whose plane p is at p * stride. */
+static uint8_t hires(const uint8_t *planes, uint32_t stride, int16_t hx, int16_t y)
+{
+    uint32_t o = (uint32_t)y * 80u + (uint32_t)hx / 8;
+    uint8_t bit = (uint8_t)(7 - hx % 8), c = 0;
+    for (uint32_t p = 0; p < 4; ++p) {
+        c |= (uint8_t)((planes[p * stride + o] >> bit & 1) << p);
+    }
+    return c;
+}
+
+static void set_hires(uint8_t *planes, uint32_t stride, int16_t hx, int16_t y, uint8_t c)
+{
+    uint32_t o = (uint32_t)y * 80u + (uint32_t)hx / 8;
+    uint8_t bit = (uint8_t)(0x80 >> hx % 8);
+    for (uint32_t p = 0; p < 4; ++p) {
+        planes[p * stride + o] = (uint8_t)(c >> p & 1 ? planes[p * stride + o] | bit
+                                                       : planes[p * stride + o] & ~bit);
+    }
+}
+
+/* The guest's draw shows colour p at logical (x, y). */
+static int shows(int ega, int16_t x, int16_t y, uint8_t p)
+{
+    if (ega) {
+        return hires(rt_ega_planes, 0x10000, (int16_t)(2 * x), y) == (p & 0x0f) &&
+               hires(rt_ega_planes, 0x10000, (int16_t)(2 * x + 1), y) == (p & 0x0f);
+    }
+    return rd8(0xa0000u + (uint32_t)(y * 320 + x)) == p;
+}
+
+/* The frame at logical (x, y) as the guest's hide restores it from save
+ * buffer byte b. */
+static void restore(int ega, uint8_t *frame, int16_t x, int16_t y, uint8_t b)
+{
+    if (ega) {
+        set_hires(frame, 16000, (int16_t)(2 * x), y, b >> 4);
+        set_hires(frame, 16000, (int16_t)(2 * x + 1), y, b & 0x0f);
+    } else {
+        frame[y * 320 + x] = b;
+    }
+}
+
 void rt_pointer_mask(uint8_t *frame)
 {
     rt_pointer.shown = 0;
@@ -73,7 +121,7 @@ void rt_pointer_mask(uint8_t *frame)
     uint32_t image = lin(rt_pointer_ds, word(POINTER_IMAGE));
     uint32_t buffer = lin(rt_pointer_ds, pointer_guest[POINTER_BUFFER]);
     uint8_t other = POINTER_TRANSPARENT;
-    int drawn = 0;
+    int drawn = 0, ega = rd8(BDA_MODE) == 0x0e;
     /* Complete: every opaque pixel the draw writes (on screen) holds the shape. */
     for (int16_t r = 0; r < h; ++r) {
         for (int16_t c = 0; c < w; ++c) {
@@ -81,7 +129,7 @@ void rt_pointer_mask(uint8_t *frame)
             if (p == POINTER_TRANSPARENT || !on_screen(x0 + c, y0 + r)) {
                 continue;
             }
-            if (rd8(0xa0000u + (uint32_t)((y0 + r) * 320 + x0 + c)) != p) {
+            if (!shows(ega, (int16_t)(x0 + c), (int16_t)(y0 + r), p)) {
                 return;
             }
             if (p != POINTER_FILL) {
@@ -101,7 +149,7 @@ void rt_pointer_mask(uint8_t *frame)
             uint8_t p = rd8(image + (uint32_t)(r * w + c));
             rt_pointer.pixels[r * RT_POINTER_SIZE + c] = p;
             if (p != POINTER_TRANSPARENT && on_screen(x0 + c, y0 + r)) {
-                frame[(y0 + r) * 320 + x0 + c] = rd8(buffer + (uint32_t)(r * w + c));
+                restore(ega, frame, (int16_t)(x0 + c), (int16_t)(y0 + r), rd8(buffer + (uint32_t)(r * w + c)));
             }
         }
     }

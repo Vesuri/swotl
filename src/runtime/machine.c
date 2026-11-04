@@ -12,9 +12,11 @@ uint16_t rt_entry_cs, rt_entry_ip;
 uint16_t rt_deliver_cs, rt_deliver_ip;
 void *rt_deliver_code;      /* the handler's translated entry (rt_lookup, far) */
 
-/* Command tail of the reference launch (tools/pc_run.py LAUNCH); its
- * joystick argument is Y with rt_joystick. */
+/* Command tail of the reference launch (tools/pc_run.py LAUNCH); its video
+ * argument is E with rt_ega (reference/milestones-ega.csv), its joystick
+ * argument Y with rt_joystick. */
 static char command_tail[] = " V S 5 N Y Y 64";
+#define VIDEO_ARG 1
 #define JOYSTICK_ARG 7
 /* Environment of the reference shell, then the program path. */
 static const char environment[] =
@@ -77,8 +79,9 @@ static void psp(uint16_t seg)
     wr16(p + 0x38, 0xffff); wr16(p + 0x3a, 0xffff);
     wr16(p + 0x40, 0x0005);                   /* DOS version 5.0 */
     put_bytes(p + 0x50, "\xcd\x21\xcb", 3);
+    command_tail[VIDEO_ARG] = rt_ega ? 'E' : 'V';
     command_tail[JOYSTICK_ARG] = rt_joystick ? 'Y' : 'N';
-    /* FCBs 1 and 2 from the first two arguments ("V", "S") */
+    /* FCBs 1 and 2 from the first two arguments ("V" or "E", "S") */
     for (int f = 0; f < 2; ++f) {
         uint32_t fcb = p + 0x5c + 0x10 * f;
         for (int k = 1; k < 12; ++k) {

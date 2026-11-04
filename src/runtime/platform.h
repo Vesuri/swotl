@@ -49,6 +49,13 @@ struct plat_rect { uint16_t x0, y0, x1, y1; };
 void plat_present(const uint8_t *frame, const struct plat_rect *rects, int32_t n);
 /* The DAC changed (256 x 6-bit R, G, B). */
 void plat_palette(const uint8_t *dac);
+/* Mode 0Eh (the EGA version, docs/ecs-plan.md): publish rectangles of the
+ * 640x200 four-plane frame (plane p at p * 16000, 80 bytes per row, bit 7 the
+ * leftmost pixel, pixel = bit p of plane p); x0 and x1 in bytes, multiples
+ * of 2. */
+void plat_present_ega(const uint8_t *planes, const struct plat_rect *rects, int32_t n);
+/* Mode 0Eh: the 16 colours changed (6-bit R, G, B each). */
+void plat_palette_ega(const uint8_t *colours);
 /* The platform's own work from the main program at a vertical blank. */
 void plat_service(void);
 /* Effect capture (runtime.h rt_sfx_*): whether to capture effect id; the

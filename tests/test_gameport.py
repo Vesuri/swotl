@@ -39,6 +39,8 @@ extern uint8_t rt_bench, rt_joystick;
 extern volatile uint16_t rt_joystick_axis[2];
 extern volatile uint8_t rt_joystick_buttons;
 void rt_bench_watch(void);
+extern uint8_t rt_ega;
+int rt_ega_out(uint32_t, uint32_t, uint32_t);
 void rt_stop(const char *, uint32_t, uint32_t) __attribute__((noreturn));
 ''',
     'platform.h': 'void plat_timer_rate(uint32_t);\n',
@@ -47,7 +49,8 @@ STUBS = r'''
 #include <stdlib.h>
 #include <stdio.h>
 #include "runtime.h"
-uint8_t rt_bench;
+uint8_t rt_bench, rt_ega;
+int rt_ega_out(uint32_t p, uint32_t v, uint32_t w) { (void)p; (void)v; (void)w; abort(); }
 void rt_bench_watch(void) {}
 void plat_timer_rate(uint32_t d) { (void)d; }
 void rt_stop(const char *what, uint32_t a, uint32_t b) { fprintf(stderr, "%s %x %x\n", what, a, b); abort(); }

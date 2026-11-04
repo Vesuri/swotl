@@ -110,6 +110,21 @@ COMPARE = [(0x07C90, 0xA0000)]
 # Chained mode 13h: guest A0000h+a is DOSBox-X vram[((a & ~3) << 2) | (a & 3)]
 # (tools/snap_png.py); the whole 64 KiB window is compared with the DAC.
 FRAME = (0xA0000, 0xB0000)
+# Mode 0Eh (the EGA version, docs/ecs-plan.md E4): DOSBox-X keeps plane p of
+# byte a at vram[a * 4 + p] (tools/snap_png.py); the model (src/runtime/ega.c)
+# at rt_ega_planes + (p << 16 | a), page 0 (bytes 0-15999) shown. Its
+# registers: runtime.h struct rt_ega_regs. The reference's state the model
+# keeps fixed (no guest writes it, ecs-plan E2) must hold at each snapshot.
+EGA_LAUNCH = "swotl E S 5 N Y Y 64"
+EGA_PLANE, EGA_PAGE = 0x10000, 16000
+EGA_REGS = ("seq_index", "map_mask", "gc_index", "set_reset", "enable_set_reset", "color_compare",
+            "data_rotate", "read_map", "mode", "misc", "color_dont_care", "bit_mask")
+EGA_COMPARED = {"seq_map_mask": "map_mask", "gc_set_reset": "set_reset",
+                "gc_enable_set_reset": "enable_set_reset", "gc_color_compare": "color_compare",
+                "gc_data_rotate": "data_rotate", "gc_read_map": "read_map", "gc_mode": "mode",
+                "gc_misc": "misc", "gc_color_dont_care": "color_dont_care", "gc_bit_mask": "bit_mask"}
+EGA_FIXED = {"attr_mode": "09", "attr_color_select": "00", "attr_plane_enable": "0f",
+             "seq_clocking": "01", "seq_memory_mode": "06", "crtc_start": "0000"}
 # The IRQ0 handler's private stack (runtime.h RT_IRQ_SS:RT_IRQ_SP down, I4): runtime
 # state, no machine bytes; its depth is the footprint's (tests/irq_monitor.py checks).
 IRQ_STACK = (0xB8000 - 0x200, 0xB8000)
@@ -273,6 +288,16 @@ SABOTAGE = {
     "pointer-trunc": "the lead halves by an arithmetic shift (floor), not toward zero",
     "irq-main": "FLIGHT +0123B reads 9BCA instead of 813C (undeclared main read, I3)",
     "irq-handler": "the IRQ0 handler's inc of 9BCA writes 9DC0 (outside the footprint, I3)",
+    "ega-bit-mask": "the EGA model's function 0 ignores the bit mask (ega.c rebuilt)",
+    "ega-latch": "EGA reads load no latches (ega.c rebuilt)",
+    "ega-write-mode-1": "EGA write mode 1 runs as write mode 0 (ega.c rebuilt)",
+}
+# ega.c plants: (old, new) source replacements (planted_ega_elf)
+EGA_PLANTS = {
+    "ega-bit-mask": [("    case 0: return (uint8_t)((d & mask) | (latch & ~mask));", "    case 0: return d;")],
+    "ega-latch": [("        g->latch[p] = rt_ega_planes[(uint32_t)p << 16 | off];", "        (void)p, (void)off;")],
+    "ega-write-mode-1": [("        case 0:\n            d = g->enable", "        case 0: case 1:\n            d = g->enable"),
+                         ("        case 1:\n            d = latch;\n            break;\n", "")],
 }
 # Plants only an asynchronous tick shows (--sabotage --stress SEED, I6)
 STRESS_SABOTAGE = {
@@ -285,7 +310,41 @@ SABOTAGE_AT = {"missing-file": "c83-program-disk-prompt", "keyon": "m2-choose-si
                "irq-stack": "m2-choose-side", "irq-state": "m2-choose-side", "irq-sentinel": "m2-choose-side",
                "irq-main": "m3-demo-flight", "irq-handler": "m2-choose-side",
                "mouse-motion": "c9-mouse-menu",
-               "mouse-buttons": "c9-mouse-menu"}
+               "mouse-buttons": "c9-mouse-menu",
+               "ega-bit-mask": "ega-m1b-logo", "ega-latch": "ega-m1b-logo", "ega-write-mode-1": "ega-m2-choose-side"}
+
+
+def planted_ega_elf(name: str, base: Path | None = None) -> Path:
+    """The host image with ega.c planted (tmp/ega-plant/NAME); `base` the REP
+    diagnostic image (rep_replay.host_image) whose generated objects it links."""
+    import os
+    import subprocess
+    source = (REPO / "src/runtime/ega.c").read_text()
+    for old, new in EGA_PLANTS[name]:
+        assert source.count(old) == 1, (name, old)
+        source = source.replace(old, new)
+    out = REPO / "tmp/ega-plant" / name
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "ega.c").write_text(source)
+    tools = Path(os.environ.get("AMIGA_TOOLCHAIN") or Path.home() / ".local/opt") / "bin"
+    subprocess.run([str(tools / "m68k-amiga-elf-gcc"), "-m68020", "-O2", "-ffreestanding", "-nostdlib",
+                    "-fomit-frame-pointer", "-fno-tree-loop-distribute-patterns", "-Wall", "-Wextra",
+                    "-Werror", "-I" + str(REPO / "src/runtime"), "-DSWOTL_SYNC", "-c",
+                    "-o", str(out / "ega.o"), str(out / "ega.c")], check=True)
+    host = REPO / "build/host"
+    objects = [host / n for n in ("host_s.o", "host.o", "rt_entry.o")]
+    objects += [out / "ega.o" if p.stem == "ega" else host / (p.stem + ".o")
+                for p in sorted((REPO / "src/runtime").glob("*.c"))]
+    if base is None:
+        objects += [host / n for n in ("program.o", "compute_projection.o", "compute_normalise.o",
+                                       "compute_scenery.o", "compute_native.o")]
+    else:
+        objects += [base.parent / "program.o"]
+        objects += [host / n for n in ("compute_projection.o", "compute_normalise.o", "compute_scenery.o")]
+        objects += [base.parent / n for n in ("compute_native.o", "rep.o")]
+    subprocess.run([str(tools / "m68k-amiga-elf-ld"), "-Ttext=0x10000", "-e", "_start",
+                    "-o", str(out / "swotl.elf"), *map(str, objects)], check=True)
+    return out / "swotl.elf"
 
 
 def dos_file_stamp(stamp):
@@ -361,6 +420,7 @@ class Host:
         self.stubs = {self.syms[n]: n for n in ("plat_alloc", "plat_free", "plat_open", "plat_create", "plat_read", "plat_write",
                                                 "plat_delete", "plat_seek",
                                                 "plat_calendar_date", "plat_file_stamp", "plat_close", "plat_dir_names", "plat_file_info", "plat_timer_rate", "plat_mouse", "plat_present", "plat_palette",
+                                                "plat_present_ega", "plat_palette_ega",
                                                 "plat_service", "plat_sfx_wanted", "plat_sfx_captured", "plat_log", "plat_console",
                                                 "plat_exit")}
         if '__wrap_rt_port_in' in self.syms:
@@ -376,6 +436,8 @@ class Host:
         # rectangles of the next present (the runtime's marks vs the stores)
         self.vram_written: set[int] = set()
         self.display_miss: str | None = None
+        # mode 0Eh: page 0 as the last present showed it (changed bytes since are marked)
+        self.ega_shown = bytes(4 * EGA_PAGE)
         e.write(self.syms["rt_present_due"], b"\1")  # a vertical blank is always due
         # HLE music_skip: off (the guest path, which the references hold) unless
         # --music-skip checks the replacement
@@ -866,6 +928,26 @@ class Host:
             self.vram_written.clear()
             self.check_pointer(args[0])
             self.e.write(self.syms["rt_present_due"], b"\1")
+        elif n == "plat_present_ega":
+            self.presents += 1
+            shown = bytearray(80 * 200)
+            for k in range(args[2]):
+                x0, y0, x1, y1 = struct.unpack(">4H", self.mem(args[1] + 8 * k, 8))
+                if x0 % 2 or x1 % 2 or not (x0 < x1 <= 80 and y0 < y1 <= 200):
+                    self.display_miss = self.display_miss or f"present {self.presents}: rectangle {x0, y0, x1, y1}"
+                for y in range(y0, y1):
+                    shown[y * 80 + x0:y * 80 + x1] = b"\1" * (x1 - x0)
+            page = self.ega_page()
+            miss = sorted(o % EGA_PAGE for o in range(4 * EGA_PAGE)
+                          if page[o] != self.ega_shown[o] and not shown[o % EGA_PAGE])
+            if miss and not self.display_miss:
+                self.display_miss = f"present {self.presents}: {len(miss)} changed plane bytes outside " \
+                    f"its rectangles, first x={miss[0] % 80} y={miss[0] // 80}"
+            self.ega_shown = page
+            self.check_pointer_ega(args[0], page)
+            self.e.write(self.syms["rt_present_due"], b"\1")
+        elif n == "plat_palette_ega":
+            pass
         elif n == "plat_palette":
             if self.sabotage == "dac":
                 self.e.write(args[0] + 300, bytes([self.mem(args[0] + 300, 1)[0] ^ 1]))
@@ -950,6 +1032,81 @@ class Host:
             bad(f"frame differs from VGA memory {'with the pointer masked ' if complete else ''}"
                 f"first x={o % 320} y={o // 320}: {frame[o]:02x}, expected {expected[o]:02x}")
 
+    def ega_page(self) -> bytes:
+        """The model's page 0, plane-major (plane p at p * 16000)."""
+        base = self.u32(self.syms["rt_ega_planes"])
+        return b"".join(self.mem(base + p * EGA_PLANE, EGA_PAGE) for p in range(4)) if base else bytes(4 * EGA_PAGE)
+
+    def check_pointer_ega(self, frame_addr: int, page: bytes) -> None:
+        """check_pointer in mode 0Eh (pointer.c, ecs-plan D4): a logical pixel is
+        hires pixels 2x, 2x + 1 of page 0, showing the shape colour's low nibble;
+        the save buffer byte holds them as nibbles, high first."""
+        def bad(text):
+            if len(self.pointer_bad) < 8:
+                self.pointer_bad.append(f"present {self.presents}: {text}")
+
+        def hires(planes, hx, y):
+            o, bit = y * 80 + hx // 8, 7 - hx % 8
+            return sum(((planes[p * EGA_PAGE + o] >> bit) & 1) << p for p in range(4))
+
+        def put(planes, hx, y, c):
+            o, bit = y * 80 + hx // 8, 0x80 >> (hx % 8)
+            for p in range(4):
+                planes[p * EGA_PAGE + o] = planes[p * EGA_PAGE + o] | bit if c >> p & 1 \
+                    else planes[p * EGA_PAGE + o] & ~bit
+        got = self.mem(self.syms["rt_pointer"], POINTER_BYTES)
+        frame = self.mem(frame_addr, 4 * EGA_PAGE)
+        ds = self.tracker_ds
+        self.pointer_counts["presents"] += 1
+        pixels = {}
+        if ds:
+            def word(name, signed=True):
+                return int.from_bytes(self.gmem(ds * 16 + POINTER[name], 2), "little", signed=signed)
+            w, h = word("width"), word("height")
+            x0 = (word("x") + word("hot_x") + 0x8000) % 0x10000 - 0x8000
+            y0 = (word("y") + word("hot_y") + 0x8000) % 0x10000 - 0x8000
+            if 0 < w <= POINTER_SIZE and 0 < h <= POINTER_SIZE:
+                shape = self.gmem(ds * 16 + word("image", False), w * h)
+                buffer = self.gmem(ds * 16 + POINTER["buffer"], w * h)
+                for r in range(h):
+                    for c in range(w):
+                        p = shape[r * w + c]
+                        if p != 0xFD and 0 <= x0 + c < 320 and 0 <= y0 + r < 200:
+                            pixels[(x0 + c, y0 + r)] = (p, buffer[r * w + c])
+        others = {p for p, _ in pixels.values()} - {0xFE}
+        complete = bool(pixels) and len(others) <= 1 and all(
+            hires(page, 2 * x + k, y) == p & 0x0F for (x, y), (p, _) in pixels.items() for k in (0, 1))
+        if got[0] != complete:
+            bad(f"shown {got[0]}, the oracle's pointer {'complete' if complete else 'not complete'}")
+            return
+        expected = bytearray(page)
+        if complete:
+            self.pointer_counts["shown"] += 1
+            x, y = struct.unpack(">hh", got[4:8])
+            hot = struct.unpack("bb", got[274:276])
+            fields = (x, y, got[1], got[2], got[3]) + hot
+            want = (x0, y0, w, h, others.pop() if others else 0xFD, word("hot_x"), word("hot_y"))
+            if fields != want:
+                bad(f"x, y, w, h, other, hotspot {fields}, the oracle's {want}")
+            for (px, py), (p, b) in pixels.items():
+                put(expected, 2 * px, py, b >> 4)
+                put(expected, 2 * px + 1, py, b & 0x0F)
+            composite = bytearray(frame)
+            sprite = got[POINTER_PIXELS:POINTER_PIXELS + POINTER_SIZE * POINTER_SIZE]
+            for r in range(got[2]):
+                for c in range(got[1]):
+                    p = sprite[r * POINTER_SIZE + c]
+                    if p != 0xFD and 0 <= x + c < 320 and 0 <= y + r < 200:
+                        put(composite, 2 * (x + c), y + r, p & 0x0F)
+                        put(composite, 2 * (x + c) + 1, y + r, p & 0x0F)
+            if bytes(composite) != page:
+                o = next(k for k in range(4 * EGA_PAGE) if composite[k] != page[k]) % EGA_PAGE
+                bad(f"frame + sprite differs from EGA memory, first byte x={o % 80} y={o // 80}")
+        if frame != bytes(expected):
+            o = next(k for k in range(4 * EGA_PAGE) if frame[k] != expected[k])
+            bad(f"frame differs from EGA memory {'with the pointer masked ' if complete else ''}"
+                f"first plane {o // EGA_PAGE} byte x={o % EGA_PAGE % 80} y={o % EGA_PAGE // 80}")
+
     def sound_event(self, kind: str, a: int, b: int) -> None:
         if self.sound_log is not None:
             self.sound_log.write(f"{self.sound_tick},{kind},{a},{b}\n")
@@ -989,6 +1146,9 @@ class Host:
         the same visit of the same poll point after the same service event;
         key release eligibility uses recorded trigger visits when available."""
         self.launch = script.get("launch", "") if script else ""
+        if self.launch == EGA_LAUNCH:   # machine.c's tail with E (rt_ega)
+            self.e.write(self.syms["rt_ega"], b"\1")
+            self.launch = ""
         if self.launch.lower() not in ("", "swotl", "swotl.exe"):
             raise ValueError(f"unsupported host launch: {self.launch}")
         steps = [(t, k) for t, k in script["keys"]] + [(t, None) for t in script["snapshots"]] \
@@ -1229,15 +1389,16 @@ def milestone_script(name: str) -> dict:
     keys are pressed in order, each counted from the previous key's release
     (the tracer's rules); the frame is compared at vga_mode 13."""
     rows = {r["name"]: r for r in csv.DictReader(TABLE.open())}
-    if name not in rows:
-        rows.update({r["name"]: r for r in csv.DictReader((REPO / "reference/coverage.csv").open())})
+    for table in ("coverage.csv", "milestones-ega.csv", "coverage-ega.csv"):
+        if name not in rows:
+            rows.update({r["name"]: r for r in csv.DictReader((REPO / "reference" / table).open())})
     r = rows[name]
     keys = []
     for k in filter(None, r["keys"].split(";")):
         spec, _, key = k.partition("=")
         keys.append((trigger(spec), key if (joystick_replay.action(key, r.get("joystick") == "1") or key.startswith(("mx", "my", "mb"))) else key_code(key)))
     return {"keys": keys, "snapshots": [trigger(s) for s in r["snapshots"].split()],
-            "frame": r["vga_mode"] == "13", "launch": r["launch"],
+            "frame": r["vga_mode"] == "13", "ega": r["vga_mode"].upper() == "0E", "launch": r["launch"],
             "missing_files": fixture_inputs.missing_files(r.get("missing_files") or ""),
             "rep_chunks": r.get("rep_chunks") == "1", "joystick": r.get("joystick") == "1"}
 
@@ -1397,6 +1558,42 @@ def compare_video(png: Path, snap: Path) -> list[str]:
     a = bad[0]
     return [f"video: {len(bad)} of 64000 pixels differ from the DOSBox frame, first x={a % 320} "
             f"y={a // 320} shown {px[ox + 2 * (a % 320), oy + 2 * (a // 320)]}"]
+
+
+def compare_ega(planes: bytes, regs: bytes, dac: bytes, snap: Path) -> list[str]:
+    """Mode 0Eh: the model's four 64 KiB planes, registers, latches, attribute
+    palette and DAC against the snapshot (vram.bin, ega.txt, dac.bin)."""
+    out = []
+    vram = (snap / "vram.bin").read_bytes()
+    for p in range(4):
+        ref = vram[p:4 * EGA_PLANE:4]
+        got = planes[p * EGA_PLANE:(p + 1) * EGA_PLANE]
+        if got != ref:
+            bad = [a for a in range(EGA_PLANE) if got[a] != ref[a]]
+            out.append(f"plane {p}: {len(bad)} bytes differ, first A000:{bad[0]:04X} ours "
+                       f"{got[bad[0]]:02x} reference {ref[bad[0]]:02x}")
+    ref = dict(kv.split("=") for kv in (snap / "ega.txt").read_text().split())
+    model = dict(zip(EGA_REGS, regs))
+    for name, field in EGA_COMPARED.items():
+        if model[field] != int(ref[name], 16):
+            out.append(f"EGA {name}: ours {model[field]:02x} reference {ref[name]}")
+    latch = regs[len(EGA_REGS):len(EGA_REGS) + 4]
+    if latch != int(ref["latch"], 16).to_bytes(4, "little"):
+        out.append(f"EGA latches (planes 0-3): ours {latch.hex()} reference {int(ref['latch'], 16).to_bytes(4, 'little').hex()}")
+    attr = regs[len(EGA_REGS) + 4:len(EGA_REGS) + 21]
+    if attr[:16].hex() != ref["attr_palette"] or attr[16] != int(ref["attr_overscan"], 16):
+        out.append(f"EGA attribute palette, overscan: ours {attr[:16].hex()} {attr[16]:02x} reference "
+                   f"{ref['attr_palette']} {ref['attr_overscan']}")
+    for name, want in EGA_FIXED.items():
+        if ref[name] != want:
+            out.append(f"EGA {name}: reference {ref[name]}, the model keeps {want}")
+    want = (snap / "dac.bin").read_bytes()
+    bad = [k for k in range(256) if dac[k * 3:k * 3 + 3] != want[k * 3:k * 3 + 3]]
+    if bad:
+        k = bad[0]
+        out.append(f"DAC: {len(bad)} entries differ, first {k:02x} ours {dac[k * 3:k * 3 + 3].hex()} "
+                   f"reference {want[k * 3:k * 3 + 3].hex()}")
+    return out
 
 
 def check_capture(tag, regs, state, ram, dac, ref_regs, ref, snap, h) -> list[str]:
@@ -1602,6 +1799,10 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
     if sabotage in ("pointer-clamp", "pointer-trunc"):
         import test_pointer_model
         diagnostic_elf = test_pointer_model.planted_elf(sabotage[len("pointer-"):])
+    if sabotage in EGA_PLANTS:
+        if joystick:
+            raise ValueError("EGA plants link no joystick replay")
+        diagnostic_elf = planted_ega_elf(sabotage, diagnostic_elf)
     h = Host(image.M.REF, sabotage, music_skip, elf=diagnostic_elf or elf, stress=stress)
     h.deleted.update(("TARGETS.DEF",) if sabotage == "missing-file" else script["missing_files"])
     if sfx_capture:
@@ -1655,15 +1856,27 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
         problems += check_opl(h, trace, not music_skip)
         problems += check_sfx(h)
     problems += check_pointer(h)
-    marked = bytearray(64000)  # stored since the last present: still marked (rt_vram_rows)
     rows = h.mem(h.syms["rt_vram_rows"], 800)
-    for y in range(200):
-        lo, hi = struct.unpack_from(">2H", rows, 4 * y)
-        marked[y * 320 + lo:y * 320 + hi] = b"\1" * max(0, hi - lo)
-    unmarked = sorted(o for o in h.vram_written if not marked[o])
-    if unmarked:
-        problems.append(f"{len(unmarked)} pixels stored since the last present and not marked, "
-                        f"first x={unmarked[0] % 320} y={unmarked[0] // 320}")
+    if script["ega"]:   # changed since the last present: still marked (bytes)
+        marked = bytearray(80 * 200)
+        for y in range(200):
+            lo, hi = struct.unpack_from(">2H", rows, 4 * y)
+            marked[y * 80 + lo:y * 80 + hi] = b"\1" * max(0, hi - lo)
+        page = h.ega_page()
+        unmarked = sorted(o % EGA_PAGE for o in range(4 * EGA_PAGE)
+                          if page[o] != h.ega_shown[o] and not marked[o % EGA_PAGE])
+        if unmarked:
+            problems.append(f"{len(unmarked)} plane bytes changed since the last present and not marked, "
+                            f"first x={unmarked[0] % 80} y={unmarked[0] // 80}")
+    else:
+        marked = bytearray(64000)  # stored since the last present: still marked (rt_vram_rows)
+        for y in range(200):
+            lo, hi = struct.unpack_from(">2H", rows, 4 * y)
+            marked[y * 320 + lo:y * 320 + hi] = b"\1" * max(0, hi - lo)
+        unmarked = sorted(o for o in h.vram_written if not marked[o])
+        if unmarked:
+            problems.append(f"{len(unmarked)} pixels stored since the last present and not marked, "
+                            f"first x={unmarked[0] % 320} y={unmarked[0] // 320}")
     print(f"frame presents: {h.presents}")
     print(f"hardware interrupts: {h.irq_i} replayed, {len(script['irqs'])} in the reference")
     if h.stopped_at != label:
@@ -1686,6 +1899,11 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
         problems += check_capture("host", g, h.mem(STATE, 16), h.gmem(0, 0x100000),
                                   h.mem(h.syms["rt_dac"], 768) if frame else None,
                                   ref_regs, ref, snap, h)
+        if script["ega"]:
+            base = h.u32(h.syms["rt_ega_planes"])
+            planes = h.mem(base, 4 * EGA_PLANE) if base else bytes(4 * EGA_PLANE)
+            problems += [f"host: {p}" for p in compare_ega(planes, h.mem(h.syms["rt_ega_regs"], len(EGA_REGS) + 21),
+                                                           h.mem(h.syms["rt_dac"], 768), snap)]
         if args.amiga:
             regs = dict(kv.split("=") for kv in (args.amiga / "regs.txt").read_text().split())
             ga = {n: int(regs[n], 16) for n in REGS}

@@ -148,6 +148,32 @@ extern uint8_t rt_dac[768];      /* video.c: 6-bit R, G, B */
 extern volatile uint8_t rt_present_due;
 void rt_video_refresh(void);
 void rt_video_frame(void);      /* INT 33h AX=3: the game's frame boundary */
+/* D9 marks (video.c): per row the changed columns [lo, hi) (hi 0: none) over
+ * rows [top, bottom); pixels in mode 13h (rt_entry.s rt_vram_mark), bytes
+ * of page 0 in mode 0Eh (ega.c). A mark outside a driver call stops. */
+struct vram_row { uint16_t lo, hi; };
+extern struct vram_row rt_vram_rows[200];
+extern uint16_t rt_vram_top, rt_vram_bottom;
+extern uint16_t rt_vdrv_depth;
+void rt_vram_stray(void) __attribute__((noreturn));
+/* EGA (ega.c, docs/ecs-plan.md E4). rt_ega: set by the platform before
+ * rt_start, the launch's first argument is E (the EGA version, mode 0Eh).
+ * rt_ega_planes: 4 x 64 KiB, plane p at p << 16 (allocated at the mode set).
+ * rt_ega_regs: as tests/host_run.py reads them (EGA_REGS). */
+struct rt_ega_regs {
+    uint8_t seq_index, map_mask, gc_index, set_reset, enable_set_reset, color_compare,
+            data_rotate, read_map, mode, misc, color_dont_care, bit_mask;
+    uint8_t latch[4];
+    uint8_t attr[16], overscan;
+};
+extern uint8_t rt_ega;
+extern uint8_t *rt_ega_planes;
+extern struct rt_ega_regs rt_ega_regs;
+void rt_ega_mode(void);
+int rt_ega_out(uint32_t port, uint32_t value, uint32_t width);
+void rt_ega_read_c(uint32_t a, uint32_t n);
+void rt_ega_write_c(uint32_t a, uint32_t n);
+int rt_ega_string_c(uint32_t descriptor);
 /* Production platforms with a vertical blank counter (rt_fields) set
  * rt_frame_cap: the frame boundary returns at most once per field, so each
  * frame takes at least one field of mouse motion (translator-design D9). Sync

@@ -61,7 +61,9 @@ G_DS	equ	1
 	xref	rt_lookup
 	xref	rt_ret_mismatch_c
 	xref	rt_stop_unknown_c
-	xref	rt_ega_stop_c
+	xref	rt_ega_read_c
+	xref	rt_ega_write_c
+	xref	rt_ega_string_c
 	xref	rt_vram_rows
 	xref	rt_vram_top
 	xref	rt_vram_bottom
@@ -551,34 +553,85 @@ rt_stop_unknown:
 	move.l	d7,-(a7)
 	jsr	rt_stop_unknown_c
 
-; EGA memory operands of the EGA driver (translator/lower.py ega_operand):
-; a0 = the operand's first byte (linear address a6 - a0); rt_ega_string:
-; d7 = op | width << 8 | rep << 16. The EGA model is ecs-plan E4; until
-; then each stops with the entry (1-4 read8, read16, write8, write16; 5
-; string) and the linear address or descriptor.
+; EGA memory operands of the EGA driver (translator/lower.py ega_operand,
+; the EGA model ega.c): a0 = the operand's first byte (linear address
+; a6 - a0). A read puts the model's bytes (latches loaded) there before the
+; instruction, a write passes the bytes it stored to the model; an operand
+; outside A0000h-AFFFFh returns at once. Every register and the CCR kept.
 rt_ega_read8:
-	moveq	#1,d7
-	bra.s	ega_operand
-rt_ega_read16:
-	moveq	#2,d7
-	bra.s	ega_operand
-rt_ega_write8:
-	moveq	#3,d7
-	bra.s	ega_operand
-rt_ega_write16:
-	moveq	#4,d7
-ega_operand:
-	move.l	a6,d6
-	sub.l	a0,d6
-	bra.s	ega_stop
-rt_ega_string:
-	move.l	d7,d6
-	moveq	#5,d7
-ega_stop:
-	bsr	save_regs
-	move.l	d6,-(a7)
+	move.w	ccr,-(a7)
 	move.l	d7,-(a7)
-	jsr	rt_ega_stop_c
+	moveq	#1,d7
+	bra.s	ega_read
+rt_ega_read16:
+	move.w	ccr,-(a7)
+	move.l	d7,-(a7)
+	moveq	#2,d7
+ega_read:
+	movem.l	d0-d1/a0-a1,-(a7)
+	move.l	a6,d0
+	sub.l	a0,d0			; linear
+	move.l	d0,d1
+	sub.l	#$9ffff,d1		; a word at 9FFFFh reaches the window
+	cmp.l	#$10001,d1
+	bcc.s	ega_done
+	move.l	d7,-(a7)
+	move.l	d0,-(a7)
+	jsr	rt_ega_read_c
+	addq.l	#8,a7
+	bra.s	ega_done
+rt_ega_write8:
+	move.w	ccr,-(a7)
+	move.l	d7,-(a7)
+	moveq	#1,d7
+	bra.s	ega_write
+rt_ega_write16:
+	move.w	ccr,-(a7)
+	move.l	d7,-(a7)
+	moveq	#2,d7
+ega_write:
+	movem.l	d0-d1/a0-a1,-(a7)
+	move.l	a6,d0
+	sub.l	a0,d0
+	move.l	d0,d1
+	sub.l	#$9ffff,d1
+	cmp.l	#$10001,d1
+	bcc.s	ega_done
+	move.l	d7,-(a7)
+	move.l	d0,-(a7)
+	jsr	rt_ega_write_c
+	addq.l	#8,a7
+ega_done:
+	movem.l	(a7)+,d0-d1/a0-a1
+	move.l	(a7)+,d7
+	move.w	(a7)+,ccr
+	rts
+
+; A string instruction of the EGA driver with a segment that may reach EGA
+; memory: d7 = op | width << 8 | rep << 16 | source segment << 24, a0 = the
+; instruction as lowered. ega.c runs it when an element reaches A0000h-
+; AFFFFh (AX, CX, SI, DI updated; other registers and the CCR kept), else
+; it continues at a0 with every register and the CCR as at entry.
+rt_ega_string:
+	move.w	ccr,-(a7)
+	movem.l	d0-d7/a0-a6,-(a7)
+	bsr	save_regs
+	move.l	d7,-(a7)
+	jsr	rt_ega_string_c
+	addq.l	#4,a7
+	tst.l	d0
+	movem.l	(a7)+,d0-d7/a0-a6	; the CCR stays tst's
+	beq.s	.plain
+	move.w	rt_r,d0			; AX, CX, SI, DI as the instruction left them
+	move.w	rt_r+2,d1
+	movea.w	rt_r+12,a4
+	movea.w	rt_r+14,a5
+	move.w	(a7)+,ccr
+	rts
+.plain:
+	move.w	(a7)+,ccr
+	addq.l	#4,a7			; the return address (no CCR change)
+	jmp	(a0)
 
 ; Enter the guest at rt_entry_cs:rt_entry_ip with the registers in rt_r and
 ; the state block. Returns only if the guest's outermost frame returns.

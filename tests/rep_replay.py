@@ -3,9 +3,11 @@ import csv
 from dataclasses import dataclass
 import hashlib
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from translator import cfg, emit, gen
@@ -115,10 +117,13 @@ def host_image(labels, joystick_header=None):
         digest.update((ROOT / 'tests/joystick_replay.c').read_bytes())
     for p in inputs:
         digest.update(p.name.encode()); digest.update(p.read_bytes())
-    out = ROOT / 'tmp/rep-host' / digest.hexdigest()[:20]
+    final = ROOT / 'tmp/rep-host' / digest.hexdigest()[:20]
+    if (final / 'swotl.elf').exists():
+        return final / 'swotl.elf'
+    # Parallel runs may share the digest: build privately, then rename into place.
+    final.parent.mkdir(parents=True, exist_ok=True)
+    out = Path(tempfile.mkdtemp(prefix=final.name + '.', dir=final.parent))
     elf = out / 'swotl.elf'
-    if elf.exists():
-        return elf
     units = cfg.build()
     nodes = {emit.label(mod, off): (mod, off) for mod, u in units.items() for off in u.insns}
     hooks = {nodes[lab]: n for n, lab in enumerate(labels)}
@@ -156,4 +161,10 @@ def host_image(labels, joystick_header=None):
         extra = [str(out / 'joystick.o'), '--wrap=rt_port_in', '--wrap=rt_port_out']
     subprocess.run([str(toolchain / 'bin/m68k-amiga-elf-ld'), '-Ttext=0x10000', '-e', '_start',
                     '-o', str(elf), *(str(p) for p in objects), str(out / 'program.o'), *(str(p) for p in tail_objects), str(out / 'rep.o'), *extra], check=True)
-    return elf
+    try:
+        out.rename(final)
+    except OSError:
+        if not (final / 'swotl.elf').exists():
+            raise
+        shutil.rmtree(out)
+    return final / 'swotl.elf'

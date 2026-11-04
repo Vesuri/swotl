@@ -94,6 +94,19 @@ void rt_video_frame(void);
 void rt_int10(void);
 void maybe_field(void);
 #define RT_FIELD_POINT() maybe_field()
+struct vram_row { uint16_t lo, hi; };
+extern struct vram_row rt_vram_rows[200];
+extern uint16_t rt_vram_top, rt_vram_bottom, rt_vdrv_depth;
+void rt_vram_stray(void) __attribute__((noreturn));
+struct rt_ega_regs {
+    uint8_t seq_index, map_mask, gc_index, set_reset, enable_set_reset, color_compare,
+            data_rotate, read_map, mode, misc, color_dont_care, bit_mask;
+    uint8_t latch[4];
+    uint8_t attr[16], overscan;
+};
+extern uint8_t *rt_ega_planes;
+extern struct rt_ega_regs rt_ega_regs;
+void rt_ega_mode(void);
 '''
 VIDEO_PLATFORM = r'''
 #pragma once
@@ -102,6 +115,8 @@ struct plat_rect { uint16_t x0, y0, x1, y1; };
 void plat_present(const uint8_t *frame, const struct plat_rect *rects, int32_t n);
 void plat_palette(const uint8_t *dac);
 void plat_service(void);
+void plat_present_ega(const uint8_t *planes, const struct plat_rect *rects, int32_t n);
+void plat_palette_ega(const uint8_t *colours);
 '''
 VIDEO_HARNESS = r'''
 #include <assert.h>
@@ -110,10 +125,13 @@ VIDEO_HARNESS = r'''
 #include <string.h>
 #include "runtime.h"
 #include "platform.h"
-struct vram_row { uint16_t lo, hi; };
-extern struct vram_row rt_vram_rows[200];
-extern uint16_t rt_vram_top, rt_vram_bottom, rt_vdrv_depth;
 void rt_video_publish(void);
+/* Mode 13h only: the EGA path is never taken. */
+uint8_t *rt_ega_planes;
+struct rt_ega_regs rt_ega_regs;
+void rt_ega_mode(void) { abort(); }
+void plat_present_ega(const uint8_t *planes, const struct plat_rect *rects, int32_t n) { abort(); }
+void plat_palette_ega(const uint8_t *colours) { abort(); }
 static uint8_t memory[0x110000];
 uint8_t *rt_guest = memory + 0x10ffff;
 struct rt_regs rt_r;

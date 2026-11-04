@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage reference-ega-explore sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-all test-amiga test-amiga-replay test-amiga-replay-plant test-amiga-restore test-amiga-keyboard test-amiga-workbench amiga amiga-sync amiga-release smoke smoke-release whdload test-whdload install-data test-install-data release release-check github-release test-release-installer size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage reference-ega-explore sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-ega test-host-all test-amiga test-amiga-replay test-amiga-replay-plant test-amiga-restore test-amiga-keyboard test-amiga-workbench amiga amiga-sync amiga-release smoke smoke-release whdload test-whdload install-data test-install-data release release-check github-release test-release-installer size clean
 
 PYTHON ?= python3
 # AmigaXDev's shared Python package (amigaxdev.dos.mz_info).
@@ -38,6 +38,7 @@ help:
 	@echo "  make host               link generated program + runtime for Unicorn 68020 -> build/host/swotl.elf"
 	@echo "  make test-host          run it from the MZ entry to milestones m1-m3 against the reference"
 	@echo "  make test-host-all      the same to every milestone, m1-m7, and coverage c6-c10, c12, c13"
+	@echo "  make test-host-ega      the EGA version to the provisional ega- references (ecs-plan E4)"
 	@echo "  make test-amiga         m1b-logo on the A1200 model (FS-UAE + GDB capture, amiga/milestone.gdb.in; AMIGA_CPU=68030)"
 	@echo "  make test-amiga-workbench  Workbench start from the icon (tool types, drawer, result) and the Shell result"
 	@echo "  make gates              the step gates: test, sabotage, host milestones, Amiga, smoke and restoration"
@@ -567,6 +568,14 @@ GATE_LAUNCH = $(if $(GATE_ISOLATED),$(PYTHON) "$(CURDIR)/tools/gate_launch.py",)
 
 test-host: host
 	@$(MAKE) -s -k -j$(JOBS) $(HOST_MILESTONES:%=t-host-%)
+
+# EGA host lockstep (docs/ecs-plan.md E4): the provisional references (E5a);
+# E7 sets the gate set (D7)
+HOST_EGA = ega-m1-mode0eh ega-m1b-logo ega-m2-choose-side ega-m4-demo-frames ega-m5-player-flight
+t-ega-%:
+	$(call RUN,host-ega-$*,$(PYTHON) tests/host_run.py --table reference/milestones-ega.csv --milestone ega-$* --timeout 2400)
+test-host-ega: host
+	@$(MAKE) -s -k -j$(JOBS) $(HOST_EGA:ega-%=t-ega-%)
 
 # Long scenarios first: the tail of the R31 host-all run, c52 longest.
 # More wall time accommodates contention; every endpoint/comparison is unchanged.
