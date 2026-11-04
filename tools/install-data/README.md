@@ -18,5 +18,5 @@ three Air Combat Classics floppies (`Disk1-3.img` FAT12 images or
 
 Source `amiga/env.sh`, then `make -C tools/install-data amiga` (68020,
 freestanding, no unresolved symbols) or `make -C tools/install-data test`
-(host: the 539 files against the original DOS ACC install, sources, refusals,
+(host: the 535 files against the original DOS ACC install, sources, refusals,
 cleanup, cancel). Test inputs are local: `ACC_IMAGES`, `ACC_REFERENCE`, `TFH_RSC`.

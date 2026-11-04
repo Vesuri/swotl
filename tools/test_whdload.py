@@ -23,6 +23,7 @@ VBR of a 68020) ends it with COREDUMP and the dump is judged:
   - the prerendered effects' cache (sfx.cache, docs/sound-plan.md R4) was
     written through kickfs, whole: its header's count of effects (27 for FM,
     1 with TFH) and the file's length agree.
+run mode passes NOWRITECACHE, as the ReadMe asks of 8 MiB machines (exit hang).
 The MemFree slave's low-water marks (Chip, Fast) are read from its $100 slot.
 --installed runs an installed SWotL drawer as it is (slave, data/SWotL, data).
 --setup a1200-040: full 68040 with its MMU and FPU, JIT off, on $FSUAE_MMU;
@@ -94,9 +95,11 @@ def main():
     p.add_argument('--whdload-mmu', action='store_true', help="WHDLoad's MMU option (68030)")
     p.add_argument('--rom', type=Path, default=KICK31)
     p.add_argument('--fast', type=int, default=8192, help='host Fast RAM in KiB')
+    p.add_argument('--z3', type=int, default=0, help='Zorro III Fast RAM in KiB (needs --cpu 68030 or later)')
     p.add_argument('--cpu', default='68020')
     p.add_argument('--ticks', type=int, default=3000, help='WHDLoad TIMEOUT in PAL fields (run)')
     p.add_argument('--no-preload', action='store_true')
+    p.add_argument('--option', action='append', default=[], help='extra WHDLoad option, e.g. FILELOG')
     p.add_argument('--seconds', type=int, default=600, help='host safety ceiling')
     args = p.parse_args()
     if args.installed:
@@ -133,13 +136,16 @@ def main():
     if not args.no_preload:
         options.append('PRELOAD')
     if args.mode == 'run':
-        options += ['COREDUMP', f'TIMEOUT={args.ticks}']
+        # Every run creates a file (sfx.cache, A.CBA, A.USA): with PreLoad on 8 MiB,
+        # WHDLoad 20.1's write cache hangs at exit (docs/whdload.md, Common failures).
+        options += ['COREDUMP', f'TIMEOUT={args.ticks}', 'NOWRITECACHE']
         if args.tfh:
             options.append('CUSTOM1=1')
         if args.analog:
             options.append('CUSTOM2=1')
     if args.whdload_mmu:
         options.append('MMU')
+    options += args.option
     command = 'WHDLoad SWotL.slave ' + ' '.join(options)
     print('Command:', command, flush=True)
     (boot / 's/WHDLoad.prefs').write_text('Expert\nReadDelay=0\n')
@@ -162,6 +168,7 @@ def main():
         emu = subprocess.Popen([fsuae, '--amiga_model=A1200', '--cpu=' + args.cpu,
             '--uae_cpu_model=' + args.cpu, *cpu, '--jit_compiler=0',
             '--chip_memory=2048', '--fast_memory=' + str(args.fast),
+            *(['--zorro_iii_memory=' + str(args.z3)] if args.z3 else []),
             '--kickstart_file=' + str(KICK31),
             '--hard_drive_0=' + str(boot), '--hard_drive_0_priority=10', '--hard_drive_1=' + str(game),
             '--floppy_drive_0=' + str(WORKBENCH), '--audio_driver=dummy',

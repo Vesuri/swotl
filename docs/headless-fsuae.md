@@ -90,5 +90,6 @@ once.
 | 68020 (`AMIGA_CPU` unset), 8 MiB Fast | the speed-plan measurement model ([speed-plan.md](speed-plan.md) §4) |
 
 Fast RAM is required (D15, [translator-design.md](translator-design.md)); the release's
-Chip/Fast budget is the slave's ([whdload.md](whdload.md), Memory): 2 MiB Chip, 8 MiB Fast host.
+Chip/Fast budget is the slave's ([whdload.md](whdload.md), Memory): 768 KiB Chip and 4 MiB Fast
+plus the Kickstart, on an A1200 (2 MiB Chip) with 8 MiB Fast.
 Never time with diagnostic Fast RAM as if it were the target.

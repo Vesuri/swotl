@@ -19,8 +19,9 @@ Current Amiga release: **1.0 (02.11.2026)**.
 - PAL or NTSC AGA Amiga, 68020 or better; **68030 or better recommended**. Flight is slow
   on a 68020; the world still runs at real-time speed. On a 68030, add the WHDLoad
   tooltype `MMU` so the data cache is used (68040 and 68060 use it without).
-- **2 MB Chip RAM and 8 MB Fast RAM**; about 12 MB Fast RAM lets PreLoad hold all
-  game files.
+- **2 MB Chip RAM and 8 MB Fast RAM**; with 8 MB, PreLoad holds all game files unless
+  other programs use more than about 1 MB of it. With 8 MB and PreLoad, add the WHDLoad
+  tooltype `NoWriteCache`: WHDLoad 20.1 can hang at exit and lose files the game created.
 - WHDLoad 17+, Installer 43+, and a supported Kickstart 3.1 image with its RTB.
 - The three 1.44 MB PC floppies of **Air Combat Classics** (LucasArts, 1993), which
   hold version 2.2, as `Disk1.img`–`Disk3.img` or as the files `CLASSICS.001`–`.003`.

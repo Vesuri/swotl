@@ -110,6 +110,13 @@
       (abort "This sfx.rsc is not supported. Select the file from the Amiga version of Their Finest Hour (108,002 bytes), not a PC version.")))
    (copyfiles (source (tackon #staging "sfx.rsc")) (dest #data) (help @copyfiles-help))
    (delete #staging (all) (optional "force") (help @delete-help))))
+; Files the game never opens (VGA and AdLib only), left by earlier installs:
+; not installed now, so PreLoad does not load them.
+(set #n 0)
+(while (< #n 4)
+  (set #unused (tackon #data (select #n "RTSEGA.OVL" "RTSTANDY.OVL" "SFXA.OVL" "SFX.SFX")))
+  (if (= (exists #unused) 1) (delete #unused (optional "force") (help @delete-help)))
+  (set #n (+ #n 1)))
 (copyfiles (source #exe) (dest #data) (newname "SWotL") (help @copyfiles-help))
 (copyfiles (source (tackon #source "SWotL.slave")) (dest #dest) (help @copyfiles-help))
 (copyfiles (source (tackon #source "SWotL.inf")) (dest #dest) (newname "SWotL.info") (help @copyfiles-help))

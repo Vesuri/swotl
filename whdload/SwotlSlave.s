@@ -8,10 +8,11 @@
         INCLUDE whdload.i
         INCLUDE whdmacros.i
 
-; Code, guest RAM and the EMS store need Fast RAM (D15); memory evidence:
-; docs/whdload.md, Memory.
-CHIPMEMSIZE = $200000
-FASTMEMSIZE = $480000
+; The smallest sizes that work (D15: code, guest RAM and the EMS store in Fast):
+; 640K Chip or $3C0000 Fast fail. Every byte also costs the host's PreLoad room
+; (WHDLoad backs up BaseMem in Fast). Measurements: docs/whdload.md, Memory.
+CHIPMEMSIZE = $C0000
+FASTMEMSIZE = $400000
 NUMDRIVES = 0
 WPDRIVES = 0
 BLACKSCREEN
@@ -34,6 +35,10 @@ slv_keyexit = $5f                 ; Help: the game's key table has no Help key
         INCLUDE whdload/kick31.s
 
 slv_CurrentDir dc.b "data",0
+; Not cached by WHDLoad (ws_DontCache): files read only once, at start (the
+; executable's LoadSeg, the guest EXE, the effect cache). Cached, they would
+; take the PreLoad room of files read during play.
+slv_DontCache dc.b "(SWotL|SWOTL.EXE|sfx.cache)",0
 slv_name dc.b "Secret Weapons of the Luftwaffe",0
 slv_copy dc.b "1991 Lucasfilm Games",0
 slv_info dc.b "Amiga port by Vesuri",10

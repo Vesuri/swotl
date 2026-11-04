@@ -117,10 +117,17 @@ static void exec_root(uint16_t psp_seg)
     uint8_t *image = rt_span_w(lin(load, 0), size);
     fail_read(plat_read(f, image, size), (int32_t)size);
     rt_span_order(image, size);
+    /* The relocations in 1 KiB reads: under WHDLoad each read of an uncached
+     * file is an OS switch (docs/whdload.md). */
+    enum { BLOCK = 256 };       /* relocations per read */
+    static uint8_t relocs[BLOCK * 4];
     plat_seek(f, HW(0x18), 0);
     for (uint16_t k = 0; k < HW(6); ++k) {
-        uint8_t r[4];
-        fail_read(plat_read(f, r, 4), 4);
+        if (k % BLOCK == 0) {
+            int32_t n = HW(6) - k < BLOCK ? HW(6) - k : BLOCK;
+            fail_read(plat_read(f, relocs, (uint32_t)n * 4), n * 4);
+        }
+        const uint8_t *r = relocs + k % BLOCK * 4;
         uint32_t a = lin(load + (r[2] | r[3] << 8), r[0] | r[1] << 8);
         wr16(a, rd16(a) + load);
     }

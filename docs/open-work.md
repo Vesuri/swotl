@@ -87,13 +87,7 @@ speed work: [speed-plan.md](speed-plan.md).
     page flip by pointers); ECS copper/palette (EGA 6-bit → 12-bit exact);
     AGA/ECS selection, slave, installer, FS-UAE ECS fixture. RTSEGA's own
     chunky-to-planar loop may need a native replacement (authorization).
-48. PreLoad (WHDLoad caches all of `data/`, directory order, until memory
-    runs out): preload only what the game uses. Leave never-used files
-    uninstalled: `HF/` (SWOTL.MNL, UPSHOT.EXE), RTSEGA/RTSTANDY/SFXA.OVL,
-    SFX.SFX, READ.ME, FILE_ID.DIZ, sw.bat (420,975 bytes; DOSBox trace
-    opens, 98 runs; no game code names them). Investigate keeping the
-    1,381,812-byte `SWotL` out of the preload cache: it is LoadSeg'd once
-    but stays cached, ~all of the budget on 8 MiB Fast (whdload.md).
+    The installer leaves out RTSEGA.OVL (unused under VGA; release.md).
 
 ## User report (A1200, 68060, 2026-10-29)
 

@@ -16,7 +16,7 @@
 #define CATALOG 1204461UL       /* CLASSICS.001: archive data, then the catalog */
 #define RECORD 55
 #define RECORDS 808
-#define SWOTL_FILES 539         /* product 1, minus the DOS installer files */
+#define SWOTL_FILES 535         /* product 1, minus the DOS installer files and UNUSED */
 #define SFX_SIZE 108002UL
 
 static const uint32_t volume_size[VOLUMES]={1251008UL,1457152UL,481082UL};
@@ -47,6 +47,16 @@ static uint32_t le32(const unsigned char *p)
 { return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24; }
 static unsigned le16(const unsigned char *p) { return p[0]|(unsigned)p[1]<<8; }
 static int eq(const char *a,const char *b) { return strlen(a)==strlen(b) && !memcmp(a,b,strlen(a)); }
+/* Never opened by the port (VGA and AdLib only): the EGA, Tandy and PC-speaker
+ * drivers and the speaker effects. Not installed, so PreLoad skips them. */
+static const char *const unused[]={"RTSEGA.OVL","RTSTANDY.OVL","SFXA.OVL","SFX.SFX"};
+static int skipped(const char *name)
+{
+    unsigned k;
+    if(eq(name,"INSTALL.EXE") || eq(name,"INSTALL2.BAT") || eq(name,"READ.ME")) return 1;
+    for(k=0;k<sizeof unused/sizeof *unused;k++) if(eq(name,unused[k])) return 1;
+    return 0;
+}
 static int lower_eq(const char *a,const char *b)
 {
     while(*a && *b) { char x=*a++,y=*b++; if(x>='A' && x<='Z')x+=32; if(y>='A' && y<='Z')y+=32; if(x!=y)return 0; }
@@ -217,7 +227,7 @@ int install_data(const char *source,const char *dest,const char *temp)
         if(e[0]!=0x1c || e[5]!=0xf0) goto done;
         if(le16(e+39)!=1) continue;                      /* BattleHawks, Their Finest Hour */
         memcpy(name,e+6,13); name[13]=0;
-        if(eq(name,"INSTALL.EXE") || eq(name,"INSTALL2.BAT") || eq(name,"READ.ME")) continue;
+        if(skipped(name)) continue;
         disk=e[32]; dir=le16(e+51); comp=le32(e+20); size=le32(e+35);
         if(disk<1 || disk>VOLUMES || dir<1 || dir>6 || !strlen(name) || files>=SWOTL_FILES) goto done;
         for(d=0;name[d];d++) if(!((name[d]>='A' && name[d]<='Z') || (name[d]>='0' && name[d]<='9') || name[d]=='.' || name[d]=='-' || name[d]=='_')) goto done;
@@ -236,7 +246,7 @@ int install_data(const char *source,const char *dest,const char *temp)
         files++;
     }
     if(files!=SWOTL_FILES) goto done;
-    ok=1; io_message("Installed 539 Secret Weapons of the Luftwaffe 2.2 files.");
+    ok=1; io_message("Installed 535 Secret Weapons of the Luftwaffe 2.2 files.");
 done:
     io_close(&out);
     for(v=0;v<VOLUMES;v++) io_close(&volume[v].f);

@@ -13,8 +13,10 @@ existing), replace (images over a damaged install), remove, bad-disks
 script, as the whdload.de archive: asked for), wrong-exe (a 0.9 SWotL beside
 it: getversion refuses it, asked for). The answer is the release executable; an
 archive without SWotL (--archive of the whdload.de one) asks in every mode. SWotLInstallData runs on the emulated 68020; installed game files
-must equal the original DOS ACC install, pilots and films must survive Keep
-and Replace, and a refused source must leave the install as it was.
+must equal the original DOS ACC install without the files the port never
+opens (test_install.py UNUSED; an earlier install's copies are removed),
+pilots and films must survive Keep and Replace, and a refused source must
+leave the install as it was.
 Inputs are local: ACC images, the DOS ACC install and TFH sfx.rsc (as
 tools/install-data/test_install.py), Installer 43, WHDLoad, Kickstart 3.1,
 the Workbench floppy. Each emulator is stopped by its own PID.
@@ -31,7 +33,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools/install-data'))
-from test_install import IMAGES, REFERENCE, SKIPPED, TFH_RSC, fat12_file  # noqa: E402
+from test_install import IMAGES, REFERENCE, SKIPPED, TFH_RSC, UNUSED, fat12_file  # noqa: E402
 from test_install import tree as host_tree  # noqa: E402
 from package_release import PREFIX, members  # noqa: E402
 
@@ -141,6 +143,8 @@ def fixture(mode, base):
         for name, path in REFERENCE_FILES.items():
             (data / name).parent.mkdir(exist_ok=True)
             shutil.copyfile(path, data / name)
+        for name in UNUSED:     # installed by earlier releases; removed on success
+            shutil.copyfile(REFERENCE / name, data / name)
         (data / 'PILOT.PLT').write_bytes(PILOT)
         (data / 'A.RPY').write_bytes(PILOT)
         if mode in ('keep', 'replace'):
@@ -206,7 +210,7 @@ def check(mode, base):
         # Refused before anything was copied: the earlier install is unchanged.
         assert not (data / 'SWotL').exists() and not (dest / 'SWotL.slave').exists()
         files = {k: p for k, p in tree(data).items() if k not in ('PILOT.PLT', 'A.RPY')}
-        assert files.keys() == REFERENCE_FILES.keys()
+        assert files.keys() == REFERENCE_FILES.keys() | UNUSED
         assert (data / 'PILOT.PLT').read_bytes() == PILOT
         return
     files = tree(data)

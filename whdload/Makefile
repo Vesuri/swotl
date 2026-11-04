@@ -31,6 +31,11 @@ $(OUT)/TourTest.slave: VASMFLAGS += -DTOUR=1
 $(OUT)/SWotL.slave $(OUT)/SwotlTest.slave $(OUT)/MemFree.slave $(OUT)/CampaignTest.slave $(OUT)/TourTest.slave $(OUT)/BootTest.slave $(OUT)/LoadTest.slave: SwotlSlave.s FORCE
 	@mkdir -p $(OUT)/include/lvo
 	@for lib in dos exec graphics expansion; do ln -sf "$(NDK)/lvo/$${lib}_lib.i" "$(OUT)/include/lvo/$$lib.i"; done
+	@# kick31.s leaves ws_DontCache 0; this copy, found first, points it at slv_DontCache.
+	@mkdir -p $(OUT)/include/whdload
+	sed 's/dc\.w[[:space:]]*0\([[:space:]]*;ws_DontCache\)/dc.w	slv_DontCache-slv_base\1/' \
+		"$(WHDLOAD)/Src/sources/whdload/kick31.s" > $(OUT)/include/whdload/kick31.s
+	grep -q 'slv_DontCache-slv_base' $(OUT)/include/whdload/kick31.s
 	$(VASM) -m68020 -pic -x -devpac -Fhunkexe -nosym $(VASMFLAGS) -I$(OUT)/include -I"$(WHDLOAD)/Include" -I"$(WHDLOAD)/Src/sources" -I"$(NDK)" -o $@ $<
 
 # The smoke slave is AmigaXDev's shared one with this project's name (smoke_name.i).

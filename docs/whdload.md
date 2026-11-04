@@ -2,7 +2,8 @@
 
 Lessons from the sibling slaves, with SWOTL's use. Source:
 `whdload/SwotlSlave.s` (`make whdload` → `build/whdload/`); test:
-`tools/test_whdload.py` (`make test-whdload`). Provenance: `Sl` Slicks, `Ve` Vette, `Rv` Revs, `Po`
+`tools/test_whdload.py` (`make test-whdload`; `--option` passes WHDLoad options, `--z3` adds
+Zorro III Fast); PreLoad contents: `tools/whdload_preload.py`. Provenance: `Sl` Slicks, `Ve` Vette, `Rv` Revs, `Po`
 Pokeri, `RoF` Rescue on Fractalus, `P2` Prince of Persia 2 (each project's `docs/whdload*.md` and
 `whdload/*.s`; the merged rules are in AmigaXDev `docs/playbooks/new-port-playbook.md` §13), `SDK` `~/.local/share/amiga/WHDLoad` (`Src/sources/whdload/kick.readme`,
 `Docs/en/{howto,opt,cache}.html`). Release packaging: [release.md](release.md).
@@ -75,8 +76,9 @@ Pokeri, `RoF` Rescue on Fractalus, `P2` Prince of Persia 2 (each project's `docs
 | Size from measurement: `MEMFREE = $200` tune slave (largest free chunk at `$200` chip / `$204` fast, sampled only at AllocMem) or gdb free-list walk | RoF §2, Rv, Po |
 | Enhanced/optional paths need their own measurement (RoF: 52 KiB chip left → silent bitmap alloc failure) | RoF §1 |
 | Checker asserts exact slave chip/exp sizes so drift is caught | Po |
-| SWOTL: `CHIPMEMSIZE = $200000`, `FASTMEMSIZE = $480000` (D15: code + guest RAM + EMS store exceed 2 MiB Chip; the store backs the 35 EMS pages the game allocates, runtime.h). MemFree slave, A1200/68020 + 8 MiB Fast, 3,000 fields (attract run into flight), 2026-11-03: lowest largest free Fast 593,936 bytes (FM) / 797,032 (TFH), Chip 1,380,904 (FM) / 1,699,320 (TFH); at `$600000` Fast 2,166,800 (FM) / 2,369,896 (TFH). Host needs 8 MiB Fast | — |
-| SWOTL PRELOAD on 8 MiB Fast is partial: `Avail` before WHDLoad (A1200, 68EC020, KS 3.1, WB 2.04 C:) 8,270,072 free Fast; ExpMem 6,815,744 (now 5,242,880); data drawer 5,114,353 bytes in 546 files (with `sfx.rsc`). Preload stops at the first file that does not fit, so the files the game opens during the Lucasfilm Games logo (59 files, 750 KB, each opened twice; gdb on `plat_open` to frame 2000) mostly load through OS switches. All files preload from about 12 MB Fast; a 68EC020 tops out at 8 MiB Zorro II, 2026-10-28 | — |
+| SWOTL: `CHIPMEMSIZE = $C0000`, `FASTMEMSIZE = $400000` (D15: code + guest RAM + EMS store in Fast; the store backs the 35 EMS pages the game allocates, runtime.h), the smallest that work. MemFree variants (`-DMEMFREE=$100`, low-water largest free chunks in the core dump at $100/$104), A1200/68020 + 8 MiB Fast, 2026-11-04: attract into flight (3,000 fields) FM Chip 70,184 / Fast 68,560, TFH 388,600 / 271,656; Campaign and Tour scripts (15,000 fields, saves) 70,184 / 68,272. Fail: `$A0000` Chip (FM effects do not fit, Chip 17,816), `$3C0000`–`$3F0000` Fast (effect cache not written: at `$3F0000` its 465 KiB image fits, Fast 2,736, the `Write` fails; below, the image allocation fails; menu exit, `NOWRITECACHE`). At `$100000`/`$480000` FM Fast 593,936, TFH 797,032. Host needs 8 MiB Fast | — |
+| WHDLoad's host Fast holds ExpMem, a backup of all of BaseMem (`FullChip` widens it to all Chip) and the file cache; PreLoad stops at the first file that does not fit. Files in `ws_DontCache` are never cached; each read of an uncached file is an OS switch, so they must be read in few large reads. kick31.s hard-codes `ws_DontCache` 0: the build copies it to `build/whdload/include` with the field pointed at `slv_DontCache` | SDK |
+| SWOTL PreLoad: `ws_DontCache` `(SWotL\|SWOTL.EXE\|sfx.cache)`, the files read once at start (LoadSeg: 65 reads; `exec_root` reads relocations in 1 KiB blocks); the installer leaves out the four files the port never opens (release.md). Installed drawer (TFH, 536 files without SWotL, 3,312,268 bytes), `tools/whdload_preload.py`, A1200/68020, KS 3.1, 8 MiB Fast, 2026-11-04: at `$C0000`/`$400000` only those files are read after the preload; margin (variants with larger ExpMem) full at +1 MiB, partial at +1.25 MiB (36 game files read after it). Other sizes, game files read after: `$100000`/`$480000` 0 (full at +384 KiB), `$180000` 36, `$200000` 45; 1.0 (`$200000`, only `SWotL` uncached) 53, at 9 MiB 33, 10 MiB 0. `$100000`/`$480000` stops the 68030 `MMU` option on 8 MiB (rc 10 before the game, no dump, no requester): WHDLoad lacks under 256 KiB of host Fast (`$440000` Fast passes, as do 16 MiB more Fast and no PreLoad). PreLoad takes the whole drawer whatever the sound mode. `Avail` before WHDLoad: 8,270,072 free Fast (2026-10-28) | — |
 
 ## Caches (68020)
 
@@ -106,9 +108,10 @@ Pokeri, `RoF` Rescue on Fractalus, `P2` Prince of Persia 2 (each project's `docs
 | `WHDLF_NoError`: `resload_SaveFile`/`LoadFile` return only on success (error requester otherwise); use `resload_GetFileSize` for optional files | RoF §6 |
 | resload names relative to the slave's data dir | RoF §6 |
 | Creating **new** files via write cache hung at exit in low-memory fixtures; Installer pre-creates fixed-size save slots, game refuses if missing | Po |
+| WHDLoad 20.1 [build 7190] exit hang: the "dircache clearing" walk (after "clock restored") loops on an entry flagged 1 at +232 without advancing; the entry is a file the game created that is still in the write cache, so it never reaches disk and `COREDUMP` writes nothing. Nothing in the loop clears the flag. `NoWriteCache` (option or tooltype only; no slave flag) avoids it. Found from gdb stops in WHDLoad's code and a Chip/Fast dump | SWOTL, Ferrari F1 |
 | `CBSWITCH` callback: no stack, return via `jmp (a0)`, only D0/D1 clobberable — useful to count OS switches in tests | Sl |
 | `IOCACHE` sizes the kickfs per-file cache (≥ savegame size) | SDK kick.readme |
-| PRELOAD in icon; no `NoWriteCache`/`NoVBRMove` needed | Sl, Po |
+| PRELOAD in icon; no `NoWriteCache`/`NoVBRMove` needed (SWOTL on 8 MiB: `NoWriteCache`, exit hang below) | Sl, Po |
 | F10/QuitKey is immediate: cannot run deferred saves; normal game exit must save | Sl, Ve, Po |
 | QuitKey and `TIMEOUT` need moved VBR (68010+); harmless for A1200 | RoF §1, Rv |
 
@@ -143,4 +146,5 @@ Pokeri, `RoF` Rescue on Fractalus, `P2` Prince of Persia 2 (each project's `docs
 | `_program_err` | `slv_CurrentDir` vs Installer `#sub-dir` disagree on where exe lives | RoF §5 |
 | Error requester on save | `WHDLF_NoError` + full/write-protected drawer | RoF §6 |
 | Exit hang | new-file creation via write cache, low memory | Po |
+| Exit hang, empty Workbench screen, no core dump, the new file lost | WHDLoad 20.1 dircache walk on a new file still in the write cache (above). SWOTL, A1200/68020, 8 MiB Fast, PreLoad, `$C0000`/`$400000`, 2026-11-04: any file created during the run, on the game-menu exit as on `TIMEOUT`: `sfx.cache` at the first start, the 540-byte pilot `A.USA` (TourTest) with `sfx.cache` present; a run that creates nothing exits. Passes: `NOWRITECACHE`, no PreLoad, 68030 with 8 MiB more Z3 Fast (1 run). Still hangs: ExpMem `$3D0000`–`$3F0000`, Chip `$B0000`, WHDLoad output to `NIL:`, `CONFIGDELAY=0`. ReadMe tells 8 MiB users to set the `NoWriteCache` tooltype, and `test_whdload.py --mode run` passes `NOWRITECACHE` (user decisions) | SWOTL |
 | Run never ends in test | QuitKey/TIMEOUT unseen on 68000 (no moved VBR) | Rv |
