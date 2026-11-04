@@ -20,6 +20,7 @@ not.
 from __future__ import annotations
 
 import csv
+import fcntl
 import hashlib
 import fixture_inputs
 import subprocess
@@ -114,11 +115,15 @@ def main() -> int:
         results.append(row)
         print(f"{m['name']:16} {'FAIL ' + '; '.join(problems) if problems else 'ok'}  "
               f"icount={row['icount']} ram={row['ram']} vram={row['vram']}", flush=True)
-    merged = {**previous, **{r["name"]: r for r in results}}
-    with hashes.open("w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["name", "icount", "ram", "vram", "dac"])
-        w.writeheader()
-        w.writerows(merged.values())
+    with open(hashes.with_suffix(".lock"), "w") as lock:  # parallel shards merge safely
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if hashes.exists():
+            previous = {r["name"]: r for r in csv.DictReader(hashes.open())}
+        merged = {**previous, **{r["name"]: r for r in results}}
+        with hashes.open("w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=["name", "icount", "ram", "vram", "dac"])
+            w.writeheader()
+            w.writerows(merged.values())
     return 1 if failed else 0
 
 

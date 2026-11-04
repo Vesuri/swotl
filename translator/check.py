@@ -21,7 +21,7 @@ from . import gen, image
 
 HAND = ("src", "amiga")
 SOURCES = {".c", ".cc", ".cpp", ".h", ".hpp", ".s", ".asm", ".i", ".inc"}
-MODULES = "|".join(re.escape(m.split(".")[0]) for m in image.SCOPE + image.M.OUT_OF_SCOPE)
+MODULES = "|".join(re.escape(m.split(".")[0]) for m in image.M.SCOPE + image.M.OUT_OF_SCOPE)
 # Identifiers that name a guest address: generated-label style, IDA/Ghidra style,
 # seg_off pairs, or a module name followed by an offset.
 GUEST_NAME = re.compile(

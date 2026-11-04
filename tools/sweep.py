@@ -2,7 +2,8 @@
 """Recursive-descent sweep of the root and in-scope overlays (plan step 2.4).
 
 Seeds: MZ entry, PLINK thunk targets, every traced instruction start
-(union of tmp/pc-runs/ref-*), traced indirect targets. Follows fall-through,
+(union of tmp/pc-runs/ref-*), traced indirect targets (hardware interrupt entries only from traces
+recorded with poll points). Follows fall-through,
 near/far direct jumps and calls; stops at returns and indirect jumps; never
 sweeps linearly. Far targets resolve through the link layout: own module,
 root, else the single in-scope overlay owning the link address, else the
@@ -294,6 +295,11 @@ def main() -> int:
     hw = {(r["target_module"], int(r["target_offset"], 16))
           for r in M.csv_rows(traces, "interrupts.csv") if r["type"] == "0"}
     edge_set = M.edges(traces)
+    # An interrupt can land right after an indirect site; with poll points (summary
+    # polls=) only where the translator polls too. Interrupt-entry targets come from
+    # polled traces only, so unpolled exploration runs (ecs-plan D1) add none.
+    polled = M.edges([t for t in traces if "polls=" in (t / "summary.txt").read_text()])
+    edge_set = {e for e in edge_set if (e[2], e[3]) not in hw or e in polled}
     bases = {n: {0 if n == M.ROOT else m.link_seg} for n, m in mods.items()}
     bases[M.ROOT].add(M.mz(M.REF / M.ROOT)[2][0])  # MZ entry CS
     while True:  # segment bases come from decoded far references; iterate to a fixpoint

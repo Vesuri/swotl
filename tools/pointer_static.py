@@ -18,6 +18,16 @@ From the original modules (ref/), the decoded instructions (build/gen/*.ir,
   the row table at cs:35FC equal to 320 y, so buffer byte r w + c is the
   screen byte 320 (y0 + r) + x0 + c of every pixel the draw writes (rows 0-199,
   columns 0-319); the draw's segment (ds:284C) is A000h;
+- EGA (ecs-plan E2): the EGA entries (index 0) are RTSEGA's save, restore and
+  draw. Logical x is two hires pixels (bit masks cs:32B0 C0h, 30h, 0Ch, 03h by
+  x & 3; save/restore address byte x2 / 8 with cs:32B4 80h..01h), rows come from
+  cs:3120 = 80 y, the screen is the draw page (ds:287C). Save reads the four
+  planes (read map 3..0) per hires pixel into nibbles, high nibble first: the
+  buffer holds w bytes per row (2w hires pixels). Restore and draw write through
+  write mode 2 (`xchg es:[di]` with the bit mask set), so a pixel takes the low
+  nibble of its byte: shape colour FEh shows as Eh, FDh stays transparent;
+  ega census: in each mode 0Eh snapshot the pointer's pixels in the draw page
+  have that colour where the pointer is complete;
 - annotations/pointer.csv names exactly these words and the tracker's bounds
   (0320:0CFC) (the runtime's addresses);
 - census: in each snapshot whose pointer is complete in VGA memory, no pixel
@@ -55,6 +65,16 @@ DRIVER_TABLES = {"save": 0x06C0, "restore": 0x06CC, "draw": 0x06D8}
 VGA_INDEX = 8
 DRIVER = {"save": 0x40E6, "restore": 0x4138, "draw": 0x4184}   # RTSVGA module offsets
 ROW_TABLE = 0x35FC                # RTSVGA cs offset (module offset - 20h)
+EGA_INDEX = 0
+EGA_DRIVER = {"save": 0x52C0, "restore": 0x535D, "draw": 0x53E2}   # RTSEGA module offsets
+EGA_ROW_TABLE, EGA_PAIR_MASKS, EGA_BIT_MASKS = 0x3120, 0x32B0, 0x32B4   # RTSEGA cs offsets
+EGA_PAGE = 0x287C                 # ds: draw page segment
+EGA_PAGES = 0x2882                # ds: page segments A000h, A400h
+EGA_SIGNATURES = {
+    0x531E: bytes.fromhex("ef" "268a3d" "22fd" "f6df" "d1c3" "fecc" "79f2"),  # save: read map 3..0
+    0x53B9: bytes.fromhex("8a1c" "d0eb" "d0eb" "d0eb" "d0eb" "eb06" "8a1c" "80e30f" "46" "26861d"),
+    0x5442: bytes.fromhex("8a1c" "80fbfd" "7404" "ef" "26861d"),   # draw: FDh skipped, write mode 2
+}
 # The routines' inner loops (module offset: bytes), x86 as decoded in the IR.
 SIGNATURES = {
     0x4122: bytes.fromhex("268a05" "8804" "47" "46" "e2f7"),   # save: es:[di] -> [si], w per row
@@ -181,6 +201,69 @@ def check_driver(mods, dg: bytes) -> list[str]:
     return problems
 
 
+def check_driver_ega(mods, dg: bytes) -> list[str]:
+    problems = []
+    thunks = {a: (name, off) for a, name, off in M.thunks(mods)}
+    for kind, table in DRIVER_TABLES.items():
+        off, seg = struct.unpack_from("<HH", dg, table + EGA_INDEX)
+        target = thunks.get(seg * 16 + off)
+        if target != ("RTSEGA.OVL", EGA_DRIVER[kind]):
+            problems.append(f"EGA {kind} entry {seg:04X}:{off:04X} is {target}, not RTSEGA+{EGA_DRIVER[kind]:04X}")
+    m = mods["RTSEGA.OVL"]
+    rts, cs = m.data, m.code_start
+    for off, sig in EGA_SIGNATURES.items():
+        if rts[off:off + len(sig)] != sig:
+            problems.append(f"RTSEGA+{off:04X}: {rts[off:off + len(sig)].hex()} is not {sig.hex()}")
+    rows = struct.unpack_from("<200H", rts, cs + EGA_ROW_TABLE)
+    if any(r != 80 * y for y, r in enumerate(rows)):
+        problems.append("RTSEGA row table is not 80 y")
+    if rts[cs + EGA_PAIR_MASKS:cs + EGA_PAIR_MASKS + 4] != bytes((0xC0, 0x30, 0x0C, 0x03)):
+        problems.append("RTSEGA pair masks are not C0h, 30h, 0Ch, 03h")
+    if rts[cs + EGA_BIT_MASKS:cs + EGA_BIT_MASKS + 8] != bytes(0x80 >> i for i in range(8)):
+        problems.append("RTSEGA bit masks are not 80h..01h")
+    return problems
+
+
+def snapshot_ega(path: Path):
+    """(DGROUP bytes, 4 planes of the draw page) of a mode 0Eh snapshot, else None
+    (also before RTSEGA set its pages)."""
+    data = [line.split(",") for line in (path / "residency.csv").read_text().splitlines()[1:]]
+    para = next((int(first, 16) for first, _, module, _ in data if module == "DATA.OVL"), None)
+    if para is None or "vga_mode=0e" not in (path / "regs.txt").read_text():
+        return None
+    ram = (path / "ram.bin").read_bytes()
+    base = (para + DGROUP_PARAS) * 16
+    dg = ram[base:base + 0x10000]
+    if word(dg, EGA_PAGE) not in (word(dg, EGA_PAGES), word(dg, EGA_PAGES + 2)) or word(dg, EGA_PAGES) != 0xA000:
+        return None               # before RTSEGA's page table (ds:2882 = A000h, A400h) is set
+    page = (word(dg, EGA_PAGE) - 0xA000) * 16
+    vram = (path / "vram.bin").read_bytes()
+    planes = [bytes(vram[(page + a) * 4 + p] for a in range(16000)) for p in range(4)]
+    return dg, planes
+
+
+def check_census_ega(snaps) -> tuple[list[str], int]:
+    """Pointer pixels (logical x = hires 2x, 2x + 1) in the draw page have colour & 0Fh."""
+    problems, screens = [], 0
+    for name, snap in snaps:
+        if snap is None:
+            continue
+        dg, planes = snap
+        pixels = pointer_pixels(dg)
+        if not pixels:
+            continue
+        def colour(o, half):
+            y, x = divmod(o, 320)
+            hx = 2 * x + half
+            return sum(((planes[k][y * 80 + hx // 8] >> (7 - hx % 8)) & 1) << k for k in range(4))
+        good = [all(colour(o, h) == p & 0x0F for h in (0, 1)) for o, p in pixels.items()]
+        if all(good):
+            screens += 1
+        elif any(good) and sum(good) * 2 > len(good):
+            problems.append(f"{name}: {len(good) - sum(good)} of {len(good)} EGA pointer pixels differ")
+    return problems, screens
+
+
 def snapshot(path: Path):
     """(DGROUP bytes, chained mode 13h screen bytes) of a reference snapshot;
     None before DATA.OVL is loaded or outside mode 13h."""
@@ -249,7 +332,8 @@ def main() -> int:
     ids, problems = shape_ids(insns)
     with (REPO / "annotations/pointer.csv").open() as f:
         rows = list(csv.DictReader(f))
-    problems += check_shapes(dg, ids) + check_writers(insns) + check_driver(mods, dg) + check_annotation(rows)
+    problems += check_shapes(dg, ids) + check_writers(insns) + check_driver(mods, dg) + check_driver_ega(mods, dg) \
+        + check_annotation(rows)
     for n, (w, h, hx, hy, image, _) in shapes(dg, ids).items():
         print(f"shape {n}: {w}x{h} hotspot ({hx}, {hy}) image ds:{image:04X}")
     paths = sorted(p for run in sorted((REPO / "tmp/pc-runs").glob(args.runs))
@@ -257,6 +341,9 @@ def main() -> int:
     found, screens = check_census((p.name, snapshot(p)) for p in paths)
     problems += found
     print(f"census: {len(paths)} snapshots, {screens} with the pointer complete")
+    found, screens = check_census_ega((p.name, snapshot_ega(p)) for p in paths)
+    problems += found
+    print(f"ega census: {screens} mode 0Eh snapshots with the pointer complete")
     for p in problems:
         print("FAIL:", p)
     if not paths:

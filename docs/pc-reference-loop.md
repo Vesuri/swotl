@@ -152,11 +152,13 @@ All nine in-scope overlays are captured and pass the image proof.
 EGA ([ecs-plan.md](ecs-plan.md)): `reference/milestones-ega.csv` and
 `reference/coverage-ega.csv` are the VGA rows prefixed `ega-` with launch
 `swotl E S 5 N Y Y 64`, `RTSEGA.OVL` for `RTSVGA.OVL` and mode `0E`
-(`c26-exit-usage` loads no driver and is left out). `ega-m1-mode0eh` is
+(`c26-exit-usage` loads no driver and `c7-demo-dispatch`'s +EC60 is VGA-only:
+left out; `ega-c20`, `-c22`, `-c23` expect NOTCAMP, the in-flight map they end on). `ega-m1-mode0eh` is
 `RTSEGA.OVL+4874` (after INT 10h AX=000Eh), `ega-m1b-logo` `RTSEGA.OVL+48E9`
 (palette DS:2897 restored over the logo). `make reference-ega-explore
 [EGA_RUNS=...]` runs them without poll points (`reference.py --explore`, hashes in
-`tmp/reference-hashes-explore.csv`). `snap_png.py` draws mode 0Eh: plane p of byte a
+`tmp/reference-hashes-explore.csv`); `sweep.py` takes no interrupt-entry targets from
+these unpolled traces. `snap_png.py` draws mode 0Eh: plane p of byte a
 is `vram.bin[a·4+p]`, from the CRTC start, through the attribute palette.
 
 Coverage scripts: `reference/coverage.csv`, run by `make coverage` (same

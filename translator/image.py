@@ -12,7 +12,7 @@ sys.path.insert(0, str(REPO / "tools"))
 import swotl_model as M  # noqa: E402
 
 ANNOTATIONS = REPO / "annotations"
-SCOPE = M.SCOPE
+SCOPE = [n for n in M.SCOPE if n not in M.NOT_TRANSLATED]
 
 
 def load(ref: Path = M.REF) -> dict[str, M.Module]:

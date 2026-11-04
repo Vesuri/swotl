@@ -72,6 +72,10 @@ speed work: [speed-plan.md](speed-plan.md).
     flag bits in pushed images under the remaining `annotations/flags.csv`
     pair).
 
+49. `reference/coverage.csv` c20, c22, c23 expect FLIGHT resident, but their key
+    scripts end on the in-flight map (NOTCAMP; c28 builds on that); `make coverage`
+    reports them. Changing the rows needs approval.
+
 ## Amiga platform
 
 28. `make test-amiga AMIGA_MILESTONE=m2-choose-side` (plain fixture) ends
@@ -82,8 +86,9 @@ speed work: [speed-plan.md](speed-plan.md).
 45. OCS/ECS version from the EGA driver (user 2026-11-03), 68020 or better,
     no 68000. Scope today is VGA only (AGENTS.md). Plan, facts and decisions D1–D8:
     [ecs-plan.md](ecs-plan.md) (mode 0Eh: four hires planes, no C2P; RTSEGA's
-    converters 4AC3/4BD0 likely need device natives). E1 done; next E2 (exploration
-    corpus, `make reference-ega-explore`). The installer leaves out
+    converters 4AC3/4BD0 likely need device natives). E1, E2 done; next E3. Until E3,
+    `make gen` fails on 45 unclassified FRONTEND starts while the local EGA corpus
+    (`tmp/pc-runs/ref-ega-*`) exists (ecs-plan §E2 results). The installer leaves out
     RTSEGA.OVL (unused under VGA; release.md).
 
 ## User report (A1200, 68060, 2026-10-29)

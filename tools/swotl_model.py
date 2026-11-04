@@ -22,8 +22,9 @@ OVL_COUNT = 12
 THUNKS = 0x16B66
 MANAGER = (0x1617, 0x034C)  # PLINK "make overlay [ret] resident" entry: call far; dw id
 SCOPE = ["SWOTL.EXE", "SPAZ.OVL", "RTSVGA.OVL", "FRONTEND.OVL", "CAMPAIGN.OVL",
-         "NOTCAMP.OVL", "FLIGHT.OVL", "REPLAY.OVL", "PANEL.OVL", "DATA.OVL"]
-OUT_OF_SCOPE = ["SFXA.OVL", "RTSTANDY.OVL", "RTSEGA.OVL"]
+         "NOTCAMP.OVL", "FLIGHT.OVL", "REPLAY.OVL", "PANEL.OVL", "DATA.OVL", "RTSEGA.OVL"]
+OUT_OF_SCOPE = ["SFXA.OVL", "RTSTANDY.OVL"]
+NOT_TRANSLATED = ["RTSEGA.OVL"]  # mapped, translated from ecs-plan E3 on
 
 
 @dataclass
