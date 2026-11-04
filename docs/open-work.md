@@ -80,14 +80,10 @@ speed work: [speed-plan.md](speed-plan.md).
 41. `alignas(4)` on even-sized globals of 4 bytes or more, with a link audit
     (L104): not applied; m68k GCC aligns them to 2.
 45. OCS/ECS version from the EGA driver (user 2026-11-03), 68020 or better,
-    no 68000. Scope today is VGA only (AGENTS.md). Needs: EGA reference
-    corpus (`swotl E …`) with milestones and coverage for RTSEGA; EGA port
-    and A000 model (map mask, write modes, bit mask, latches, attribute
-    palette, CRTC start); EGA planes as 4 lowres Chip bitplanes (no C2P,
-    page flip by pointers); ECS copper/palette (EGA 6-bit → 12-bit exact);
-    AGA/ECS selection, slave, installer, FS-UAE ECS fixture. RTSEGA's own
-    chunky-to-planar loop may need a native replacement (authorization).
-    The installer leaves out RTSEGA.OVL (unused under VGA; release.md).
+    no 68000. Scope today is VGA only (AGENTS.md). Plan, facts and decisions D1–D8:
+    [ecs-plan.md](ecs-plan.md) (mode 0Eh: four hires planes, no C2P; RTSEGA's
+    converters 4AC3/4BD0 likely need device natives). The installer leaves out
+    RTSEGA.OVL (unused under VGA; release.md).
 
 ## User report (A1200, 68060, 2026-10-29)
 

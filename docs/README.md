@@ -30,6 +30,7 @@ How the port works and how it was built and checked. Players need only the
 - [amiga-arch.md](amiga-arch.md): display, input, files and memory on the A1200.
 - [sound-plan.md](sound-plan.md): AdLib FM on Paula and the Their Finest Hour effects.
 - [pointer-plan.md](pointer-plan.md): the mouse pointer as hardware sprites.
+- [ecs-plan.md](ecs-plan.md): the OCS/ECS version from the EGA driver (planned).
 - [whdload.md](whdload.md) and [release.md](release.md): the slave, installer and release audits.
 
 ## Validation
