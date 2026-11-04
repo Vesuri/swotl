@@ -86,9 +86,8 @@ speed work: [speed-plan.md](speed-plan.md).
 45. OCS/ECS version from the EGA driver (user 2026-11-03), 68020 or better,
     no 68000. Scope today is VGA only (AGENTS.md). Plan, facts and decisions D1–D8:
     [ecs-plan.md](ecs-plan.md) (mode 0Eh: four hires planes, no C2P; RTSEGA's
-    converters 4AC3/4BD0 likely need device natives). E1, E2 done; next E3. Until E3,
-    `make gen` fails on 45 unclassified FRONTEND starts while the local EGA corpus
-    (`tmp/pc-runs/ref-ega-*`) exists (ecs-plan §E2 results). The installer leaves out
+    converters 4AC3/4BD0 likely need device natives). E1–E3 done; next E4 (the EGA
+    model: RTSEGA's video accesses stop until then). The installer leaves out
     RTSEGA.OVL (unused under VGA; release.md).
 
 ## User report (A1200, 68060, 2026-10-29)

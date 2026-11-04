@@ -121,6 +121,7 @@ class Ctx:
     manager: bool = False                     # PLINK manager call: return skips `dw id`
     program: bool = False                     # program mode (return checks, runtime calls)
     vram: bool = False                        # graphics driver: stores to A000h mark rows (D9)
+    ega: bool = False                         # EGA driver: ES/DS operands may be EGA memory
     driver_call: bool = False                 # PLINK thunk jump into the graphics driver (D9)
     ret_mismatch: str = "rt_ret_mismatch"     # a return check's mismatch branch (emit.py: local)
     far_ret_mismatch: str = "rt_ret_far_mismatch"
@@ -497,7 +498,12 @@ class Lowering:
         if self.c.vram and op not in STRING_OPS:
             for m in mem_dests(i):
                 self.vram_mark(m)
+        ega = self.ega_operand() if self.c.ega else None
+        if ega is not None:
+            self.ega_pre(ega)
         fn()
+        if ega is not None:
+            self.ega_post(ega)
         if "CF" in writes(i)[1] and not self.cf_result:
             self.x_cf = False
         if self.c.code_regions:
@@ -612,6 +618,103 @@ class Lowering:
         self.e("jsr rt_vram_mark")
         self.at(skip)
         self.stats["video store mark"] += 1
+
+    # -- EGA device lowering (ecs-plan E3): the EGA driver's memory operands --
+    # In RTSEGA every ES/DS operand may address EGA memory (A0000h-AFFFFh);
+    # CS and SS operands never do (code, stack). A segment from 9001h to AFFFh
+    # may reach the window: the runtime's rt_ega_* entries then go through the
+    # EGA model (ega.c), with the operand's guest RAM bytes as the bounce:
+    # rt_ega_read8/16 (a0 = the operand's first byte, ea().at(8)) put the
+    # model's read (latches loaded) there before the instruction, which then
+    # runs as lowered; rt_ega_write8/16 pass the bytes it stored to the
+    # model's write logic. A linear address outside the window leaves RAM as
+    # it is. rt_ega_string (d7 = op | width << 8 | rep << 16) runs a whole
+    # string instruction with a possible EGA segment. They keep every
+    # register (rt_ega_string updates the guest registers as the instruction
+    # does) and the CCR, X included.
+    EGA_STRING = {"movs": 0, "stos": 1, "lods": 2, "cmps": 3, "scas": 4}
+
+    def ega_operand(self):
+        """('string', segments) for a string instruction, (m, read, write) for
+        an ES/DS memory operand, else None."""
+        i = self.i
+        if i.op in STRING_OPS:
+            segs = ["es"] if i.op in ("stos", "scas", "cmps", "movs") else []
+            if i.op in ("movs", "cmps", "lods"):
+                segs.append(i.seg or "ds")
+            return ("string", [s for s in dict.fromkeys(segs) if s in ("es", "ds")])
+        if i.op == "xlat":
+            raise LowerError(f"{i}: EGA driver xlat not lowered")
+        mems = [o for o in i.operands if isinstance(o, Mem) and o.seg in ("es", "ds")]
+        if not mems or i.op == "lea":
+            return None
+        m = mems[0]
+        if len(mems) > 1 or m.width not in (8, 16):
+            raise LowerError(f"{i}: EGA driver operand form not lowered")
+        write = bool(mem_dests(i))
+        read = not (i.op in ("mov", "pop") and write)
+        if write and i.op == "xchg":
+            r = next(o for o in i.operands if isinstance(o, Reg))
+            if {HALF.get(r.name, (r.name, 0))[0]} & {m.base, m.index}:
+                raise LowerError(f"{i}: EGA write after its address register changes")
+        return (m, read, write)
+
+    def ega_test(self, seg: str, target: str, hit: bool) -> None:
+        """Branch to `target` if `seg` may reach A0000h-AFFFFh (9001h-AFFFh),
+        `hit`, or if it may not. Clobbers d7 and the CCR."""
+        self.e(f"move.w {SEGSLOT[seg]}(a6),d7")
+        self.e("sub.w #$9001,d7")
+        self.e("cmp.w #$1fff,d7")
+        self.e(f"{'bcs' if hit else 'bcc.s'} {target}")
+
+    def ega_call(self, m: Mem, entry: str) -> None:
+        """rt_ega_<entry><width> on `m` if its segment may reach EGA memory."""
+        skip = self.local()
+        self.ega_test(m.seg, skip, hit=False)
+        self.e(f"lea {self.ea(m).at(8)},a0")
+        self.e(f"jsr rt_ega_{entry}{m.width}")
+        self.at(skip)
+
+    def ega_pre(self, ega) -> None:
+        keep = bool(self.c.ccr_in or self.c.x_in)
+        if keep:
+            self.e("move ccr,d6")
+        if ega[0] == "string":
+            i = self.i
+            if not ega[1]:
+                return
+            hit, plain = f"{self.c.label}_ega", self.local()
+            self.ega_end = f"{self.c.label}_egax"
+            for s in ega[1]:
+                self.ega_test(s, hit, hit=True)
+            self.e(f"bra {plain}")
+            rep = 0 if not i.rep else 2 if i.rep == "repne" else 1
+            self.cold += [f"{hit}:", f"\tmove.l #{hx(self.EGA_STRING[i.op] | i.width // 8 << 8 | rep << 16)},d7",
+                          "\tjsr rt_ega_string"] + (["\tmove d6,ccr"] if keep else []) + [
+                          f"\tbra {self.ega_end}"]
+            self.at(plain)
+        else:
+            m, read, _ = ega
+            if read:
+                self.ega_call(m, "read")
+        if keep:
+            self.e("move d6,ccr")
+        self.stats["EGA operand"] += 1
+
+    def ega_post(self, ega) -> None:
+        if ega[0] == "string":
+            if ega[1]:
+                self.at(self.ega_end)
+            return
+        m, _, write = ega
+        if not write:
+            return
+        keep = bool(self.ccr)
+        if keep:
+            self.e("move ccr,d6")
+        self.ega_call(m, "write")
+        if keep:
+            self.e("move d6,ccr")
 
     # -- ALU -----------------------------------------------------------------
     def src_operand(self, o, *, areg: bool, mem: bool, scratch: str = "d7",
@@ -1870,16 +1973,18 @@ class Lowering:
             elif done:
                 self.e(f"bra {done}")
             self.at(nxt)
-        for ip in self.c.near_targets:
-            lab = self.c.near(ip) if self.c.near else None
-            if not lab:
-                continue
+        # Compare chains size their own branches (vasm 1.9 converges badly over
+        # thousands of unsized ones): an entry is at most 16 bytes, the tail 12.
+        near = [(ip, lab) for ip in self.c.near_targets
+                if (lab := self.c.near(ip) if self.c.near else None)]
+        for k, (ip, lab) in enumerate(near):
             nxt = self.local()
             self.e(f"cmp.w #{hx(ip)},d7")
-            self.e(f"bne {nxt}")
+            self.e(f"bne.s {nxt}")
             self.e(f"{how} {lab}")
             if done:
-                self.e(f"bra {done}")
+                far = not hot and (len(near) - 1 - k) * 16 + 12 >= 126
+                self.e(f"bra{'' if hot or far else '.s'} {done}")
             self.at(nxt)
         if self.c.program and self.c.complete:
             self.e(f"move.l #{self.c.cs},d6")
@@ -1901,18 +2006,18 @@ class Lowering:
     def dispatch_far(self, how: str) -> None:
         """Target CS:IP in d6:d7."""
         done = self.local() if how == "jsr" else None
-        for seg, off in self.c.far_targets:
-            lab = self.c.far((seg, off)) if self.c.far else None
-            if not lab:
-                continue
+        # Sized as in dispatch_near: an entry is at most 22 bytes, the tail 6.
+        far = [(seg, off, lab) for seg, off in self.c.far_targets
+               if (lab := self.c.far((seg, off)) if self.c.far else None)]
+        for k, (seg, off, lab) in enumerate(far):
             nxt = self.local()
             self.e(f"cmp.w #{hx(off)},d7")
-            self.e(f"bne {nxt}")
+            self.e(f"bne.s {nxt}")
             self.e(f"cmp.w #{seg},d6")
-            self.e(f"bne {nxt}")
+            self.e(f"bne.s {nxt}")
             self.e(f"{how} {lab}")
             if done:
-                self.e(f"bra {done}")
+                self.e(f"bra{'' if (len(far) - 1 - k) * 22 + 6 >= 126 else '.s'} {done}")
             self.at(nxt)
         if self.c.program:
             self.e(f"{how} rt_dispatch_far")

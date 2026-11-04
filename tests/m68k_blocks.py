@@ -10,7 +10,9 @@ a random number of cells on, against the same bytes in x86-16.
 
 A block runs from an executed leader to its first transfer (or the next
 leader). The 68k side stops at the first label outside the block or at a
-runtime entry. Compared: registers, segment registers, written bytes, OUT
+runtime entry (rt_ega_read/write return at once: plain RAM at A0000h, as
+x86; a case reaching rt_ega_string is skipped, the EGA model is E4).
+Compared: registers, segment registers, written bytes, OUT
 sequence, interrupt/fault, the successor reached (CS:IP), and the flags live
 at that successor (flags.py; undefined ones masked by the IR). Calls also check
 the return protocol: resuming at the native return address with the right
@@ -878,6 +880,10 @@ def main(argv=None, on_batch=None) -> int:
                                                             posted=bool(posted))
             calls, m.irq_calls = m.irq_calls, None
             stop = info["stop"]
+            if stop == "rt_ega_string":     # a whole string op on EGA memory: the E4 model
+                skipped["EGA string (model: E4)"] += 1
+                m.restore(set(mwrites))
+                continue
             pc = m.r("pc")
             if stop in node_of:  # labels sharing the address: take the one x86 reached
                 for x in by_addr[pc]:

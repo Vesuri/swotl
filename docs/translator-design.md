@@ -257,12 +257,27 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   Only diagnostic builds disable physical input and the CIA timer; normal
   hardware, smoke and restoration gates remain mandatory. No reference,
   sync point, normal interrupt order or PIT rate changes.
-- Display (D9 slice): only the graphics driver (`emit.GRAPHICS_DRIVER`,
-  RTSVGA) writes video memory. Before each of its memory stores the
+- EGA device lowering (ecs-plan E3, `lower.ega_operand`): in RTSEGA every
+  ES/DS memory operand may address EGA memory (CS and SS never do). A
+  segment from 9001h to AFFFh may reach A0000h-AFFFFh: before an instruction
+  that reads the operand, `rt_ega_read8/16` (a0 = its first byte) puts the
+  EGA model's read (latches loaded) into the operand's guest RAM bytes; the
+  instruction then runs as lowered on them; after one that writes it,
+  `rt_ega_write8/16` passes the stored bytes to the model's write logic. A
+  linear address outside the window leaves RAM alone. A string instruction
+  with such a segment runs whole in `rt_ega_string` (d7 = op, width, rep).
+  The entries keep every register and the CCR; the lowering keeps the CCR
+  around its tests where flags are carried. Far-pointer and two-operand
+  memory forms, `xlat`, and an `xchg` whose register is in the address fail
+  translation. The model is E4: until then the entries stop. `make
+  test-blocks` runs the read/write entries as plain RAM (as x86 at A0000h)
+  and skips cases reaching `rt_ega_string` (user 2026-11-04).
+- Display (D9 slice): only the graphics drivers (`emit.GRAPHICS_DRIVERS`,
+  RTSVGA and RTSEGA) write video memory. Before each of RTSVGA's memory stores the
   lowering checks the segment for A000h and calls `rt_vram_mark` (offset,
   bytes; `rep stos/movs` once for the whole run), which widens per-row
   changed columns; a store with no driver call in progress stops. The `jmp
-  far` of each PLINK thunk into the driver is a `jsr` counted in
+  far` of each PLINK thunk into either driver is a `jsr` counted in
   `rt_vdrv_depth`; the outermost return publishes the frame
   (`rt_vdrv_return`). The game's mouse poll (INT 33h AX=3, after all of a
   frame's drawing) ends a frame (`rt_video_frame`): its changed rows go to
@@ -429,8 +444,12 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   regardless of traced targets; proved tables retain their closed target set.
   The graph includes the walk edge. If every decoded cell instruction preserves
   arithmetic flags, a call propagates its return site's live flags through the
-  walk; otherwise all flags are live. Return checks remain in place. The EGA/Tandy and/or variant ([2581]=0) is out
-  of scope. Checked by `make test-blocks` (walks over every snapshot image
+  walk; otherwise all flags are live. The [2581]=0 cells (EGA driver) are
+  `and byte [bx+w1],0Fh/F0h; or byte [bx+w2],al/ah` (three forms: the
+  template and the two patches of +8E83..+8F4E): the exact walk runs them,
+  the `or` storing every flag it defines and AF cleared as on the x86
+  (`smc.ANDOR`: the return site sees the caller's flags or the cells'); the cache never covers them (a miss
+  leaves for the exact walk). Return checks remain in place. Checked by `make test-blocks` (walks over every snapshot image
   vs x86, through a dropped cache and exactly; per entry, mov cells to the
   bound and past it, a RET at the bound, unknown cells; warm walks between
   RET plants, restores and operand patches made by the hooks or by the

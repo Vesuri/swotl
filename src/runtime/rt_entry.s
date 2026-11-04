@@ -39,6 +39,7 @@ G_DS	equ	1
 	xdef	rt_run_guest
 	xdef	rt_vram_mark
 	xdef	rt_vdrv_return
+	xdef	rt_ega_read8,rt_ega_read16,rt_ega_write8,rt_ega_write16,rt_ega_string
 
 	xref	rt_r
 	xref	smc_expose
@@ -60,6 +61,7 @@ G_DS	equ	1
 	xref	rt_lookup
 	xref	rt_ret_mismatch_c
 	xref	rt_stop_unknown_c
+	xref	rt_ega_stop_c
 	xref	rt_vram_rows
 	xref	rt_vram_top
 	xref	rt_vram_bottom
@@ -548,6 +550,35 @@ rt_stop_unknown:
 	move.l	d6,-(a7)
 	move.l	d7,-(a7)
 	jsr	rt_stop_unknown_c
+
+; EGA memory operands of the EGA driver (translator/lower.py ega_operand):
+; a0 = the operand's first byte (linear address a6 - a0); rt_ega_string:
+; d7 = op | width << 8 | rep << 16. The EGA model is ecs-plan E4; until
+; then each stops with the entry (1-4 read8, read16, write8, write16; 5
+; string) and the linear address or descriptor.
+rt_ega_read8:
+	moveq	#1,d7
+	bra.s	ega_operand
+rt_ega_read16:
+	moveq	#2,d7
+	bra.s	ega_operand
+rt_ega_write8:
+	moveq	#3,d7
+	bra.s	ega_operand
+rt_ega_write16:
+	moveq	#4,d7
+ega_operand:
+	move.l	a6,d6
+	sub.l	a0,d6
+	bra.s	ega_stop
+rt_ega_string:
+	move.l	d7,d6
+	moveq	#5,d7
+ega_stop:
+	bsr	save_regs
+	move.l	d6,-(a7)
+	move.l	d7,-(a7)
+	jsr	rt_ega_stop_c
 
 ; Enter the guest at rt_entry_cs:rt_entry_ip with the registers in rt_r and
 ; the state block. Returns only if the guest's outermost frame returns.

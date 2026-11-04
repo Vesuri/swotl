@@ -24,7 +24,6 @@ MANAGER = (0x1617, 0x034C)  # PLINK "make overlay [ret] resident" entry: call fa
 SCOPE = ["SWOTL.EXE", "SPAZ.OVL", "RTSVGA.OVL", "FRONTEND.OVL", "CAMPAIGN.OVL",
          "NOTCAMP.OVL", "FLIGHT.OVL", "REPLAY.OVL", "PANEL.OVL", "DATA.OVL", "RTSEGA.OVL"]
 OUT_OF_SCOPE = ["SFXA.OVL", "RTSTANDY.OVL"]
-NOT_TRANSLATED = ["RTSEGA.OVL"]  # mapped, translated from ecs-plan E3 on
 
 
 @dataclass

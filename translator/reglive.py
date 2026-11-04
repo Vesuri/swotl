@@ -16,7 +16,7 @@ def touches_dx(operand):
 
 
 def transfer_dx(i, live, context):
-    if context.vram:
+    if context.vram or getattr(context, "ega", False):
         return True
     if i.op == 'cwd':
         return False

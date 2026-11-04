@@ -38,7 +38,7 @@ def prepare(name, out, trace=None):
     if joystick and not script['joystick']:
         raise ValueError('undeclared joystick recording')
     summary = dict(x.split('=', 1) for x in (trace / 'summary.txt').read_text().split())
-    assert int(summary['polls'], 16) == H.fnv(H.POLLS.read_bytes()), 'reference poll points differ'
+    assert H.polls_match(trace, int(summary['polls'], 16)), 'reference poll points differ'
     services = H.reference_services(trace)
     points = sorted({t[0] for t, _ in script['keys']} |
                     {t[0] for t in script['snapshots']} | {lab for _, lab, _, _ in irqs} | {c.label for c in reps})

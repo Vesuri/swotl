@@ -44,7 +44,10 @@ interrupt inside it.
 
 from __future__ import annotations
 
-from . import decode, flags
+import re
+
+from . import decode, flags, lower
+from .ir import STATUS
 from .lower import LowerError, hx
 
 HOLE = 0x1234
@@ -96,13 +99,45 @@ def _ret_cell(base: str, limit: int) -> list[str]:
     return ["\tmove.w -1(a2,d4.w),d7", "\tsubq.w #2,d4", "\trts"]
 
 
+def _andor_cell(imm: int, src: str, k: int):
+    """`and byte [bx+w1],imm; or byte [bx+w2],src` (9 bytes, the [2581]=0 cells):
+    the decoded instructions lowered with SI holding each word (d6, a0, a4
+    saved), all flags
+    stored by the `or` (they reach the walk's return), AF cleared as the
+    x86 does. Local labels renamed
+    `.ao<k>_<n>`."""
+    reg = {"al": 0x00, "ah": 0x20}[src]
+
+    def lines(base: str, limit: int) -> list[str]:
+        def low(code: bytes, need: set) -> list[str]:
+            lw = lower.lower(decode.decode(code, 0, 0),
+                             lower.Ctx(cs="0", label=".", need=need, program=True))
+            if lw.cold:
+                raise LowerError("and/or cell: out-of-line code")
+            return [re.sub(r"(^|[\s,(])\.(\d+)\b", rf"\g<1>.ao{k}_\2", x) for x in lw.out]
+        # d6 (the walk's bound) is the lowering's scratch: saved with a0/a4
+        return (["\tmovem.l d6/a0/a4,-(sp)", "\tmovea.w -2(a0),a4"]
+                + low(bytes((0x80, 0x20, imm)), set())
+                + ["\tmovea.l 4(sp),a0", "\tmovea.w -7(a0),a4"]
+                + low(bytes((0x08, reg)), set(STATUS))
+                + ["\tclr.b G_AF(a6)",      # AF: undefined in the IR, 0 on the x86 and DOSBox-X
+                   "\tmovem.l (sp)+,d6/a0/a4", "\tlea -9(a0),a0"])
+    return lines
+
+
+# The [2581]=0 cells: the file's template (and 0Fh, or al) and the two
+# patches of +8E83..+8F4E (and 0Fh, or ah; and F0h, or al).
+ANDOR = {"80a7ww0f0887ww": (0x0F, "al"), "80a7ww0f08a7ww": (0x0F, "ah"),
+         "80a7wwf00887ww": (0xF0, "al")}
+
 # form -> (decoded text with HOLE in each word, lowering)
 FORMS = {
     MOV: (["mov byte ds:[bx+0x1234], al"], _mov_run),
     "2e8b1eww2e8e1eww": (["mov bx, word cs:[0x1234]", "mov ds, word cs:[0x1234]"],
                          _reload_cell),
     "c3": (["ret"], _ret_cell),
-}
+} | {form: ([f"and byte ds:[bx+0x1234], {hex(imm)}", f"or byte ds:[bx+0x1234], {src}"],
+            _andor_cell(imm, src, k)) for k, (form, (imm, src)) in enumerate(ANDOR.items())}
 
 
 def _parse(form: str) -> tuple[bytes, list[int]]:
@@ -133,16 +168,19 @@ def _check(form: str) -> tuple[bytes, list[int]]:
 
 
 def preserves_flags(forms: list[str]) -> bool:
-    """Prove flag identity from every decoded instruction of the matched forms.
-    Checking empty and full live sets establishes no reads and no definitions;
-    unsupported forms still fail through the normal decoder check."""
+    """A call's return site's live flags pass through a walk over the matched
+    forms unchanged: no decoded instruction reads a flag (an empty live set
+    stays empty), and none defines one (a full set stays full) unless its form
+    stores every flag it defines (the and/or cells, ANDOR: the return site
+    then sees the caller's flags or the cells'). Unsupported forms still fail
+    through the normal decoder check."""
     for form in forms:
         code, _ = _check(form)
         pos = 0
         while pos < len(code):
             i = decode.decode(code, pos, pos)
-            if any(flags.transfer(i, set(live), program=True) != live
-                   for live in (set(), set(flags.ALL))):
+            lives = (set(),) if form in ANDOR else (set(), set(flags.ALL))
+            if any(flags.transfer(i, set(live), program=True) != live for live in lives):
                 return False
             pos += i.size
     return True
@@ -181,7 +219,7 @@ def walk(label: str, cs: str, first_ip: int, last_ip: int, forms: list[str],
     """Cell walk of one region: d7 = entry IP (zero-extended); called with the
     guest return IP pushed, like the call target it replaces. `limit`: the
     lowest segment whose window reaches no region (0: no cache)."""
-    if not limit or set(forms) != CACHED:
+    if not limit or not CACHED <= set(forms):
         return exact(label, cs, first_ip, last_ip, forms, limit)
     return cached(label, cs, first_ip, last_ip, limit) + exact(
         f"{label}_x", cs, first_ip, last_ip, forms, limit)
@@ -356,10 +394,10 @@ def exact(label: str, cs: str, first_ip: int, last_ip: int, forms: list[str],
             off = fixed[p]
             if p + 1 < len(fixed) and fixed[p + 1] == off + 1:
                 lines += [f"\tcmp.w #{hx(code[off + 1] << 8 | code[off])},{-off}(a0)",
-                          f"\tbne {nxt if p == 0 else '.stop'}"]
+                          f"\tbne {nxt}"]
                 p += 2
             else:
-                lines += [f"\tcmp.b #{hx(code[off])},{1 - off}(a0)", f"\tbne {nxt if p == 0 else '.stop'}"]
+                lines += [f"\tcmp.b #{hx(code[off])},{1 - off}(a0)", f"\tbne {nxt}"]
                 p += 1
         body = FORMS[form][1](base, limit)
         lines += body

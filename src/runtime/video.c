@@ -127,6 +127,13 @@ void rt_vram_stray(void)
     rt_stop("video memory store outside a graphics driver call", 0, 0);
 }
 
+/* rt_ega_* (rt_entry.s): an EGA driver operand whose segment may reach EGA
+ * memory. The EGA model is ecs-plan E4; until then the access stops. */
+void rt_ega_stop_c(uint32_t entry, uint32_t value)
+{
+    rt_stop("EGA memory access without the EGA model", entry, value);
+}
+
 static void vram_all(void)
 {
     for (int r = 0; r < 200; ++r) {

@@ -33,14 +33,15 @@ from .flags import ALL, plan, transfer
 from .lower import GREG, LOADSEG, MIRROR, Ctx, LowerError, hx
 
 M = image.M
-TAG = {"SWOTL.EXE": "R", "SPAZ.OVL": "SPZ", "RTSVGA.OVL": "VGA", "FRONTEND.OVL": "FE",
+TAG = {"SWOTL.EXE": "R", "SPAZ.OVL": "SPZ", "RTSVGA.OVL": "VGA", "RTSEGA.OVL": "EGA", "FRONTEND.OVL": "FE",
        "CAMPAIGN.OVL": "CMP", "NOTCAMP.OVL": "NCP", "FLIGHT.OVL": "FLT", "REPLAY.OVL": "RPL",
        "PANEL.OVL": "PNL", "DATA.OVL": "DAT"}
 RET, UNKNOWN, SMC = "ret", "unknown", "smc"
 TERMINAL = {"jmp", "jmpf", "ret", "retf", "iret", "hlt"}
 RUNTIME = ("rt_int", "rt_irq", "rt_fault", "rt_halt", "rt_trap", "rt_in8", "rt_in16", "rt_out8", "rt_out16",
            "rt_ret_mismatch", "rt_ret_far_mismatch", "rt_dispatch_near", "rt_dispatch_far", "rt_stop_unknown",
-           "rt_vram_mark", "rt_vdrv_depth", "rt_vdrv_return", "rt_irq_pending")
+           "rt_vram_mark", "rt_vdrv_depth", "rt_vdrv_return", "rt_irq_pending", "rt_ega_read8",
+           "rt_ega_read16", "rt_ega_write8", "rt_ega_write16", "rt_ega_string")
 # G3 native replacements (annotations/hle.csv): runtime service rt_hle_<service>
 # at a range's first instruction; NE skips the range to the instruction after
 # `last`, EQ runs the guest code. `args`: up to two guest word registers, in
@@ -60,10 +61,12 @@ def pointer_guest() -> list[int]:
     return [int(r["offset"], 16) for r in rows]
 
 
-# D9: the graphics driver in scope. Only it writes video memory
-# (docs/external-surface.md); a return from a call into it through its PLINK
-# thunks publishes a frame.
-GRAPHICS_DRIVER = "RTSVGA.OVL"
+# D9: the graphics drivers in scope. Only they write video memory
+# (docs/external-surface.md); a return from a call into one through its PLINK
+# thunks publishes a frame. RTSVGA's stores mark rows (lower.vram_mark);
+# RTSEGA's ES/DS operands go to the EGA model (lower.ega_operand, ecs-plan E3).
+VGA_DRIVER, EGA_DRIVER = "RTSVGA.OVL", "RTSEGA.OVL"
+GRAPHICS_DRIVERS = (VGA_DRIVER, EGA_DRIVER)
 
 
 def retried(i) -> bool:
@@ -433,7 +436,7 @@ class Program:
         self.cell_regions()
         # D9: the `jmp far` of each PLINK thunk into the graphics driver
         # (thunk: call far manager, dw id, jmp far)
-        self.driver_jumps = {at + 7 for at, mod, _ in M.thunks(image.load()) if mod == GRAPHICS_DRIVER}
+        self.driver_jumps = {at + 7 for at, mod, _ in M.thunks(image.load()) if mod in GRAPHICS_DRIVERS}
         self.build_edges()
         # D8 poll points: where tests and the reference take a pending hardware
         # interrupt (production: at the CIA tick). The I8 sync points and, so the
@@ -880,7 +883,8 @@ class Program:
                                             for lo, hi in smc_t)),
                    code_regions=self.code_regions(cs), seg_limit=self.smc_limit,
                    seg_repeat=label(mod, off) in self.seg_repeat,
-                   manager=off in u.manager_calls, program=True, vram=mod == GRAPHICS_DRIVER,
+                   manager=off in u.manager_calls, program=True, vram=mod == VGA_DRIVER,
+                   ega=mod == EGA_DRIVER,
                    driver_call=mod == M.ROOT and off in self.driver_jumps, ret_mismatch=RM,
                    far_ret_mismatch=RMF,
                    rep_hook=((self.diagnostic_reps[(mod, off)], label(mod, off))

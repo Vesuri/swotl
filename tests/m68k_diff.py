@@ -55,6 +55,8 @@ TOP = GUEST_LO + X.RAM + 0x10000 - 1    # a6: guest linear L at TOP - L
 STATE = TOP + 1             # state block page
 CODE = 0x400000
 STUB = 0x300000
+# EGA driver operands (lower.ega_operand): the bounce runs on plain guest RAM.
+EGA_RAM = ("rt_ega_read8", "rt_ega_read16", "rt_ega_write8", "rt_ega_write16")
 STACK = 0x380000
 PENDING = STATE + 0x800     # rt_irq_pending
 STUBS = ("T_JUMP", "T_CALL", "T_JUMPF", "T_CALLF", "T_INT", "T_FAULT", "T_HALT", "T_END",
@@ -205,6 +207,8 @@ class M68k:
             elif n in ("rt_out8", "rt_out16"):
                 w = 8 if n == "rt_out8" else 16
                 self.outs.append((self.r("d7") & 0xFFFF, w, self.r("d6") & ((1 << w) - 1)))
+                self.e.reg_write(U.M68K["pc"], addr + 2)
+            elif n in EGA_RAM:  # plain RAM at A0000h, as x86 (the EGA model: E4 host lockstep)
                 self.e.reg_write(U.M68K["pc"], addr + 2)
             elif n in compute_services:  # d7=0: exact fallback, as x86
                 self.e.reg_write(U.M68K['d7'], 0)

@@ -227,6 +227,32 @@ def fnv(data: bytes) -> int:
     return h
 
 
+def polls_match(trace: Path, recorded: int) -> bool:
+    """A reference's `polls` (FNV-1a of the poll-points.csv it ran with) matches
+    the whole file, or, recorded before the EGA driver was translated
+    (ecs-plan D2), the file without the rows of some graphics drivers the run
+    never loaded and of the game code only those drivers select
+    (annotations/driver-code.csv): a sync point in code a run never reaches
+    cannot move its interrupts."""
+    data = POLLS.read_bytes()
+    if recorded == fnv(data):
+        return True
+    with (trace / "modules.csv").open() as f:
+        loaded = {r["module"] for r in csv.DictReader(f) if int(r["loads"])}
+    absent = [m for m in emit.GRAPHICS_DRIVERS if m not in loaded]
+    lines = data.decode().splitlines(keepends=True)
+    for n in range(1, 1 << len(absent)):     # each set of drivers the run never loaded
+        drop = {m for k, m in enumerate(absent) if n >> k & 1}
+        spans = [(r["module"], int(r["first"], 16), int(r["last"], 16))
+                 for r in image.rows("driver-code.csv") if r["driver"] in drop]
+        kept = [lines[0]] + [x for x in lines[1:]
+                             if (row := x.split(","))[0] not in drop
+                             and not any(m == row[0] and lo <= int(row[1], 16) <= hi for m, lo, hi in spans)]
+        if recorded == fnv("".join(kept).encode()):
+            return True
+    return False
+
+
 SABOTAGE = {
     "missing-file": "wrong file omitted from the disk-prompt fixture",
     "mouse-motion": "scripted vertical mouse motion lost",
@@ -1585,7 +1611,7 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
     script["irqs"], script["releases"] = reference_inputs(trace, exact_releases=True)
     summary = dict(kv.split("=", 1) for kv in (trace / "summary.txt").read_text().split())
     problems = rearm_problems()
-    if int(summary.get("polls", "0"), 16) != fnv(POLLS.read_bytes()):
+    if not polls_match(trace, int(summary.get("polls", "0"), 16)):
         problems.append("reference recorded with other poll points: rerun make reference")
     if sound_log is None:
         h.run(script, args.timeout)

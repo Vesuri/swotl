@@ -1,0 +1,3 @@
+module,first,last,driver,note
+FRONTEND.OVL,0x01b94,0x01bc1,RTSEGA.OVL,"near call [28EC] target set with the EGA driver (+1958, +1AEC, +1B54): the 4-bit buffer to EGA colour pairs"
+FRONTEND.OVL,0x01bc2,0x01bfd,RTSEGA.OVL,"near call [28EE] target set with the EGA driver: as above, a whole buffer (loop head +1BD7)"
