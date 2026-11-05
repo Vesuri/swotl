@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage reference-ega-explore sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-ega test-host-all test-amiga test-amiga-replay test-amiga-replay-ega test-amiga-replay-plant test-amiga-restore test-amiga-keyboard test-amiga-workbench amiga amiga-sync amiga-release smoke smoke-release whdload test-whdload install-data test-install-data release release-check github-release test-release-installer size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage reference-ega-explore sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-ega test-host-all test-amiga test-amiga-replay test-amiga-replay-ega test-amiga-replay-plant test-amiga-replay-ega-plant test-amiga-restore test-amiga-keyboard test-amiga-workbench amiga amiga-sync amiga-release smoke smoke-release whdload test-whdload install-data test-install-data release release-check github-release test-release-installer size clean
 
 PYTHON ?= python3
 # AmigaXDev's shared Python package (amigaxdev.dos.mz_info).
@@ -607,7 +607,7 @@ test-amiga: amiga host
 test-amiga-replay: host
 	@$(MAKE) -s -k -j3 $(AMIGA_REPLAY_MILESTONES:%=t-amiga-replay-%)
 # The OCS/ECS display (docs/ecs-plan.md E5) on EGA references.
-AMIGA_REPLAY_EGA = ega-m1b-logo ega-m2-choose-side ega-m4-demo-frames ega-m5-player-flight
+AMIGA_REPLAY_EGA = ega-m1b-logo ega-m2-choose-side ega-m4-demo-frames ega-m5-player-flight ega-c9-mouse-menu
 test-amiga-replay-ega: host
 	@$(MAKE) -s -k -j3 $(AMIGA_REPLAY_EGA:%=t-amiga-replay-%)
 t-amiga-replay-%:
@@ -615,6 +615,9 @@ t-amiga-replay-%:
 # The real-video check's plant: the old fetch window built in, on a pointer screen.
 test-amiga-replay-plant: host
 	$(call RUN,amiga-replay-plant,. amiga/env.sh && $(PYTHON) tests/amiga_replay.py --milestone c9-mouse-menu --plant fetch-window)
+# The EGA pointer's plant (ecs-plan E8): sprite colour 30 black in the copper list only.
+test-amiga-replay-ega-plant: host
+	$(call RUN,amiga-replay-ega-plant,. amiga/env.sh && $(PYTHON) tests/amiga_replay.py --milestone ega-c9-mouse-menu --plant sprite-colour)
 
 test-amiga-restore: amiga
 	$(GATE_LAUNCH) bash amiga/restore_check.sh

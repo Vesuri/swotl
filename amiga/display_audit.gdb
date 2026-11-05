@@ -2,6 +2,9 @@
 # to amiga/. Expected pixels are captured from guest RAM at plat_present,
 # never from the converted bitmap, with the presented frame and the pointer
 # state (rt_pointer) for the sprites; palette-only queues keep that snapshot.
+# EGA (amiga_ega_planes set, ecs-plan E8): page 0 of the model's four planes
+# (16,000 bytes each, plane-major as the presented frame) at plat_present_ega,
+# the attribute palette with the DAC.
 set pagination off
 set confirm off
 set $n = 0
@@ -30,6 +33,23 @@ commands
   end
   continue
 end
+break *plat_present_ega
+commands
+  silent
+  set $n = $n + 1
+  if $n >= $last + 20
+    set $e = *(unsigned char **)amiga_ega_planes
+    dump binary memory @OUT@/latest.bin $e $e+16000
+    append binary memory @OUT@/latest.bin $e+0x10000 $e+0x10000+16000
+    append binary memory @OUT@/latest.bin $e+0x20000 $e+0x20000+16000
+    append binary memory @OUT@/latest.bin $e+0x30000 $e+0x30000+16000
+    set $f = *(char **)($sp+4)
+    dump binary memory @OUT@/latest-frame.bin $f $f+64000
+    set $pt = (char *)amiga_pointer_state
+    dump binary memory @OUT@/latest-pointer.bin $pt $pt+amiga_pointer_bytes
+  end
+  continue
+end
 break *c2p1x1_8_c5_bm
 commands
   silent
@@ -51,6 +71,10 @@ commands
     shell cp @OUT@/latest-frame.bin @OUT@/queued-frame.bin
     shell cp @OUT@/latest-pointer.bin @OUT@/queued-pointer.bin
     dump binary memory @OUT@/queued.dac rt_dac rt_dac+768
+    if amiga_ega_planes
+      set $r = (char *)amiga_ega_regs
+      dump binary memory @OUT@/queued.regs $r $r+amiga_ega_regs_bytes
+    end
   end
   continue
 end
@@ -70,10 +94,14 @@ commands
     eval "shell cp @OUT@/queued.dac @OUT@/%02d-dac.bin", $k
     eval "shell cp @OUT@/queued-frame.bin @OUT@/%02d-frame.bin", $k
     eval "shell cp @OUT@/queued-pointer.bin @OUT@/%02d-pointer.bin", $k
+    if amiga_ega_planes
+      eval "shell cp @OUT@/queued.regs @OUT@/%02d-regs.bin", $k
+    end
     set $s = (char *)amiga_sprites
     eval "dump binary memory @OUT@/%02d-sprites.bin %u %u", $k, $s, $s+144
     set $i = 0
-    while $i < 8
+    set $np = amiga_ega_planes ? 4 : 8
+    while $i < $np
       set $p = (unsigned char *)$bm->Planes[$i]
       eval "dump binary memory @OUT@/%02d-plane%d.bin %u %u", $k, $i, $p, $p+$q
       set $i = $i + 1

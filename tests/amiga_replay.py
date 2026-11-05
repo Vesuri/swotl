@@ -18,6 +18,7 @@ import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 import _amigaxdev  # noqa: F401,E402
 from amigaxdev import barto  # noqa: E402
+import hunk_size  # noqa: E402
 
 sys.path[:0] = [str(Path(__file__).resolve().parent), str(Path(__file__).resolve().parents[1])]
 import host_run as H
@@ -129,8 +130,9 @@ def fresh_run_directory(out):
 # Plants for the real-video check, built into the replay's image (gdb writes to
 # the copper lists in Chip RAM do not reach them): fetch-window restores the
 # framework's AGA fetch ($20-$98), which takes the DMA slots of sprites 3-7;
-# composed sprite words still pass, the video not.
-PLANTS = {'fetch-window': 'FETCH_WINDOW'}
+# composed sprite words still pass, the video not. sprite-colour (EGA) writes black
+# to colour register 30 (the arrow's fill) while the recorded table keeps the colour.
+PLANTS = {'fetch-window': 'FETCH_WINDOW', 'sprite-colour': 'SPRITE_COLOUR'}
 # Images up to here leave the A1200 model's 8 MB Fast enough (the VGA replays: at
 # most 5.7 MB); a larger one runs with REPLAY_Z3_KB of Zorro III RAM.
 REPLAY_HUNK_LIMIT = 6 << 20
@@ -167,15 +169,14 @@ def run(name, out, trace=None, plant=None, work=None):
     env = dict(os.environ, DEBUG_PORT=str(port), FSUAE_PORT_PINNED='1',
                AMIGA_CPU=os.environ.get('AMIGA_CPU', '68030'),
                SWOTL_ELF=str(work / 'out/Swotl.elf'), FSUAE_RUN=os.path.relpath(fresh_run_directory(out), ROOT / 'amiga'), FSUAE_CLAIM_STRICT='1',
-               # EGA rows: the OCS switch, unless SWOTL_ARGS is given (an ECS setup without it)
-               SWOTL_ARGS=os.environ.get('SWOTL_ARGS', 'OCS' if H.milestone_script(name)['ega'] else ''))
+               # EGA rows (the `ega-` tables): the OCS switch, unless SWOTL_ARGS is given (an ECS setup without it)
+               SWOTL_ARGS=os.environ.get('SWOTL_ARGS', 'OCS' if name.startswith('ega-') else ''))
     # The diagnostic image carries the reference's event arrays (an EGA row's REP
     # slices reach 6 MB): past REPLAY_HUNK_LIMIT they would take the memory the
     # game and runtime allocate, so the run gets Zorro III RAM for them (68030+).
-    hunks = json.loads(subprocess.run([sys.executable, str(ROOT / 'tools/hunk_size.py'), '--json',
-                                       str(work / 'out/Swotl.exe')], check=True, capture_output=True,
-                                      text=True).stdout)
-    if next(iter(hunks.values()))['allocated_hunk_bytes'] > REPLAY_HUNK_LIMIT:
+    # (no image: debug.sh stops on it; tests/test_replay_run_isolation.py launches none)
+    image = work / 'out/Swotl.exe'
+    if image.exists() and hunk_size.inspect(image.read_bytes())['allocated_hunk_bytes'] > REPLAY_HUNK_LIMIT:
         assert env['AMIGA_CPU'] not in ('68020', '68EC020'), 'Zorro III RAM needs a 32-bit CPU'
         env['EXTRA_ARGS'] = (env.get('EXTRA_ARGS', '') + f' --zorro_iii_memory={REPLAY_Z3_KB}').strip()
     with (capture / 'gdb.log').open('w') as log:

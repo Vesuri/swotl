@@ -39,12 +39,12 @@ SYMS = {'rt_ega_planes': EGA_AT, 'rt_ega_regs': EGA_AT + 0x100, 'rt_vram_rows': 
 PLANES_AT = EGA_AT + 0x1000
 PLANTS = {
     'mask-parity': ('\tsubq.w #1,d3\t\t; even k: the high byte of CS:32E6[m]', ''),
-    'latch-3': ('\tmove.b L_OLD3(a7),EGA_LATCH+3(a1)', '\tmove.b ($30000,a0),EGA_LATCH+3(a1)'),
+    'latch-3': ('\tmove.b L_OLD3(a7),ER_LATCH+3(a1)', '\tmove.b ($30000,a0),ER_LATCH+3(a1)'),
     'stored-byte': ('\tmove.b d6,(a4,d1.w)\t; the stored byte at ES:DI', ''),
     'mark-bottom': ('\tmove.w d7,rt_vram_bottom\n', '\n'),
     'mark-column': ('\tsub.w #80,d6\n', '\n'),
     'compare': ('\tcmp.w -(a1),d1\n\tbne .diff', '\tcmp.w -(a1),d1\n\tbra .diff'),
-    'final-mode': ('\tmove.b #2,EGA_MODE(a1)', '\tmove.b #0,EGA_MODE(a1)'),
+    'final-mode': ('\tmove.b #2,ER_MODE(a1)', '\tmove.b #0,ER_MODE(a1)'),
     'cs-parity': ('\tmove.w L_PARB(a7),(-$34e6-1,a2)', '\tmove.w L_PARA(a7),(-$34e6-1,a2)'),
     'push-es': ('\tmove.w L_SHSEG(a7),-1(a0,d6.w)', ''),
     'row-bx': ('\tmove.w d2,L_BX(a7)\n', '\n'),

@@ -4,6 +4,7 @@
 #   icon   tool types MUSIC and the menu exit as KEYS: the game reads its data
 #          from the icon's drawer, exits through its own menu with the state
 #          restored, then result 0 with the WBStartup message held for the reply
+#   icon-ocs the same with tool type OCS: the EGA version (rt_ega, ecs-plan E8)
 #   bench  tool type BENCH, which the production image refuses: result 20
 #   shell  argument BENCH from the Shell: result 20, no message
 # Shell arguments through ReadArgs (open-work 44), stopped at rt_start once parsed:
@@ -25,7 +26,7 @@ printf 'Diagnostic logs: %s\n' "$run"
 exit_keys='KEYS=300:enter,p300:enter,p200:u,p200:e,p200:y,1500:shot'
 
 # $1 case, $2 expected result, $3 1 if a Workbench message is expected,
-# $4 1 if the game must run and restore first.
+# $4 1 if the game must run and restore first, $5 an extra gdb condition at the reply.
 fixture() {
   {
     echo 'set pagination off'
@@ -43,7 +44,7 @@ fixture() {
     echo 'break amiga_start_return'
     echo 'continue'
     echo 'printf "SWOTL_WB_RESULT case='"$1"' result=%d message=%d\n", result, amiga_wb_startup != 0'
-    printf 'if result != %s || (amiga_wb_startup != 0) != %s\n  detach\n  quit 1\nend\n' "$2" "$3"
+    printf 'if result != %s || (amiga_wb_startup != 0) != %s || !(%s)\n  detach\n  quit 1\nend\n' "$2" "$3" "${5:-1}"
     echo 'printf "SWOTL_WB_OK\n"'
     echo 'detach'
     echo 'quit 0'
@@ -107,6 +108,8 @@ check() {
 
 fixture icon 0 1 1
 SWOTL_WORKBENCH=1 SWOTL_TOOLTYPES="MUSIC $exit_keys" check icon
+fixture icon-ocs 0 1 1 'rt_ega == 1'
+SWOTL_WORKBENCH=1 SWOTL_TOOLTYPES="OCS MUSIC $exit_keys" check icon-ocs
 fixture bench 20 1 0
 SWOTL_WORKBENCH=1 SWOTL_TOOLTYPES=BENCH check bench
 fixture shell 20 0 0

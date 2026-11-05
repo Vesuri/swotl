@@ -29,14 +29,15 @@
 	xref rt_vdrv_depth
 	xref smc_seg_limit
 
-EGA_SEQ_INDEX	equ 0		; struct rt_ega_regs (runtime.h)
-EGA_MAP_MASK	equ 1
-EGA_GC_INDEX	equ 2
-EGA_ENABLE_SR	equ 4
-EGA_ROTATE	equ 6
-EGA_MODE	equ 8
-EGA_BIT_MASK	equ 11
-EGA_LATCH	equ 12
+; ER_: no module tag prefix (R_, EGA_, ...: tests/host_run.py finds generated code by it)
+ER_SEQ_INDEX	equ 0		; struct rt_ega_regs (runtime.h)
+ER_MAP_MASK	equ 1
+ER_GC_INDEX	equ 2
+ER_ENABLE_SR	equ 4
+ER_ROTATE	equ 6
+ER_MODE	equ 8
+ER_BIT_MASK	equ 11
+ER_LATCH	equ 12
 
 L_CMP	equ 0		; 1: 4BD0
 L_ROWS	equ 2
@@ -87,7 +88,7 @@ S_A5	equ L_SIZE+44
 ; One destination byte: d1 = the source word (b1:b0), d0 = k, d2.l = par,
 ; a2 = CS (byte o at -o), a3 = the row's plane-0 byte, a4 = the row's bounce
 ; byte (k at -k), a5 = the row's mask byte (k at -(k >> 1)).
-EGA_BYTE macro
+ER_BYTE macro
 	moveq #0,d4
 	move.b d1,d4
 	add.l d2,d4
@@ -198,9 +199,9 @@ ega_convert:
 	beq .decline
 	tst.l rt_ega_planes
 	beq .decline
-	tst.b rt_ega_regs+EGA_ROTATE
+	tst.b rt_ega_regs+ER_ROTATE
 	bne .decline
-	tst.b rt_ega_regs+EGA_ENABLE_SR
+	tst.b rt_ega_regs+ER_ENABLE_SR
 	bne .decline
 	lsl.l #4,d6
 	move.l d6,L_CSL(a7)
@@ -376,7 +377,7 @@ ega_convert:
 	move.l d7,(a0)+
 	move.l d6,(a0)+
 	lea ega_pairs(pc),a0
-	moveq #EGA_PAIRS-1,d7
+	moveq #ER_PAIRS-1,d7
 .pair:
 	moveq #0,d0
 	move.b (a0)+,d0
@@ -434,7 +435,7 @@ ega_convert:
 	bne .cword
 .aword:
 	move.w -(a0),d1
-	EGA_BYTE
+	ER_BYTE
 	addq.w #1,d0
 	cmp.w L_WORDS(a7),d0
 	bcs .aword
@@ -451,7 +452,7 @@ ega_convert:
 .diff:
 	move.l a1,L_A1(a7)
 	st L_ANY(a7)
-	EGA_BYTE
+	ER_BYTE
 	bra .cnext
 .rowend:
 	adda.w #80,a3
@@ -495,10 +496,10 @@ ega_convert:
 	addq.w #2,d6
 	move.w S_A5+2(a7),-1(a0,d6.w)
 	lea rt_ega_regs,a1
-	move.b #2,EGA_SEQ_INDEX(a1)
-	move.b #$0f,EGA_MAP_MASK(a1)
-	move.b #5,EGA_GC_INDEX(a1)
-	move.b #2,EGA_MODE(a1)
+	move.b #2,ER_SEQ_INDEX(a1)
+	move.b #$0f,ER_MAP_MASK(a1)
+	move.b #5,ER_GC_INDEX(a1)
+	move.b #2,ER_MODE(a1)
 	tst.w L_CMP(a7)
 	beq.s .latch
 	tst.w L_ANY(a7)
@@ -513,12 +514,12 @@ ega_convert:
 	addq.w #2,d6
 	move.w L_SHSEG(a7),-1(a0,d6.w)
 .latch:
-	move.b L_BM(a7),EGA_BIT_MASK(a1)
+	move.b L_BM(a7),ER_BIT_MASK(a1)
 	move.l L_LAST(a7),a0
-	move.b (a0),EGA_LATCH(a1)
-	move.b ($10000,a0),EGA_LATCH+1(a1)
-	move.b ($20000,a0),EGA_LATCH+2(a1)
-	move.b L_OLD3(a7),EGA_LATCH+3(a1)
+	move.b (a0),ER_LATCH(a1)
+	move.b ($10000,a0),ER_LATCH+1(a1)
+	move.b ($20000,a0),ER_LATCH+2(a1)
+	move.b L_OLD3(a7),ER_LATCH+3(a1)
 .regs:
 	move.w L_BX(a7),S_D3+2(a7)
 	; CF and ZF are live at the RETF: ZF of the last row's dec (0), CF of the
@@ -577,5 +578,5 @@ ega_pairs:	; (read, written) interval pairs that must not meet
 	dc.b IV_ARG,IV_WIN, IV_ARG,IV_CSV
 	dc.b IV_CST,IV_WIN, IV_CST,IV_STK
 	dc.b IV_STK,IV_WIN
-EGA_PAIRS equ (*-ega_pairs)/2
+ER_PAIRS equ (*-ega_pairs)/2
 	even

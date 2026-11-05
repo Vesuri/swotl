@@ -882,7 +882,8 @@ def main(argv=None, on_batch=None) -> int:
             stop = info["stop"]
             if stop == "rt_ega_string":     # a whole string op on EGA memory: the E4 model
                 skipped["EGA string (model: E4)"] += 1
-                m.restore(set(mwrites))
+                # the case's planted bytes too, as every other path (the oracle restored them)
+                m.restore(set(mwrites) | {a for a0, d in patches for a in range(a0, a0 + len(d))})
                 continue
             pc = m.r("pc")
             if stop in node_of:  # labels sharing the address: take the one x86 reached

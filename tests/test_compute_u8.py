@@ -393,7 +393,7 @@ def main():
 
     caught('nested hook admitted', lambda: candidate_admission(plant=True))
     real_effect, real_validate = compute.effect, compute.validate
-    with patch.object(compute, 'effect', lambda p, n: real_effect(p, n) or bool(p.node_insn(n).rep)):
+    with patch.object(compute, 'effect', lambda p, n, device=False: real_effect(p, n, device) or bool(p.node_insn(n).rep)):
         caught('REP as effect', emission)
     with patch.object(compute, 'successors', lambda p, n: p.succ[n]):
         caught('fault edge as flow', emission)

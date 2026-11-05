@@ -137,6 +137,9 @@ diffs directly); relocated words in instructions are emitted as
   `<tag>_rm<n>` trampoline after a run that cannot fall through. Far failure
   normalizes CS into d6 before the fail-loud diagnostic. A PLINK
   manager call's return site is 2 bytes later (the manager advances the IP).
+  The manager saves FLAGS first and restores them just before every `retf`
+  (`emit.passes_flags`), so in flag liveness a manager call reads what its own
+  return site reads, not the union over every thunk's target (ecs-plan E8).
 - Indirect transfers (D7): compare chain over the known targets
   (`annotations/indirect.csv`); a proved switch table falls back to
   `rt_stop_unknown`, other sites to `rt_dispatch_near`/`rt_dispatch_far`

@@ -662,10 +662,27 @@ class Program:
             out |= self.live_in.get(r, ALL)
         return out
 
+    def passes_flags(self, t, cache: dict) -> bool:
+        """Entry t saves FLAGS first and every return it reaches restores them
+        just before (`pushf` ... `popf; retf`): the PLINK manager."""
+        rets = self.reach(t, cache)[0]
+        return (self.node_insn(t).op == "pushf" and bool(rets) and
+                all(self.node_insn(r).op == "retf" and (r[0], r[1] - 1) in self.succ
+                    and self.node_insn((r[0], r[1] - 1)).op == "popf" for r in rets))
+
     def liveness(self) -> None:
         nodes = sorted(self.succ, key=lambda n: (n[0], -n[1]))
         for n in nodes:
             self.live_in[n] = set()
+        # A PLINK manager call (thunk: call far manager, dw id, jmp far) whose
+        # manager passes FLAGS through reads what its own return site reads, not
+        # the union over every thunk's target (each driver entry would make its
+        # flags live at every overlay call).
+        cache: dict = {}
+        self.flag_passing = {c: site for c, site, targets in getattr(self, "calls", ())
+                             if c[1] in self.units[c[0]].manager_calls and targets
+                             and all(t not in (RET, UNKNOWN, SMC) and self.passes_flags(t, cache)
+                                     for t in targets)}
         entries = [e for e in self.dispatch if e in self.live_in]
         changed = True
         while changed:
@@ -676,7 +693,7 @@ class Program:
             self.unknown_live = unknown
             for n in nodes:
                 out = set()
-                for s in self.succ[n]:
+                for s in () if n in self.flag_passing else self.succ[n]:
                     if s == RET:
                         out |= self.ret_live_of(n)
                     elif s == UNKNOWN:
@@ -689,6 +706,8 @@ class Program:
                                 if n in self.call_site and self.walk_preserves_flags else ALL)
                     else:
                         out |= self.live_in[s]
+                if n in self.flag_passing:
+                    out = set(self.live_in[self.flag_passing[n]])
                 i = self.node_insn(n)
                 new = transfer(i, out, program=True)
                 if n in self.saves:

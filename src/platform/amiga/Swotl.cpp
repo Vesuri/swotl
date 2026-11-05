@@ -583,6 +583,9 @@ uint32_t Swotl::buildPaletteEGA(uint16_t back)
             rgb = (uint16_t)(rgb << 4 | n);
             table[1 + k * 3 + g] = n * 0x11111111u;
         }
+#ifdef SWOTL_PLANT_SPRITE_COLOUR    // replay plant (tests/amiga_replay.py): only the real video shows it
+        if (k == EGA_SPRITE_FILL) rgb = 0;
+#endif
         list[at++] = copperMove(color00 + 2 * k, rgb);
     }
     table[1 + EGA_COLOURS * 3] = 0;

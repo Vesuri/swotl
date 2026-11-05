@@ -48,7 +48,7 @@ CROSS = (7, 7, -3, -3, 0x062A)
 FRAME = 0x900000
 PLANTS = {
     "hotspot": ("word(POINTER_X) + word(POINTER_HOT_X)", "word(POINTER_X) - word(POINTER_HOT_X)"),
-    "equality": ("!= p) {\n                return;", "!= p && 0) {\n                return;"),
+    "equality": ("(int16_t)(y0 + r), p)) {", "(int16_t)(y0 + r), p) && 0) {"),
     "visibility": ("        held = 0;\n", "        held = 1;\n"),
     # lead plants (also tests/host_run.py sabotage pointer-*)
     "clamp": ("#define POINTER_X_LIMIT 0xbf", "#define POINTER_X_LIMIT 0xc0"),

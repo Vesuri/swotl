@@ -6,7 +6,8 @@ run=$(mktemp -d "$PWD/tmp/display-audit.XXXXXX")
 relative="../tmp/${run##*/}"
 export FSUAE_RUN="$relative/run" FSUAE_CLAIM_STRICT=1
 export AMIGA_CPU="${AMIGA_CPU:-68030}" JOY0=none JOY1=none
-unset SWOTL_ARGS
+# AUDIT_ARGS: the game's arguments (OCS: the EGA version, ecs-plan E8).
+export SWOTL_ARGS="${AUDIT_ARGS:-}"
 # Before the first published guest frame both allocated bitmaps are black.
 dd if=/dev/zero of="$run/latest.bin" bs=64000 count=1 2>/dev/null
 cp "$run/latest.bin" "$run/latest-frame.bin"
