@@ -600,7 +600,7 @@ static void load_tfh(void)
 /* Workbench start (L84): the icon's drawer becomes the current directory
  * (a Shell's is its own) and the icon's tool types are the arguments, the
  * same keywords; KEYS= is copied, the icon is freed before the run. The
- * release image reads TFH and ANALOGJOYSTICK only. */
+ * release image reads TFH, ANALOGJOYSTICK and OCS only. */
 static BPTR wb_old_dir = 0;
 static char *wb_keys = 0;
 static ULONG wb_keys_bytes = 0;
@@ -619,6 +619,7 @@ static int wb_options(int *tfh)
         STRPTR *types = (STRPTR *)icon->do_ToolTypes;
         *tfh = FindToolType(types, (STRPTR)"TFH") != 0;
         if (FindToolType(types, (STRPTR)"ANALOGJOYSTICK")) rt_joystick = 1;
+        if (FindToolType(types, (STRPTR)"OCS")) amiga_ocs_switch = 1;
 #ifndef SWOTL_RELEASE
         if (FindToolType(types, (STRPTR)"BENCH")) rt_bench = 1;
         if (FindToolType(types, (STRPTR)"MUSIC")) rt_music_skip = 0;
@@ -656,11 +657,11 @@ static struct RDArgs *shell_args = 0;
 
 #ifdef SWOTL_RELEASE
 /* The release image (make amiga-release): the player's options only. */
-#define SHELL_TEMPLATE "TFH/S,ANALOGJOYSTICK/S"
-enum { ARG_TFH, ARG_ANALOGJOYSTICK, ARG_COUNT };
+#define SHELL_TEMPLATE "TFH/S,ANALOGJOYSTICK/S,OCS/S"
+enum { ARG_TFH, ARG_ANALOGJOYSTICK, ARG_OCS, ARG_COUNT };
 #else
-#define SHELL_TEMPLATE "TFH/S,ANALOGJOYSTICK/S,MUSIC/S,BENCH/S,KEYS/K"
-enum { ARG_TFH, ARG_ANALOGJOYSTICK, ARG_MUSIC, ARG_BENCH, ARG_KEYS, ARG_COUNT };
+#define SHELL_TEMPLATE "TFH/S,ANALOGJOYSTICK/S,OCS/S,MUSIC/S,BENCH/S,KEYS/K"
+enum { ARG_TFH, ARG_ANALOGJOYSTICK, ARG_OCS, ARG_MUSIC, ARG_BENCH, ARG_KEYS, ARG_COUNT };
 #endif
 
 static int shell_options(int *tfh)
@@ -675,6 +676,7 @@ static int shell_options(int *tfh)
     }
     *tfh = values[ARG_TFH] != 0;
     if (values[ARG_ANALOGJOYSTICK]) rt_joystick = 1;   /* proportional stick in port 2; joystick argument Y */
+    if (values[ARG_OCS]) amiga_ocs_switch = 1;         /* the OCS/ECS version on AGA too (ecs-plan D3) */
 #ifndef SWOTL_RELEASE
     if (values[ARG_MUSIC]) rt_music_skip = 0;   /* diagnostic: music records start their songs */
     if (values[ARG_BENCH]) rt_bench = 1;        /* frame bench: ticks from guest progress, no CIA timer */
@@ -683,17 +685,27 @@ static int shell_options(int *tfh)
     return 1;
 }
 
-int amiga_guest_open(void)
+uint8_t amiga_ocs_switch = 0;
+static int tfh = 0;
+
+int amiga_options(void)
 {
     DOSBase = (struct DosLibrary *)OpenLibrary((CONST_STRPTR)"dos.library", 39);
     if (!DOSBase) {
         return 0;
     }
-    int tfh = 0;
     if (amiga_wb_startup && !wb_options(&tfh)) {
         return 0;
     }
     if (!amiga_wb_startup && !shell_options(&tfh)) {
+        return 0;
+    }
+    return 1;
+}
+
+int amiga_guest_open(void)
+{
+    if (!DOSBase) {
         return 0;
     }
     key_script_check();

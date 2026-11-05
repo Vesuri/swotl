@@ -63,26 +63,24 @@ if amiga_sprites
   set $s = (char *)&amiga_sprite_stolen
   dump binary memory @OUT@/stolen.bin $s $s+2
 end
+# VGA: 8 planes of 40 bytes per row; EGA (ecs-plan E5): 4 planes of 80, and
+# the EGA model's planes and registers (Swotl.cpp amiga_ega_*).
 if $bm
   set $n = $bm->BytesPerRow * 200
-  set $p = (char *)$bm->Planes[0]
-  dump binary memory @OUT@/plane0.bin $p $p+$n
-  set $p = (char *)$bm->Planes[1]
-  dump binary memory @OUT@/plane1.bin $p $p+$n
-  set $p = (char *)$bm->Planes[2]
-  dump binary memory @OUT@/plane2.bin $p $p+$n
-  set $p = (char *)$bm->Planes[3]
-  dump binary memory @OUT@/plane3.bin $p $p+$n
-  set $p = (char *)$bm->Planes[4]
-  dump binary memory @OUT@/plane4.bin $p $p+$n
-  set $p = (char *)$bm->Planes[5]
-  dump binary memory @OUT@/plane5.bin $p $p+$n
-  set $p = (char *)$bm->Planes[6]
-  dump binary memory @OUT@/plane6.bin $p $p+$n
-  set $p = (char *)$bm->Planes[7]
-  dump binary memory @OUT@/plane7.bin $p $p+$n
+  set $k = 0
+  while $k < $bm->Depth
+    set $p = (unsigned)$bm->Planes[$k]
+    eval "dump binary memory @OUT@/plane%d.bin %u %u", $k, $p, $p + $n
+    set $k = $k + 1
+  end
   set $c = (char *)amiga_colours
   dump binary memory @OUT@/colours.bin $c $c+sizeof(amiga_colours)
+end
+if amiga_ega_regs
+  set $e = *(char **)amiga_ega_planes
+  dump binary memory @OUT@/ega_planes.bin $e $e+0x40000
+  set $e = (char *)amiga_ega_regs
+  dump binary memory @OUT@/ega_regs.bin $e $e+amiga_ega_regs_bytes
 end
 printf "SWOTL_MILESTONE_OK\n"
 quit 0

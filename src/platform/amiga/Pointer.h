@@ -8,7 +8,10 @@
 // 1: entry F9h, which then holds that colour), BPLCON4 bank F. Each display
 // buffer has its own sprite data, written with that buffer's frame; the
 // vertical blank writes the shown buffer's position (guest position + lead +
-// hotspot) and visibility (rt_pointer_visible).
+// hotspot) and visibility (rt_pointer_visible). On the OCS/ECS display (mode
+// 0Eh, Swotl.cpp) the same sprites show colour registers 25 and 30 (the
+// colour's low nibble, no entry taken); a lowres sprite pixel is one logical
+// pixel there too.
 class Pointer {
 public:
     // Chip RAM for both buffers' sprites and the empty sprite (before the

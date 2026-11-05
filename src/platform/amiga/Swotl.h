@@ -12,7 +12,7 @@ struct plat_rect;
 
 // The Amiga application (docs/amiga-arch.md Lifecycle): everything that can
 // fail is opened before the takeover; then the machine is taken from the OS
-// (AGA copper display, the VERTB vector, the keyboard), the translated program
+// (AGA or OCS/ECS copper display, the VERTB vector, the keyboard), the translated program
 // runs to its exit, and the machine is handed back. Disk access inside the
 // takeover goes through I/O windows (L7).
 class Swotl {
@@ -34,6 +34,8 @@ public:
     void endIO();
 
     void setPalette(const uint8_t* dac);
+    void setPaletteEGA(const uint8_t* colours);
+    // VGA: the chunky frame, x in pixels; EGA: the four planes, x in bytes.
     void present(const uint8_t* frame, const struct plat_rect* rects, int32_t n);
 
     // The display and I/O windows (set by the constructor); the VERTB
@@ -51,6 +53,7 @@ private:
     uint16_t beginDisplayUpdate();
     void finishDisplayUpdate(uint16_t back);
     uint32_t buildPalette(uint16_t back);
+    uint32_t buildPaletteEGA(uint16_t back);
     DisplayState* display;
     struct View* oldActiView;
     uint32_t* oldCopperList;

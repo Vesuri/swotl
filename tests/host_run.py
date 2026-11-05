@@ -1528,6 +1528,71 @@ def compare_shown(capture: Path, bytes_per_row: int, snap: Path) -> list[str]:
     return out
 
 
+def compare_shown_ega(capture: Path, bytes_per_row: int, snap: Path) -> list[str]:
+    """The OCS/ECS screen (Swotl.cpp, ecs-plan E5): 4 hires bitplanes of 80
+    bytes per row against page 0 (vram.bin), the pointer sprites composed
+    (tests/amiga_sprites.py); colours = LoadRGB32 layout, count 32, each gun
+    the 12-bit nibble repeated: registers 0-15 the reference's attribute
+    palette through its DAC, top 4 of 6 bits; 25 and 30 the sprite colours."""
+    if bytes_per_row != EGA_PAGE // 200:
+        return [f"amiga: no EGA screen shown (bytes per row {bytes_per_row})"]
+    planes = [(capture / f"plane{k}.bin").read_bytes() for k in range(4)]
+    vram = (snap / "vram.bin").read_bytes()
+
+    def pixels(plane) -> bytearray:
+        out = bytearray(640 * 200)
+        for p in range(4):
+            for a in range(EGA_PAGE):
+                v = plane(p, a)
+                for b in range(8):
+                    if v >> (7 - b) & 1:
+                        out[a * 8 + b] |= 1 << p
+        return out
+    shown = pixels(lambda p, a: planes[p][a])
+    ref = pixels(lambda p, a: vram[a * 4 + p])
+    words = struct.unpack(">" + "I" * (len((capture / "colours.bin").read_bytes()) // 4),
+                          (capture / "colours.bin").read_bytes())
+    out = []
+    if words[0] != 32 << 16:
+        return [f"amiga: colour table header {words[0]:08x}, want {32 << 16:08x}"]
+    shown_rgb = [tuple(words[1 + k * 3 + g] >> 28 for g in range(3)) for k in range(32)]
+    if any(words[1 + k * 3 + g] != (words[1 + k * 3 + g] >> 28) * 0x11111111 for k in range(32) for g in range(3)):
+        out.append("amiga: colour table guns are not repeated nibbles")
+    regs = dict(kv.split("=") for kv in (snap / "ega.txt").read_text().split())
+    attr = bytes.fromhex(regs["attr_palette"])
+    dac = (snap / "dac.bin").read_bytes()
+    want = [tuple(dac[(attr[k] & 0x3F) * 3 + g] >> 2 for g in range(3)) for k in range(16)]
+    bad = [k for k in range(16) if shown_rgb[k] != want[k]]
+    if bad:
+        k = bad[0]
+        out.append(f"amiga colours: {len(bad)} of 16 differ, first {k:x} ours "
+                   f"{''.join(f'{v:x}' for v in shown_rgb[k])} reference {''.join(f'{v:x}' for v in want[k])}")
+    if (capture / "sprites.bin").exists():
+        sprites = (capture / "sprites.bin").read_bytes()
+        stolen = struct.unpack(">h", (capture / "stolen.bin").read_bytes())[0]
+        pointer = (capture / "pointer.bin").read_bytes()
+        if pointer[0] and not S.visible(sprites):
+            out.append("amiga: the frame has the pointer, the sprite is not shown")
+        if pointer[0]:
+            shown, problems = S.compose_ega(bytes(shown), sprites, stolen)
+            out += [f"amiga: {p}" for p in problems]
+            print(f"amiga: pointer sprites composed, stolen colour {stolen:02x}")
+        elif S.visible(sprites):
+            print("amiga: sprite held over a frame without the pointer: not composed")
+        if S.visible(sprites):
+            if shown_rgb[30] != want[0x0E]:
+                out.append(f"amiga: sprite colour 30 {shown_rgb[30]}, colour 0Eh {want[0x0E]}")
+            if stolen >= 0 and shown_rgb[25] != want[stolen & 0x0F]:
+                out.append(f"amiga: sprite colour 25 {shown_rgb[25]}, the stolen colour "
+                           f"{stolen & 0x0F:x} {want[stolen & 0x0F]}")
+    bad = [o for o in range(640 * 200) if shown[o] != ref[o]]
+    if bad:
+        o = bad[0]
+        out.append(f"amiga shown: {len(bad)} hires pixels differ, first x={o % 640} y={o // 640} "
+                   f"ours {shown[o]:x} reference {ref[o]:x}")
+    return out
+
+
 # The emulator's own picture: a one-field trace screenshot of the native FS-UAE
 # (tests/amiga_replay.py), 754x576 with the 320x200 screen at 2x2 from (74, 60)
 # (DIWSTRT $3881). Composed planes and sprite words cannot show what the
@@ -1558,6 +1623,36 @@ def compare_video(png: Path, snap: Path) -> list[str]:
     a = bad[0]
     return [f"video: {len(bad)} of 64000 pixels differ from the DOSBox frame, first x={a % 320} "
             f"y={a // 320} shown {px[ox + 2 * (a % 320), oy + 2 * (a // 320)]}"]
+
+
+def compare_video_ega(png: Path, snap: Path) -> list[str]:
+    """OCS/ECS (Swotl.cpp, ecs-plan E5): every hires pixel of the real video
+    (one screenshot pixel wide, two high, from VIDEO_ORIGIN) against page 0's
+    colour through the attribute palette and DAC, each 6-bit gun's top 4 bits
+    as the 12-bit display shows them (n << 4 | n), exactly."""
+    from PIL import Image
+    picture = Image.open(png).convert("RGB")
+    if picture.size != VIDEO_SIZE:
+        return [f"video: screenshot size {picture.size}, expected {VIDEO_SIZE}"]
+    px = picture.load()
+    vram = (snap / "vram.bin").read_bytes()
+    dac = (snap / "dac.bin").read_bytes()
+    attr = bytes.fromhex(dict(kv.split("=") for kv in (snap / "ega.txt").read_text().split())["attr_palette"])
+    rgb = [tuple((dac[(attr[k] & 0x3F) * 3 + g] >> 2) * 0x11 for g in range(3)) for k in range(16)]
+    ox, oy = VIDEO_ORIGIN
+    bad = []
+    for a in range(EGA_PAGE):
+        bits = [vram[a * 4 + p] for p in range(4)]
+        for b in range(8):
+            c = sum((bits[p] >> (7 - b) & 1) << p for p in range(4))
+            x, y = (a % 80) * 8 + b, a // 80
+            if any(px[ox + x, oy + 2 * y + j] != rgb[c] for j in (0, 1)):
+                bad.append((x, y))
+    if not bad:
+        return []
+    x, y = bad[0]
+    return [f"video: {len(bad)} of 128000 hires pixels differ from the DOSBox frame, first x={x} "
+            f"y={y} shown {px[ox + x, oy + 2 * y]}"]
 
 
 def compare_ega(planes: bytes, regs: bytes, dac: bytes, snap: Path) -> list[str]:
@@ -1909,6 +2004,15 @@ def check(milestone: str, timeout: int, amiga: Path | None, sabotage: str | None
             ga = {n: int(regs[n], 16) for n in REGS}
             if frame:
                 problems += compare_shown(args.amiga, int(regs["bpr"]), snap)
+            if script["ega"]:
+                problems += compare_shown_ega(args.amiga, int(regs["bpr"]), snap)
+                planes = args.amiga / "ega_planes.bin"
+                if not planes.exists():
+                    problems.append("amiga: no EGA model (the platform did not set rt_ega)")
+                else:
+                    problems += [f"amiga: {p}" for p in compare_ega(planes.read_bytes(),
+                                                                   (args.amiga / "ega_regs.bin").read_bytes(),
+                                                                   (args.amiga / "dac.bin").read_bytes(), snap)]
             problems += check_capture("amiga", ga, (args.amiga / "state.bin").read_bytes(),
                                       (args.amiga / "ram.bin").read_bytes()[::-1],  # reversed
                                       (args.amiga / "dac.bin").read_bytes() if frame else None,

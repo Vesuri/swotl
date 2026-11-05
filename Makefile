@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage reference-ega-explore sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-ega test-host-all test-amiga test-amiga-replay test-amiga-replay-plant test-amiga-restore test-amiga-keyboard test-amiga-workbench amiga amiga-sync amiga-release smoke smoke-release whdload test-whdload install-data test-install-data release release-check github-release test-release-installer size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage reference-ega-explore sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-ega test-host-all test-amiga test-amiga-replay test-amiga-replay-ega test-amiga-replay-plant test-amiga-restore test-amiga-keyboard test-amiga-workbench amiga amiga-sync amiga-release smoke smoke-release whdload test-whdload install-data test-install-data release release-check github-release test-release-installer size clean
 
 PYTHON ?= python3
 # AmigaXDev's shared Python package (amigaxdev.dos.mz_info).
@@ -39,6 +39,7 @@ help:
 	@echo "  make test-host          run it from the MZ entry to milestones m1-m3 against the reference"
 	@echo "  make test-host-all      the same to every milestone, m1-m7, and coverage c6-c10, c12, c13"
 	@echo "  make test-host-ega      the EGA version to the provisional ega- references (ecs-plan E4)"
+	@echo "  make test-amiga-replay-ega  the OCS/ECS display: ega- replays on the A1200 with OCS (AMIGA_SETUP=a3000 SWOTL_ARGS= for ECS)"
 	@echo "  make test-amiga         m1b-logo on the A1200 model (FS-UAE + GDB capture, amiga/milestone.gdb.in; AMIGA_CPU=68030)"
 	@echo "  make test-amiga-workbench  Workbench start from the icon (tool types, drawer, result) and the Shell result"
 	@echo "  make gates              the step gates: test, sabotage, host milestones, Amiga, smoke and restoration"
@@ -563,6 +564,9 @@ HOST_COVERAGE = c1-historical c2-german-school c3-custom c4-tour c5-records \
 AMIGA_REPLAY_MILESTONES = m2-choose-side m5-player-flight c9-mouse-menu c66-flight-calibration c85-joystick-calibration
 AMIGA_MILESTONE ?= m1b-logo
 AMIGA_CPU ?= 68030
+# EGA rows (docs/ecs-plan.md E5): the OCS switch on the AGA model; on an ECS
+# setup (AMIGA_SETUP=a3000) the chipset selects it, the switch is harmless.
+AMIGA_ARGS ?= $(if $(filter ega-%,$(AMIGA_MILESTONE)),OCS,)
 AMIGA_CAPTURE = tmp/amiga-$(AMIGA_MILESTONE)
 GATE_LAUNCH = $(if $(GATE_ISOLATED),$(PYTHON) "$(CURDIR)/tools/gate_launch.py",)
 
@@ -588,7 +592,7 @@ test-amiga: amiga host
 	@mkdir -p $(AMIGA_CAPTURE)
 	sed -e "s|@LABEL@|$$($(PYTHON) tests/host_run.py --label --milestone $(AMIGA_MILESTONE))|" \
 		-e "s|@OUT@|../$(AMIGA_CAPTURE)|" amiga/milestone.gdb.in > $(AMIGA_CAPTURE)/fixture.gdb
-	. amiga/env.sh && cd amiga && AMIGA_CPU=$(AMIGA_CPU) $(GATE_LAUNCH) ./debug.sh "" "../$(AMIGA_CAPTURE)/fixture.gdb" 2>&1 | \
+	. amiga/env.sh && cd amiga && AMIGA_CPU=$(AMIGA_CPU) SWOTL_ARGS="$(AMIGA_ARGS)" $(GATE_LAUNCH) ./debug.sh "" "../$(AMIGA_CAPTURE)/fixture.gdb" 2>&1 | \
 		tee ../$(AMIGA_CAPTURE)/gdb.log | sed -n 's/^SWOTL_REGS //p' > ../$(AMIGA_CAPTURE)/regs.txt
 	grep -q '^SWOTL_MILESTONE_OK$$' $(AMIGA_CAPTURE)/gdb.log
 	$(PYTHON) tests/host_run.py --milestone $(AMIGA_MILESTONE) --amiga $(AMIGA_CAPTURE)
@@ -596,6 +600,10 @@ test-amiga: amiga host
 # Each replay owns its image, capture directory and strictly claimed GDB port.
 test-amiga-replay: host
 	@$(MAKE) -s -k -j3 $(AMIGA_REPLAY_MILESTONES:%=t-amiga-replay-%)
+# The OCS/ECS display (docs/ecs-plan.md E5) on the provisional EGA references.
+AMIGA_REPLAY_EGA = ega-m1b-logo ega-m2-choose-side ega-m4-demo-frames ega-m5-player-flight
+test-amiga-replay-ega: host
+	@$(MAKE) -s -k -j3 $(AMIGA_REPLAY_EGA:%=t-amiga-replay-%)
 t-amiga-replay-%:
 	$(call RUN,amiga-replay-$*,. amiga/env.sh && $(PYTHON) tests/amiga_replay.py --milestone $*)
 # The real-video check's plant: the old fetch window built in, on a pointer screen.

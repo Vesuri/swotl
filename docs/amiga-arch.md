@@ -10,7 +10,7 @@ slave: [whdload.md](whdload.md).
 
 | Item | Value |
 | --- | --- |
-| Machine | PAL or NTSC A1200, 68020, AGA required (`GFXF_AA_LISA` after `SetPatch`), L8 |
+| Machine | PAL or NTSC A1200, 68020, AGA (`GFXF_AA_LISA` after `SetPatch`, L8) for VGA; OCS/ECS with a 68020 or better for the EGA version ([ecs-plan.md](ecs-plan.md)) |
 | Memory | 2 MiB Chip for DMA data; Fast RAM required (D15, [translator-design.md](translator-design.md)); default 4 KiB Shell stack, L52 |
 | Launch | Shell, Workbench (L84: the icon's tool types and drawer) and a WHDLoad slave (kickemu, INITAGA; [whdload.md](whdload.md)), the same executable; the release image takes the player options only |
 | Display | 320×200, 8 non-interleaved planes, 256 colours from the 18-bit VGA palette, L31 |
@@ -35,12 +35,13 @@ DanceDiverse3 set (`Palette24Bit`, `setPalette24Bit`) is kept for it.
 
 1. **Entry.** `start.c`'s `_start` replaces the shared one (L86; the link holds it at the
    hunk start): without `pr_CLI` it takes the WBStartup message before the constructors
-   (L84). Open dos/graphics outside `Forbid`; require AGA (L8); parse the arguments with
-   `ReadArgs` (`TFH/S,ANALOGJOYSTICK/S,MUSIC/S,BENCH/S,KEYS/K` from `Input()`'s buffer,
+   (L84). Open dos/graphics outside `Forbid`; AGA (L8) selects VGA, OCS/ECS or the `OCS`
+   switch the EGA version (ecs-plan D3), decided before the display is built; parse the arguments with
+   `ReadArgs` (`TFH/S,ANALOGJOYSTICK/S,OCS/S,MUSIC/S,BENCH/S,KEYS/K` from `Input()`'s buffer,
    where the Shell and the slave's `RunCommand` put the line; `?` prompts; a bad line:
    `PrintFault`, 20), or from Workbench `CurrentDir` to the icon's drawer and read its
    tool types (same keywords; `KEYS` copied). The release image (`SWOTL_RELEASE`,
-   [release.md](release.md)) takes `TFH` and `ANALOGJOYSTICK` only.
+   [release.md](release.md)) takes `TFH`, `ANALOGJOYSTICK` and `OCS` only.
 2. **Reserve.** Every game-owned block, all-or-nothing, largest first; Chip only for DMA
    data (L53, L54); only find-first's name list and records are allocated later, inside
    their I/O window (`plat_alloc`): one directory pass (`plat_dir_names`), then one
@@ -115,6 +116,14 @@ by `Disable`/`Enable` (L20).
   Fetch window `DDFSTRT $38`/`DDFSTOP $B0` (the framework's AGA `$20` takes the slots of
   sprites 3–7).
   Facts and checks: [pointer-plan.md](pointer-plan.md).
+- **OCS/ECS (EGA version, [ecs-plan.md](ecs-plan.md)).** No AGA or the `OCS` switch:
+  640×200 hires, four non-interleaved planes of 80-byte rows, `FMODE 0`, DIW `$81`, fetch
+  `DDFSTRT $3C`/`DDFSTOP $D4` (clear of the sprite slots). The runtime presents RTSEGA's
+  page 0 planes (`plat_present_ega`, rects in bytes); the platform copies the marked spans
+  per plane, no C2P. Palette: 16 registers of 12 bits (each 6-bit gun's top 4 bits, exact
+  for the EGA levels); the pointer sprites show registers 25 (the other colour's low
+  nibble) and 30 (`0E`), BPLCON4 `$0011` on AGA; no entry is taken. Buffering, palette
+  validity and publication timing as above.
 
 ## Timing
 

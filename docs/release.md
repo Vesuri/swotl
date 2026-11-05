@@ -24,8 +24,8 @@ Converged sibling pipeline plus SWOTL's use (`SWOTL:` rows). Provenance: `Sl` Sl
 ## Local executable
 
 `make amiga-release` builds the release image in `build/amiga-release`
-(`RELEASE=1`, `-DSWOTL_RELEASE`): Shell template `TFH/S,ANALOGJOYSTICK/S` and
-the same two tool types; the diagnostic MUSIC, BENCH and KEYS are refused. It
+(`RELEASE=1`, `-DSWOTL_RELEASE`): Shell template `TFH/S,ANALOGJOYSTICK/S,OCS/S` and
+the same three tool types; the diagnostic MUSIC, BENCH and KEYS are refused. It
 writes `amiga/out/Swotl-release.exe` with the installed converter's
 `elf2hunk input.elf output.exe -s` and verifies no symbol/debug records remain
 and every loadable record matches `build/amiga-release/out/Swotl.exe`,

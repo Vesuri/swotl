@@ -131,6 +131,10 @@ def fresh_run_directory(out):
 # framework's AGA fetch ($20-$98), which takes the DMA slots of sprites 3-7;
 # composed sprite words still pass, the video not.
 PLANTS = {'fetch-window': 'FETCH_WINDOW'}
+# Images up to here leave the A1200 model's 8 MB Fast enough (the VGA replays: at
+# most 5.7 MB); a larger one runs with REPLAY_Z3_KB of Zorro III RAM.
+REPLAY_HUNK_LIMIT = 6 << 20
+REPLAY_Z3_KB = 16384
 
 
 def run(name, out, trace=None, plant=None, work=None):
@@ -162,7 +166,18 @@ def run(name, out, trace=None, plant=None, work=None):
         port = listener.getsockname()[1]
     env = dict(os.environ, DEBUG_PORT=str(port), FSUAE_PORT_PINNED='1',
                AMIGA_CPU=os.environ.get('AMIGA_CPU', '68030'),
-               SWOTL_ELF=str(work / 'out/Swotl.elf'), FSUAE_RUN=os.path.relpath(fresh_run_directory(out), ROOT / 'amiga'), FSUAE_CLAIM_STRICT='1', SWOTL_ARGS='')
+               SWOTL_ELF=str(work / 'out/Swotl.elf'), FSUAE_RUN=os.path.relpath(fresh_run_directory(out), ROOT / 'amiga'), FSUAE_CLAIM_STRICT='1',
+               # EGA rows: the OCS switch, unless SWOTL_ARGS is given (an ECS setup without it)
+               SWOTL_ARGS=os.environ.get('SWOTL_ARGS', 'OCS' if H.milestone_script(name)['ega'] else ''))
+    # The diagnostic image carries the reference's event arrays (an EGA row's REP
+    # slices reach 6 MB): past REPLAY_HUNK_LIMIT they would take the memory the
+    # game and runtime allocate, so the run gets Zorro III RAM for them (68030+).
+    hunks = json.loads(subprocess.run([sys.executable, str(ROOT / 'tools/hunk_size.py'), '--json',
+                                       str(work / 'out/Swotl.exe')], check=True, capture_output=True,
+                                      text=True).stdout)
+    if next(iter(hunks.values()))['allocated_hunk_bytes'] > REPLAY_HUNK_LIMIT:
+        assert env['AMIGA_CPU'] not in ('68020', '68EC020'), 'Zorro III RAM needs a 32-bit CPU'
+        env['EXTRA_ARGS'] = (env.get('EXTRA_ARGS', '') + f' --zorro_iii_memory={REPLAY_Z3_KB}').strip()
     with (capture / 'gdb.log').open('w') as log:
         command = [str(ROOT / 'amiga/debug.sh'), '', str(capture / 'fixture.gdb'),
                    str(work / 'out/Swotl.exe')]
@@ -193,7 +208,7 @@ def run(name, out, trace=None, plant=None, work=None):
     problems = H.check(name, 2400, capture, None, trace=trace)
     script = H.milestone_script(name)
     snap = (trace or ROOT / f'tmp/pc-runs/ref-{name}/trace') / f"snap-{name}-{len(script['snapshots']) - 1}"
-    video = H.compare_video(capture / 'video.png', snap)
+    video = (H.compare_video_ega if script['ega'] else H.compare_video)(capture / 'video.png', snap)
     if plant:
         assert video, f'{plant} plant escaped the video check'
         print(f'Amiga diagnostic replay {name}: {plant} plant caught by the video check ({video[0]})', flush=True)

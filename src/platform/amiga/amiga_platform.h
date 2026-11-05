@@ -11,12 +11,17 @@ extern "C" {
 struct WBStartup;
 extern struct WBStartup *amiga_wb_startup;
 
-/* The translated program's lifetime (amiga_platform.c). open: dos.library,
- * the arguments (from Workbench the icon's tool types and drawer), guest
- * memory, the machine model and the PIT; 0 on failure; call it before the
- * takeover. run: from the program entry until it stops;
- * returns the plat_exit code. close: after the hand-back. */
+/* The translated program's lifetime (amiga_platform.c). options: dos.library
+ * and the arguments (from Workbench the icon's tool types and drawer), 0 on
+ * failure; first, the display depends on the chipset and OCS. open: guest memory, the machine
+ * model and the PIT; 0 on failure; call it before the takeover. run: from the
+ * program entry until it stops; returns the plat_exit code. close: after the
+ * hand-back. */
+int amiga_options(void);
 int amiga_guest_open(void);
+/* The OCS switch (Shell OCS, tool type OCS, WHDLoad Custom3): the OCS/ECS
+ * version (the game's EGA driver) on AGA too (docs/ecs-plan.md D3). */
+extern uint8_t amiga_ocs_switch;
 long amiga_guest_run(void);
 void amiga_guest_close(void);
 

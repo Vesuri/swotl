@@ -51,3 +51,24 @@ def compose(shown: bytes, words: bytes, stolen: int) -> tuple[bytes, list[str]]:
 def visible(words: bytes) -> bool:
     w = struct.unpack(f">{2 * SPRITE_WORDS}H", words[:4 * SPRITE_WORDS])
     return bool(w[SPRITE_WORDS] or w[SPRITE_WORDS + 1])
+
+
+def compose_ega(shown: bytes, words: bytes, stolen: int) -> tuple[bytes, list[str]]:
+    """EGA (Swotl.cpp, ecs-plan E5): the shown hires colours (640 x 200) with
+    the sprites over them. A sprite pixel is a lowres pixel, one logical pixel:
+    hires pixels 2x and 2x + 1. Sprite 4's colour 1 (register 25) shows the
+    stolen colour's low nibble, sprite 6's colour 2 (register 30) colour 0Eh
+    (the shape's FEh, src/runtime/pointer.c)."""
+    out, problems = bytearray(shown), []
+    for o, entry in decode(words).items():
+        y, x = divmod(o, 320)
+        if entry == STOLEN and stolen >= 0:
+            c = stolen & 0x0F
+        elif entry == 0xFE:
+            c = 0x0E
+        else:
+            problems.append(f"sprite pixel x={x} y={y} in sprite colour {entry & 7:x}"
+                            f"{'' if stolen >= 0 else ' with no stolen colour'}")
+            break
+        out[y * 640 + 2 * x] = out[y * 640 + 2 * x + 1] = c
+    return bytes(out), problems

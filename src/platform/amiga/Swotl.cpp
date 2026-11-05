@@ -27,11 +27,24 @@ extern "C" {
 extern struct ExecBase* SysBase;
 extern struct GfxBase* GfxBase;
 
+// VGA (mode 13h): 320x200 lowres, 8 planes by c2p, AGA. EGA (mode 0Eh,
+// docs/ecs-plan.md E5): 640x200 hires, 4 planes, the guest's plane bytes as
+// they are, OCS/ECS (or AGA with the OCS switch). Either way 64,000 bytes.
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 200
 #define SCREEN_PLANES 8
 #define PLANE_BYTES (SCREEN_WIDTH / 8 * SCREEN_HEIGHT)
 #define SCREEN_BYTES (PLANE_BYTES * SCREEN_PLANES)
+#define EGA_WIDTH 640
+#define EGA_PLANES 4
+#define EGA_ROW 80
+#define EGA_PLANE_BYTES (EGA_ROW * SCREEN_HEIGHT)
+// EGA colour registers: 0-15 the playfield; sprites 4 and 6 (Pointer.h)
+// show colour 1 in 25 and colour 2 in 30 (BPLCON4 bank 1 on AGA).
+#define EGA_COLOURS 32
+#define EGA_SPRITE_OTHER 25
+#define EGA_SPRITE_FILL 30
+#define EGA_FILL_COLOUR 0x0e        // the shape's FEh: low nibble (pointer.c)
 #define COPPER_LONGS 600
 
 #define DMA_ALL (DMAF_ALL | DMAF_MASTER | DMAF_BLITHOG)
@@ -54,6 +67,11 @@ volatile uint16_t amiga_restore_status = 0;
 uint32_t amiga_chip_free = 0, amiga_chip_largest = 0;
 volatile uint32_t amiga_frames = 0;    // vertical blanks since the takeover (debug fixtures)
 volatile uint32_t amiga_io_frames = 0; // of those, inside I/O windows (host-timed disk I/O)
+// The EGA model for the display checks (0 in VGA): &rt_ega_planes and
+// rt_ega_regs (gdb resolves rt_ega_regs to the struct type in C++ frames).
+volatile void* amiga_ega_planes = 0;
+volatile void* amiga_ega_regs = 0;
+volatile uint32_t amiga_ega_regs_bytes = 0;
 }
 
 
@@ -70,6 +88,7 @@ struct DisplayState {
     uint32_t colours[2][1 + 256 * 3 + 1];
     uint32_t rgb[256], currentRGB[256];
     uint8_t dac[768];
+    uint8_t ega[16 * 3];        // mode 0Eh: 16 colours, 6-bit R, G, B
     const uint8_t* frame;
     uint32_t serial;
     volatile uint32_t queuedSerial;
@@ -181,12 +200,28 @@ Swotl::Swotl() :
     runnable(false)
 {
     GfxBase = (struct GfxBase*)OpenLibrary("graphics.library", 39);
-    if (!GfxBase || !(GfxBase->ChipRevBits0 & GFXF_AA_LISA)) {
+    if (!GfxBase) {
         return;
     }
-    AmigaHardware::hasAGAChipSet = true;
+    bool aga = (GfxBase->ChipRevBits0 & GFXF_AA_LISA) != 0;
+    AmigaHardware::hasAGAChipSet = aga;
     amiga_ntsc = (GfxBase->DisplayFlags & NTSC) != 0;
     fm_ntsc = amiga_ntsc;
+    // close() unwinds the options and a partially failed guest open.
+    guestOpen = true;
+    if (!amiga_options()) {
+        return;
+    }
+    // No AGA, or the OCS switch: the EGA version; else VGA (ecs-plan D3).
+    rt_ega = !aga || amiga_ocs_switch;
+    if (rt_ega) {
+        amiga_ega_planes = &rt_ega_planes;
+        amiga_ega_regs = &rt_ega_regs;
+        amiga_ega_regs_bytes = sizeof(rt_ega_regs);
+    }
+    const uint16_t width = rt_ega ? EGA_WIDTH : SCREEN_WIDTH;
+    const uint16_t planes = rt_ega ? EGA_PLANES : SCREEN_PLANES;
+    const uint32_t planeBytes = rt_ega ? EGA_PLANE_BYTES : PLANE_BYTES;
 
     display = new DisplayState{};
     if (!display) return;
@@ -202,27 +237,38 @@ Swotl::Swotl() :
     for (uint16_t b = 0; b < 2; ++b) {
         display->copper[b] = (uint32_t*)AllocMem(COPPER_LONGS * 4, MEMF_CHIP | MEMF_CLEAR);
         if (!display->copper[b]) return;
-        display->bitmap[b] = new Bitmap(display->screen[b], SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_PLANES, false);
+        display->bitmap[b] = new Bitmap(display->screen[b], width, SCREEN_HEIGHT, planes, false);
         display->list[b] = new CopperList(display->copper[b], COPPER_LONGS);
         if (!display->bitmap[b] || !display->list[b]) return;
-        InitBitMap(&display->bm[b], SCREEN_PLANES, SCREEN_WIDTH, SCREEN_HEIGHT);
-        for (uint16_t plane = 0; plane < SCREEN_PLANES; ++plane) {
-            display->bm[b].Planes[plane] = display->screen[b] + plane * PLANE_BYTES;
+        InitBitMap(&display->bm[b], planes, width, SCREEN_HEIGHT);
+        for (uint16_t plane = 0; plane < planes; ++plane) {
+            display->bm[b].Planes[plane] = display->screen[b] + plane * planeBytes;
         }
-        uint32_t at = display->list[b]->setPlayfield(1, SCREEN_WIDTH, SCREEN_HEIGHT,
-            SCREEN_PLANES, false, false, false, false, false, true, AMIGA_TOP_LINE + SCREEN_HEIGHT / 2);
-        // The framework's AGA fetch ($20-$98) takes the DMA slots of sprites
-        // 3-7; FMODE 3 fetches the same 320 pixels at the same place from $38.
+        uint32_t at = display->list[b]->setPlayfield(1, width, SCREEN_HEIGHT,
+            planes, false, rt_ega, false, false, false, !rt_ega, AMIGA_TOP_LINE + SCREEN_HEIGHT / 2);
+        if (rt_ega) {
+            // The standard hires fetch ($3C-$D4, FMODE 0) for the window at
+            // $81: clear of the sprites' DMA slots on every chipset; sprite
+            // colours 16-31 (BPLCON4 bank 1, AGA only).
+            display->copper[b][at++] = copperMove(fmode, 0);
+            display->copper[b][at++] = copperMove(bplcon1, 0);
+            display->copper[b][at++] = copperMove(ddfstrt, 0x3c);
+            display->copper[b][at++] = copperMove(ddfstop, 0xd4);
+            display->copper[b][at++] = copperMove(bplcon4, 0x0011);
+        } else {
+            // The framework's AGA fetch ($20-$98) takes the DMA slots of sprites
+            // 3-7; FMODE 3 fetches the same 320 pixels at the same place from $38.
 #ifndef SWOTL_PLANT_FETCH_WINDOW  // replay plant (tests/amiga_replay.py)
-        display->copper[b][at++] = copperMove(ddfstrt, 0x38);
-        display->copper[b][at++] = copperMove(ddfstop, 0xb0);
+            display->copper[b][at++] = copperMove(ddfstrt, 0x38);
+            display->copper[b][at++] = copperMove(ddfstop, 0xb0);
 #endif
-        // Sprite colours from bank F (Pointer.h); the pointers before the
-        // palette, final before sprite DMA starts.
-        display->copper[b][at++] = copperMove(bplcon4, 0x00ff);
+            // Sprite colours from bank F (Pointer.h).
+            display->copper[b][at++] = copperMove(bplcon4, 0x00ff);
+        }
+        // The pointers before the palette, final before sprite DMA starts.
         at = Pointer::copper(display->copper[b], at, b);
         display->list[b]->showBitmap(at, *display->bitmap[b]);
-        display->paletteIndex = at + SCREEN_PLANES * 2;
+        display->paletteIndex = at + planes * 2;
         at = buildPalette(b);
         if (at >= COPPER_LONGS) return;
         display->copper[b][at] = 0xfffffffe;
@@ -236,8 +282,6 @@ Swotl::Swotl() :
     }
 
     application = this;
-    // close() also unwinds a partially failed guest open.
-    guestOpen = true;
     runnable = amiga_guest_open();
     amiga_chip_free = AvailMem(MEMF_CHIP);
     amiga_chip_largest = AvailMem(MEMF_CHIP | MEMF_LARGEST);
@@ -491,6 +535,9 @@ void Swotl::endIO()
 // updates also bring that bitmap up to date before queuing its handoff.
 uint32_t Swotl::buildPalette(uint16_t back)
 {
+    if (rt_ega) {
+        return buildPaletteEGA(back);
+    }
     uint32_t* table = display->colours[back];
     table[0] = 256u << 16;
     for (uint16_t k = 0; k < 256 * 3; ++k) {
@@ -512,6 +559,62 @@ uint32_t Swotl::buildPalette(uint16_t back)
     uint32_t end = display->list[back]->setPalette24Bit(display->paletteIndex, palette, 0, 0, 255, true);
     display->paletteValid[back] = true;
     return end;
+}
+
+// EGA: 32 colour registers of 12 bits, each 6-bit gun's top 4 bits (the EGA
+// levels 0, 15h, 2Ah, 3Fh are 0, 5, A, F exactly); the table records them in
+// LoadRGB32 layout (count 32, each gun the nibble repeated) for the checks.
+uint32_t Swotl::buildPaletteEGA(uint16_t back)
+{
+    static const uint8_t black[3] = {0, 0, 0};
+    uint32_t* table = display->colours[back];
+    uint32_t* list = display->copper[back];
+    uint32_t at = display->paletteIndex;
+    int16_t stolen = Pointer::stolen(back);
+    table[0] = (uint32_t)EGA_COLOURS << 16;
+    for (uint16_t k = 0; k < EGA_COLOURS; ++k) {
+        const uint8_t* c = black;
+        if (k < 16) c = &display->ega[k * 3];
+        else if (k == EGA_SPRITE_OTHER && stolen >= 0) c = &display->ega[(stolen & 0x0f) * 3];
+        else if (k == EGA_SPRITE_FILL) c = &display->ega[EGA_FILL_COLOUR * 3];
+        uint16_t rgb = 0;
+        for (uint16_t g = 0; g < 3; ++g) {
+            uint16_t n = (uint16_t)((c[g] & 0x3f) >> 2);
+            rgb = (uint16_t)(rgb << 4 | n);
+            table[1 + k * 3 + g] = n * 0x11111111u;
+        }
+        list[at++] = copperMove(color00 + 2 * k, rgb);
+    }
+    table[1 + EGA_COLOURS * 3] = 0;
+    display->paletteStolen[back] = stolen;
+    display->paletteValid[back] = true;
+    return at;
+}
+
+void Swotl::setPaletteEGA(const uint8_t* colours)
+{
+    uint16_t back = beginDisplayUpdate();
+    for (unsigned k = 0; k < 16 * 3; ++k) display->ega[k] = colours[k];
+    display->paletteValid[0] = false;
+    display->paletteValid[1] = false;
+    finishDisplayUpdate(back);
+}
+
+// Even destination and source, even length: words at the ends, longs between.
+typedef uint16_t __attribute__((may_alias)) Word;
+typedef uint32_t __attribute__((may_alias)) Long;
+static void copySpan(uint8_t* d, const uint8_t* s, uint16_t n)
+{
+    if (n && ((uint32_t)d & 2)) {
+        *(Word*)d = *(const Word*)s;
+        d += 2, s += 2, n -= 2;
+    }
+    for (; n >= 4; n -= 4, d += 4, s += 4) {
+        *(Long*)d = *(const Long*)s;
+    }
+    if (n) {
+        *(Word*)d = *(const Word*)s;
+    }
 }
 
 uint16_t Swotl::beginDisplayUpdate()
@@ -551,7 +654,19 @@ void Swotl::finishDisplayUpdate(uint16_t back)
     // Each bitmap remembers changes since its own last conversion, including
     // updates that were replaced before a VBI. Bounds originate in guest
     // painter stores; no framebuffer comparison discovers dirty pixels.
-    for (uint16_t y = 0; y < SCREEN_HEIGHT;) {
+    // EGA: rows in bytes; the guest's planes (plat_present_ega) copied as
+    // they are.
+    for (uint16_t y = 0; rt_ega && y < SCREEN_HEIGHT; ++y) {
+        DisplayQueue::Row r = display->queue.rows[back][y];
+        if (!r.hi) continue;
+        uint32_t o = (uint32_t)y * EGA_ROW + r.lo;
+        for (uint16_t p = 0; p < EGA_PLANES; ++p) {
+            copySpan(display->bm[back].Planes[p] + o, display->frame + p * EGA_PLANE_BYTES + o,
+                     (uint16_t)(r.hi - r.lo));
+        }
+        display->queue.clear(back, y);
+    }
+    for (uint16_t y = 0; !rt_ega && y < SCREEN_HEIGHT;) {
         DisplayQueue::Row r = display->queue.rows[back][y];
         if (!r.hi) { ++y; continue; }
         uint16_t end = y + 1;
@@ -597,14 +712,14 @@ extern "C" void plat_palette(const uint8_t* dac)
     }
 }
 
-// The EGA version's display (mode 0Eh planes, 16 colours) is ecs-plan E5c;
-// until then the Amiga never sets rt_ega, so mode 0Eh is never entered.
-extern "C" void plat_present_ega(const uint8_t*, const struct plat_rect*, int32_t)
+extern "C" void plat_present_ega(const uint8_t* planes, const struct plat_rect* rects, int32_t n)
 {
+    if (Swotl::application) Swotl::application->present(planes, rects, n);
 }
 
-extern "C" void plat_palette_ega(const uint8_t*)
+extern "C" void plat_palette_ega(const uint8_t* colours)
 {
+    if (Swotl::application) Swotl::application->setPaletteEGA(colours);
 }
 
 extern "C" void amiga_io_begin(void)
