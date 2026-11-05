@@ -38,7 +38,7 @@ help:
 	@echo "  make host               link generated program + runtime for Unicorn 68020 -> build/host/swotl.elf"
 	@echo "  make test-host          run it from the MZ entry to milestones m1-m3 against the reference"
 	@echo "  make test-host-all      the same to every milestone, m1-m7, and coverage c6-c10, c12, c13"
-	@echo "  make test-host-ega      the EGA version to the provisional ega- references (ecs-plan E4)"
+	@echo "  make test-host-ega      the EGA version to the ega- gate set (ecs-plan E7, D7: tools/ega_cover.py)"
 	@echo "  make test-amiga-replay-ega  the OCS/ECS display: ega- replays on the A1200 with OCS (AMIGA_SETUP=a3000 SWOTL_ARGS= for ECS)"
 	@echo "  make test-amiga         m1b-logo on the A1200 model (FS-UAE + GDB capture, amiga/milestone.gdb.in; AMIGA_CPU=68030)"
 	@echo "  make test-amiga-workbench  Workbench start from the icon (tool types, drawer, result) and the Shell result"
@@ -573,13 +573,19 @@ GATE_LAUNCH = $(if $(GATE_ISOLATED),$(PYTHON) "$(CURDIR)/tools/gate_launch.py",)
 test-host: host
 	@$(MAKE) -s -k -j$(JOBS) $(HOST_MILESTONES:%=t-host-%)
 
-# EGA host lockstep (docs/ecs-plan.md E4): the provisional references (E5a);
-# E7 sets the gate set (D7)
-HOST_EGA = ega-m1-mode0eh ega-m1b-logo ega-m2-choose-side ega-m4-demo-frames ega-m5-player-flight
+# EGA host lockstep (docs/ecs-plan.md E4, E7): the gate set (D7) is tools/ega_cover.py's
+# greedy cover of EGA-only executed code over the final references; t-ega-cover checks it
+HOST_EGA = ega-m1-mode0eh ega-m1b-logo ega-m2-choose-side ega-m4-demo-frames ega-m5-player-flight \
+	ega-c78-other-pilot-crash ega-c11-tour-mission ega-c85-joystick-calibration ega-c31-map-briefing-return \
+	ega-c82-gunner-damage ega-c81-pilot-damage ega-c67-map-scale ega-c12-b17-bombing ega-c33-b17-stations \
+	ega-c8-steep-bank ega-c73-p38-ground-end-v2 ega-c24-custom-create ega-c52-campaign-loss \
+	ega-c13-me262-gunnery ega-c32-historical-high-view
+t-ega-cover:
+	$(call RUN,ega-cover,$(PYTHON) tools/ega_cover.py --check "$(HOST_EGA)")
 t-ega-%:
-	$(call RUN,host-ega-$*,$(PYTHON) tests/host_run.py --table reference/milestones-ega.csv --milestone ega-$* --timeout 2400)
+	$(call RUN,host-ega-$*,$(PYTHON) tests/host_run.py --table reference/$(if $(filter m%,$*),milestones,coverage)-ega.csv --milestone ega-$* --timeout $(if $(filter m%,$*),2400,4800))
 test-host-ega: host
-	@$(MAKE) -s -k -j$(JOBS) $(HOST_EGA:ega-%=t-ega-%)
+	@$(MAKE) -s -k -j$(JOBS) t-ega-cover $(HOST_EGA:ega-%=t-ega-%)
 
 # Long scenarios first: the tail of the R31 host-all run, c52 longest.
 # More wall time accommodates contention; every endpoint/comparison is unchanged.
@@ -600,7 +606,7 @@ test-amiga: amiga host
 # Each replay owns its image, capture directory and strictly claimed GDB port.
 test-amiga-replay: host
 	@$(MAKE) -s -k -j3 $(AMIGA_REPLAY_MILESTONES:%=t-amiga-replay-%)
-# The OCS/ECS display (docs/ecs-plan.md E5) on the provisional EGA references.
+# The OCS/ECS display (docs/ecs-plan.md E5) on EGA references.
 AMIGA_REPLAY_EGA = ega-m1b-logo ega-m2-choose-side ega-m4-demo-frames ega-m5-player-flight
 test-amiga-replay-ega: host
 	@$(MAKE) -s -k -j3 $(AMIGA_REPLAY_EGA:%=t-amiga-replay-%)

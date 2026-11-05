@@ -151,21 +151,25 @@ All nine in-scope overlays are captured and pass the image proof.
 
 EGA ([ecs-plan.md](ecs-plan.md)): `reference/milestones-ega.csv` and
 `reference/coverage-ega.csv` are the VGA rows prefixed `ega-` with launch
-`swotl E S 5 N Y Y 64`, `RTSEGA.OVL` for `RTSVGA.OVL`, mode `0E` and
-`rep_chunks=1` (user 2026-11-04: DOSBox-X slices RTSEGA+4C2C's `repe cmpsw`,
-the converter's row compare, and interrupts land between slices)
+`swotl E S 5 N Y Y 64`, `RTSEGA.OVL` for `RTSVGA.OVL`, mode `0E`, `rep_chunks` and
+`joystick` as the VGA row (ecs-plan E7: RTSEGA+4C2C's `repe cmpsw` is inside the 4BD0
+native row, out of the sync set)
 (`c26-exit-usage` loads no driver and `c7-demo-dispatch`'s +EC60 is VGA-only:
-left out; `ega-c20`, `-c22`, `-c23` expect NOTCAMP, the in-flight map they end on). `ega-m1-mode0eh` is
+left out; `ega-c20`, `-c22`, `-c23` expect NOTCAMP, the in-flight map they end on;
+`ega-c81` 300 s; `c84-pilot-wing-damage` left out: no wing damage under polled timing
+by 3.2 G instructions, user 2026-11-05). `ega-m1-mode0eh` is
 `RTSEGA.OVL+4874` (after INT 10h AX=000Eh), `ega-m1b-logo` `RTSEGA.OVL+48E9`
 (palette DS:2897 restored over the logo). `make reference-ega-explore
 [EGA_RUNS=...]` runs them without poll points (`reference.py --explore`, hashes in
 `tmp/reference-hashes-explore.csv`); `sweep.py` takes no interrupt-entry targets from
 these unpolled traces. `snap_png.py` draws mode 0Eh: plane p of byte a
 is `vram.bin[a·4+p]`, from the CRTC start, through the attribute palette.
-The provisional lockstep references (ecs-plan E5a: `ega-` m1, m1b, m2, m4,
-m5, `make reference` style with poll points and REP slices) feed `make
-test-host-ega`: `host_run.py` compares the model's planes, registers,
-latches, attribute palette and DAC with the snapshot (`compare_ega`).
+The final lockstep references (ecs-plan E7: every row, `reference.py --table
+reference/milestones-ega.csv` and `coverage-ega.csv` with poll points; two passes
+repeat byte-identical) feed `make test-host-ega`: the rows of `HOST_EGA`, a greedy
+cover of EGA-only executed code (`tools/ega_cover.py`, D7; `make t-ega-cover` checks
+it), where `host_run.py` compares the model's planes, registers, latches, attribute
+palette and DAC with the snapshot (`compare_ega`).
 
 Coverage scripts: `reference/coverage.csv`, run by `make coverage` (same
 checks; no determinism history needed). Menu keys are the red letters;
