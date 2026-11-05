@@ -74,7 +74,7 @@ the declined generated code enters rt_fault."""
         self.state = state
 
 
-def run(ram, registers, resume, limit=100000, returns=(), cells=frozenset()):
+def run(ram, registers, resume, limit=100000, returns=(), cells=frozenset(), device=None):
     """Execute original bytes, stopping *before* the guest return.
 
 `returns` (U8): the row's other root returns or endpoints, CS:IP, stopped
@@ -83,6 +83,13 @@ DivideFault. `cells` (user 2026-10-27, native-compute "Code writes and the cell
 walk"): linear addresses of D16 cell caches (`cell_addresses`) whose writes
 may meet fetches (the RET plant the walk executes, its restore); every other
 code write still fails, and compare checks the cells' write addresses.
+
+`device` (native-compute "Device rows"): a tools/ega_model.Ega the original's
+EGA accesses go to: a read of A0000h-AFFFFh loads the model's byte into RAM first
+(as the generated code's bounce), a byte stored there goes through the model's
+write logic, `out` through its ports (OutsideSurface fails). The result's `ega`
+holds its final planes, registers and D9 marks; a string instruction reaching
+the window fails.
 
 IR supplies only the undefined-flag mask. Unicorn supplies all expected values,
 flow and writes. Faults and external effects fail closed; their guard/fallback
@@ -100,6 +107,16 @@ cases belong in the block differential before a compute row can be enabled.
         return True
 
     x.e.hook(U.HOOK_MEM_READ | U.HOOK_MEM_WRITE, access)
+    engine = x.e
+    if device is not None:
+        @U.MEM_CB
+        def ega_read(h, kind, addr, size, value, user):
+            for a in range(addr, addr + size):
+                if a in EGA_WINDOW:
+                    x.e.write(a, bytes([device.read(a - EGA_WINDOW.start)]))
+            return True
+
+        x.e.hook(U.HOOK_MEM_READ, ega_read)
     regs = dict(registers)
     word = regs.pop('flags')
     flags = {f: (word >> FLAG_BIT[f]) & 1 for f in FLAGS}
@@ -133,8 +150,17 @@ cases belong in the block differential before a compute row can be enabled.
                 raise DivideFault(f'oracle divide error at {at:05x}', dict(
                     registers=dict(case[0]), flags=word, undefined=sorted(state.undef),
                     ram=bytes(state.mem[:X.RAM]), writes=set(written)))
-            if err or ints or outs or 'trap' in regs or insn.op == 'in':
+            if err or ints or (outs and device is None) or 'trap' in regs or insn.op == 'in' \
+                    or x.e is not engine:
                 raise ValueError(f'oracle external effect/fault at {at:05x}: {err, ints, outs}')
+            if device is not None:
+                window = sorted(a for a in writes if a in EGA_WINDOW)
+                if window and insn.op in STRINGS:
+                    raise ValueError(f'oracle EGA string instruction at {at:05x}')
+                for a in window:
+                    device.write(a - EGA_WINDOW.start, mem[a])
+                for port, width, value in outs:
+                    device.out(port, value, width)
             written.update(writes)
             check_code_writes(written - cells, fetched)
             flags = {f: (word >> FLAG_BIT[f]) & 1 for f in FLAGS}
@@ -145,14 +171,26 @@ cases belong in the block differential before a compute row can be enabled.
             count += 1
         if not count:
             raise ValueError('zero-instruction oracle is not coverage')
-        return dict(registers=regs, flags=word, undefined=sorted(state.undef),
-                    writes=written, ram=x.e.read(0, X.RAM), instructions=count,
-                    at=(regs['cs'], regs['ip']))
+        result = dict(registers=regs, flags=word, undefined=sorted(state.undef),
+                      writes=written, ram=x.e.read(0, X.RAM), instructions=count,
+                      at=(regs['cs'], regs['ip']))
+        if device is not None:
+            result['ega'] = ega_state(device)
+        return result
     finally:
         U.uc.uc_close(x.e.h)
 
 
 VRAM = range(0xa0000, 0xc0000)
+EGA_WINDOW = range(0xa0000, 0xb0000)
+STRINGS = {'movs', 'movsb', 'movsw', 'stos', 'stosb', 'stosw', 'lods', 'lodsb', 'lodsw',
+           'cmps', 'cmpsb', 'cmpsw', 'scas', 'scasb', 'scasw'}
+
+
+def ega_state(device):
+    """What a device row's native must leave as the model does (compare's `ega`)."""
+    return dict(planes=device.planes_image(), regs=device.regs_image(),
+                marks=(tuple(tuple(r) for r in device.rows), device.top, device.bottom))
 
 
 def code_addresses(p, loadseg):
@@ -187,6 +225,9 @@ addresses: SMC) and VRAM. Nothing observes the order or count of other writes.""
         errors.append('code/VRAM write addresses')
     if expected['ram'] != actual['ram']:
         errors.append('RAM')
+    if 'ega' in expected:   # device rows: the EGA model's state, exact
+        errors += [f'EGA {k}' for k in ('planes', 'regs', 'marks')
+                   if expected['ega'][k] != actual['ega'][k]]
     return errors
 
 

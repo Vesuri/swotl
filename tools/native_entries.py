@@ -7,7 +7,8 @@ One tools/pc_run.py run per fixture (a row of reference/milestones.csv or
 reference/coverage.csv, its keys, launch and inputs as tools/reference.py
 runs it): snapshots entry0, entry1, ... at MODULE+HEX (HITS: comma-separated
 execution counts, each counted as pc_run.py counts snapshot triggers: after the
-key script, then after the previous snapshot); the run ends at the last. Output:
+key script, then after the previous snapshot); the run ends at the last. EGA
+rows (`ega-`, reference/*-ega.csv) also give vram.bin and ega.txt. Output:
 tmp/pc-runs/native-TAG-FIXTURE/trace/snap-entryK (tools/compute_oracle.py
 load_entry). A fixture that never reaches a hit fails the run.
 """
@@ -24,7 +25,8 @@ import fixture_inputs
 
 REPO = Path(__file__).resolve().parent.parent
 POLLS = REPO / "build/gen/poll-points.csv"  # make gen
-TABLES = ("reference/milestones.csv", "reference/coverage.csv")
+TABLES = ("reference/milestones.csv", "reference/coverage.csv",
+          "reference/milestones-ega.csv", "reference/coverage-ega.csv")   # EGA: ecs-plan E6
 
 
 def fixture(name: str) -> dict:

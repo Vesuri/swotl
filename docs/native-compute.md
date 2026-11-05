@@ -274,3 +274,22 @@ guest state cannot show a stale plant). Row: `sprite_row`'s walk loop
 4FD3..5032 (`tests/test_sprite_packet.py`: native linked against the generated walk;
 synthetic RET, MOV and reload cells, a sprite DS reaching the cells, DF set and span
 starts outside the cells, captured entries; plants).
+
+## Device rows (ecs-plan D5, user 2026-11-04)
+
+`hle.csv` `kind=device`: a compute row of the EGA driver (RTSEGA) whose body may `out` to
+the EGA model and access EGA memory through the device lowering (`compute.validate(device=True)`;
+every other rule above applies; no `args`, `end` or continuation). At the resume the native
+leaves what the generated path leaves through `src/runtime/ega.c`: the planes, every
+`rt_ega_regs` register and latch, the D9 marks (`rt_vram_rows`, top, bottom) and all guest
+RAM, including the byte last stored at each EGA address (the bounce). It declines when no
+driver call is in progress (the generated path then stops at its first mark). Write order and
+intermediate register values are not compared (RC5).
+
+Oracle: `compute_oracle.run(device=tools/ega_model.Ega)`: a read of A0000h–AFFFFh loads the
+model's byte first, a stored byte goes through the model's write logic, `out` through its
+ports; a string instruction reaching the window or a register outside the surface fails.
+`compare` adds the planes, registers and marks. `tests/test_ega_model.py` checks the Python
+model against `ega.c` (random port, read and write sequences from the mode set; plants on both).
+Rows: RTSEGA 4AC3 `ega_convert_all` and 4BD0 `ega_convert_changed`
+(`src/runtime/compute_ega.s`; `make t-ega-convert t-sab-ega-convert t-ega-model t-sab-ega-model`).

@@ -86,10 +86,10 @@ speed work: [speed-plan.md](speed-plan.md).
 45. OCS/ECS version from the EGA driver (user 2026-11-03), 68020 or better,
     no 68000. Scope today is VGA only (AGENTS.md). Plan, facts and decisions D1–D8:
     [ecs-plan.md](ecs-plan.md) (mode 0Eh: four hires planes, no C2P; RTSEGA's
-    converters 4AC3/4BD0 likely need device natives). E1–E5 done (EGA model on
+    converters 4AC3/4BD0 likely need device natives). E1–E6 done (EGA model on
     host, `make test-host-ega`; OCS/ECS display on FS-UAE `a1200` with `OCS` and
-    `a3000`, `make test-amiga-replay-ega`; flyby: 4BD0 55% of cycles, about 1.1 s
-    a call on the 68020); next E6 (4BD0 native; 4AC3 priced first). The installer leaves out
+    `a3000`, `make test-amiga-replay-ega`; converter natives 4AC3/4BD0: demo frames
+    306 ms on the 68020, was 660); next E7 (re-record the EGA references: new sync set). The installer leaves out
     RTSEGA.OVL (unused under VGA; release.md).
 
 ## User report (A1200, 68060, 2026-10-29)

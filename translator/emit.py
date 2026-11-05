@@ -366,6 +366,9 @@ class Program:
         self.hle: dict[tuple[str, int], tuple[tuple[str, int], str]] = {}
         self.hle_args: dict[tuple[str, int], list[str]] = {}
         self.compute_rows: set[tuple[str, int]] = set()
+        # device rows (native-compute "Device rows", ecs-plan D5): compute rows of the
+        # EGA driver whose bodies may `out` to the EGA model
+        self.device_rows: set[tuple[str, int]] = set()
         self.compute_end: dict[tuple[str, int], int] = {}   # U8: range end past the return
         self.compute_endpoints: set[tuple[str, int]] = set()
         self.compute_exits: dict[tuple[str, int], tuple] = {}
@@ -417,8 +420,14 @@ class Program:
                 self.compute_entries[(mod, first)] = entries
                 for k, e in enumerate(entries):
                     self.entry_of[e] = ((mod, first), 1 + k)
-            if kind not in {'hook', 'compute'}:
+            if kind not in {'hook', 'compute', 'device'}:
                 raise LowerError(f'hle.csv: unknown kind {kind}')
+            if kind == 'device':
+                if mod != EGA_DRIVER or r.get('end') or args or not r.get('reason') or not r.get('oracle'):
+                    raise LowerError('hle.csv: a device row is an EGA driver routine with reason/oracle, '
+                                     'no args, end or continuation')
+                self.device_rows.add((mod, first))
+                self.compute_rows.add((mod, first))
             if kind == 'compute':
                 if args or not r.get('reason') or not r.get('oracle'):
                     raise LowerError('hle.csv: compute needs reason/oracle and no args')
@@ -461,7 +470,8 @@ class Program:
         self.compute_bodies = {n: compute.validate(self, n, self.hle[n][0], self.compute_end.get(n),
                                                     n in self.compute_endpoints,
                                                     self.compute_exits.get(n, ()),
-                                                    self.compute_entries.get(n, ()))
+                                                    self.compute_entries.get(n, ()),
+                                                    device=n in self.device_rows)
                                for n in self.compute_rows}
         # RC5: nothing observes a row's intermediate state, so the loop heads in
         # its body leave the sync set (RC3: the references are recorded without

@@ -8,19 +8,23 @@ from typing import NamedTuple
 from .lower import LowerError
 
 
-def forbidden(p, n):
+def forbidden(p, n, device=False):
     """Diagnostic hooks (REP slices too), sync points other than loop heads (I2:
 the row would meet the IRQ0 handler's footprint) and external effects."""
     return (n in p.diagnostic_hooks or n in getattr(p, 'diagnostic_reps', {}) or
-            getattr(p, 'sync', {}).get(n, 'loop') != 'loop' or effect(p, n))
+            getattr(p, 'sync', {}).get(n, 'loop') != 'loop' or
+            (effect(p, n, device) if device else effect(p, n)))
 
 
-def effect(p, n):
+def effect(p, n, device=False):
     """Runtime, device and interrupt-control effects: outside every contract.
-U8: a REP is no effect."""
+U8: a REP is no effect. A device row (EGA driver, native-compute "Device rows")
+may `out` to the EGA model; its EGA memory operands are no effect here either
+(the native reproduces the model's state)."""
     i = p.node_insn(n)
     return (n[1] in p.units[n[0]].manager_calls or
-            i.op in {'in', 'out', 'int', 'int3', 'into', 'iret', 'hlt',
+            (i.op == 'out' and not device) or
+            i.op in {'in', 'int', 'int3', 'into', 'iret', 'hlt',
                      'cli', 'sti', 'popf'} or
             (i.op in {'mov', 'pop'} and i.operands and
              getattr(i.operands[0], 'name', None) == 'ss'))
@@ -49,7 +53,7 @@ class Region(NamedTuple):
     walks: tuple = ()   # root calls of the D16 cell walk (user 2026-10-27), ascending
 
 
-def validate(p, first, resume, end=None, endpoint=False, exits=(), entries=()):
+def validate(p, first, resume, end=None, endpoint=False, exits=(), entries=(), device=False):
     """Prove a compute region (RC5): resolved flow, no effects, transitively.
 
 Nothing observes a row's intermediate state, so loops are allowed; their heads
@@ -68,6 +72,8 @@ targets are a D16 cell walk (and the unresolved rest of an indirect call) is
 admitted; the native calls the generated walk itself and must continue in
 generated code before the call for any target outside the cells (a resume).
 The walk is no callee here: its cells are not guest IR (D16).
+
+`device` (an EGA driver device row): `out` is admitted in the body.
     """
     tail = p.node_insn(resume)
     if first == resume or tail is None or (not endpoint and tail.op not in RETURNS):
@@ -107,7 +113,7 @@ The walk is no callee here: its cells are not guest IR (D16).
                 raise LowerError(f'compute: unresolved flow {n}')
             if root and (n[0] != first[0] or not first[1] <= n[1] < limit):
                 raise LowerError(f'compute: flow outside the declared range at {n}')
-            if forbidden(p, n) or n in p.hle and n != first or n in getattr(p, 'entry_of', {}) \
+            if (forbidden(p, n, device) if device else forbidden(p, n)) or n in p.hle and n != first or n in getattr(p, 'entry_of', {}) \
                     and p.entry_of[n][0] != first:
                 raise LowerError(f'compute: sync point, hook or external effect at {n}')
             nodes.add(n)

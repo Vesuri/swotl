@@ -1,4 +1,4 @@
-; Native compute rows (annotations/hle.csv kind compute), on the generated
+; Native compute and device rows (annotations/hle.csv kind compute, device), on the generated
 ; state-block equates.
 	include "equates.i"
 	section .text,code
@@ -11,3 +11,4 @@
 	include "compute_ground.s"
 	include "compute_terrain.s"
 	include "compute_polygons.s"
+	include "compute_ega.s"
