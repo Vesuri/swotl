@@ -574,14 +574,16 @@ test-host: host
 	@$(MAKE) -s -k -j$(JOBS) $(HOST_MILESTONES:%=t-host-%)
 
 # EGA host lockstep (docs/ecs-plan.md E4, E7): the gate set (D7) is tools/ega_cover.py's
-# greedy cover of EGA-only executed code over the final references; t-ega-cover checks it
+# greedy cover of EGA-only executed code over the final references; t-ega-cover checks it.
+# HOST_EGA_EXCLUDED: known lockstep divergences (E8: c82 reads a stale stack slot, user 2026-11-05)
+HOST_EGA_EXCLUDED = ega-c82-gunner-damage
 HOST_EGA = ega-m1-mode0eh ega-m1b-logo ega-m2-choose-side ega-m4-demo-frames ega-m5-player-flight \
 	ega-c78-other-pilot-crash ega-c11-tour-mission ega-c85-joystick-calibration ega-c31-map-briefing-return \
-	ega-c82-gunner-damage ega-c81-pilot-damage ega-c67-map-scale ega-c12-b17-bombing ega-c33-b17-stations \
+	ega-c81-pilot-damage ega-c67-map-scale ega-c12-b17-bombing ega-c33-b17-stations \
 	ega-c8-steep-bank ega-c73-p38-ground-end-v2 ega-c24-custom-create ega-c52-campaign-loss \
 	ega-c13-me262-gunnery ega-c32-historical-high-view
 t-ega-cover:
-	$(call RUN,ega-cover,$(PYTHON) tools/ega_cover.py --check "$(HOST_EGA)")
+	$(call RUN,ega-cover,$(PYTHON) tools/ega_cover.py --check "$(HOST_EGA)" --exclude "$(HOST_EGA_EXCLUDED)")
 t-ega-%:
 	$(call RUN,host-ega-$*,$(PYTHON) tests/host_run.py --table reference/$(if $(filter m%,$*),milestones,coverage)-ega.csv --milestone ega-$* --timeout $(if $(filter m%,$*),2400,4800))
 test-host-ega: host

@@ -9,7 +9,9 @@ tmp/pc-runs/ref-<name>) and in no VGA reference (`reference/milestones.csv`,
 starts from the seed rows (default: the milestones `make test-host-ega` always ran)
 and adds the row with the most uncovered starts until none is left; ties go to the
 shorter time limit. `--check NAMES` exits 1 unless NAMES cover every EGA-only start
-(the Makefile's HOST_EGA: `make t-ega-cover`).
+(the Makefile's HOST_EGA: `make t-ega-cover`). `--exclude NAMES` drops rows that are
+known lockstep divergences (docs/ecs-plan.md E8: ega-c82); EGA-only starts only they
+execute leave the target and are listed.
 """
 from __future__ import annotations
 
@@ -42,12 +44,23 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", default=SEED, help="rows the cover starts from ('' = none)")
     ap.add_argument("--check", metavar="NAMES", help="space-separated rows that must cover EGA-only code")
+    ap.add_argument("--exclude", default="", metavar="NAMES", help="rows left out (known divergences)")
     args = ap.parse_args()
     ega, vga = rows(EGA_TABLES), rows(VGA_TABLES)
     vga_code = set().union(*(starts(n) for n in vga))
     only = {n: starts(n) - vga_code for n in ega}
-    target = set().union(*only.values())
+    excluded = args.exclude.split()
+    for n in excluded:
+        if n not in ega:
+            raise SystemExit(f"unknown excluded row {n}")
+        del ega[n]
+    target = set().union(*(only[n] for n in ega))
+    lost = set().union(set(), *(only[n] for n in excluded)) - target
     print(f"EGA-only instruction starts: {len(target)} over {len(ega)} rows", flush=True)
+    if excluded:
+        print(f"  excluded {' '.join(excluded)}: {len(lost)} starts only they execute")
+        for mod in sorted({m for m, _ in lost}):
+            print(f"    lost {mod}: {sum(1 for m, _ in lost if m == mod)}")
     if args.check is not None:
         names = args.check.split()
         unknown = [n for n in names if n not in ega]
