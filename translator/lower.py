@@ -1391,16 +1391,18 @@ class Lowering:
     def op_lds(self):
         self.lxs("ds")
 
-    def far_pair(self, m: Mem, zx: bool = False) -> bool:
-        """Far pointer in memory: offset word -> d6, segment word (at offset+2, 64 KiB
-        wrap) -> d7; low words valid. `zx`: zero-extend d7 where that is one
-        moveq; returns whether it did."""
+    def far_pair(self, m: Mem, zx: bool = False, wrap: bool = True) -> bool:
+        """Far pointer in memory: offset word -> d6, segment word -> d7; low words
+        valid. `wrap`: the segment word at offset+2 mod 64 KiB (LES/LDS), else at
+        linear base+offset+2 (far CALL/JMP [m]; x86-notes). `zx`: zero-extend d7
+        where that is one moveq; returns whether it did."""
         base = self.seg_base(m.seg)
         if not (m.base or m.index):
             if zx:
                 self.e("moveq #0,d7")
-            for d, r in ((m.disp, "d6"), (m.disp + 2, "d7")):
-                self.e(f"move.w ({sx(0x7FFE - (d & 0xFFFF))},{base}),{r}")
+            d = m.disp & 0xFFFF
+            for at, r in ((d, "d6"), ((d + 2) & 0xFFFF if wrap else d + 2, "d7")):
+                self.e(f"move.w ({sx(0x7FFE - at)},{base}),{r}")
             return zx
         if self.c.bp_direct and direct_pair(m):
             d = signed(m.disp)      # exact under the region guard (bp_offsets)
@@ -1411,8 +1413,11 @@ class Lowering:
             return zx
         self.mirror_d7(m)
         self.e(f"move.w -1({base},d7.w),d6")
-        self.e("subq.w #2,d7")
-        self.e(f"move.w -1({base},d7.w),d7")
+        if wrap:
+            self.e("subq.w #2,d7")
+            self.e(f"move.w -1({base},d7.w),d7")
+        else:
+            self.e(f"move.w -3({base},d7.w),d7")
         return False
 
     def lxs(self, seg: str) -> None:
@@ -2063,7 +2068,7 @@ class Lowering:
             seg = f"LOADSEG+{hx(t.seg)}" if self.reloc_at_end() else hx(t.seg)
             return seg, t.off
         self.check_reloc(set())
-        self.far_pair(t)
+        self.far_pair(t, wrap=False)
         self.e("exg d6,d7")
         return None
 

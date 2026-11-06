@@ -79,10 +79,19 @@ class _B:
         else:
             raise LiftError(f"write {o!r}")
 
-    def far_ptr(self, m: Mem) -> tuple[T, T]:
+    def far_ptr(self, m: Mem, wrap: bool = True) -> tuple[T, T]:
+        """Far pointer in memory. `wrap`: the segment word at offset+2 mod 64 KiB
+        (LES/LDS); else at linear base+offset+2 (far CALL/JMP [m]), as DOSBox-X
+        (x86-notes "Real-mode details")."""
         seg, off = self.ea(m)
         lo = self.v("load", 16, seg, off)
-        hi = self.v("load", 16, seg, self.v("add", 16, off, 2))
+        if wrap:
+            at = self.v("add", 16, off, 2)
+        elif isinstance(off, int):
+            at = self.v("const", 32, off + 2)
+        else:
+            at = self.v("add", 32, self.v("zext", 32, off), 2)
+        hi = self.v("load", 16, seg, at)
         return hi, lo
 
     def push(self, val) -> None:
@@ -315,7 +324,7 @@ def lift(i: Insn) -> list[Op]:
         if isinstance(ops[0], Far):
             seg, off = ops[0].seg, ops[0].off
         else:
-            seg, off = b.far_ptr(ops[0])
+            seg, off = b.far_ptr(ops[0], wrap=False)
         if op == "callf":
             b.push(b.get("cs"))
             b.push(i.next_ip)

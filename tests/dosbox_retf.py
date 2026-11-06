@@ -1,4 +1,5 @@
-"""Live DOSBox-X oracle for the documented Unicorn 16-bit RETF wrap bug.
+"""Live DOSBox-X oracle for the documented Unicorn 16-bit wrap bugs: RETF's CS
+word at SS:SP+2, LES/LDS's segment word at offset+2 (x86-notes).
 
 The existing, unmodified heavy-debug binary executes one instruction. The
 caller supplies its current registers, instruction bytes and stack bytes;
@@ -28,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 NAMES = ('eax', 'ebx', 'ecx', 'edx', 'esp', 'ebp', 'esi', 'edi',
          'es', 'cs', 'ss', 'ds', 'eip', 'eflags')
 INSTANCE = None
+WINDOW = 0x10FFF0   # 1 MiB + HMA, A20 on
 
 
 def hex_literal(value):
@@ -109,16 +111,17 @@ class Debugger:
 
     def memory(self):
         # Debugger MEMDUMPBIN wraps its offset at 64 KiB. Dump each segment
-        # separately, covering the complete 1 MiB physical address space.
+        # separately, covering the 1 MiB physical address space and, A20 on,
+        # the HMA (FFFF:0010..FFFF:FFFF, linear 100000h..10FFEFh).
         chunks = []
-        for segment in range(0, 0x10000, 0x1000):
+        for segment in (*range(0, 0x10000, 0x1000), 0xFFFF):
             result = self.command(f'MEMDUMPBIN {segment:x}:0 10000')
             if 'Memory dump binary success.' not in result:
                 raise RuntimeError(result)
             data = (self.path / 'MEMDUMP.BIN').read_bytes()
             if len(data) != 0x10000:
                 raise RuntimeError('Incomplete DOSBox memory dump')
-            chunks.append(data)
+            chunks.append(data[16:] if segment == 0xFFFF else data)
         return b''.join(chunks)
 
     def run(self, registers, flags, code, stack):
@@ -131,8 +134,8 @@ class Debugger:
         for name in NAMES:
             self.command(f'SR {name} {hex_literal(desired[name])}')
         for address, data in stack + [(registers['cs'] * 16 + registers['ip'], code)]:
-            if address < 0 or address + len(data) > 0x100000:
-                raise RuntimeError('DOSBox RETF input must fit the verified 1 MiB window')
+            if address < 0 or address + len(data) > WINDOW:
+                raise RuntimeError('DOSBox oracle input must fit the verified window (1 MiB + HMA)')
             self.command(f'SM {hex_literal(address >> 4)}:{hex_literal(address & 15)} '
                          + ' '.join(hex_literal(byte) for byte in data))
         before_regs = self.registers()
@@ -147,7 +150,7 @@ class Debugger:
         after_regs = self.registers()
         after = self.memory()
         if before != after:
-            raise RuntimeError('DOSBox RETF unexpectedly wrote memory')
+            raise RuntimeError('DOSBox oracle instruction unexpectedly wrote memory')
         out = {r: after_regs['e' + r] for r in ('ax','bx','cx','dx','sp','bp','si','di','ip')}
         out.update({r: after_regs[r] for r in ('es','cs','ss','ds')})
         return out, after_regs['eflags']
@@ -162,3 +165,12 @@ def run(registers, flags, code, read):
     # bytes from the live x86 state, not from the IR or 68k result.
     stack = [(ss + sp, read(ss + sp, 6)), (ss, read(ss, 6))]
     return INSTANCE.run(registers, flags, code, stack)
+
+
+def run_spans(registers, flags, code, spans):
+    """One instruction that reads `spans` [(linear address, bytes)], taken from
+    the live x86 state by the caller."""
+    global INSTANCE
+    if INSTANCE is None:
+        INSTANCE = Debugger()
+    return INSTANCE.run(registers, flags, code, spans)

@@ -373,7 +373,7 @@ class Harness(X.Harness):
             side = self.replay[k][1]
             self.replayed += 1
         else:
-            side = self.x86_side(code, n, case)
+            side = self.x86_side(code, n, case, block)
         if self.record is not None:
             self.record.append((key, side))
         if side[0] == "undefined":
@@ -417,7 +417,7 @@ class Harness(X.Harness):
         if len(self.pending) >= BATCH:
             self.flush()
 
-    def x86_side(self, code: bytes, n: int, case) -> tuple:
+    def x86_side(self, code: bytes, n: int, case, block=False) -> tuple:
         """("undefined", why) | ("skipped", why) | ("ok", undefined flags, Unicorn result)."""
         regs, flags, flagsx, ip, patches = case
         cs = regs["cs"]
@@ -433,12 +433,16 @@ class Harness(X.Harness):
                 insns.append(insn)
                 if ex.kind in ("int", "fault", "trap"):
                     break
+                # a taken transfer leaves a straight-line 68k case (T_JUMP etc.);
+                # block cases lower their jumps inside the case
+                if not block and (s.regs["cs"], s.ip) != (cs, insn.next_ip):
+                    break
         except (UndefinedFlag, DecodeError) as e:
             self.reset(patches, s.writes, set())
             return ("undefined", type(e).__name__)
         undef = set(s.undef)
         self.reset(patches, s.writes, set())
-        err, out, fl, umem, ints, outs, uwrites = self.oracle.run(case, n)
+        err, out, fl, umem, ints, outs, uwrites = self.oracle.run(case, len(insns))
         code_span = set(range(cs * 16 + ip, cs * 16 + ip + len(code)))
         why = None
         if code_span & uwrites:

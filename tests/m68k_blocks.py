@@ -152,6 +152,27 @@ def blocks(p: emit.Program, executed: dict[str, set[int]]):
             yield mod, block_at(p, mod, off)
 
 
+def pops_deep(insns) -> int:
+    """Bytes a run's POP/POPF instructions take off the stack."""
+    return 2 * sum(i.op in ("pop", "popf") for i in insns)
+
+
+def entry_path(p: emit.Program, mod: str, off: int, copy: bool = False) -> tuple[list[int], set[int]]:
+    """The instructions from the nearest point where the generated code holds no
+    carried value (a leader, a fence after a region guard or REGUARD op, a run
+    start: reuse.py's resets) to `off`, and the indices of transfers that must
+    fall through. A direct entry elsewhere may skip a value the run carries
+    (R13: an index in d7 across a jcc's fall-through)."""
+    u = p.units[mod]
+    prev = [o for o in sorted(u.insns) if o < off]
+    head = off
+    while prev and (mod, head) not in p.leaders and p.fall.get((mod, prev[-1])) == (mod, head) \
+            and not (u.insns[prev[-1]].op in region.REGUARD if copy else (mod, prev[-1]) in p.guard_at):
+        head = prev.pop()
+    path = [o for o in sorted(u.insns) if head <= o <= off]
+    return path, {k for k, o in enumerate(path[:-1]) if u.insns[o].op in TRANSFER}
+
+
 def outlined_blocks(p: emit.Program, node_of: dict) -> list[tuple[str, list[int], set[int]]]:
     """R27: each outlined jcc with the code from the leader that falls into it,
     then its fall-through range's blocks as paths: a block that starts at a
@@ -816,8 +837,11 @@ def main(argv=None, on_batch=None) -> int:
             regs.update(force or {})
             flags.update(forced_flags or {})
             sp_lin = regs["ss"] * 16 + regs["sp"]
-            stack = bytearray(h.rng.randrange(256) for _ in range(8))
-            for k in (1, 3, 5, 7):
+            # Words a block may pop as FLAGS get TF clear (a set TF would single-
+            # step; the harness compares no trap): 8 bytes, then as deep as the
+            # block's pops reach (SPAZ+A7E pops 16 bytes before its IRET).
+            stack = bytearray(h.rng.randrange(256) for _ in range(8 + pops_deep(u.insns[o] for o in run)))
+            for k in range(1, len(stack), 2):
                 stack[k] &= 0xFE
             patches = [(sp_lin, bytes(stack))] + list(memory)    # fixtures over the stack
             patches.append((cs * 16 + ip, code))
@@ -1194,22 +1218,102 @@ def main(argv=None, on_batch=None) -> int:
         print(f"annotated tables: {table_rows} rows, {len(roots)} targets, "
               f"{sum(off not in executed.get(mod, ()) for mod, off in roots)} untraced targets, "
               f"{len(table_blocks)} reachable blocks checked")
+
+    def path_reads(mod, run, force, memory, steps=None):
+        """Linear addresses the x86 path loads under `force` and `memory`
+        (`steps`: also the path index of each load and, as its last element,
+        the index of the first instruction that leaves the path, or None)."""
+        u = p.units[mod]
+        cs = (LOADSEG + u.cs[run[0]]) & 0xFFFF
+        ip = u.insns[run[0]].ip
+        code = bytes(reloc[mod][run[0]:run[-1] + u.insns[run[-1]].size])
+        regs, flags, flagsx, _ = h.state({"regs": dict(force, cs=cs), "ip": ip})
+        patches = list(memory) + [(cs * 16 + ip, code)]
+        for a, d in patches:
+            h.mem[a:a + len(d)] = d
+        st = State(dict(regs, flagsx=flagsx), dict(flags), h.mem, ip)
+        st.port_in = lambda port, w: X.port_value(port, w // 8)
+        seen, at, left = [], [0], None
+        st.load = lambda seg, off, w: (seen.append((at[0], seg * 16 + off)), State.load(st, seg, off, w))[1]
+        try:
+            for _k in range(len(run)):
+                at[0] = _k
+                ex, _i = step(st)
+                if ex.kind in ("int", "fault") or (_k + 1 < len(run) and st.ip != u.insns[run[_k + 1]].ip):
+                    left = _k
+                    break
+        except (UndefinedFlag, DecodeError):
+            left = at[0]
+        h.reset(patches, st.writes, set())
+        seen = [(k, a) for k, a in seen if not cs * 16 + ip <= a < cs * 16 + ip + len(code)]
+        if steps is not None:
+            steps[:] = seen + [left]
+        return [a for _k, a in seen]
+
+    def path_word(rng, near):
+        if rng.random() < 0.25:
+            return rng.randrange(0x10000)
+        return rng.choice((0, 1, 0x7FFF, 0x8000, 0xFFFF) + near)
+
     # R21: every emitted string entry, including guarded copies, can enter
     # either direction body and must return to its own continuation. Existing
-    # whole-block cases above retain the original incoming guest edges.
+    # whole-block cases above retain the original incoming guest edges. An
+    # entry that is not a reset runs from its entry_path; one whose path has
+    # jumps plants words for the loads the path makes, redrawing those of the
+    # compare before the first jump taken, until the x86 path falls through
+    # (registers redrawn each attempt, CX after four with the forced count).
     if not args.only:
+        srng, unrun = random.Random(21), []
         for mod, u in p.units.items():
             for off, insn in u.insns.items():
                 if insn.op not in ("movs", "cmps", "stos", "lods", "scas"):
                     continue
-                copies = [False] + ([True] if emit.copy_label(mod, off) in addr else [])
-                for copy in copies:
+                for copy in (False, True):
+                    path, fall = entry_path(p, mod, off, copy)
+                    if copy and not all(emit.copy_label(mod, o) in addr for o in path):
+                        continue
+                    # a guarded copy runs only with BP inside the range its guard admits
+                    span = next(((0x7FFF - c[3][1], 0x7FFF - c[3][0]) for c in p.comps
+                                 if (mod, path[0]) in c[2]), None) if copy else None
+                    near = tuple(sorted({(o.value + d) & 0xFFFF for x in path
+                                         for o in u.insns[x].operands
+                                         if isinstance(o, Imm) for d in (-1, 0, 1)}))
                     for df in (0, 1):
                         for cx in (0, 3):
-                            block_cases(mod, [off], 1,
-                                        {"cx": cx, "si": 0xFFFF, "di": 0xFFFF,
-                                         "ds": 0x5000, "es": 0x6000}, copy=copy,
-                                        forced_flags={"DF": df})
+                            force = {"cx": cx, "si": 0xFFFF, "di": 0xFFFF, "ds": 0x5000,
+                                     "es": 0x6000}
+                            before = count[mod]
+                            for attempt in range(16 if fall else 1):
+                                memory = []
+                                if fall:    # the registers the path's addresses and compares use;
+                                    # CX too once the forced count keeps the path's jumps taken
+                                    force.update({r: path_word(srng, near) for r in ("ax", "bx", "dx", "bp")},
+                                                 ss=0x7000, sp=0x1000)
+                                    force["cx"] = cx if attempt < 4 else path_word(srng, near)
+                                if span:
+                                    force["bp"] = srng.choice((*span, srng.randrange(span[0], span[1] + 1)))
+                                if fall:
+                                    # greedy: keep the words loaded before the first
+                                    # instruction that leaves the path's compare, draw the rest
+                                    plant, steps = {}, []
+                                    for _try in range(64):
+                                        path_reads(mod, path, force, list(plant.items()), steps)
+                                        *reads, left = steps
+                                        if left is None:
+                                            break
+                                        for k, a in reads:
+                                            if a not in plant or k >= left - 1:
+                                                plant[a] = path_word(srng, near).to_bytes(2, "little")
+                                    memory = list(plant.items())
+                                block_cases(mod, path, 1, force, copy=copy, memory=memory,
+                                            forced_flags={"DF": df}, fall=fall)
+                                if count[mod] > before:
+                                    break
+                            if count[mod] == before:
+                                unrun.append(f"{mod}+{path[0]:05X}..{off:05X}{' copy' * copy}"
+                                             f" DF={df} CX={cx}")
+        if unrun:
+            print(f"string entry paths never falling through: {len(unrun)}", unrun[:20])
     # R22: every affected call entry and every guard edge. The complete
     # predecessor blocks above still enter with their own live flag contracts.
     if not args.only:
@@ -1264,40 +1368,10 @@ def main(argv=None, on_batch=None) -> int:
                     block_cases(mod, run, 1, force, copy=copy)
         # R27: outlined jcc blocks take both edges; each outlined range runs from
         # its blocks' starts out of line to the jcc's target or its own exits.
-        # A path's registers and the words it loads (probed: the background is
-        # one byte) are random, three in four of them edge values or the path's
-        # own immediates and their neighbours; until four cases fall through.
+        # A path's registers and the words it loads (probed, then planted over
+        # the background) are random, three in four of them edge values or the
+        # path's own immediates and their neighbours; until four cases fall through.
         unrun, prng = [], random.Random(27)
-
-        def path_reads(mod, run, force, memory):
-            """Linear addresses the x86 path loads under `force` and `memory`."""
-            u = p.units[mod]
-            cs = (LOADSEG + u.cs[run[0]]) & 0xFFFF
-            ip = u.insns[run[0]].ip
-            code = bytes(reloc[mod][run[0]:run[-1] + u.insns[run[-1]].size])
-            regs, flags, flagsx, _ = h.state({"regs": dict(force, cs=cs), "ip": ip})
-            patches = list(memory) + [(cs * 16 + ip, code)]
-            for a, d in patches:
-                h.mem[a:a + len(d)] = d
-            st = State(dict(regs, flagsx=flagsx), dict(flags), h.mem, ip)
-            st.port_in = lambda port, w: X.port_value(port, w // 8)
-            seen = []
-            st.load = lambda seg, off, w: (seen.append(seg * 16 + off), State.load(st, seg, off, w))[1]
-            try:
-                for _k in range(len(run)):
-                    ex, _i = step(st)
-                    if ex.kind in ("int", "fault") or (_k + 1 < len(run) and st.ip != u.insns[run[_k + 1]].ip):
-                        break
-            except (UndefinedFlag, DecodeError):
-                pass
-            h.reset(patches, st.writes, set())
-            return [a for a in seen if not cs * 16 + ip <= a < cs * 16 + ip + len(code)]
-
-        def word(near):
-            if prng.random() < 0.25:
-                return prng.randrange(0x10000)
-            return prng.choice((0, 1, 0x7FFF, 0x8000, 0xFFFF) + near)
-
         for mod, run, fall in outlined_blocks(p, node_of):
             before = count[mod]
             for value in (0, 1, 0x7FFF, 0x8000, 0xFFFF):
@@ -1310,11 +1384,11 @@ def main(argv=None, on_batch=None) -> int:
             for _ in range(512 if fall else 0):
                 if count[mod] - fixed >= 4:
                     break
-                force = {r: word(near) for r in ("ax", "bx", "cx", "dx", "si", "di", "bp")}
+                force = {r: path_word(prng, near) for r in ("ax", "bx", "cx", "dx", "si", "di", "bp")}
                 force.update(ds=0x5000, es=0x6000, ss=0x7000, sp=0x1000)
                 memory = []
                 for _round in range(2):     # the words the path reads, then through them
-                    memory += [(a, word(near).to_bytes(2, "little"))
+                    memory += [(a, path_word(prng, near).to_bytes(2, "little"))
                                for a in path_reads(mod, run, force, memory) if all(a != b for b, _ in memory)]
                 block_cases(mod, run, 1, force, memory=memory, fall=fall)
             if count[mod] == before:

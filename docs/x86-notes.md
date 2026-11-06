@@ -168,7 +168,8 @@ SWOTL calling convention [SW] (MS C 5.x medium; `annotations/runtime.csv`):
   linear `base+offset+2`. Live DOSBox-X, one step each (`tests/dosbox_retf.py`'s
   debugger, 2026-11-06): `les/lds ax,[FFFFh]` reads `base+FFFF`, `+10000`,
   `+0001`, `+0002`; `jmp far [FFFFh]` and `[FFFEh]`, `call far [FFFEh]` read
-  `+10001`.. linearly. Unicorn wraps none; the IR and 68k wrap all (open-work 14c).
+  `+10001`.. linearly. The IR (`sem.py` `far_ptr`) and the 68k lowering
+  (`lower.py` `far_pair`) do the same; Unicorn wraps none (oracle table below).
 - `push sp` stores SP before the decrement; `pop sp` loads the popped word.
 - `IDIV` accepts the most negative quotient (−128 / −32768); `DIV`/`IDIV`
   overflow and divide-by-zero fault with IP at the instruction, registers
@@ -187,6 +188,7 @@ probed on this host):
 | Interrupt hook skips QEMU delivery: `old_exception` stays set, the next exception becomes #DF (8), then a silent triple fault | reopen the engine after every exception |
 | `REP` string right after a flag setter in one translation block recomputes OF/AF wrongly (e.g. `add cx,3636h; rep movsb` clears OF) | one instruction per `uc_emu_start` |
 | `RETF` at SP ≥ `FFFDh` reads CS at `SS:SP+2` without 16-bit wrap (Intel/DOSBox wrap) | single-instruction cases retain the existing deviation count; multi-instruction cases execute the affected instruction in live DOSBox-X (`tests/dosbox_retf.py`), comparing full registers/flags and checking the 1 MiB memory window unchanged |
+| `LES`/`LDS` at offset `FFFEh`/`FFFFh` read the segment word unwrapped (DOSBox-X wraps it, above) | every such case executes the instruction in live DOSBox-X (`tests/x86_diff.py` `les_live`, through `tests/dosbox_retf.py`, 1 MiB + HMA window); a segment whose bytes fall in A0000h–FFFFFh (video, ROM: not plantable) is relocated to RAM for the run and restored unless loaded; an offset word past linear 10FFF0h is counted, not compared |
 | Self-overwriting `REP` refetches the modified instruction | case discarded |
 | A store into the 4 KiB page of the executing instruction makes QEMU restart it; stopped after one instruction it has not run (IP unchanged, no store) | counted as an oracle deviation (only when IP did not move) |
 | Software `INT n` on an exception vector (0, 1, 5, 6, 8, 13) goes through QEMU's exception path (intno indistinguishable from the fault, sometimes `UC_ERR_EXCEPTION`) | counted as an oracle deviation, not compared |

@@ -58,9 +58,80 @@ def oracle_deviation(code: bytes, regs: dict) -> str | None:
         k += 1
     if code[k] in (0xCA, 0xCB) and regs["sp"] >= 0xFFFD:
         return "retf CS read at SS:SP+2 without 16-bit SP wrap"
+    far = les_wraps(code, k, regs)
+    if far and regs[far[0]] * 16 + far[1] + 2 > 0x10FFF0:
+        return "les/lds offset word past the HMA (linear 10FFF0h), out of the live oracle's reach"
     if code[k] == 0xCD and k + 1 < len(code) and code[k + 1] in EXCEPTIONS:
         return "int n on an exception vector (QEMU's exception path)"
     return None
+
+
+def modrm_ea(raw: bytes, k: int, regs: dict) -> tuple[str, int]:
+    """(segment register, offset) of the 16-bit ModRM memory operand after the
+    opcode at raw[k]; independent of translator/decode.py."""
+    seg = None
+    for b in raw[:k]:
+        seg = {0x26: "es", 0x2E: "cs", 0x36: "ss", 0x3E: "ds"}.get(b, seg)
+    modrm = raw[k + 1]
+    mod, rm = modrm >> 6, modrm & 7
+    if mod == 0 and rm == 6:
+        return seg or "ds", int.from_bytes(raw[k + 2:k + 4], "little")
+    parts = (("bx", "si"), ("bx", "di"), ("bp", "si"), ("bp", "di"), ("si",), ("di",), ("bp",),
+             ("bx",))[rm]
+    disp = (0, int.from_bytes(raw[k + 2:k + 3], "little", signed=True),
+            int.from_bytes(raw[k + 2:k + 4], "little"))[mod]
+    off = (sum(regs[r] for r in parts) + disp) & 0xFFFF
+    return seg or ("ss" if "bp" in parts else "ds"), off
+
+
+def les_wraps(raw: bytes, k: int, regs: dict) -> tuple[str, int] | None:
+    """LES/LDS whose segment word crosses offset FFFFh: Unicorn reads it
+    unwrapped, the CPU at offset+2 mod 64 KiB. Returns (segment register, offset)."""
+    if k + 1 >= len(raw) or raw[k] not in (0xC4, 0xC5) or raw[k + 1] >> 6 == 3:
+        return None
+    return r if (r := modrm_ea(raw, k, regs))[1] >= 0xFFFE else None
+
+
+def les_live(regs: dict, flags: int, raw: bytes, k: int, read) -> tuple[dict, int]:
+    """LES/LDS on the live DOSBox-X oracle (user-approved 2026-11-06, open-work
+    14c, as for RETF). Plants both sides of the wrap and the unwrapped bytes,
+    read from the Unicorn state. Bytes past linear 10FFF0h exist in neither
+    the debugger's dump nor its reach (oracle_deviation counts those cases).
+    DOSBox's upper memory (A0000h-FFFFFh: video, ROMs) does not read planted
+    bytes back: then the operand's
+    segment register and/or CS is relocated to RAM for the run and restored
+    after unless loaded (the offset arithmetic does not use the segment value;
+    the loaded values are the planted bytes)."""
+    import dosbox_retf
+    reg, off = les_wraps(raw, k, regs)
+    size = k + 2 + {0: 2 if raw[k + 1] & 0xC7 == 6 else 0, 1: 1, 2: 2}[raw[k + 1] >> 6]
+
+    def spans(seg):
+        base = seg * 16
+        at = base + off
+        return [(at, read(at, min(4, dosbox_retf.WINDOW - at))), (base, read(base, 4))]
+
+    rom = lambda at, n: at + n > 0xA0000 and at < 0x100000   # video, adapter ROM, BIOS
+    run = dict(regs)
+
+    def clear(seg, avoid):
+        base = seg * 16
+        return not any(at + n > base and at < base + 0x10004 for at, n in avoid)
+
+    if reg != "cs" and any(rom(at, len(d)) for at, d in spans(run[reg])):
+        run[reg] = next(seg for seg in (0x1000, 0x3000, 0x5000, 0x7000)
+                        if clear(seg, [(run["cs"] * 16 + run["ip"], size)]))
+    if rom(run["cs"] * 16 + run["ip"], size) or reg == "cs" and any(
+            rom(at, len(d)) for at, d in spans(run["cs"])):
+        run["cs"] = next(seg for seg in (0x2000, 0x4000, 0x6000, 0x8000)
+                         if reg == "cs" or clear(seg, [(at, len(d)) for at, d in spans(run[reg])]))
+    planted = [(at + (run[reg] - regs[reg]) * 16, d) for at, d in spans(regs[reg])]
+    dest = "es" if raw[k] == 0xC4 else "ds"
+    result, result_flags = dosbox_retf.run_spans(run, flags, raw[:size], planted)
+    for r in ("cs", reg):
+        if r != dest:
+            result[r] = regs[r]  # relocated for the run, not loaded: unchanged
+    return result, result_flags
 
 
 def restarted(code_lo: int, size: int, writes: set, ip: int, out: dict, ints: list) -> bool:
@@ -180,12 +251,19 @@ class Oracle:
                 k += 1
             # User-authorized independent oracle for multi-instruction RETF
             # wrap cases. Keep every comparison; do not predict/correct CS.
+            current = {r: self.e.reg_read(U.X86[r]) for r in REGS + SEGS + ("ip",)}
+            far = les_wraps(raw, k, current)
             if n > 1 and k < len(raw) and raw[k] in (0xca, 0xcb) and self.e.reg_read(U.X86["sp"]) >= 0xfffd:
                 import dosbox_retf
-                current = {r: self.e.reg_read(U.X86[r]) for r in REGS + SEGS + ("ip",)}
                 size = k + (3 if raw[k] == 0xca else 1)
                 result, result_flags = dosbox_retf.run(current,
                     self.e.reg_read(U.X86["flags"]), raw[:size], self.e.read)
+                for r, value in result.items():
+                    self.e.reg_write(U.X86[r], value)
+                self.e.reg_write(U.X86["flags"], result_flags)
+            elif far:
+                result, result_flags = les_live(current, self.e.reg_read(U.X86["flags"]), raw, k,
+                                                self.e.read)
                 for r, value in result.items():
                     self.e.reg_write(U.X86[r], value)
                 self.e.reg_write(U.X86["flags"], result_flags)
@@ -229,8 +307,9 @@ def spans(addrs) -> list[tuple[int, int]]:
 class Harness:
     def __init__(self, seed: int):
         self.rng = random.Random(seed)
-        # One repeated byte, as the per-byte fresh generator always gave (open-work 14c).
-        bg = bytes([random.Random(seed ^ 0x5EED).randrange(256)]) * RAM
+        # Random bytes: a read from a wrong address or in the wrong byte order
+        # does not see the value it expected by chance (user 2026-11-06).
+        bg = random.Random(seed ^ 0x5EED).randbytes(RAM)
         self.bg = bg
         self.mem = bytearray(bg)
         self.oracle = Oracle(bg)

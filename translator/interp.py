@@ -239,7 +239,7 @@ def execute(ops: list[Op], s: State, ip: int, next_ip: int) -> Exit:
         elif op == "flag":
             env[d] = s.flag(a[0])
         elif op == "load":
-            env[d] = s.load(val(a[0], 16), val(a[1], 16), w)
+            env[d] = s.load(val(a[0], 16), val(a[1], 32), w)  # offset: 17 bits past FFFFh
         elif op == "in":
             env[d] = s.port_in(val(a[0], 16), w) & mask(w)
         elif op in ("add", "sub", "and", "or", "xor", "mul"):
