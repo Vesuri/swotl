@@ -653,6 +653,12 @@ static void c2p(const void* chunky, int32_t w, int32_t h, int32_t x, int32_t y, 
                    : "r"(d2), "r"(d3) : "cc", "memory");
 }
 
+// F10: a run of rows with equal changed columns narrower than the screen
+// is gathered here (contiguous chunky rows, the c2p's input) for one c2p
+// call instead of one per row; 32 bytes of c2p lookahead follow.
+#define STAGING_BYTES 8192
+alignas(4) static uint8_t staging[STAGING_BYTES + 32];
+
 void Swotl::finishDisplayUpdate(uint16_t back)
 {
     // Each bitmap remembers changes since its own last conversion, including
@@ -673,13 +679,20 @@ void Swotl::finishDisplayUpdate(uint16_t back)
     for (uint16_t y = 0; !rt_ega && y < SCREEN_HEIGHT;) {
         DisplayQueue::Row r = display->queue.rows[back][y];
         if (!r.hi) { ++y; continue; }
-        uint16_t end = y + 1;
-        if (r.lo == 0 && r.hi == SCREEN_WIDTH) {
-            while (end < SCREEN_HEIGHT && display->queue.rows[back][end].lo == 0 &&
-                   display->queue.rows[back][end].hi == SCREEN_WIDTH) ++end;
+        uint16_t w = r.hi - r.lo, end = y + 1;
+        uint32_t room = w == SCREEN_WIDTH ? SCREEN_HEIGHT : STAGING_BYTES / w;
+        while (end < SCREEN_HEIGHT && end - y < room && display->queue.rows[back][end].lo == r.lo &&
+               display->queue.rows[back][end].hi == r.hi) ++end;
+        const uint8_t* chunky = display->frame + y * SCREEN_WIDTH + r.lo;
+        if (w != SCREEN_WIDTH && end - y > 1) {
+            Long* d = (Long*)staging;
+            for (uint16_t k = y; k < end; ++k) {
+                const Long* s = (const Long*)(display->frame + k * SCREEN_WIDTH + r.lo);
+                for (uint16_t c = w / 4; c; --c) *d++ = *s++;
+            }
+            chunky = staging;
         }
-        c2p(display->frame + y * SCREEN_WIDTH + r.lo, r.hi - r.lo,
-            end - y, r.lo, y, &display->bm[back]);
+        c2p(chunky, w, end - y, r.lo, y, &display->bm[back]);
         for (; y < end; ++y) display->queue.clear(back, y);
     }
     Pointer::present(back);

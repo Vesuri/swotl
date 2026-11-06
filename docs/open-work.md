@@ -20,8 +20,7 @@ speed work: [speed-plan.md](speed-plan.md).
 ## Translator and validation
 
 14b. Optional speed work: ≤ 240 ms/frame is a guide, not a target (user 2026-10-28);
-    the ReadMe recommends a 68030 or better. Left: F10 (present/C2P on `3B9A`'s spans,
-    1.0–1.5%), unpriced `FLIGHT+1538C`, `FLIGHT+0A8D2` and F2's `cmpsw` searches
+    the ReadMe recommends a 68030 or better. Left: unpriced `FLIGHT+1538C`, `FLIGHT+0A8D2` and F2's `cmpsw` searches
     ([native-plan.md](native-plan.md) §F). Frames-fixture 68020 run medians on `c21d035`
     (ZI, irq-plan I11, 2026-10-27, arm64) 300, 290 and 300 ms/frame
     ([speed-plan.md](speed-plan.md) §1, §9). Same-session
@@ -38,7 +37,8 @@ speed work: [speed-plan.md](speed-plan.md).
     meter −1.4854%; F3b kept: `B52D` whole, meter −1.5848%, bench +0.025% accepted by the user as noise; F4 kept:
     FM cache and render loop, flyby `fm_field` −24.4%/call, bench +0.20% accepted by the user as noise; F5 kept:
     `BFD1` scanline loop, meter −0.0167%, flyby `BFD1` −2.1%/call; F9 kept: SPAZ
-    OPL delay loops, meter −1.4996%, flyby `0CEE` −36.4%/call); ranked plan F0–F10,
+    OPL delay loops, meter −1.4996%, flyby `0CEE` −36.4%/call; F10 kept: one c2p per run of equal
+    partial-width rows, flyby `Swotl::present` −3.2%/call); ranked plan F0–F10,
     approved under U9: native-plan F.
     F5 covers the R46 priority searches and R47 expiry/advance inside the
     whole `BFD1` row.
@@ -71,6 +71,12 @@ speed work: [speed-plan.md](speed-plan.md).
 
 45. OCS/ECS version (user 2026-11-03): E1–E9 done ([ecs-plan.md](ecs-plan.md)); release
     1.1 built and audited (D8), publishing (tag, GitHub release, whdload.de) awaits the user.
+
+50. Display audit (`amiga/display_audit.sh`): the TICKS check fails at every build since
+    `811c783` (effect-capture ticks held, sound-plan R1; ecs-plan §E8); decide whether the
+    check excludes held ticks. Separately, a run can stop with "bad handoff serial or beam
+    deadline" (2026-11-06: `b5026d2` 1 of 1, F10 1 of 3 on 68030; 0 late handoffs logged
+    before it): not yet triaged.
 
 ## User report (A1200, 68060, 2026-10-29)
 

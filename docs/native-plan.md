@@ -158,7 +158,7 @@ lost their gain to guards, hooks, exits and polls (R41–R47).
 | F7 | `109D6` whole, native geometry called directly, DOS call a generated exit. Done at irq-plan I10: vertex loops 10C08–10F5F, −0.66M m4 | guest | 5.0% | 2.0–2.8% | — |
 | F8 | Sprite decoder `4D7D`/`4DAE` incl. `call dx` dispatch. irq-plan I10: span setup with the packet loop (`sprite_row`); the walk loop 4FD3..5032 (049B:0623–0682, ~10.7M m4) in `sprite_row` since 2026-10-27: RET plants through the cell cache's bookkeeping, the generated cell walk called directly ([contract](native-compute.md#code-writes-and-the-cell-walk-user-2026-10-27)); meter −1.2038%, bench +0.025% | guest | 3.9–14.8% | 1.6–7% | user 2026-10-27 |
 | F9 | SPAZ OPL write `0CEE` delay loops. Done with every iteration, poll and stack store kept: meter −1.4996%, flyby `0CEE` −36.4%/call (speed-plan §1). O(1) done at irq-plan I10 | guest | 2.67% | ~2.4% kept ~1.0% | U9 |
-| F10 | Present/C2P reusing `3B9A`'s changed spans | platform | 5.22% | 1.0–1.5% | none (D5 bench) |
+| F10 | Present/C2P reusing `3B9A`'s changed spans. Done: a run of rows with equal partial-width bounds is gathered into a staging buffer for one c2p call; bench +0.032% (D8), flyby `Swotl::present` −3.2%/call (4.52% → 4.38% of the clip): far below the estimate (speed-plan §7) | platform | 5.22% | 1.0–1.5% kept 0.14% | none (D5 bench) |
 
 Next: `FLIGHT+1538C` object drawing (1.1–1.6%), `FLIGHT+0A8D2` AI scan (~1.5%).
 All estimates: clip −28–36% (555 → 355–400 ms/frame); frames fixture, EMS ≈ 0,
