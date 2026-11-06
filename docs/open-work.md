@@ -61,10 +61,15 @@ speed work: [speed-plan.md](speed-plan.md).
     the user as noise (speed-plan §7) and D8's tiny bench regressions (speed-plan §3).
     Guest native steps after irq-plan I9 are priced without polls or write
     histories ([irq-plan](irq-plan.md) RC5).
-14c. Differential background RAM is one repeated byte (`tests/x86_diff.py`
-    `Harness`: each byte drew from a fresh generator with the same seed).
-    A random background is stronger but changes every corpus case; needs
-    user approval.
+14c. Random differential background RAM (approved 2026-11-06; `tests/x86_diff.py`
+    `Harness` still one repeated byte, the change uncommitted until these pass). With
+    it, only the boundary corpus fails (x86 22, m68k 77): far pointers at offset
+    FFFEh/FFFFh (`b:wrap` c407/c507/ff2f, `b:mirror-direct` c41e), where DOSBox-X
+    wraps LES/LDS's segment word but not far CALL/JMP [m]'s ([x86-notes](x86-notes.md));
+    Unicorn wraps none, the IR and 68k all. Needs: IR and translator lowering of far
+    CALL/JMP [m] without the wrap; LES/LDS cases checked against live DOSBox-X (as
+    RETF). `b:index-fold` (2, m68k): a taken `jz` shortens the path, and the x86
+    side executes one more instruction from the random bytes after the block.
 24. Lockstep RAM compare (phase 6): undefined flags and FLAGS words pushed
     below SP (PUSHF, interrupt frames) differ from DOSBox by design. The host
     run masks dead stack (below SS:SP at a service or hardware interrupt,

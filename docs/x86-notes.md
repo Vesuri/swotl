@@ -163,7 +163,12 @@ SWOTL calling convention [SW] (MS C 5.x medium; `annotations/runtime.csv`):
   `base+10000h` (no wrap inside the word, no fault), as DOSBox. Whether
   SWOTL forms one: UNKNOWN.
 - No 1 MiB wrap (A20 on): `FFFF:0010` is linear `100000h`.
-- `LES/LDS`, far `CALL/JMP [m]`: the segment word is at offset+2 mod 64 KiB.
+- `LES/LDS`: the segment word is at offset+2 mod 64 KiB (the offset word
+  itself does not wrap). Far `CALL/JMP [m]`: no wrap, the segment word at
+  linear `base+offset+2`. Live DOSBox-X, one step each (`tests/dosbox_retf.py`'s
+  debugger, 2026-11-06): `les/lds ax,[FFFFh]` reads `base+FFFF`, `+10000`,
+  `+0001`, `+0002`; `jmp far [FFFFh]` and `[FFFEh]`, `call far [FFFEh]` read
+  `+10001`.. linearly. Unicorn wraps none; the IR and 68k wrap all (open-work 14c).
 - `push sp` stores SP before the decrement; `pop sp` loads the popped word.
 - `IDIV` accepts the most negative quotient (−128 / −32768); `DIV`/`IDIV`
   overflow and divide-by-zero fault with IP at the instruction, registers
