@@ -74,9 +74,6 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Amiga platform
 
-28. `make test-amiga AMIGA_MILESTONE=m2-choose-side` (plain fixture) ends
-    `SWOTL_MILESTONE_WRONG_HANDOFF`, already at 1020874; m2 passes in
-    `test-amiga-replay`.
 41. `alignas(4)` on even-sized globals of 4 bytes or more, with a link audit
     (L104): not applied; m68k GCC aligns them to 2.
 45. OCS/ECS version (user 2026-11-03): E1–E9 done ([ecs-plan.md](ecs-plan.md)); release

@@ -21,6 +21,11 @@ uses `$FSUAE_MMU` (`FSUAE="$FSUAE_MMU" AMIGA_SETUP=a1200-040 amiga/run.sh`).
 waits for that exact queued frame's handoff before capturing visible pixels,
 and compares both with the DOSBox-X reference (`tests/host_run.py --amiga`).
 A replacement publication or missing success marker fails.
+Scope: its interrupts arrive in real time, the reference's at poll points, so
+a label counted in hits of a polling loop (`+44E2 #600`) lands elsewhere once
+interrupt timing steers the game: `m2-choose-side` reaches another program point
+(registers, RAM and frame differ; the queued frame is also withdrawn before its
+handoff). Such rows are `test-amiga-replay`'s (`AMIGA_REPLAY_MILESTONES`).
 
 `make test-amiga-restore` exits through the game menu (E), then checks
 ActiView, the VERTB and SOFTINT vector triples, DMACONR and INTENAR against their saved
