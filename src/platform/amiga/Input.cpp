@@ -39,19 +39,19 @@ static const uint8_t cursorRaw[4] = {0x4c, 0x4d, 0x4f, 0x4e};
 #define FIELD_TENTHS (amiga_ntsc ? 600 : 500)
 
 extern "C" {
-volatile uint32_t amiga_mouse_reads = 0;    // plat_mouse calls: the guest's INT 33h requests
-volatile uint32_t amiga_unmapped_keys = 0;  // raw keys with no PC scan code
+alignas(4) volatile uint32_t amiga_mouse_reads = 0;    // plat_mouse calls: the guest's INT 33h requests
+alignas(4) volatile uint32_t amiga_unmapped_keys = 0;  // raw keys with no PC scan code
 }
 
-static struct Library* ciaaBase = 0;
+alignas(4) static struct Library* ciaaBase = 0;
 static bool spEnabled = false;
 static uint8_t repeatKey = 0xff;
 static uint16_t repeatDelay = 0;
 static uint16_t repeatPhase = 0;
 static uint8_t mouseCounterX = 0;
 static uint8_t mouseCounterY = 0;
-static int32_t mouseDX = 0;
-static int32_t mouseDY = 0;
+alignas(4) static int32_t mouseDX = 0;
+alignas(4) static int32_t mouseDY = 0;
 static uint8_t mouseButtons = 0;
 static uint8_t scriptButtons = 0;
 static uint8_t joystickDirections = 0;  // bits 0-3: up, down, left, right

@@ -23,15 +23,15 @@ uint16_t AmigaHardware::octants[4] = {
 };
 
 #ifdef USE_BLITTER_QUEUE
-uint16_t* AmigaHardware::blitterQueueBuffer = new uint16_t[BLITTER_QUEUE_SIZE + 1];
-uint16_t* AmigaHardware::blitterQueueBufferEnd = blitterQueueBuffer ? blitterQueueBuffer + BLITTER_QUEUE_SIZE : 0;
+alignas(4) uint16_t* AmigaHardware::blitterQueueBuffer = new uint16_t[BLITTER_QUEUE_SIZE + 1];
+alignas(4) uint16_t* AmigaHardware::blitterQueueBufferEnd = blitterQueueBuffer ? blitterQueueBuffer + BLITTER_QUEUE_SIZE : 0;
 #else
 /* The unqueued implementation below never uses this storage. */
-uint16_t* AmigaHardware::blitterQueueBuffer = 0;
-uint16_t* AmigaHardware::blitterQueueBufferEnd = 0;
+alignas(4) uint16_t* AmigaHardware::blitterQueueBuffer = 0;
+alignas(4) uint16_t* AmigaHardware::blitterQueueBufferEnd = 0;
 #endif
-uint16_t* AmigaHardware::blitterQueueToBeBlitted = blitterQueueBuffer;
-uint16_t* AmigaHardware::blitterQueueAddPosition = blitterQueueBuffer;
+alignas(4) uint16_t* AmigaHardware::blitterQueueToBeBlitted = blitterQueueBuffer;
+alignas(4) uint16_t* AmigaHardware::blitterQueueAddPosition = blitterQueueBuffer;
 
 void AmigaHardware::releaseBlitterQueue()
 {

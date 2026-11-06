@@ -59,19 +59,19 @@ extern struct GfxBase* GfxBase;
 // read them back through the GDB fixture): the bitplanes, and the colour
 // table in LoadRGB32 layout from which the copper palette is built.
 extern "C" {
-struct BitMap amiga_bitmap;
-uint32_t amiga_colours[1 + 256 * 3 + 1];
+alignas(4) struct BitMap amiga_bitmap;
+alignas(4) uint32_t amiga_colours[1 + 256 * 3 + 1];
 // Restore bits: inactive, ActiView, VERTB and SOFTINT triples, DMA, INTENA, LED
 // filter off at the hand-back, LED filter restored; all set = 127.
 volatile uint16_t amiga_restore_status = 0;
-uint32_t amiga_chip_free = 0, amiga_chip_largest = 0;
+alignas(4) uint32_t amiga_chip_free = 0, amiga_chip_largest = 0;
 volatile uint32_t amiga_frames = 0;    // vertical blanks since the takeover (debug fixtures)
-volatile uint32_t amiga_io_frames = 0; // of those, inside I/O windows (host-timed disk I/O)
+alignas(4) volatile uint32_t amiga_io_frames = 0; // of those, inside I/O windows (host-timed disk I/O)
 // The EGA model for the display checks (0 in VGA): &rt_ega_planes and
 // rt_ega_regs (gdb resolves rt_ega_regs to the struct type in C++ frames).
-volatile void* amiga_ega_planes = 0;
-volatile void* amiga_ega_regs = 0;
-volatile uint32_t amiga_ega_regs_bytes = 0;
+alignas(4) volatile void* amiga_ega_planes = 0;
+alignas(4) volatile void* amiga_ega_regs = 0;
+alignas(4) volatile uint32_t amiga_ega_regs_bytes = 0;
 }
 
 
@@ -98,9 +98,9 @@ struct DisplayState {
 };
 
 extern "C" {
-volatile uint32_t amiga_display_count = 0;
-volatile uint32_t amiga_display_late = 0;
-volatile uint32_t amiga_display_deferred = 0;
+alignas(4) volatile uint32_t amiga_display_count = 0;
+alignas(4) volatile uint32_t amiga_display_late = 0;
+alignas(4) volatile uint32_t amiga_display_deferred = 0;
 volatile uint16_t amiga_display_line = 0;
 // Audit seams: queue snapshot before re-enabling interrupts, and actual
 // handoff after updating the shown-frame metadata. Neither runs guest code.
@@ -118,10 +118,10 @@ static uint16_t beamLine() {
 
 uint8_t amiga_ntsc = 0;
 
-Swotl* Swotl::application = 0;
-Swotl* Swotl::active = 0;
+alignas(4) Swotl* Swotl::application = 0;
+alignas(4) Swotl* Swotl::active = 0;
 
-static struct Interrupt vbiInterrupt, fieldInterrupt, ioKeyboardInterrupt;
+alignas(4) static struct Interrupt vbiInterrupt, fieldInterrupt, ioKeyboardInterrupt;
 
 // Owns the level-3 VERTB vector, so it acknowledges INTREQ itself (L11).
 static uint32_t vbiHandler()

@@ -36,11 +36,11 @@ extern const uint16_t pointer_guest[];
 
 uint16_t rt_pointer_ds;
 uint8_t rt_pointer_sprite;
-struct rt_pointer rt_pointer;
-uint32_t rt_pointer_field;
-int16_t rt_pointer_predicted[3];
+_Alignas(4) struct rt_pointer rt_pointer;
+_Alignas(4) uint32_t rt_pointer_field;
+_Alignas(4) int16_t rt_pointer_predicted[3];
 
-static volatile struct {
+_Alignas(4) static volatile struct {
     uint16_t serial;
     int16_t x, y;               /* position at the tracker's last exit */
     int16_t read_x, read_y;     /* the last AX=0Bh motion */

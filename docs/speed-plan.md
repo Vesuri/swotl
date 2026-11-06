@@ -564,6 +564,7 @@ details in each commit. Δ is the meter's at the step (weights of its time).
 | I10 / BD68 | edge submission; C962/CD00 calls as exits with re-entries; hook and dispatch overhead leaves little | runtime, compute tests | generated −1.11M, native 1.05M: −0.06M |
 | F8 | sprite walk loop 4FD3..5032 in `sprite_row` (user 2026-10-27: code writes through the cell cache's bookkeeping, the generated cell walk called directly); sync set −1 (4FD3), references re-recorded; generated −10.70M, native +8.97M | runtime, translator, compute tests | −1.2038% (bench +0.025%, user accepts as noise) |
 | ZI | post-irq-plan frames checkpoint (irq-plan I11): 300, 290, 300 ms against pre-irq-plan 330, 330, 320 (no overlap); target unmet | docs | measurement only |
+| L104 | `alignas(4)` on every even-sized global of 4 bytes or more, link audit (open-work 41); bench 5 runs per arm, `b5026d2` → `c28353d`: 69,240 → 69,170 (spans 69,236–69,256 and 69,162–69,172), RAM hash `421afae9…34ba` in all 10 | runtime, Amiga platform, `amiga/Makefile` | outside meter (bench −0.10%) |
 | I10 / rest | D5A6 prefix and suffix to the projection call; F9 delay loops O(1) (§2.9 exception); D69C BP once; 4DAE packet loop widened to the span setup (`sprite_row`) | runtime, compute tests | −2.43M together (no per-row I9 runtime baseline) |
 
 No priced translator candidate remains. Unchanged (§2): sync points outside native rows

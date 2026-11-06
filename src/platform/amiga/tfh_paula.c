@@ -74,11 +74,11 @@ struct play {
     uint32_t elapsed;               /* effect: samples since the start, 24.8 */
 };
 
-static struct sound sounds[SOUNDS];
-static struct effect effects[39];
-static const int8_t *silence;
+_Alignas(4) static struct sound sounds[SOUNDS];
+_Alignas(4) static struct effect effects[39];
+_Alignas(4) static const int8_t *silence;
 static uint8_t tfh_loaded;
-static struct play slots[TFH_SLOTS];
+_Alignas(4) static struct play slots[TFH_SLOTS];
 
 static uint16_t be16(const uint8_t *p)
 {

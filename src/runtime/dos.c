@@ -9,11 +9,11 @@
 #define FIRST_FILE_SFT 3        /* reference: SFT 0-2 are AUX, CON, PRN */
 #define CON_SFT 1
 
-static int32_t file_of_sft[FILES];   /* platform handle per SFT entry, -1 free */
+_Alignas(4) static int32_t file_of_sft[FILES];   /* platform handle per SFT entry, -1 free */
 enum file_action { FILE_NONE, FILE_READ, FILE_WRITE };
-static uint8_t file_action[FILES], file_stamped[FILES];
-static uint16_t file_time[FILES], file_date[FILES];
-static uint32_t dos_calendar; /* year:16, month:8, day:8; cached by DOS */
+_Alignas(4) static uint8_t file_action[FILES], file_stamped[FILES];
+_Alignas(4) static uint16_t file_time[FILES], file_date[FILES];
+_Alignas(4) static uint32_t dos_calendar; /* year:16, month:8, day:8; cached by DOS */
 static uint32_t dos_centiseconds(void);
 
 static void stamp_file(uint8_t sft)
@@ -46,7 +46,7 @@ static void set_dta(uint16_t seg, uint16_t off)
 /* DOSBox's search slots are independent of the DTA and its pattern. */
 #define SEARCH_SLOTS 2048
 struct search_name { struct search_name *next; char name[13]; };
-static struct { char directory[80]; struct search_name *remaining; uint8_t active; } searches[SEARCH_SLOTS];
+_Alignas(4) static struct { char directory[80]; struct search_name *remaining; uint8_t active; } searches[SEARCH_SLOTS];
 static uint16_t next_search;
 
 static void search_free(uint16_t slot)
@@ -302,7 +302,7 @@ static void read_file(void)
     file_action[sft] = FILE_READ;
     /* Through a buffer: a short read (end of file) must leave the rest of the
      * reversed span untouched. */
-    static uint8_t buf[0x1000];
+    _Alignas(4) static uint8_t buf[0x1000];
     uint32_t got = 0, want;
     int32_t n;
     do {

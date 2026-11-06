@@ -12,14 +12,14 @@ static uint8_t pic_mask = 0xf8;
  * and the lo/hi toggle; channel 0's reload (0 = 65536) sets the tick rate.
  * BIOS start state: all channels lo/hi. */
 static uint8_t pit_access[3] = {3, 3, 3}, pit_high[3];
-static uint16_t pit_reload[3];
-uint32_t rt_pit_divisor = 0x10000;
+_Alignas(4) static uint16_t pit_reload[3];
+_Alignas(4) uint32_t rt_pit_divisor = 0x10000;
 
 /* AdLib: index register, the written OPL2 register file (D10) and the key-on
  * edges per channel (fm_paula.c); rt_out8 (rt_entry.s) answers its byte
  * writes. */
 uint8_t rt_opl_index;
-uint8_t rt_opl[256];
+_Alignas(4) uint8_t rt_opl[256];
 uint8_t rt_opl_keyon[9];
 /* Music skip (annotations/hle.csv music_skip, rt_hle_music_skip): 1, a play
  * of a music record starts no song; 0 runs the guest code. Music stays
@@ -35,9 +35,9 @@ uint8_t rt_sfx_starts[3];
  * timing loop (root +04466) measures the latch on any CPU. Stick B's axes
  * never time out and its buttons read released, as the reference's. */
 uint8_t rt_joystick;
-volatile uint16_t rt_joystick_axis[2];
+_Alignas(4) volatile uint16_t rt_joystick_axis[2];
 volatile uint8_t rt_joystick_buttons;
-static uint16_t joystick_latch[2], joystick_reads;
+_Alignas(4) static uint16_t joystick_latch[2], joystick_reads;
 
 static uint8_t joystick_in(void)
 {

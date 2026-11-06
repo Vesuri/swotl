@@ -20,7 +20,7 @@ extern init_fn __fini_array_start[] __attribute__((weak));
 extern init_fn __fini_array_end[] __attribute__((weak));
 int main(int argc, char **argv);
 
-struct WBStartup *amiga_wb_startup = 0;
+_Alignas(4) struct WBStartup *amiga_wb_startup = 0;
 
 /* Audit seam (amiga/workbench_check.sh): the result DOS or Workbench gets. */
 void __attribute__((noinline)) amiga_start_return(int result)

@@ -31,9 +31,9 @@ static const uint16_t game_ranges[][2] = {
 
 uint8_t rt_sfx_prerender_on;
 volatile uint8_t rt_sfx_capturing;
-struct rt_sfx_write rt_sfx_capture[RT_SFX_WRITES];
-uint16_t rt_sfx_first[RT_SFX_IDS], rt_sfx_writes[RT_SFX_IDS], rt_sfx_ticks[RT_SFX_IDS];
-uint8_t rt_sfx_opl[256];            /* the OPL registers at the capture's start */
+_Alignas(4) struct rt_sfx_write rt_sfx_capture[RT_SFX_WRITES];
+_Alignas(4) uint16_t rt_sfx_first[RT_SFX_IDS], rt_sfx_writes[RT_SFX_IDS], rt_sfx_ticks[RT_SFX_IDS];
+_Alignas(4) uint8_t rt_sfx_opl[256];            /* the OPL registers at the capture's start */
 static uint16_t capture_n, capture_tick, last_write;
 
 uint32_t rt_guest_call(uint32_t sentinel);
@@ -90,7 +90,7 @@ static void copy(uint32_t a, uint8_t *save, uint16_t n, int restore)
     }
 }
 
-static uint8_t spaz_save[SPAZ_DATA_BYTES], game_save[GAME_BYTES], bda_save[BDA_TICK_BYTES];
+_Alignas(4) static uint8_t spaz_save[SPAZ_DATA_BYTES], game_save[GAME_BYTES], bda_save[BDA_TICK_BYTES];
 
 static void state(uint32_t data, uint16_t game, int restore)
 {

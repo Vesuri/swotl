@@ -8,7 +8,7 @@
 
 // Initialised before main() by an init-array ctor (the gcc8 crt runs
 // __init_array_start.. before calling main()).
-struct ExecBase* SysBase = 0;
+alignas(4) struct ExecBase* SysBase = 0;
 // Read through asm: GCC 12+ rejects a dereference of a constant low address.
 __attribute__((constructor)) static void initSysBase()
 {
@@ -16,7 +16,7 @@ __attribute__((constructor)) static void initSysBase()
 }
 
 // Used by the proto/graphics.h inline calls; opened by Swotl's ctor.
-struct GfxBase* GfxBase = 0;
+alignas(4) struct GfxBase* GfxBase = 0;
 
 void* operator new(unsigned long n)
 {

@@ -19,7 +19,7 @@
 #include "runtime.h"
 #include "platform.h"
 
-uint8_t rt_dac[768];            /* 6-bit R, G, B per entry */
+_Alignas(4) uint8_t rt_dac[768];            /* 6-bit R, G, B per entry */
 
 /* IBM VGA BIOS default 256-colour palette, entries 0-247; mode 13h set leaves
  * 248-255 as they were (zero from power-on). Checked against the reference
@@ -105,7 +105,7 @@ static int ega_mode(void)
  * register selects (attribute mode 09h, colour select 0). */
 static void ega_palette(void)
 {
-    static uint8_t colours[16 * 3];
+    _Alignas(4) static uint8_t colours[16 * 3];
     for (int k = 0; k < 16; ++k) {
         uint8_t c = rt_ega_regs.attr[k] & 0x3f;
         for (int g = 0; g < 3; ++g) {
@@ -137,22 +137,22 @@ static void set_mode(void)
 
 /* Changed columns [lo, hi) per row (hi 0: none) over rows [top, bottom);
  * written by rt_vram_mark (rt_entry.s) and ega.c (runtime.h) */
-struct vram_row rt_vram_rows[200];
+_Alignas(4) struct vram_row rt_vram_rows[200];
 uint16_t rt_vram_top = 200, rt_vram_bottom = 0;
 uint16_t rt_vdrv_depth;          /* calls into the graphics driver in progress */
 static uint8_t published;        /* a driver call that changed rows has returned */
 static uint8_t polled;           /* the game polls the mouse: frames end there */
 static uint8_t ready;            /* rows unchanged since the poll's frame */
-static uint32_t poll_irq0;       /* IRQ0 deliveries at the last poll */
+_Alignas(4) static uint32_t poll_irq0;       /* IRQ0 deliveries at the last poll */
 volatile uint8_t rt_present_due;
-volatile uint32_t rt_fields;
+_Alignas(4) volatile uint32_t rt_fields;
 uint8_t rt_frame_cap;
-static uint32_t frame_field;     /* rt_fields when the last poll returned */
+_Alignas(4) static uint32_t frame_field;     /* rt_fields when the last poll returned */
 static volatile uint8_t busy;    /* the main thread presents or sets the video mode or DAC */
-static struct plat_rect rects[200];
+_Alignas(4) static struct plat_rect rects[200];
 /* Persistent guest-order pixels, plus 32 bytes of Kalms C2P lookahead; in
  * mode 0Eh the shown page's four planes, plane p at p * 16000. */
-static uint32_t frame[16000 + 8];
+_Alignas(4) static uint32_t frame[16000 + 8];
 
 /* The display path's memory accesses stay inside busy (a compiler barrier on
  * each side). */

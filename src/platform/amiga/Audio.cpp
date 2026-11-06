@@ -34,26 +34,26 @@ struct Channel {
 };
 #define PAULA ((volatile Channel*)aud0ptrPointer)
 
-static int8_t* tfhChip = 0;
-static uint32_t tfhBytes = 0;
-static int8_t* effectChip[RT_SFX_IDS];
-static uint32_t effectBytes[RT_SFX_IDS];
+alignas(4) static int8_t* tfhChip = 0;
+alignas(4) static uint32_t tfhBytes = 0;
+alignas(4) static int8_t* effectChip[RT_SFX_IDS];
+alignas(4) static uint32_t effectBytes[RT_SFX_IDS];
 static uint8_t effectVolume[RT_SFX_IDS];
 static volatile bool effects = false;
-static int8_t* pool = 0;
+alignas(4) static int8_t* pool = 0;
 static const int8_t* silence = 0;
-static struct fm_voice pending[FM_VOICES];
+alignas(4) static struct fm_voice pending[FM_VOICES];
 static volatile bool fresh = false;
 static volatile bool muted = false;
 static bool running = false;
-static const int8_t* shownLoop[FM_VOICES];
-static uint16_t shownBytes[FM_VOICES], shownPeriod[FM_VOICES];
+alignas(4) static const int8_t* shownLoop[FM_VOICES];
+alignas(4) static uint16_t shownBytes[FM_VOICES], shownPeriod[FM_VOICES];
 
 extern "C" {
-volatile uint32_t amiga_audio_restarts = 0;   // channel restarts (diagnostics)
-volatile uint32_t amiga_audio_effect_fields = 0;  // fields the prerender took (diagnostics)
-volatile uint32_t amiga_audio_effect_save_fields = 0;  // of them, the cache write (diagnostics)
-volatile uint32_t amiga_audio_effect_bytes = 0;   // its Chip bytes (diagnostics)
+alignas(4) volatile uint32_t amiga_audio_restarts = 0;   // channel restarts (diagnostics)
+alignas(4) volatile uint32_t amiga_audio_effect_fields = 0;  // fields the prerender took (diagnostics)
+alignas(4) volatile uint32_t amiga_audio_effect_save_fields = 0;  // of them, the cache write (diagnostics)
+alignas(4) volatile uint32_t amiga_audio_effect_bytes = 0;   // its Chip bytes (diagnostics)
 volatile uint8_t amiga_audio_effect_cached = 0;   // 1 loaded from the cache, 2 written to it (diagnostics)
 }
 
