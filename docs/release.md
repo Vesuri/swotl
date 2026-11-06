@@ -71,6 +71,14 @@ whdload.de archive. Sibling shape:
   `9c679f6ac2b4fdf551768e57c4960e94c45adc2934d5a91f49132ea015cd60a3`; slave
   `12dc9af60a1e79d80ec2a797613de269ea61b3ce8c89aee643145afe300d54d3`; helper
   `04407c8ff4276a63913f99a96d50c243a0827e37d04e56043dcca7942081efee`.
+- SWOTL 1.1 (06.11.2026, built from `0c4f520`): `SWotL-1.1.lha` 578,432 bytes, SHA-256
+  `b53887425f3828cb250b84bff29f12233d96ac91d05c6405ffd403f338e6e3ab`; `SWotL-1.1-whdload.lha`
+  37,887 bytes, `7072278cf488e205db34045776c0d1b0e137484969e5acac46649506e556a151`; exe
+  `de7d52ef0e5ed3fae45b43825ff020404d5f2d431b90e9df3395f5cbce489055` (1,453,712 bytes); slaves
+  `SWotL.slave` `22db3d0a74c844181c38dc9d6be603da9c284a9ff813cdee0b506ca87e5b4382`,
+  `SWotL512K.slave` `a895247f237116e517edc3a697fcf5c325b01706c2da9e7b3e8ebeb822652d0f`; helper
+  `2407c47fdab5c31d91cc7e403901f8feffb05193e740c4afd9d755e3addda515`. Audits: `make release`,
+  `make release-check` (two clean builds), Installer from both archives.
 
 ## Package layout (converged)
 
