@@ -5,30 +5,33 @@ VASM ?= $(HOME)/.local/vasmm68k_mot
 AMIGA_SHARE ?= $(HOME)/.local/share/amiga
 OUT := ../build/whdload
 
-# all: the release slave. The others are tools/test_whdload.py scaffolding:
+# all: the release slaves (SWotL512K: 512 KB Chip, docs/ecs-plan.md D6). The others are tools/test_whdload.py scaffolding:
 # --mode smoke|boot|load, the TEST slave's PASS markers, and MemFree, which
 # records kickemu's free-memory low-water marks in data/memfree for sizing
 # the slave's memory reservation (docs/whdload.md); Campaign and Tour
 # create and rewrite game files through the game's key script.
-.PHONY: all test smoke boot-test load-test memfree campaign tour FORCE
-all: $(OUT)/SWotL.slave
+.PHONY: all test smoke boot-test load-test memfree memfree-512k campaign tour FORCE
+all: $(OUT)/SWotL.slave $(OUT)/SWotL512K.slave
 test: $(OUT)/SwotlTest.slave
 smoke: $(OUT)/Smoke.slave
 boot-test: $(OUT)/BootTest.slave
 load-test: $(OUT)/LoadTest.slave
 memfree: $(OUT)/MemFree.slave
+memfree-512k: $(OUT)/MemFree512K.slave
 campaign: $(OUT)/CampaignTest.slave
 tour: $(OUT)/TourTest.slave
 $(OUT)/SwotlTest.slave: VASMFLAGS += -DTEST=1
 $(OUT)/BootTest.slave: VASMFLAGS += -DBOOTONLY=1
 $(OUT)/LoadTest.slave: VASMFLAGS += -DLOADONLY=1
 $(OUT)/MemFree.slave: VASMFLAGS += -DMEMFREE=\$$100
+$(OUT)/SWotL512K.slave: VASMFLAGS += -DSMALLCHIP=1
+$(OUT)/MemFree512K.slave: VASMFLAGS += -DSMALLCHIP=1 -DMEMFREE=\$$100
 $(OUT)/CampaignTest.slave: VASMFLAGS += -DCAMPAIGN=1
 $(OUT)/TourTest.slave: VASMFLAGS += -DTOUR=1
 
 # Reassemble the small slave on every invocation: SDK includes and assembler
 # options must never leave an old diagnostic slave in a release package.
-$(OUT)/SWotL.slave $(OUT)/SwotlTest.slave $(OUT)/MemFree.slave $(OUT)/CampaignTest.slave $(OUT)/TourTest.slave $(OUT)/BootTest.slave $(OUT)/LoadTest.slave: SwotlSlave.s FORCE
+$(OUT)/SWotL.slave $(OUT)/SWotL512K.slave $(OUT)/SwotlTest.slave $(OUT)/MemFree.slave $(OUT)/MemFree512K.slave $(OUT)/CampaignTest.slave $(OUT)/TourTest.slave $(OUT)/BootTest.slave $(OUT)/LoadTest.slave: SwotlSlave.s FORCE
 	@mkdir -p $(OUT)/include/lvo
 	@for lib in dos exec graphics expansion; do ln -sf "$(NDK)/lvo/$${lib}_lib.i" "$(OUT)/include/lvo/$$lib.i"; done
 	@# kick31.s leaves ws_DontCache 0; this copy, found first, points it at slv_DontCache.

@@ -1,10 +1,10 @@
 ; Secret Weapons of the Luftwaffe WHDLoad installation. Commodore Installer V43 or newer.
 ; File-install flow with WHDLoad Install Template / RAY Pokeri conventions.
-; $VER: Install 1.0 (02.11.2026)
+; $VER: Install 1.1 (06.11.2026)
 (set @app-name "Secret Weapons of the Luftwaffe")
 (set #prefix "SWotL")
 (set #exe-version 1)			;the game executable this install accepts: its $VER:
-(set #exe-revision 0)			;must read exactly #exe-version.#exe-revision
+(set #exe-revision 1)			;must read exactly #exe-version.#exe-revision
 (set #exe-url "https://github.com/Vesuri/swotl/releases")
 (if (< @installer-version (* 43 65536))
   (abort "This installation requires Amiga Installer 43 or newer."))
@@ -70,7 +70,13 @@
    (if #remove-existing
      (delete #dest (all) (infos) (optional "force") (help @delete-help)))))
 (set #install-data 1)
-(if (and (= (exists (tackon #data "SWOTL.EXE")) 1) (= (exists (tackon #data "RTSVGA.OVL")) 1))
+; 1.0 and older did not install RTSEGA.OVL (the OCS/ECS version needs it): such an
+; install gets its game files again from the disks; files the game created stay.
+(if (and (= (exists (tackon #data "SWOTL.EXE")) 1) (= (exists (tackon #data "RTSVGA.OVL")) 1)
+         (= (exists (tackon #data "RTSEGA.OVL")) 0))
+  (message "The installed game files lack RTSEGA.OVL, which this version needs for OCS and ECS Amigas. They will be installed again from the Air Combat Classics disks; pilots, films and missions are kept." (all)))
+(if (and (= (exists (tackon #data "SWOTL.EXE")) 1) (= (exists (tackon #data "RTSVGA.OVL")) 1)
+         (= (exists (tackon #data "RTSEGA.OVL")) 1))
   (set #install-data
     (askchoice
       (prompt "The Secret Weapons of the Luftwaffe game files are already installed. Use the existing files or replace them from the disks?")
@@ -110,23 +116,28 @@
       (abort "This sfx.rsc is not supported. Select the file from the Amiga version of Their Finest Hour (108,002 bytes), not a PC version.")))
    (copyfiles (source (tackon #staging "sfx.rsc")) (dest #data) (help @copyfiles-help))
    (delete #staging (all) (optional "force") (help @delete-help))))
-; Files the game never opens (VGA and AdLib only), left by earlier installs:
+; Files the game never opens (Tandy, PC speaker), left by earlier installs:
 ; not installed now, so PreLoad does not load them.
 (set #n 0)
-(while (< #n 4)
-  (set #unused (tackon #data (select #n "RTSEGA.OVL" "RTSTANDY.OVL" "SFXA.OVL" "SFX.SFX")))
+(while (< #n 3)
+  (set #unused (tackon #data (select #n "RTSTANDY.OVL" "SFXA.OVL" "SFX.SFX")))
   (if (= (exists #unused) 1) (delete #unused (optional "force") (help @delete-help)))
   (set #n (+ #n 1)))
 (copyfiles (source #exe) (dest #data) (newname "SWotL") (help @copyfiles-help))
-(copyfiles (source (tackon #source "SWotL.slave")) (dest #dest) (help @copyfiles-help))
-(copyfiles (source (tackon #source "SWotL.inf")) (dest #dest) (newname "SWotL.info") (help @copyfiles-help))
-(if #tfh
-  (tooltype (dest (tackon #dest "SWotL")) (setdefaulttool "WHDLoad")
-    (settooltype "Slave" "SWotL.slave") (settooltype "PreLoad" "") (settooltype "Custom1" "1")
-    (setstack 16384) (noposition))
-  (tooltype (dest (tackon #dest "SWotL")) (setdefaulttool "WHDLoad")
-    (settooltype "Slave" "SWotL.slave") (settooltype "PreLoad" "") (settooltype "Custom1")
-    (setstack 16384) (noposition)))
+; Two icons: SWotL (1 MB Chip or more) and SWotL512K (512 KB Chip, its own slave).
+(set #n 0)
+(while (< #n 2)
+  (set #icon (select #n "SWotL" "SWotL512K"))
+  (copyfiles (source (tackon #source ("%s.slave" #icon))) (dest #dest) (help @copyfiles-help))
+  (copyfiles (source (tackon #source "SWotL.inf")) (dest #dest) (newname ("%s.info" #icon)) (help @copyfiles-help))
+  (if #tfh
+    (tooltype (dest (tackon #dest #icon)) (setdefaulttool "WHDLoad")
+      (settooltype "Slave" ("%s.slave" #icon)) (settooltype "PreLoad" "") (settooltype "Custom1" "1")
+      (setstack 16384) (noposition))
+    (tooltype (dest (tackon #dest #icon)) (setdefaulttool "WHDLoad")
+      (settooltype "Slave" ("%s.slave" #icon)) (settooltype "PreLoad" "") (settooltype "Custom1")
+      (setstack 16384) (noposition)))
+  (set #n (+ #n 1)))
 (copyfiles (source (tackon #source "ReadMe")) (dest #dest) (infos) (help @copyfiles-help))
 ; openwbobject was added after Installer 43; retain the template version gate.
 (if (>= @installer-version (+ (* 44 65536) 10))

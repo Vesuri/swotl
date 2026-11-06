@@ -87,6 +87,7 @@ whdload.de archive. Sibling shape:
 ```
 
 Installed: `<Name>/{<Name>.slave, <Name>.info, ReadMe, ReadMe.info, data/{<Name>, originals…, saves}}`; `slv_CurrentDir = "data"` (Sl, Ve, Po).
+SWOTL (1.1): also `SWotL512K.slave` and `SWotL512K.info` (512 KB Chip, ecs-plan D6), from the same `SWotL.inf`; both icons get the same tool types.
 Credits live in ReadMe, no separate CREDITS file (Sl).
 
 ## Icons
@@ -151,10 +152,10 @@ Common: helper writes to staging, removes own partial outputs, rejects existing 
 - Input: drawer with `Disk1-3.img` (FAT12; `.ima` also) or `CLASSICS.001-003`. Sizes 1,251,008 / 1,457,152 / 481,082; SHA-256 pinned in `tools/install-data/install.c` and `release/originals.sha256`.
 - Archive (INSTALIT): one PKWARE DCL implode stream per file (zlib contrib `blast`). Logical stream = CLASSICS.001[:1,204,461] + 002 + 003; the catalog (`\x05[PVM]`, 46,547 B, 808 records) occupies the rest of 001 from 1,204,461.
 - Record (55 B, first at catalog+6): `0x1c`; +1 LE32 offset in start disk; `0xf0`; +6 name (13); +19 attr; +20 compressed size (spans volume splits); +24 DOS date/time; +28 CRC-32; +32 start disk; +35 size; +39 LE16 product (1 SWOTL, 2 BH1942, 3 TFH/BoB 1940); +51 LE16 directory (1 root, 2 AC, 3 CP, 4 FE, 5 FX, 6 MIS). Start offset = in-disk offset + 1,204,461 for disk 2, + 1,457,152 more for disk 3.
-- SWOTL: 542 records; 535 installed (INSTALL.EXE, INSTALL2.BAT, READ.ME skipped, and RTSEGA.OVL, RTSTANDY.OVL, SFXA.OVL, SFX.SFX, which the port never opens), otherwise equal to the drawer the DOS ACC INSTALL.EXE writes (DOSBox, 2026-10-24). Install deletes those four from an install it keeps or replaces.
+- SWOTL: 542 records; 536 installed (INSTALL.EXE, INSTALL2.BAT, READ.ME skipped, and RTSTANDY.OVL, SFXA.OVL, SFX.SFX, which the port never opens), otherwise equal to the drawer the DOS ACC INSTALL.EXE writes (DOSBox, 2026-10-24). Install deletes those three from an install it keeps or replaces. RTSEGA.OVL (the OCS/ECS version) is installed since 1.1; an install without it (1.0 and older) is told and gets its game files again from the disks instead of the Use existing question.
 - Helper `SWotLInstallData` (`tools/install-data/`): volume SHA-256 first, per-file size and CRC-32, new destination only, removes its own files on failure or Ctrl-C. Installer runs it into `SWotL/InstallStaging`, then copies into `data/`; Replace overwrites only archive files (pilots, films, missions survive).
 - TFH mode: Installer asks for the user's Amiga TFH `sfx.rsc` (`TheirFinestHour/data/sfx.rsc`, 108,002 B, SHA-256 pinned); the helper checks and stages it; the game icon gets `Custom1=1` ([sound-plan.md](sound-plan.md)).
-- Tests: `tools/install-data/test_install.py` (host helper vs the DOS install; damaged/missing disks, refusal, cancel, sfx), `tools/test_release_installer.py` (Installer 43 + Amiga helper in FS-UAE: fresh, tfh, keep, replace, remove, bad-disks, bad-sfx, no-exe, wrong-exe; `INSTALL_SCRIPT` sabotage override; `--archive` installs from a release LHA, `--keep` keeps the drawer). `tools/pack_preinstalled.py` packs a kept drawer as a local-only preinstalled LHA (holds game data; never shared); `tools/test_whdload.py --installed DIR [--setup a1200-040]` runs it unchanged.
+- Tests: `tools/install-data/test_install.py` (host helper vs the DOS install; damaged/missing disks, refusal, cancel, sfx), `tools/test_release_installer.py` (Installer 43 + Amiga helper in FS-UAE: fresh, tfh, keep, update (a 1.0 install without RTSEGA.OVL), replace, remove, bad-disks, bad-sfx, no-exe, wrong-exe; both slaves and icons; `INSTALL_SCRIPT` sabotage override; `--archive` installs from a release LHA, `--keep` keeps the drawer). `tools/pack_preinstalled.py` packs a kept drawer as a local-only preinstalled LHA (holds game data; never shared); `tools/test_whdload.py --installed DIR [--setup a1200-040]` runs it unchanged.
 
 ## Credits (ReadMe)
 

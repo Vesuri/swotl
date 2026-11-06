@@ -14,11 +14,18 @@
  Requirements:
  -------------
  This install requires WHDLoad version 17.0 or better and a PAL or NTSC
- Amiga with AGA and a 68020 or better. The installed program uses 768 KB
- ChipMem and 4.5 MB OtherMem, including its Kickstart image; 8 MB Fast RAM
- is enough, and with it PreLoad holds all game files unless other programs
- use more than about 1 MB of it. Flight is slow on a 68020; a 68030 or
- better is recommended. The data cache needs the MMU: WHDLoad uses it on a
+ Amiga with a 68020 or better. On AGA the game runs as the PC original's
+ VGA version (256 colours, 320x200); on OCS and ECS as its EGA version
+ (16 colours, 640x200). The Custom3 tooltype (1) selects the EGA version on
+ AGA too. Flight is slow on a 68020; a 68030 or better is recommended.
+
+ Start the SWotL icon with 1 MB ChipMem or more: it uses 768 KB ChipMem and
+ 4.75 MB OtherMem, including its Kickstart image. With 512 KB ChipMem start
+ the SWotL512K icon (512 KB ChipMem, the same OtherMem): the AdLib sound
+ effects do not fit, so it plays the Their Finest Hour sound effects when
+ they are installed (see Installation) and no sound effects otherwise; the
+ music plays either way. 8 MB Fast RAM is enough, and with it PreLoad holds
+ all game files unless other programs use more than about 1 MB of it. The data cache needs the MMU: WHDLoad uses it on a
  68040 or 68060, on a 68030 only with the WHDLoad option MMU (add the
  tooltype MMU to the icon).
 
@@ -28,7 +35,8 @@
  campaign. The new file is then lost. Add the tooltype NoWriteCache to the
  icon to avoid this; WHDLoad then writes files at once.
 
- The game requires an installed A600/A1200/A4000 Kickstart 3.1 image.
+ The game requires an installed A600/A1200/A4000 Kickstart 3.1 image,
+ also on OCS and ECS Amigas.
  The kickstart image must be located in the directory "Devs:Kickstarts" and
  must be named "kick40063.A600", "kick40068.A1200" or "kick40068.A4000".
  Additionally the file "kick40063.A600.RTB", "kick40068.A1200.RTB" or
@@ -66,10 +74,13 @@
  Hour or Air Combat Classics do not work. Choose Their Finest Hour sound
  effects and select that file. The Custom1 tooltype switches between the
  sound effects later: 1 for Their Finest Hour, 0 for the original AdLib.
+ The install sets it on both icons.
 
  To update, select the same parent drawer and choose Keep. Use existing (the
  default) keeps the installed game files; Replace installs them again from the
- disks. Pilots, films and missions are kept either way.
+ disks. Pilots, films and missions are kept either way. Installs of version
+ 1.0 and older lack the file RTSEGA.OVL, which the OCS/ECS version needs:
+ their game files are installed again from the disks.
 
 
  Playing:
@@ -86,6 +97,16 @@
 
  History:
  --------
+ version 1.1 (06.11.2026):
+ - OCS and ECS Amigas with a 68020 or better: the game runs as the PC
+   original's EGA version (16 colours, 640x200), with the mouse pointer as
+   a hardware sprite; WHDLoad no longer requires AGA
+ - Custom3 selects the EGA version on AGA
+ - 512 KB ChipMem: the SWotL512K icon, with the Their Finest Hour sound
+   effects or none
+ - the install also installs RTSEGA.OVL; installs of 1.0 and older get their
+   game files again from the disks (pilots, films and missions are kept)
+
  version 1.0 (02.11.2026):
  - the installer asks for the game executable if it is not in the install
    archive, and checks its version

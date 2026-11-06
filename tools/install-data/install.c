@@ -16,7 +16,7 @@
 #define CATALOG 1204461UL       /* CLASSICS.001: archive data, then the catalog */
 #define RECORD 55
 #define RECORDS 808
-#define SWOTL_FILES 535         /* product 1, minus the DOS installer files and UNUSED */
+#define SWOTL_FILES 536         /* product 1, minus the DOS installer files and UNUSED */
 #define SFX_SIZE 108002UL
 
 static const uint32_t volume_size[VOLUMES]={1251008UL,1457152UL,481082UL};
@@ -47,9 +47,9 @@ static uint32_t le32(const unsigned char *p)
 { return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24; }
 static unsigned le16(const unsigned char *p) { return p[0]|(unsigned)p[1]<<8; }
 static int eq(const char *a,const char *b) { return strlen(a)==strlen(b) && !memcmp(a,b,strlen(a)); }
-/* Never opened by the port (VGA and AdLib only): the EGA, Tandy and PC-speaker
+/* Never opened by the port (VGA or EGA, AdLib): the Tandy and PC-speaker
  * drivers and the speaker effects. Not installed, so PreLoad skips them. */
-static const char *const unused[]={"RTSEGA.OVL","RTSTANDY.OVL","SFXA.OVL","SFX.SFX"};
+static const char *const unused[]={"RTSTANDY.OVL","SFXA.OVL","SFX.SFX"};
 static int skipped(const char *name)
 {
     unsigned k;
@@ -246,7 +246,7 @@ int install_data(const char *source,const char *dest,const char *temp)
         files++;
     }
     if(files!=SWOTL_FILES) goto done;
-    ok=1; io_message("Installed 535 Secret Weapons of the Luftwaffe 2.2 files.");
+    ok=1; io_message("Installed 536 Secret Weapons of the Luftwaffe 2.2 files.");
 done:
     io_close(&out);
     for(v=0;v<VOLUMES;v++) io_close(&volume[v].f);

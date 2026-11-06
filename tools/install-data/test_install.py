@@ -21,9 +21,9 @@ IMAGES = Path(os.environ.get('ACC_IMAGES', ROOT / 'tmp/acc'))
 REFERENCE = Path(os.environ.get('ACC_REFERENCE', ROOT / 'tmp/accx/dosrun/c/CLASSICS/SWOTL'))
 TFH_RSC = Path(os.environ.get('TFH_RSC', ROOT / 'tmp/tfh/TheirFinestHour&Missions/data/sfx.rsc'))
 # The DOS installer files, then the files the port never opens (install.c unused).
-UNUSED = {'RTSEGA.OVL', 'RTSTANDY.OVL', 'SFXA.OVL', 'SFX.SFX'}
+UNUSED = {'RTSTANDY.OVL', 'SFXA.OVL', 'SFX.SFX'}
 SKIPPED = {'INSTALL.EXE', 'INSTALL2.BAT', 'READ.ME'} | UNUSED
-FILES = 535
+FILES = 536
 
 
 def tree(base):
@@ -80,7 +80,7 @@ def main():
 
         disks = [i.read_bytes() for i in images]
         source = drawer('images', {f'Disk{n}.img': d for n, d in enumerate(disks, 1)})
-        assert 'Installed 535' in run(source, base / 'a', True)
+        assert 'Installed 536' in run(source, base / 'a', True)
         verify(base / 'a')
         volumes = [fat12_file(i, f'CLASSICS00{n}') for n, i in enumerate(images, 1)]
         files = drawer('files', {f'CLASSICS.00{n}': v for n, v in enumerate(volumes, 1)})

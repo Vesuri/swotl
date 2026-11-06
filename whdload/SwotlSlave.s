@@ -1,7 +1,8 @@
 ; WHDLoad/Kickstart 3.1 launcher for the Amiga port. Cross-assembled with vasm.
 ; The executable uses Exec/graphics/DOS; kickfs supplies ordinary file access.
-; Custom1 selects Their Finest Hour sound, Custom2 the proportional joystick:
-; the slave passes the game's own TFH and ANALOGJOYSTICK arguments
+; Custom1 selects Their Finest Hour sound, Custom2 the proportional joystick,
+; Custom3 the OCS/ECS display on AGA: the slave passes the game's own TFH,
+; ANALOGJOYSTICK and OCS arguments
 ; (docs/sound-plan.md, docs/amiga-arch.md) through RunCommand, as a Shell
 ; does, so the same executable runs from a Shell.
 
@@ -11,8 +12,17 @@
 ; The smallest sizes that work (D15: code, guest RAM and the EMS store in Fast):
 ; 640K Chip or $3C0000 Fast fail. Every byte also costs the host's PreLoad room
 ; (WHDLoad backs up BaseMem in Fast). Measurements: docs/whdload.md, Memory.
+; SMALLCHIP: the slave for 512 KB Chip machines (docs/ecs-plan.md D6).
+        IFD SMALLCHIP
+CHIPMEMSIZE = $80000
+        ELSE
 CHIPMEMSIZE = $C0000
-FASTMEMSIZE = $400000
+        ENDC
+        IFD FASTSIZE
+FASTMEMSIZE = FASTSIZE            ; sizing variants (MemFree)
+        ELSE
+FASTMEMSIZE = $440000
+        ENDC
 NUMDRIVES = 0
 WPDRIVES = 0
 BLACKSCREEN
@@ -30,7 +40,7 @@ DEBUG
         ENDC
 
 slv_Version = 17
-slv_Flags = WHDLF_NoError|WHDLF_ReqAGA|WHDLF_Req68020
+slv_Flags = WHDLF_NoError|WHDLF_Req68020   ; no AGA: the game shows OCS/ECS (ecs-plan D3)
 slv_keyexit = $5f                 ; Help: the game's key table has no Help key
         INCLUDE whdload/kick31.s
 
@@ -42,10 +52,18 @@ slv_DontCache dc.b "(SWotL|SWOTL.EXE|sfx.cache)",0
 slv_name dc.b "Secret Weapons of the Luftwaffe",0
 slv_copy dc.b "1991 Lucasfilm Games",0
 slv_info dc.b "Amiga port by Vesuri",10
-        dc.b "Version 1.0 (02.11.2026)",10
+        IFD SMALLCHIP
+        dc.b "512 KB Chip version",10
+        ENDC
+        dc.b "Version 1.1 (06.11.2026)",10
         dc.b "Help quits",0
-slv_config dc.b "C1:B:Their Finest Hour sound effects;C2:B:Analog joystick in port 2;",0
-        dc.b "$VER: SWotL.slave 1.0 (02.11.2026)",0
+slv_config dc.b "C1:B:Their Finest Hour sound effects;C2:B:Analog joystick in port 2;"
+        dc.b "C3:B:OCS/ECS display on AGA;",0
+        IFD SMALLCHIP
+        dc.b "$VER: SWotL512K.slave 1.1 (06.11.2026)",0
+        ELSE
+        dc.b "$VER: SWotL.slave 1.1 (06.11.2026)",0
+        ENDC
 _program dc.b "SWotL",0
 ; Test only, keys of pc-reference-loop.md scripts: CAMPAIGN creates campaign
 ; file A.CBA (c10); TOUR creates pilot A, then rewrites it with O_TRUNC (c11).
@@ -60,6 +78,7 @@ _args_tail dc.b 10,0
         ENDC
 _args_tfh dc.b "TFH ",0
 _args_analog dc.b "ANALOGJOYSTICK ",0
+_args_ocs dc.b "OCS ",0
 _line   ds.b 160                  ; the argument line, built at start
         EVEN
 
@@ -99,7 +118,11 @@ _bootdos
         beq .noanalog
         bsr _append
 .noanalog
-        lea (_args_tail,pc),a0
+        lea (_args_ocs,pc),a0
+        tst.l (_ocs,pc)
+        beq .noocs
+        bsr _append
+.noocs  lea (_args_tail,pc),a0
         bsr _append
         clr.b (a1)
         lea (_line,pc),a0
@@ -214,6 +237,8 @@ _config_tags dc.l WHDLTAG_CUSTOM1_GET
 _tfh    dc.l 0
         dc.l WHDLTAG_CUSTOM2_GET
 _analog dc.l 0
+        dc.l WHDLTAG_CUSTOM3_GET
+_ocs    dc.l 0
         dc.l 0
 _args   dc.l 0
 _argslen dc.l 0

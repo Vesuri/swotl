@@ -8,13 +8,15 @@ from the current build), or with --archive those decoded from a release
 archive. --keep copies the last mode's installed SWotL drawer to DIR.
 
 Modes: fresh (images, AdLib), tfh (CLASSICS files, TFH sfx.rsc), keep (Use
-existing), replace (images over a damaged install), remove, bad-disks
+existing), update (a 1.0 install without RTSEGA.OVL: told, installed again from the
+images, pilots kept), replace (images over a damaged install), remove, bad-disks
 (Replace with a corrupted image), bad-sfx, no-exe (no SWotL beside the
 script, as the whdload.de archive: asked for), wrong-exe (a 0.9 SWotL beside
 it: getversion refuses it, asked for). The answer is the release executable; an
 archive without SWotL (--archive of the whdload.de one) asks in every mode. SWotLInstallData runs on the emulated 68020; installed game files
 must equal the original DOS ACC install without the files the port never
 opens (test_install.py UNUSED; an earlier install's copies are removed),
+both slaves (SWotL, SWotL512K) with their own icons,
 pilots and films must survive Keep and Replace, and a refused source must
 leave the install as it was.
 Inputs are local: ACC images, the DOS ACC install and TFH sfx.rsc (as
@@ -44,7 +46,9 @@ WHDLOAD = Path(os.environ.get('WHDLOAD', AMIGA / 'WHDLoad')) / 'C/WHDLoad'
 KICK = Path(os.environ.get('KICKSTART_A1200', AMIGA / 'Kickstarts/kick40068.A1200'))
 SCRIPT = os.environ.get('INSTALL_SCRIPT')  # sabotage override of the package's Install
 PACKAGE = {}
-MODES = ('fresh', 'tfh', 'keep', 'replace', 'remove', 'bad-disks', 'bad-sfx', 'no-exe', 'wrong-exe')
+MODES = ('fresh', 'tfh', 'keep', 'update', 'replace', 'remove', 'bad-disks', 'bad-sfx', 'no-exe', 'wrong-exe')
+EXISTING = ('keep', 'update', 'replace', 'remove', 'bad-disks', 'bad-sfx')
+OLD = 'RTSEGA.OVL'  # not installed before 1.1 (update mode's install lacks it)
 EXE = {}  # the release executable the requests answer with
 PILOT = b'pilot roster written by the game'
 
@@ -95,6 +99,8 @@ def script(mode):
     s = replace_form(s, '(set #sfx', mark('sfx-asked', '(set #sfx "DH2:TheirFinestHour/data/sfx.rsc")'))
     s = replace_form(s, '(abort "The Air Combat Classics disks', mark('disks-refused', '(exit (quiet))'))
     s = replace_form(s, '(abort "This sfx.rsc', mark('sfx-refused', '(exit (quiet))'))
+    if '(message "The installed game files lack RTSEGA.OVL' in s:     # absent from a sabotage script
+        s = replace_form(s, '(message "The installed game files lack RTSEGA.OVL', mark('rtsega-told'))
     s = replace_form(s, '(exit)', '(exit (quiet))')
     return s.encode('latin-1')
 
@@ -138,16 +144,18 @@ def fixture(mode, base):
     (base / 'TheirFinestHour/data').mkdir(parents=True)
     (base / 'TheirFinestHour/data/sfx.rsc').write_bytes(rsc)
     data = out / 'SWotL/data'
-    if mode in ('keep', 'replace', 'remove', 'bad-disks', 'bad-sfx'):
+    if mode in EXISTING:
         data.mkdir(parents=True)
         for name, path in REFERENCE_FILES.items():
+            if mode == 'update' and name == OLD:
+                continue
             (data / name).parent.mkdir(exist_ok=True)
             shutil.copyfile(path, data / name)
         for name in UNUSED:     # installed by earlier releases; removed on success
             shutil.copyfile(REFERENCE / name, data / name)
         (data / 'PILOT.PLT').write_bytes(PILOT)
         (data / 'A.RPY').write_bytes(PILOT)
-        if mode in ('keep', 'replace'):
+        if mode in ('keep', 'update', 'replace'):
             (data / 'AC/P38L.SPC').write_bytes(b'damaged')
         (out / 'SWotL/old-marker').touch()
     (out / 'unrelated').write_text('keep')
@@ -194,11 +202,12 @@ def check(mode, base):
     assert (base / 'boot/env/WHDLInstPath').read_text().strip() == 'DH2:out'
     assert (base / 'out/unrelated').read_text() == 'keep'
     assert not (dest / 'InstallStaging').exists(), 'staging drawer left behind'
-    existing = mode in ('keep', 'replace', 'remove', 'bad-disks', 'bad-sfx')
+    existing = mode in EXISTING
     beside = 'SWotL' in PACKAGE and mode not in ('no-exe', 'wrong-exe')
     assert asked('exe-asked') != beside, 'executable request'
     assert asked('remove-asked') == existing
     assert asked('reuse-asked') == (mode in ('keep', 'replace', 'bad-disks', 'bad-sfx'))
+    assert asked('rtsega-told') == (mode == 'update')
     if mode == 'bad-disks':
         assert asked('disks-refused') and asked('sound-asked')
     elif mode == 'bad-sfx':
@@ -215,7 +224,7 @@ def check(mode, base):
         return
     files = tree(data)
     assert files.pop('SWOTL') and (data / 'SWotL').read_bytes() == EXE['SWotL']
-    kept = mode in ('keep', 'replace')
+    kept = mode in ('keep', 'update', 'replace')
     for name in ('PILOT.PLT', 'A.RPY'):
         assert (files.pop(name, None) is not None) == kept, name
     tfh = files.pop('SFX.RSC', None)
@@ -226,14 +235,16 @@ def check(mode, base):
     for name, path in REFERENCE_FILES.items():
         expected = b'damaged' if mode == 'keep' and name == 'AC/P38L.SPC' else path.read_bytes()
         assert files[name].read_bytes() == expected, name
-    assert (dest / 'SWotL.slave').read_bytes() == PACKAGE['SWotL.slave']
     assert (dest / 'ReadMe').exists() and (dest / 'ReadMe.info').exists()
     assert (dest / 'old-marker').exists() == kept
-    icon = (dest / 'SWotL.info').read_bytes()
-    assert b'WHDLoad\0' in icon
-    icon = icon.lower()
-    assert b'slave=swotl.slave\0' in icon and b'preload\0' in icon
-    assert (b'custom1=1\0' in icon) == (mode == 'tfh') and (b'custom1' in icon) == (mode == 'tfh'), 'Custom1 tooltype'
+    for name in ('SWotL', 'SWotL512K'):     # 1 MB Chip or more; 512 KB Chip
+        assert (dest / f'{name}.slave').read_bytes() == PACKAGE[f'{name}.slave'], name
+        icon = (dest / f'{name}.info').read_bytes()
+        assert b'WHDLoad\0' in icon, name
+        icon = icon.lower()
+        assert f'slave={name.lower()}.slave\0'.encode() in icon and b'preload\0' in icon, name
+        assert (b'custom1=1\0' in icon) == (mode == 'tfh') and (b'custom1' in icon) == (mode == 'tfh'), \
+            name + ' Custom1 tooltype'
 
 
 REFERENCE_FILES = {}

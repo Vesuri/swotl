@@ -7,6 +7,9 @@
     python3 tools/test_whdload.py --mode run [--tfh] [--analog] [--slave build/whdload/MemFree.slave]
     python3 tools/test_whdload.py --mode run --installed DIR [--setup a1200-040]
     python3 tools/test_whdload.py --mode run --setup a1200-030 [--whdload-mmu]
+    python3 tools/test_whdload.py --mode run --setup a3000|a500+-020 [--slave build/whdload/MemFree.slave]
+    python3 tools/test_whdload.py --mode run --setup a500-020 --slave build/whdload/SWotL512K.slave [--no-sfx]
+    python3 tools/test_whdload.py --mode run --ocs            # Custom3: the OCS/ECS display on AGA
     python3 tools/test_whdload.py --mode run --slave build/whdload/CampaignTest.slave --ticks 15000
     (also TourTest.slave: game files written through kickfs)
 
@@ -14,12 +17,16 @@
 VBR of a 68020) ends it with COREDUMP and the dump is judged:
   - the reason is the timeout ("DEBUG caused" at the CIA-A event count), not a fault;
   - the game is running: most 64-byte blocks of the original SWOTL.EXE and
-    RTSVGA.OVL lie in guest RAM, which holds guest bytes in reverse order
-    (overlays come and go; relocated and patched blocks differ);
+    the graphics driver lie in guest RAM, which holds guest bytes in reverse
+    order (overlays come and go; relocated and patched blocks differ): RTSVGA.OVL
+    on AGA, RTSEGA.OVL on OCS/ECS or with Custom3 (--ocs, the OCS argument);
   - Custom1 (--tfh): the TFH sfx.rsc PCM payload is in Chip RAM; without it,
     no sample block is. Their copy in Chip is what the TFH path makes.
   - Custom2 (--analog): the game's PSP command tail has the joystick argument
-    Y (ANALOGJOYSTICK), N without.
+    Y (ANALOGJOYSTICK), N without; its driver letter is V (VGA) or E (EGA).
+  - 512 KB Chip (--setup a500-020, docs/ecs-plan.md D6): FM effects do not fit,
+    so no effect cache is written; the TFH samples are in Chip when sfx.rsc is
+    in the drawer, none with --no-sfx (effects silent).
   - the prerendered effects' cache (sfx.cache, docs/sound-plan.md R4) was
     written through kickfs, whole: its header's count of effects (27 for FM,
     1 with TFH) and the file's length agree.
@@ -30,7 +37,10 @@ The MemFree slave's low-water marks (Chip, Fast) are read from its $100 slot.
 the report must show TC=8000 (translation on; AmigaXDev whdload-mmu.md).
 --setup a1200-030: full 68030 with its MMU on $FSUAE_MMU; WHDLoad uses the MMU
 only with its MMU option (--whdload-mmu). --setup a1200-060: as the 68040, TC=8000 too.
-These setups emulate the data cache.
+These setups emulate the data cache. --setup a3000 (A3000, ECS, 68030 + MMU,
+2 MB Chip), a500+-020 (A500+, ECS, 1 MB Chip) and a500-020 (A500, OCS,
+512 KB Chip), the last two a 68020 with 8 MB Fast, as AmigaXDev's presets, on
+the A600 Kickstart 3.1.
 The dump's CACR must match the slave's cache policy (docs/whdload.md, Caches):
 data cache on where WHDLoad uses the MMU (68040/060, 68030 with MMU), otherwise the
 instruction cache alone.
@@ -55,6 +65,14 @@ KICKSTARTS = AMIGA / 'Kickstarts'
 WHDLOAD = Path(os.environ.get('WHDLOAD', AMIGA / 'WHDLoad')) / 'C/WHDLoad'
 WORKBENCH = Path(os.environ.get('WORKBENCH_ADF', AMIGA / 'Workbenchv2.04rev37.67Workbench.adf'))
 KICK31 = Path(os.environ.get('KICKSTART_A1200', KICKSTARTS / 'kick40068.A1200'))
+KICK600 = Path(os.environ.get('KICKSTART_A600', KICKSTARTS / 'kick40063.A600'))
+# setup: machine model, chipset, Chip KiB (AmigaXDev share/fsuae_common.sh presets)
+MACHINES = {'a1200': ('A1200', 'aga', 2048), 'a1200-030': ('A1200', 'aga', 2048),
+            'a1200-040': ('A1200', 'aga', 2048), 'a1200-060': ('A1200', 'aga', 2048),
+            'a3000': ('A3000', 'ecs', 2048), 'a500+-020': ('A500+', 'ecs', 1024),
+            'a500-020': ('A500', 'ocs', 512)}
+# The A500 presets' 68020 card runs at twice the stock 7.09 MHz.
+FREQUENCY = {'a500+-020': 14187580, 'a500-020': 14187580}
 TFH_RSC = Path(os.environ.get('TFH_RSC', ROOT / 'tmp/tfh/TheirFinestHour&Missions/data/sfx.rsc'))
 # Test slaves whose key script writes game files through kickfs: the new
 # files and their sizes, as in DOSBox (c10, c11; A.USA byte-identical).
@@ -86,14 +104,16 @@ def main():
     p.add_argument('--mode', choices=tuple(SLAVES), default='run')
     p.add_argument('--tfh', action='store_true', help='set Custom1 (Their Finest Hour sound)')
     p.add_argument('--analog', action='store_true', help='set Custom2 (analog joystick)')
+    p.add_argument('--ocs', action='store_true', help='set Custom3 (OCS/ECS display on AGA)')
+    p.add_argument('--no-sfx', action='store_true', help='no sfx.rsc in the drawer')
     p.add_argument('--slave', type=Path, help='slave override (default: build/whdload/ per mode)')
     p.add_argument('--exe', type=Path, default=ROOT / 'amiga/out/Swotl-release.exe',
                    help='stripped (make amiga-release): LoadSeg reads symbol hunks in small pieces')
     p.add_argument('--data', type=Path, default=ROOT / 'ref')
     p.add_argument('--installed', type=Path, help='installed SWotL drawer, used unchanged')
-    p.add_argument('--setup', choices=('a1200', 'a1200-030', 'a1200-040', 'a1200-060'), default='a1200')
+    p.add_argument('--setup', choices=tuple(MACHINES), default='a1200')
     p.add_argument('--whdload-mmu', action='store_true', help="WHDLoad's MMU option (68030)")
-    p.add_argument('--rom', type=Path, default=KICK31)
+    p.add_argument('--rom', type=Path, help='Kickstart (default: A1200 3.1 on AGA, A600 3.1 otherwise)')
     p.add_argument('--fast', type=int, default=8192, help='host Fast RAM in KiB')
     p.add_argument('--z3', type=int, default=0, help='Zorro III Fast RAM in KiB (needs --cpu 68030 or later)')
     p.add_argument('--cpu', default='68020')
@@ -105,9 +125,13 @@ def main():
     if args.installed:
         assert args.mode == 'run' and not args.slave, '--installed runs its own slave'
         args.data = args.installed / 'data'
-    mmu = args.setup != 'a1200'
+    model, chipset, chip_kb = MACHINES[args.setup]
+    args.rom = args.rom or (KICK31 if chipset == 'aga' else KICK600)
+    mmu = args.setup.startswith('a1200-') or args.setup == 'a3000'
     if mmu:
-        args.cpu = '68' + args.setup[-3:]
+        args.cpu = '68030' if args.setup == 'a3000' else '68' + args.setup[-3:]
+    ega = chipset != 'aga' or args.ocs
+    small = chip_kb < 1024
     assert not args.whdload_mmu or args.cpu == '68030', '--whdload-mmu is for --setup a1200-030'
     # Where WHDLoad uses the MMU, the slave's CACHE policy holds (data cache on).
     dcache = args.cpu in ('68040', '68060') or args.whdload_mmu
@@ -131,7 +155,8 @@ def main():
         shutil.copyfile(args.exe, data / 'SWotL')
     if args.mode == 'run' and not args.installed:
         shutil.copytree(args.data, data, dirs_exist_ok=True, ignore=shutil.ignore_patterns('*.pdf'))
-        shutil.copyfile(TFH_RSC, data / 'sfx.rsc')
+        if not args.no_sfx:
+            shutil.copyfile(TFH_RSC, data / 'sfx.rsc')
     options = ['SPLASHDELAY=0', 'NOREQ']
     if not args.no_preload:
         options.append('PRELOAD')
@@ -143,6 +168,8 @@ def main():
             options.append('CUSTOM1=1')
         if args.analog:
             options.append('CUSTOM2=1')
+        if args.ocs:
+            options.append('CUSTOM3=1')
     if args.whdload_mmu:
         options.append('MMU')
     options += args.option
@@ -165,11 +192,13 @@ def main():
         cpu += ['--uae_cpu_24bit_addressing=false', '--uae_cpu_compatible=true', '--uae_cpu_data_cache=true',
                 '--uae_uaeboard=full+indirect']
     with (base / 'emulator.log').open('w') as log:
-        emu = subprocess.Popen([fsuae, '--amiga_model=A1200', '--cpu=' + args.cpu,
+        emu = subprocess.Popen([fsuae, '--amiga_model=' + model, '--uae_chipset=' + chipset, '--cpu=' + args.cpu,
             '--uae_cpu_model=' + args.cpu, *cpu, '--jit_compiler=0',
-            '--chip_memory=2048', '--fast_memory=' + str(args.fast),
+            *(['--uae_cpu_speed=real', '--uae_cpu_multiplier=0', '--uae_cpu_frequency=%d' % FREQUENCY[args.setup]]
+              if args.setup in FREQUENCY else []),
+            '--chip_memory=' + str(chip_kb), '--slow_memory=0', '--fast_memory=' + str(args.fast),
             *(['--zorro_iii_memory=' + str(args.z3)] if args.z3 else []),
-            '--kickstart_file=' + str(KICK31),
+            '--kickstart_file=' + str(args.rom),
             '--hard_drive_0=' + str(boot), '--hard_drive_0_priority=10', '--hard_drive_1=' + str(game),
             '--floppy_drive_0=' + str(WORKBENCH), '--audio_driver=dummy',
             '--joystick_port_0=mouse', '--joystick_port_1=nothing', '--warp_mode=1', '--fullscreen=0',
@@ -229,7 +258,10 @@ def main():
     count = int.from_bytes(image[12:16], 'big') if len(image) >= 16 else 0
     length = 16 + 8 * count + sum(int.from_bytes(image[16 + 8 * k + 4:16 + 8 * k + 8], 'big') for k in range(count))
     print(f'sfx.cache: {len(image)} bytes, {count} effects')
-    if image[:4] != b'SWFX' or count != (1 if args.tfh else 27) or len(image) != length:
+    if small and not args.tfh:
+        if image:
+            raise SystemExit(f'FAIL: an effect cache on 512 KB Chip, where FM effects do not fit ({base})')
+    elif image[:4] != b'SWFX' or count != (1 if args.tfh else 27) or len(image) != length:
         raise SystemExit(f'FAIL: the effect cache was not written whole ({base})')
     if args.cpu in ('68040', '68060') and 'TC=8000' not in report:
         raise SystemExit(f'FAIL: {args.cpu} MMU translation was not enabled (no TC=8000)\n' + report[:2000])
@@ -244,7 +276,7 @@ def main():
                          + (' and the data cache' if dcache else ' without the data cache'))
     memory = chip + exp
     resident = True
-    for name in ('SWOTL.EXE', 'RTSVGA.OVL'):
+    for name in ('SWOTL.EXE', 'RTSEGA.OVL' if ega else 'RTSVGA.OVL'):
         image = blocks((args.data / name).read_bytes(), 64)
         found = sum(1 for b in image if b[::-1] in memory)
         print(f'{name} in guest RAM: {found} of {len(image)} blocks')
@@ -252,21 +284,25 @@ def main():
     pcm = [b for s in rsc_pcm(TFH_RSC.read_bytes()) for b in blocks(s)]
     in_chip = sum(1 for b in pcm if b in chip)
     print(f'TFH samples in Chip: {in_chip} of {len(pcm)} blocks')
-    if args.slave and args.slave.name == 'MemFree.slave':
+    if args.slave and args.slave.name.startswith('MemFree'):
         print('MemFree low water: Chip {:,} Fast {:,} bytes'.format(
             int.from_bytes(chip[0x100:0x104], 'big'), int.from_bytes(chip[0x104:0x108], 'big')))
     if not resident:
         raise SystemExit('FAIL: the game is not resident in guest RAM')
-    tail = b' V S 5 %s Y Y 64\r' % (b'Y' if args.analog else b'N')
+    tail = b' %s S 5 %s Y Y 64\r' % (b'E' if ega else b'V', b'Y' if args.analog else b'N')
     print('command tail:', tail.decode().strip(), 'in guest RAM' if tail[::-1] in memory else 'missing')
     if tail[::-1] not in memory:
         raise SystemExit('FAIL: Custom2 did not set the joystick argument' if args.analog
                          else 'FAIL: the joystick argument is not N without Custom2')
-    if args.tfh and in_chip != len(pcm):
-        raise SystemExit('FAIL: Custom1 set but the TFH samples are not in Chip')
-    if not args.tfh and in_chip:
-        raise SystemExit('FAIL: TFH samples in Chip without Custom1')
-    print('PASS: game runs under WHDLoad, sound ' + ('TFH' if args.tfh else 'FM')
+    # 512 KB Chip without Custom1: the TFH samples replace the FM effects when
+    # sfx.rsc is there (D6); --no-sfx leaves the effects silent.
+    tfh = (args.tfh or small) and not args.no_sfx
+    if tfh and in_chip != len(pcm):
+        raise SystemExit('FAIL: TFH expected but its samples are not in Chip')
+    if not tfh and in_chip:
+        raise SystemExit('FAIL: TFH samples in Chip' + (' without sfx.rsc' if args.no_sfx else ' without Custom1'))
+    print(f'PASS: game runs under WHDLoad on {args.setup} ({"EGA" if ega else "VGA"}), sound '
+          + ('TFH' if tfh else 'silent effects' if small else 'FM')
           + (', analog joystick' if args.analog else '')
           + (f', {args.cpu} MMU' + (' in use' if dcache else ' unused') if mmu else '')
           + f', CACR={cacr:X}')

@@ -11,8 +11,8 @@ slave: [whdload.md](whdload.md).
 | Item | Value |
 | --- | --- |
 | Machine | PAL or NTSC A1200, 68020, AGA (`GFXF_AA_LISA` after `SetPatch`, L8) for VGA; OCS/ECS with a 68020 or better for the EGA version ([ecs-plan.md](ecs-plan.md)) |
-| Memory | 2 MiB Chip for DMA data; Fast RAM required (D15, [translator-design.md](translator-design.md)); default 4 KiB Shell stack, L52 |
-| Launch | Shell, Workbench (L84: the icon's tool types and drawer) and a WHDLoad slave (kickemu, INITAGA; [whdload.md](whdload.md)), the same executable; the release image takes the player options only |
+| Memory | Chip for DMA data: 768 KiB under WHDLoad (1 MB machines); on 512 KB Chip the FM effects do not fit and TFH samples or silence replace them (ecs-plan D6, slave `SWotL512K`); Fast RAM required (D15, [translator-design.md](translator-design.md); EGA adds its model's 256 KiB of planes); default 4 KiB Shell stack, L52 |
+| Launch | Shell, Workbench (L84: the icon's tool types and drawer) and a WHDLoad slave (kickemu, INITAGA, no `ReqAGA`; Custom1–3 = `TFH`, `ANALOGJOYSTICK`, `OCS`; [whdload.md](whdload.md)), the same executable; the release image takes the player options only |
 | Display | 320×200, 8 non-interleaved planes, 256 colours from the 18-bit VGA palette, L31 |
 | Timebase | vblank (50 Hz PAL, 60 Hz NTSC: graphics' `DisplayFlags`, `amiga_ntsc`) for display, input and audio; PIT channel 0 on a CIA-B timer (D8) |
 

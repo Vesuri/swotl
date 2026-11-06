@@ -73,8 +73,10 @@ root EXE + .OVL images (proved against DOSBox captures)
 - Runtime (`src/runtime/`): the reference machine as the guest sees it
   (DOS 5 PSP/MCBs/environment, IVT values, BIOS/EMS answers) behind
   `platform.h`; one implementation for the host harness and the A1200.
-- Drivers: RTSVGA and SPAZ run translated. RTSVGA's video-memory stores
-  are marked and their changed rows presented once per game frame (D9); SPAZ's
+- Drivers: RTSVGA, RTSEGA and SPAZ run translated. RTSVGA's video-memory stores
+  are marked and their changed rows presented once per game frame (D9); RTSEGA's
+  reach the runtime's EGA model (`ega.c`, device lowering) and its page 0 planes
+  are presented as hires bitplanes (OCS/ECS, [ecs-plan.md](ecs-plan.md)); SPAZ's
   OPL2 writes reach the runtime's register file, which the FM re-hoster
   plays on Paula (D10, [sound-plan.md](sound-plan.md)).
 

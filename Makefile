@@ -653,14 +653,20 @@ smoke-release: amiga-release
 	. amiga/env.sh && SWOTL_RELEASE=1 SWOTL_ELF="$(CURDIR)/build/amiga-release/out/Swotl.elf" amiga/debug.sh "" "$(CURDIR)/amiga/diag_smoke.gdb" "$(CURDIR)/amiga/out/Swotl-release.exe" | grep -q '^SWOTL_SMOKE_OK'
 
 whdload:
-	$(MAKE) -C whdload all test smoke boot-test load-test memfree campaign tour
+	$(MAKE) -C whdload all test smoke boot-test load-test memfree memfree-512k campaign tour
 
-# tools/test_whdload.py: Kickstart 3.1 A1200 + RTB, WHDLoad, ref/ and TFH_RSC.
+# tools/test_whdload.py: Kickstart 3.1 A1200 and A600 + RTB, WHDLoad, ref/ and TFH_RSC; OCS/ECS
+# setups as ecs-plan E9 (SWotL512K on 512 KB Chip).
 test-whdload: whdload amiga-release
 	. amiga/env.sh && for m in smoke boot load; do $(PYTHON) tools/test_whdload.py --mode $$m || exit 1; done
 	. amiga/env.sh && $(PYTHON) tools/test_whdload.py --mode run
 	. amiga/env.sh && $(PYTHON) tools/test_whdload.py --mode run --tfh
 	. amiga/env.sh && $(PYTHON) tools/test_whdload.py --mode run --analog
+	. amiga/env.sh && $(PYTHON) tools/test_whdload.py --mode run --ocs
+	. amiga/env.sh && for s in a3000 a500+-020 "a500+-020 --tfh"; do \
+		$(PYTHON) tools/test_whdload.py --mode run --setup $$s || exit 1; done
+	. amiga/env.sh && for o in "" --tfh --no-sfx; do \
+		$(PYTHON) tools/test_whdload.py --mode run --setup a500-020 --slave build/whdload/SWotL512K.slave $$o || exit 1; done
 	. amiga/env.sh && for s in "a1200-030" "a1200-030 --whdload-mmu" "a1200-040" "a1200-060"; do \
 		$(PYTHON) tools/test_whdload.py --mode run --setup $$s || exit 1; done
 	. amiga/env.sh && for t in Campaign Tour; do for s in a1200 a1200-060; do \

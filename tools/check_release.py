@@ -19,7 +19,7 @@ from pathlib import Path
 import re
 from package_release import ORIGINAL_HASHES, PREFIX, ROOT, archive_names, crc16, members
 
-DATE = '02.11.2026'
+DATE = '06.11.2026'
 STAMP = (((2026 - 1980) << 9) | (10 << 5) | 24) << 16
 
 
@@ -72,12 +72,12 @@ def check_archive(archive, expected, blocks):
     for name, data in payloads.items():
         assert hashlib.sha256(data).hexdigest() not in ORIGINAL_HASHES, 'original file: ' + name
         assert not contains_block(data, blocks), 'original EXE/OVL bytes in ' + name
-    for name in ('SWotL', 'SWotL.slave', 'SWotLInstallData'):
+    for name in ('SWotL', 'SWotL.slave', 'SWotL512K.slave', 'SWotLInstallData'):
         assert name not in expected or payloads[name][:4] == b'\0\0\3\xf3', 'not an Amiga HUNK executable: ' + name
     for name, kind in (('SWotL.inf', 4), ('ReadMe.info', 4), ('Install.info', 4), ('@drawer', 2)):
         assert payloads[name][:4] == b'\xe3\x10\0\1' and payloads[name][48] == kind, 'bad icon: ' + name
     version = (ROOT / 'VERSION').read_text().strip().encode()
-    for name in ('SWotL', 'SWotL.slave', 'SWotLInstallData'):
+    for name in ('SWotL', 'SWotL.slave', 'SWotL512K.slave', 'SWotLInstallData'):
         assert name not in expected or \
             b'$VER: ' + name.encode() + b' ' + version + b' (' + DATE.encode() + b')' in payloads[name], 'version: ' + name
     assert b'$VER: Install ' + version + b' (' + DATE.encode() + b')' in payloads['Install']
@@ -90,19 +90,23 @@ def check_archive(archive, expected, blocks):
                     b'https://github.com/Vesuri/swotl'):
         assert heading in payloads['ReadMe'], heading
     # WHDLoadSlave header, whdload.i: flags +14, BaseMem +16, keyexit +31, ExpMem +32.
-    slave = payloads['SWotL.slave']
-    signature = b'\x70\xff\x4e\x75WHDLOADS'
-    assert slave.count(signature) == 1, 'ambiguous WHDLoad header'
-    header = slave.index(signature)
-    flags = struct.unpack_from('>H', slave, header + 14)[0]
-    assert flags & 0x32 == 0x32, 'slave must set NoError, Req68020 and ReqAGA'
-    assert struct.unpack_from('>I', slave, header + 16)[0] == 0xC0000, 'expected 768 KiB Chip'
-    assert struct.unpack_from('>I', slave, header + 32)[0] == 0x480000, 'expected 4 MiB game plus 512 KiB Kickstart'
-    assert slave[header + 31] == 0x5f, 'Help must be the quit key'
-    # ws_DontCache (+28, relative to the header): files read once at start stay out of the file cache.
-    dont = struct.unpack_from('>h', slave, header + 28)[0]
-    pattern = b'(SWotL|SWOTL.EXE|sfx.cache)\0'
-    assert dont and slave[header + dont:header + dont + len(pattern)] == pattern, 'ws_DontCache pattern'
+    # NoError (2) and Req68020 (0x10), not ReqAGA (0x20): OCS/ECS run the EGA version.
+    for name, chip in (('SWotL.slave', 0xC0000), ('SWotL512K.slave', 0x80000)):
+        slave = payloads[name]
+        signature = b'\x70\xff\x4e\x75WHDLOADS'
+        assert slave.count(signature) == 1, 'ambiguous WHDLoad header: ' + name
+        header = slave.index(signature)
+        flags = struct.unpack_from('>H', slave, header + 14)[0]
+        assert flags & 0x32 == 0x12, name + ' must set NoError and Req68020, not ReqAGA'
+        assert struct.unpack_from('>I', slave, header + 16)[0] == chip, f'{name}: expected {chip >> 10} KiB Chip'
+        assert struct.unpack_from('>I', slave, header + 32)[0] == 0x4C0000, \
+            name + ': expected 4.25 MiB game plus 512 KiB Kickstart'
+        assert slave[header + 31] == 0x5f, 'Help must be the quit key'
+        # ws_DontCache (+28, relative to the header): files read once at start stay out of the file cache.
+        dont = struct.unpack_from('>h', slave, header + 28)[0]
+        pattern = b'(SWotL|SWOTL.EXE|sfx.cache)\0'
+        assert dont and slave[header + dont:header + dont + len(pattern)] == pattern, 'ws_DontCache pattern'
+        assert b'C3:B:OCS/ECS display on AGA;' in slave, name + ': Custom3 OCS'
     assert b'APPNAME=Secret Weapons of the Luftwaffe\0' in payloads['Install.info']
     assert not any(n.lower().endswith(('.rpy', '.plt', '.cfg', '.dat', '.img', '.rsc', '.exe', '.ovl')) for n in payloads)
     print(f'PASS: {archive.name}: {len(payloads)} allowlisted LH5 members; independent decompression, CRCs, '

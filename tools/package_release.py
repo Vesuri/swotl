@@ -44,6 +44,7 @@ def members(executable):
     return {
         'SWotL': executable.read_bytes(),
         'SWotL.slave': (ROOT / 'build/whdload/SWotL.slave').read_bytes(),
+        'SWotL512K.slave': (ROOT / 'build/whdload/SWotL512K.slave').read_bytes(),
         'SWotL.inf': installer_icon(game=True),
         'SWotLInstallData': (ROOT / 'build/install-data/SWotLInstallData.exe').read_bytes(),
         'Install': (ROOT / 'release/Install').read_bytes(),

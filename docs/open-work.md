@@ -83,15 +83,8 @@ speed work: [speed-plan.md](speed-plan.md).
     `test-amiga-replay`.
 41. `alignas(4)` on even-sized globals of 4 bytes or more, with a link audit
     (L104): not applied; m68k GCC aligns them to 2.
-45. OCS/ECS version from the EGA driver (user 2026-11-03), 68020 or better,
-    no 68000. Scope today is VGA only (AGENTS.md). Plan, facts and decisions D1–D8:
-    [ecs-plan.md](ecs-plan.md) (mode 0Eh: four hires planes, no C2P; RTSEGA's
-    converters 4AC3/4BD0 as device natives). E1–E7 done (EGA model on
-    host, `make test-host-ega`; OCS/ECS display on FS-UAE `a1200` with `OCS` and
-    `a3000`, `make test-amiga-replay-ega`; converter natives 4AC3/4BD0: demo frames
-    306 ms on the 68020, was 660; final EGA references and gate set `HOST_EGA`, E7; E8 run, §E8 results). `ega-c82`
-    left the gate set (D9b); meter back to pre-ECS (D9c). Next: E9. The installer leaves out
-    RTSEGA.OVL (unused under VGA; release.md).
+45. OCS/ECS version (user 2026-11-03): E1–E9 done ([ecs-plan.md](ecs-plan.md)); release
+    1.1 built and audited (D8), publishing (tag, GitHub release, whdload.de) awaits the user.
 
 ## User report (A1200, 68060, 2026-10-29)
 
