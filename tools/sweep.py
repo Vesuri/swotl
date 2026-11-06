@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Recursive-descent sweep of the root and in-scope overlays (plan step 2.4).
 
-Seeds: MZ entry, PLINK thunk targets, every traced instruction start
+Seeds: MZ entry, PLINK thunk targets, annotations/runtime.csv entries, every
+traced instruction start
 (union of tmp/pc-runs/ref-*), traced indirect targets (hardware interrupt entries only from traces
 recorded with poll points). Follows fall-through,
 near/far direct jumps and calls; stops at returns and indirect jumps; never
@@ -44,6 +45,13 @@ def smc_regions() -> dict[str, list[tuple[int, int]]]:
         for r in csv.DictReader(f):
             out[r["module"]].append((int(r["first"], 16), int(r["last"], 16)))
     return out
+
+
+def runtime_entries() -> list[tuple[str, int]]:
+    """annotations/runtime.csv: identified runtime routines, executed or not (the
+    translator seeds them too)."""
+    with (M.REPO / "annotations/runtime.csv").open() as f:
+        return [(r["module"], int(r["offset"], 16)) for r in csv.DictReader(f)]
 
 
 def dispatch_tables() -> dict[tuple[str, int], int]:
@@ -307,6 +315,8 @@ def main() -> int:
         sw.seed(M.ROOT, M.entry(), "MZ entry")
         for at, mod, off in M.thunks(mods):
             sw.seed(M.ROOT, at, "thunk")
+        for mod, off in runtime_entries():
+            sw.seed(mod, off, "runtime.csv")
         for mod, starts in exe.items():
             for off in starts:
                 sw.seed(mod, off, "traced")

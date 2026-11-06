@@ -3,5 +3,5 @@ spill,0,fixed register contract (D4); no lowering spills to the native stack
 full-flag materialization,2,"PLINK load routine (SWOTL+16262..+16461): its PUSHF at +16405 keeps the FLAGS image in CX, which DOSBox-X-equal RAM needs exact (cmp +16277, add +1645C)"
 PF store,8,"the same PLINK load routine PUSHF image; otherwise no PF reader is reached (the manager PUSHF pair in annotations/flags.csv only saves and restores)"
 AF store,3,the same PLINK load routine PUSHF image; otherwise no AF reader is reached
-dispatcher exit,426,"425 indirect.csv sites without a proved switch table + SWOTL+140DB (callf [56EAh] in __harderr_handler, runtime.csv seed the sweep does not reach)"
+dispatcher exit,426,"indirect.csv sites without a proved switch table (SWOTL+140DB: callf [56EAh] in __harderr_handler, reached from its runtime.csv seed)"
 stop_unknown site,631,"528 entries into the self-modified block (D16), 60 PLINK thunks of out-of-scope overlays, 43 switch tables' out-of-table fallback"

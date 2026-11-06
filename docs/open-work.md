@@ -6,17 +6,16 @@ speed work: [speed-plan.md](speed-plan.md).
 
 ## Guest map follow-ups
 
-9b. Paused at user request. 17 indirect sites remain static-only (`annotations/indirect.csv`).
+9b. Paused at user request. 18 indirect sites remain static-only (`annotations/indirect.csv`).
    [Coverage boundaries](indirect-coverage.md) document 13 video/default-runtime
-   exclusions with fail-loud dispatch retained. The other 4 need VGA execution
-   coverage: engine/cockpit damage (2), formatting (2). Do not infer unreachability from missed fixtures.
+   exclusions with fail-loud dispatch retained. 4 need VGA execution
+   coverage: engine/cockpit damage (2), formatting (2). SWOTL+140DB
+   (`__harderr_handler`, the INT 24h stub; the runtime raises no critical error)
+   is unclassified. Do not infer unreachability from missed fixtures.
    The engine sites need a single-engine sortie with an engine hit
    (indirect-coverage.md). Isolated original-code formatting tests await approval;
    they must not be presented as gameplay execution coverage.
 9c. PLINK flag bit 13 (set on DATA only): meaning unknown; no effect seen.
-9e. `tools/sweep.py` does not seed `annotations/runtime.csv` entries, so
-   `callf [56EAh]` at SWOTL+140DB (`__harderr_handler`) has no
-   `indirect.csv` row (it dispatches; counted in `tests/audit.csv`).
 
 ## Translator and validation
 
