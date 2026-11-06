@@ -311,11 +311,12 @@ Swotl::~Swotl()
     }
 }
 
-void Swotl::run()
+long Swotl::run()
 {
     takeOver();
-    amiga_guest_run();
+    long code = amiga_guest_run();
     handBack();
+    return code;
 }
 
 // Takeover order and its mirror in handBack: docs/amiga-lessons.md L2, L4;

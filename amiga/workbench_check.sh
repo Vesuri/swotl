@@ -15,8 +15,9 @@
 # The release image (make amiga-release), its own symbols:
 #   release      tfh analogjoystick: both chosen, no key script
 #   release-keys a diagnostic argument (KEYS, MUSIC, BENCH): IoErr 118, result 20
-# A runtime stop (rt_stop, rt_unsupported) fails every case: the program's
-# result does not carry it.
+#   stop   the key script's stop: a runtime stop (rt_stop) inside the takeover
+#          hands back and the Shell gets result 20
+# A runtime stop (rt_stop, rt_unsupported) fails every other case.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p tmp
@@ -97,6 +98,28 @@ fault() {
   } > "$run/$1.gdb"
 }
 
+# $1 case: the key script's stop (KEYS=...:stop) raises rt_stop with code 47h
+# inside the takeover; the program must hand back and return 20 (gdb only
+# reads: the stub drops memory and register writes).
+stop() {
+  {
+    echo 'set pagination off'
+    echo 'set confirm off'
+    echo 'break *rt_stop'
+    echo 'continue'
+    printf 'printf "SWOTL_WB_STOP %%s a=%%x\\n", *(char **)($sp + 4), *(unsigned *)($sp + 8)\n'
+    printf 'if *(unsigned *)($sp + 8) != 0x47\n  detach\n  quit 1\nend\n'
+    echo 'delete'
+    echo 'break amiga_start_return'
+    echo 'continue'
+    printf 'printf "SWOTL_WB_RESULT case=%s result=%%d\\n", result\n' "$1"
+    printf 'if result != 20 || amiga_wb_startup != 0\n  detach\n  quit 1\nend\n'
+    echo 'printf "SWOTL_WB_OK\n"'
+    echo 'detach'
+    echo 'quit 0'
+  } > "$run/$1.gdb"
+}
+
 check() {
   local name=$1
   FSUAE_RUN="../tmp/${run##*/}/$name" bash amiga/debug.sh "" "$run/$name.gdb" ${SWOTL_EXE:+"$SWOTL_EXE"} \
@@ -120,6 +143,8 @@ options prompt '$tfh == 1'
 SWOTL_INPUT=tfh SWOTL_ARGS='?' check prompt
 fault bad 118
 SWOTL_ARGS=foo check bad
+stop stop
+SWOTL_ARGS='KEYS=300:stop' check stop
 release=(SWOTL_RELEASE=1 SWOTL_ELF="$PWD/build/amiga-release/out/Swotl.elf" SWOTL_EXE="$PWD/amiga/out/Swotl-release.exe")
 options release '$tfh == 1 && rt_joystick == 1 && key_script == 0'
 env "${release[@]}" SWOTL_ARGS='tfh analogjoystick' bash -c "$(declare -f check); run='$run'; check release"
@@ -127,4 +152,4 @@ for arg in 'KEYS=1:shot' MUSIC BENCH; do
   fault release-keys 118
   env "${release[@]}" SWOTL_ARGS="$arg" bash -c "$(declare -f check); run='$run'; check release-keys"
 done
-echo 'PASS: Workbench and Shell starts return their results; Shell arguments parse; the release image takes the player options only'
+echo 'PASS: Workbench and Shell starts return their results; a runtime stop returns 20; Shell arguments parse; the release image takes the player options only'

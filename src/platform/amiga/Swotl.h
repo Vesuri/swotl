@@ -21,7 +21,8 @@ public:
     ~Swotl();
 
     bool isRunnable() const { return runnable; }
-    void run();
+    // The guest's exit code (plat_exit).
+    long run();
 
     // Called from the VERTB vector (interrupt context, 50 Hz PAL).
     void verticalBlank();

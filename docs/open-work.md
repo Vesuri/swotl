@@ -93,6 +93,3 @@ speed work: [speed-plan.md](speed-plan.md).
     and the scaling are proven only by `tests/test_display_queue.py` and
     `tests/test_mouse_scale.py`. Confirm on the tester's 68060 and the
     68020; tune `MOUSE_FRAME_MS` (input.c) by feel.
-47. A runtime stop (`SWOTL_STOP`, plat_exit code 2) still ends the Amiga
-    program with result 0: `Swotl::run` drops `amiga_guest_run()`'s code.
-    `amiga/workbench_check.sh` breaks on `rt_stop`/`rt_unsupported` instead.

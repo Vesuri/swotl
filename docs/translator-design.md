@@ -376,7 +376,7 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   argument `KEYS=when:key,...` feeds keys, `lmb`/`rmb` and `mx±N`/`my±N`
   into the same paths at a frame or `pN`, N
   guest mouse reads after the previous step (host load moves frame
-  timings), and `shot`/`quit` call `amiga_script_mark` for a gdb fixture;
+  timings), and `shot`/`quit` call `amiga_script_mark` for a gdb fixture, `stop` raises a runtime stop (code 47h, `make test-amiga-workbench`);
   `SWOTL_ARGS` in `amiga/debug.sh`); host run the reference's `irq` events, replayed at the
   same visit of the same sync point after the same service event, one of a
   same-visit group per return of the guest handler to that point (the

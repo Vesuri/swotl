@@ -397,7 +397,8 @@ void plat_timer_rate(uint32_t divisor)
  * for a screen that is polling rather than for a time the host load moves;
  * keys a-z 0-9 enter esc space or $hex raw codes, mouse buttons lmb rmb,
  * mouse motion mx+N mx-N my+N my-N counts; shot and quit call
- * amiga_script_mark for a debugger fixture; unknown names are logged at the
+ * amiga_script_mark for a debugger fixture; stop raises a runtime stop
+ * (rt_stop, code 47h: amiga/workbench_check.sh); unknown names are logged at the
  * start and skipped): fed from the field task at each vertical blank into
  * the keyboard and mouse paths of Input.cpp; a key
  * is released 5 frames after it is pressed, a button once the guest has
@@ -472,7 +473,7 @@ static int motion(const char *name, int n)
 static int known(const char *name, int n)
 {
     return motion(name, n) || named(name, n, "shot") || named(name, n, "quit") ||
-           raw_of(name, n) >= 0;
+           named(name, n, "stop") || raw_of(name, n) >= 0;
 }
 
 /* At the start (main program): the field task cannot log. */
@@ -531,6 +532,9 @@ static void key_script_step(void)
     if (named(name, n, "shot") || named(name, n, "quit")) {
         amiga_script_mark(name[0] == 'q');
         return;
+    }
+    if (named(name, n, "stop")) {
+        rt_stop("KEYS stop", 0x47, 0);
     }
     int code = raw_of(name, n);
     if (code < 0) {
