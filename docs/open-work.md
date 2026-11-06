@@ -70,6 +70,11 @@ speed work: [speed-plan.md](speed-plan.md).
     CALL/JMP [m] without the wrap; LES/LDS cases checked against live DOSBox-X (as
     RETF). `b:index-fold` (2, m68k): a taken `jz` shortens the path, and the x86
     side executes one more instruction from the random bytes after the block.
+    `make test-blocks` (3): SWOTL+14F12 `lodsb` x2 reads through d7, the `[si]`
+    address R13 (`reuse.py`) carried from 14F04 across the fall-through of 14F10's
+    `jne`; the block case enters at 14F12 with d7 unset (no jump targets it). The
+    harness must enter such blocks with the run's carried registers, or from the
+    run start. SPAZ+A7E (stops at rt_trap, SP differs): not yet triaged.
 24. Lockstep RAM compare (phase 6): undefined flags and FLAGS words pushed
     below SP (PUSHF, interrupt frames) differ from DOSBox by design. The host
     run masks dead stack (below SS:SP at a service or hardware interrupt,
