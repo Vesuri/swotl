@@ -51,7 +51,12 @@ def check():
             assert trace == out / 'original-trace'
             return []
 
-        with patch.object(R.subprocess, 'Popen', launch), patch.object(R.H, 'check', compare):
+        # The real-video step (amiga_replay.run) reads the emulator's trace; the
+        # stand-in emulator writes none, so its screenshot and comparison are stubs.
+        with patch.object(R.subprocess, 'Popen', launch), patch.object(R.H, 'check', compare), \
+                patch.object(R.barto, 'last_screenshot', lambda path: (0, b'png')), \
+                patch.object(R.H, 'milestone_script', lambda name: {'snapshots': [0], 'ega': False}), \
+                patch.object(R.H, 'compare_video', lambda png, snap: []):
             try:
                 R.run('test-isolation', out, trace=out / 'original-trace')
             except subprocess.CalledProcessError as error:
