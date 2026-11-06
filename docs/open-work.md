@@ -72,10 +72,6 @@ speed work: [speed-plan.md](speed-plan.md).
     flag bits in pushed images under the remaining `annotations/flags.csv`
     pair).
 
-49. `reference/coverage.csv` c20, c22, c23 expect FLIGHT resident, but their key
-    scripts end on the in-flight map (NOTCAMP; c28 builds on that); `make coverage`
-    reports them. Changing the rows needs approval.
-
 ## Amiga platform
 
 28. `make test-amiga AMIGA_MILESTONE=m2-choose-side` (plain fixture) ends

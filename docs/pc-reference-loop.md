@@ -208,10 +208,10 @@ service-only release format.
 | c17-p38-gunnery | U, F, 5, 1, S; c6's flight keys | P-38 flight |
 | c18-p80-gunnery | U, F, 6, 1, S; c6's flight keys | P-80 flight |
 | c19-fw190-gunnery | G, F, 2, 1, S; c6's flight keys | FW 190 flight |
-| c20-me163-gunnery | G, F, 4, 1, S; c6's flight keys | Me 163 flight |
+| c20-me163-gunnery | G, F, 4, 1, S; c6's flight keys | Me 163 flight; ends on the in-flight map: NOTCAMP resident (user 2026-11-06) |
 | c21-go229-gunnery | G, F, 5, 1, S; c6's flight keys | GO 229 flight |
-| c22-he162-gunnery | G, F, 6, 1, S; c6's flight keys | He 162 flight |
-| c23-do335-gunnery | G, F, 7, 1, S; c6's flight keys | Do 335 flight |
+| c22-he162-gunnery | G, F, 6, 1, S; c6's flight keys | He 162 flight; ends on the in-flight map: NOTCAMP resident (user 2026-11-06) |
+| c23-do335-gunnery | G, F, 7, 1, S; c6's flight keys | Do 335 flight; ends on the in-flight map: NOTCAMP resident (user 2026-11-06) |
 | c24-custom-create | U, C, C; select Leiston, create a P-47 group, assign the player, exit and save | custom mission `UNNAMEDA.MIS` |
 | c25-film-load | save A.RPY, end mission, select and load A from the main-menu viewer | REPLAY + FLIGHT resident; image proof and host comparison pass |
 | c26-exit-usage | launch `swotl` without arguments | root +138DE after C exit callbacks; EMS release, mode 3 and the usage text on CON run on the host |
