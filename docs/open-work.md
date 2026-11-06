@@ -90,8 +90,7 @@ speed work: [speed-plan.md](speed-plan.md).
     host, `make test-host-ega`; OCS/ECS display on FS-UAE `a1200` with `OCS` and
     `a3000`, `make test-amiga-replay-ega`; converter natives 4AC3/4BD0: demo frames
     306 ms on the 68020, was 660; final EGA references and gate set `HOST_EGA`, E7; E8 run, §E8 results). `ega-c82`
-    left the gate set (D9b). Open: meter +1.57 % (4BD0 resume makes ZF live at every
-    indirect call; translator rule, user 2026-11-05); then E9. The installer leaves out
+    left the gate set (D9b); meter back to pre-ECS (D9c). Next: E9. The installer leaves out
     RTSEGA.OVL (unused under VGA; release.md).
 
 ## User report (A1200, 68060, 2026-10-29)

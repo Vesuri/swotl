@@ -395,7 +395,12 @@ caller's DS where the I2 analysis cannot see it; host runs check, I3) and `irq-s
   `jsr rt_hle_<service>`; NE skips to the instruction after `last`, EQ runs
   the guest code. `args`: up to two guest word registers (not SP, BP), in d7
   and d6. Both ends are leaders, the first's live-in includes the
-  resume's, and a hook where the CCR holds live flags fails `make gen`. The
+  resume's, and a hook where the CCR holds live flags fails `make gen`. On a
+  compute row only resumes its body does not reach from the hook join the
+  hook's live-in; a reached resume's liveness flows back through the body,
+  and flags the body defines on every path are the native's (exact at the
+  resume), not the caller's (ecs-plan E8 meter: 4BD0's loop-head resume made
+  ZF live at every indirect call). The
   block differential runs the guest path. Entries: `sfx_start` (observe
   only: SPAZ's effect start, BX = slot·6, DI = id·4 → `rt_sfx_id`,
   `rt_sfx_starts`; oracle `check_sfx` in every host run: each report equals

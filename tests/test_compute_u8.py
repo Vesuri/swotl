@@ -139,7 +139,6 @@ def emission():
         resumes = [*rets, *row.loops]
         for r in resumes:
             assert r in c.leaders and r in c.hle_resumes, (name, r)
-            assert c.live_in[r] <= c.live_in[at(first)], (name, 'resume liveness')
         if len(resumes) > 1:
             hook = compute.hook(SERVICE, f'{emit.label(M, first)}_cx', cs)
             stub = compute.resume_dispatch(f'{emit.label(M, first)}_cx',
@@ -377,8 +376,55 @@ def handoff(plant=None, names=tuple(ROWS), cases=24, rows=None):
     return count
 
 
+ARITH = ('CF', 'PF', 'AF', 'ZF', 'SF', 'OF')
+
+
+def resume_flags(names=tuple(ROWS), cases=24, live=None):
+    """A flag live at a resume but not at the hook (the body defines it on every
+    path to that resume, translator-design.md HLE) is the native's to produce:
+    the original reaches the resume with that flag independent of the entry
+    flags. Unicorn runs each entry case twice, arithmetic flags all clear and
+    all set, and stops at the first of the resume and the returns."""
+    from tools import compute_oracle as O
+    from translator.ir import FLAG_BIT
+    u = base().units[M]
+    count = 0
+    for name in names:
+        first, _, _, returns, loops = ROWS[name]
+        c = program(name)
+        li = live(c) if live else c.live_in
+        for r in (*returns, *loops):
+            own = (set(li[at(r)]) - set(li[at(first)])) & set(ARITH)
+            if not own:
+                continue
+            rng, seen = random.Random(17), 0
+            for _ in range(cases):
+                ram, regs = entry_case(name, rng)
+                ends = [(regs['cs'], u.ip_of(x)) for x in sorted({r, *returns})]
+                outs = []
+                for set_ in (False, True):
+                    f = regs['flags'] & ~sum(1 << FLAG_BIT[k] for k in ARITH)
+                    f |= sum(1 << FLAG_BIT[k] for k in ARITH) if set_ else 0
+                    try:
+                        outs.append(O.run(O.CapturedRAM(bytes(ram), 0x100000), dict(regs, flags=f),
+                                          ends[-1], returns=ends))
+                    except O.DivideFault:
+                        break
+                if len(outs) < 2 or {o['at'] for o in outs} != {(regs['cs'], u.ip_of(r))}:
+                    continue
+                mask = sum(1 << FLAG_BIT[k] for k in own - set(outs[0]['undefined'])
+                           - set(outs[1]['undefined']))
+                assert not (outs[0]['flags'] ^ outs[1]['flags']) & mask, \
+                    (name, hex(r), sorted(own), 'resume flag follows the entry flags')
+                seen += 1
+            assert seen, (name, hex(r), sorted(own), 'resume never reached')
+            count += seen
+    return count
+
+
 def main():
     print('compute U8 emission:', emission(), 'controls pass')
+    print('compute U8 resume flags:', resume_flags(), 'entry-independence checks pass')
     print('compute U8 handoff:', handoff(), 'state comparisons pass')
     if '--sabotage' not in sys.argv:
         return
@@ -392,6 +438,10 @@ def main():
             raise AssertionError(f'{name} plant escaped')
 
     caught('nested hook admitted', lambda: candidate_admission(plant=True))
+    # ZF passes from 1446A's entry to its loop head 14477 unchanged: claimed
+    # live there but not at the hook, the native would have to invent it
+    caught('pass-through flag claimed native', lambda: resume_flags(
+        names=('1446a',), live=lambda c: {**c.live_in, at(0x14477): c.live_in[at(0x14477)] | {'ZF'}}))
     real_effect, real_validate = compute.effect, compute.validate
     with patch.object(compute, 'effect', lambda p, n, device=False: real_effect(p, n, device) or bool(p.node_insn(n).rep)):
         caught('REP as effect', emission)

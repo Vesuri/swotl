@@ -684,6 +684,21 @@ class Program:
                              and all(t not in (RET, UNKNOWN, SMC) and self.passes_flags(t, cache)
                                      for t in targets)}
         entries = [e for e in self.dispatch if e in self.live_in]
+        # A compute row's native resumes with the flags the original body leaves
+        # there; a resume the body reaches from the hook already passes its
+        # liveness back through that body (flags the body defines on every path
+        # are the native's, not the caller's). Only a resume the body does not
+        # reach joins the hook's liveness.
+        jumps = {}
+        for n in getattr(self, "compute_rows", ()):
+            seen, todo = {n}, [n]
+            while todo:
+                for s in self.succ.get(todo.pop(), ()):
+                    if s in self.live_in and s not in seen:
+                        seen.add(s)
+                        todo.append(s)
+            rs = [self.hle[n][0], *self.compute_resumes.get(n, ())]
+            jumps[n] = [r for r in rs if r not in seen]
         changed = True
         while changed:
             changed = False
@@ -712,13 +727,11 @@ class Program:
                 new = transfer(i, out, program=True)
                 if n in self.saves:
                     new = (new - ALL) | out | self.live_out.get(self.saves[n], set())
-                if n in self.hle:   # the hook may skip to the resume instruction
+                if n in jumps:
+                    for r in jumps[n]:
+                        new |= self.live_in[r]
+                elif n in self.hle:   # the hook may skip to the resume instruction
                     new |= self.live_in[self.hle[n][0]]
-                # A re-entry keeps its own liveness: the native defines every
-                # flag live at a resume it reaches from there (a re-entry is a
-                # call's return site; the union would flow into the callee).
-                for r in self.compute_resumes.get(n, ()):
-                    new |= self.live_in[r]
                 self.live_out[n] = out
                 if new != self.live_in[n]:
                     self.live_in[n] = new

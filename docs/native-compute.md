@@ -167,8 +167,9 @@ Approved by the user 2026-10-21 (native-plan U8); implemented by C4
   is `tst.l d7; bne` to the resume, or with several resumes to
   `compute.resume_dispatch`: d7.l out = 1..R selects return r (ascending
   offset), R + k root loop head k; any other value stops loudly
-  (`rt_stop_unknown` with the hook's IP). Each hook may resume at any of them,
-  so its liveness includes theirs. `compute_oracle.run(returns=...)` stops
+  (`rt_stop_unknown` with the hook's IP). Each hook may resume at any of them;
+  a resume its body reaches passes its liveness back through the body, any
+  other joins the hook's liveness directly (translator-design.md, HLE). `compute_oracle.run(returns=...)` stops
   before any of them.
 - **Flow out of range, unresolved flow:** no contract change. `hle.csv` `end`
   (hex, exclusive) widens the root range past the declared return, for compiled
@@ -180,7 +181,9 @@ in-memory rows at `SWOTL.EXE` `DCE9` (two returns), `DB9D` (three returns, a
 loop, `div bx` fault), `1446A` (REPNE SCASB in the loop) and `15416` (`end`):
 body loop heads leave the sync set, resumes are returns then loop heads; a
 handoff differential with an x86-driven double on each, both arms, every return
-and the fault reached, no interrupt inside a row. Plants caught: REP as effect,
+and the fault reached, no interrupt inside a row; a flag live at a resume but not
+at the hook is independent of the entry flags (Unicorn, arithmetic flags all clear
+vs all set). Plants caught: pass-through flag claimed native, REP as effect,
 fault edge as flow, returns dropped, loop head not a resume, body loop head kept
 in the sync set, mutate then decline, no decline at a fault, wrong return.
 Admission, sync-set and dispatch controls: `t-compute-contract`, `t-compute-loops`.
