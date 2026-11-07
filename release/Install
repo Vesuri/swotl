@@ -1,6 +1,6 @@
 ; Secret Weapons of the Luftwaffe WHDLoad installation. Commodore Installer V43 or newer.
 ; File-install flow with WHDLoad Install Template / RAY Pokeri conventions.
-; $VER: Install 1.1 (06.11.2026)
+; $VER: Install 1.1 (07.11.2026)
 (set @app-name "Secret Weapons of the Luftwaffe")
 (set #prefix "SWotL")
 (set #exe-version 1)			;the game executable this install accepts: its $VER:

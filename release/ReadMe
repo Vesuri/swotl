@@ -97,13 +97,16 @@
 
  History:
  --------
- version 1.1 (06.11.2026):
+ version 1.1 (07.11.2026):
  - OCS and ECS Amigas with a 68020 or better: the game runs as the PC
    original's EGA version (16 colours, 640x200), with the mouse pointer as
    a hardware sprite; WHDLoad no longer requires AGA
  - Custom3 selects the EGA version on AGA
  - 512 KB ChipMem: the SWotL512K icon, with the Their Finest Hour sound
    effects or none
+ - less memory: 768 KB ChipMem and 4.75 MB OtherMem (was 2 MB and 6.5 MB);
+   with 8 MB Fast RAM PreLoad holds all game files
+ - the mouse pointer no longer lags a frame behind now and then
  - the install also installs RTSEGA.OVL; installs of 1.0 and older get their
    game files again from the disks (pilots, films and missions are kept)
 
