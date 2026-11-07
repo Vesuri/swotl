@@ -70,9 +70,8 @@ speed work: [speed-plan.md](speed-plan.md).
 ## Amiga platform
 
 45. OCS/ECS version (user 2026-11-03): E1–E9 done ([ecs-plan.md](ecs-plan.md)); release
-    1.1 built and audited (D8), publishing (tag, GitHub release, whdload.de) awaits the user.
-    Main has Amiga changes since that build (L104 alignment, F10, the VBI pointer order of
-    open-work 50): publishing main needs a rebuild and the release audits again.
+    1.1 (07.11.2026, `8c257c4`) built and audited ([release.md](release.md)); publishing (tag,
+    GitHub release, whdload.de) awaits the user.
 
 ## User report (A1200, 68060, 2026-10-29)
 

@@ -71,14 +71,21 @@ whdload.de archive. Sibling shape:
   `9c679f6ac2b4fdf551768e57c4960e94c45adc2934d5a91f49132ea015cd60a3`; slave
   `12dc9af60a1e79d80ec2a797613de269ea61b3ce8c89aee643145afe300d54d3`; helper
   `04407c8ff4276a63913f99a96d50c243a0827e37d04e56043dcca7942081efee`.
-- SWOTL 1.1 (06.11.2026, built from `0c4f520`): `SWotL-1.1.lha` 578,432 bytes, SHA-256
-  `b53887425f3828cb250b84bff29f12233d96ac91d05c6405ffd403f338e6e3ab`; `SWotL-1.1-whdload.lha`
-  37,887 bytes, `7072278cf488e205db34045776c0d1b0e137484969e5acac46649506e556a151`; exe
-  `de7d52ef0e5ed3fae45b43825ff020404d5f2d431b90e9df3395f5cbce489055` (1,453,712 bytes); slaves
-  `SWotL.slave` `22db3d0a74c844181c38dc9d6be603da9c284a9ff813cdee0b506ca87e5b4382`,
-  `SWotL512K.slave` `a895247f237116e517edc3a697fcf5c325b01706c2da9e7b3e8ebeb822652d0f`; helper
-  `2407c47fdab5c31d91cc7e403901f8feffb05193e740c4afd9d755e3addda515`. Audits: `make release`,
-  `make release-check` (two clean builds), Installer from both archives.
+- SWOTL 1.1 (07.11.2026, built from `8c257c4`; replaces the unpublished 06.11.2026 build of
+  `0c4f520`): `SWotL-1.1.lha` 578,670 bytes, SHA-256
+  `3a9d259d7cb7903e3cf82fc190d15f123e982f1c0477814d57bf15baca3ef885`; `SWotL-1.1-whdload.lha`
+  37,955 bytes, `5dd4cc1ce97e925c307490d908ae4dc3af27f782184a5e6bad55316a7ed804fc`; exe
+  `24c9f7e6691f95377e9c7043d872f3c31dad29db9d24bd59f7c65976cd99f4cd` (1,454,100 bytes); slaves
+  `SWotL.slave` `2f5a9fc4d22abe06363988caa95fb620c493fd8f46098a5b7ba19864fa059a0e`,
+  `SWotL512K.slave` `f77814ecb2ef82c50709ac22147f8a0425cf2302886da176039dabfd1fb1df05`; helper
+  `3c3811cf49357e89c545cd809995de04ae1242d1943169d4922f38257f8f5887`. Audits: `make release`
+  twice from clean (byte-identical), `make gates` (c52 host run alone with a 14,400 s wall budget:
+  other jobs saturated the Mac), `test-host-ega`, `test-amiga-replay-ega-plant`,
+  `test-irq-stress`, `test-whdload` plus `a3000`, `a500+-020`, `a500-020` (512K slave, TFH and
+  silent), `--ocs`, `a1200-040`, `smoke-release`, `test-amiga-workbench`, `test-install-data`,
+  `test-release-installer`. Bench (tools/ab_runs.py, 5 interleaved runs per arm) vs `0c4f520`:
+  69,261 → 69,308 (+0.068 %; spans 69,253–69,264 and 69,306–69,311), RAM hash `421afae9…34ba`
+  in all 10; within D8’s noise rule (flyby `present` −3.2 %, F10).
 
 ## Package layout (converged)
 
