@@ -25,12 +25,12 @@ extern "C" {
 // for the display checks (tests/host_run.py --amiga, display_audit.gdb).
 // rt_pointer for the display checks: gdb resolves that name to the struct type
 // in C++ frames.
-alignas(4) volatile void* amiga_pointer_state = 0;
-alignas(4) volatile uint32_t amiga_pointer_bytes = 0;
-alignas(4) volatile uint16_t* amiga_sprites = 0;
+__attribute__((aligned(4))) volatile void* amiga_pointer_state = 0;
+__attribute__((aligned(4))) volatile uint32_t amiga_pointer_bytes = 0;
+__attribute__((aligned(4))) volatile uint16_t* amiga_sprites = 0;
 volatile int16_t amiga_sprite_stolen = -1;
 // Control words written at or after line 25, where sprite DMA fetches them.
-alignas(4) volatile uint32_t amiga_sprite_late = 0;
+__attribute__((aligned(4))) volatile uint32_t amiga_sprite_late = 0;
 // After each vertical blank's sprite write (display checks wait on it).
 void __attribute__((noinline)) amiga_sprite_placed(void) {
     __asm__ volatile("" : : : "memory");
@@ -47,11 +47,11 @@ struct PointerBuffer {
     uint8_t shown;                  // the frame's state
 };
 
-alignas(4) static uint16_t* chip = 0;
-alignas(4) static PointerBuffer buffers[2];
+__attribute__((aligned(4))) static uint16_t* chip = 0;
+__attribute__((aligned(4))) static PointerBuffer buffers[2];
 // The last shape shown: its sprite data stays through frames without the
 // pointer, so the sprites change only with the shape.
-alignas(4) static struct {
+__attribute__((aligned(4))) static struct {
     uint16_t image;
     uint8_t w, h, other;
     int8_t hotX, hotY;

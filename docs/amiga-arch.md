@@ -182,7 +182,8 @@ per effect straight into Chip and written by one `Write` from a Fast image (soun
 `-m68020 -msoft-float -nostdlib -fcheck-new`, framework headers via `SASCCompat.h`,
 `AmigaHardware.h` included last, vasm `-no-opt` for hand-written asm, replaced
 `memset`/`memcpy`, `elf2hunk -s` for release (L94, L96–103, L105); L104: every even-sized
-`.data`/`.bss` object of 4 bytes or more is declared `alignas(4)` (`_Alignas(4)` in C), and
+`.data`/`.bss` object of 4 bytes or more is declared `__attribute__((aligned(4)))` (never below
+the natural alignment, so host tests of the same sources still compile on 64-bit), and
 the link fails on one at an address not divisible by 4 (`amiga/Makefile`). Exact flags:
 [toolchain.md](toolchain.md).
 

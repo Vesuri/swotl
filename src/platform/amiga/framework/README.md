@@ -13,7 +13,7 @@ The few C++ source edits only make SAS/C's old for-loop scoping and const
 permissiveness explicit; they do not change the framework's Amiga behavior.
 Slicks' later fixes carried here: the unused blitter-queue allocation leak
 (`fe94b50`) and startup-only copper palette storage (`a09987d`).
-Local: `alignas(4)` on the blitter-queue pointers (`AmigaHardware.cpp`), for the
+Local: `__attribute__((aligned(4)))` on the blitter-queue pointers (`AmigaHardware.cpp`), for the
 port's link alignment audit (`amiga/Makefile`, lesson L104).
 From the canonical tree (below): every custom-chip and CIA register pointer is `volatile`.
 Without it GCC read `$BFE001` with `bfextu`, merged the two INTREQ writes of

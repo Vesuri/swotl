@@ -24,7 +24,7 @@
 #define EGA_PAGE_BYTES 16000u
 
 uint8_t rt_ega;
-_Alignas(4) uint8_t *rt_ega_planes;
+__attribute__((aligned(4))) uint8_t *rt_ega_planes;
 struct rt_ega_regs rt_ega_regs;
 
 static inline int in_window(uint32_t a)

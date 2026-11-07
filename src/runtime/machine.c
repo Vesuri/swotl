@@ -6,16 +6,16 @@
 #include "runtime.h"
 #include "platform.h"
 
-_Alignas(4) struct rt_regs rt_r;
-_Alignas(4) uint8_t *rt_guest;
+__attribute__((aligned(4))) struct rt_regs rt_r;
+__attribute__((aligned(4))) uint8_t *rt_guest;
 uint16_t rt_entry_cs, rt_entry_ip;
 uint16_t rt_deliver_cs, rt_deliver_ip;
-_Alignas(4) void *rt_deliver_code;      /* the handler's translated entry (rt_lookup, far) */
+__attribute__((aligned(4))) void *rt_deliver_code;      /* the handler's translated entry (rt_lookup, far) */
 
 /* Command tail of the reference launch (tools/pc_run.py LAUNCH); its video
  * argument is E with rt_ega (reference/milestones-ega.csv), its joystick
  * argument Y with rt_joystick. */
-_Alignas(4) static char command_tail[] = " V S 5 N Y Y 64";
+__attribute__((aligned(4))) static char command_tail[] = " V S 5 N Y Y 64";
 #define VIDEO_ARG 1
 #define JOYSTICK_ARG 7
 /* Environment of the reference shell, then the program path. */
@@ -123,7 +123,7 @@ static void exec_root(uint16_t psp_seg)
     /* The relocations in 1 KiB reads: under WHDLoad each read of an uncached
      * file is an OS switch (docs/whdload.md). */
     enum { BLOCK = 256 };       /* relocations per read */
-    _Alignas(4) static uint8_t relocs[BLOCK * 4];
+    __attribute__((aligned(4))) static uint8_t relocs[BLOCK * 4];
     plat_seek(f, HW(0x18), 0);
     for (uint16_t k = 0; k < HW(6); ++k) {
         if (k % BLOCK == 0) {
@@ -281,7 +281,7 @@ uint32_t rt_int_c(uint32_t d6, uint32_t ip)
 
 /* Hardware interrupts posted by the platform (vector 08h tick, 09h key make,
  * 89h key break), taken in order at poll points while the guest has IF set. */
-_Alignas(4) volatile uint8_t rt_irq_ring[RT_IRQ_RING];
+__attribute__((aligned(4))) volatile uint8_t rt_irq_ring[RT_IRQ_RING];
 volatile uint8_t rt_irq_tail;
 volatile uint8_t rt_irq_pending;
 static uint8_t irq_head;
@@ -290,8 +290,8 @@ static uint8_t irq_head;
 
 uint8_t rt_bench;
 static uint16_t bench_share, bench_polls, bench_budget;
-_Alignas(4) static uint32_t bench_point;        /* CS << 16 | IP of the watched poll point */
-_Alignas(4) static uint32_t bench_due;          /* ticks not yet in the ring */
+__attribute__((aligned(4))) static uint32_t bench_point;        /* CS << 16 | IP of the watched poll point */
+__attribute__((aligned(4))) static uint32_t bench_due;          /* ticks not yet in the ring */
 static uint8_t bench_watching;
 
 /* Due ticks into the ring as far as it has room (rt_irq_c tops it up). */
@@ -387,9 +387,9 @@ volatile uint8_t rt_irq_mask, rt_opl_pair;
 volatile uint8_t rt_irq_interrupting;    /* inside rt_irq_interrupt (rt_stop) */
 /* IRQ0 deliveries: guest handler runs (both entries) and BIOS ticks, for
  * fixtures comparing them with the ticks the platform posted or ran. */
-_Alignas(4) volatile uint32_t rt_irq0_runs, rt_irq0_bios;
-_Alignas(4) static const char *irq_stop_what;   /* a stop raised inside rt_irq_interrupt */
-_Alignas(4) static uint32_t irq_stop_a, irq_stop_b;
+__attribute__((aligned(4))) volatile uint32_t rt_irq0_runs, rt_irq0_bios;
+__attribute__((aligned(4))) static const char *irq_stop_what;   /* a stop raised inside rt_irq_interrupt */
+__attribute__((aligned(4))) static uint32_t irq_stop_a, irq_stop_b;
 
 /* G_IRQ and rt_irq_pending from what is left: cleared before the ring is
  * read (a post in between raises both again); with IF = 0 nothing is taken,
@@ -467,7 +467,7 @@ uint32_t rt_irq_c(uint32_t d6, uint32_t ip)
 /* IRQ0 entry (rt_irq_async, I4): G_SS:rt_r.sp is the private stack; the
  * frame with the sentinel CS:IP and the interrupted flags, IF and TF clear
  * (G_IRQ with them), the handler at rt_deliver_*. */
-_Alignas(4) uint8_t rt_irq_saved[RT_STATE_BYTES + sizeof(struct rt_regs)];
+__attribute__((aligned(4))) uint8_t rt_irq_saved[RT_STATE_BYTES + sizeof(struct rt_regs)];
 
 void rt_irq0_enter(void)
 {
@@ -553,7 +553,7 @@ static int resident(uint16_t overlay)
 
 /* First table row at or above each recent CS:IP (the table is constant, so
  * nothing invalidates it; residency is still read on every lookup). */
-_Alignas(4) static struct {
+__attribute__((aligned(4))) static struct {
     uint32_t key, row1;     /* row1 = row + 1, 0 = empty */
 } lookup_cache[64];
 

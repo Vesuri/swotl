@@ -8,7 +8,7 @@
  * RT_KEY_E0 for a combined E0-prefixed key. Reference replay can instead
  * supply the prefix and scan byte separately. Each event has one 09h
  * interrupt (89h for a break: the same vector). */
-_Alignas(4) volatile uint16_t rt_key_ring[RT_KEY_RING];
+__attribute__((aligned(4))) volatile uint16_t rt_key_ring[RT_KEY_RING];
 volatile uint8_t rt_key_tail;
 static uint8_t key_head;
 
@@ -313,8 +313,8 @@ static uint8_t mouse_buttons;
 #define MOUSE_POINTER_FIELDS 25
 #define MOUSE_MOTION_MAX 2048            /* keeps the scaled product in 32 bits */
 uint8_t rt_mouse_scale;
-_Alignas(4) static uint32_t mouse_ticks;             /* IRQ0 deliveries at the last AX=0Bh */
-_Alignas(4) static int32_t mouse_rest_x, mouse_rest_y;
+__attribute__((aligned(4))) static uint32_t mouse_ticks;             /* IRQ0 deliveries at the last AX=0Bh */
+__attribute__((aligned(4))) static int32_t mouse_rest_x, mouse_rest_y;
 
 static int16_t clamp(int32_t v, int16_t max)
 {

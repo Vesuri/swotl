@@ -363,7 +363,7 @@ them here. Structure for this port: [amiga-arch.md](amiga-arch.md). Elsewhere:
 103. **vasm `-no-opt` is load-bearing; size hot short branches `.s` by hand;** rename
      dot-in-middle labels (vasm reads them as local). — *RV `docs/amiga-lessons.md`; VT
      `framework/UPSTREAM.md`*
-104. **`alignas(4)` on even-sized globals ≥4 bytes, with a link audit.** — m68k GCC aligns
-     to 2. — *PK `docs/architecture.md`; see m68k-optimisation.md*
+104. **`__attribute__((aligned(4)))` on even-sized globals ≥4 bytes, with a link audit.** — m68k GCC aligns
+     to 2. Not `alignas(4)`: host tests that compile the same source reject it on 64-bit pointers. — *PK `docs/architecture.md`; see m68k-optimisation.md*
 105. **Strip with `elf2hunk -s`; keep the ELF for debugging.** DWARF never reaches the
      hunk. — *RoF `docs/asset-extraction.md` §6*

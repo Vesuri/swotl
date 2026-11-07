@@ -185,9 +185,9 @@ $(OUT).elf: $(OBJECTS) | out verify-runtime
 		{ echo "_start is not at the hunk start" >&2; rm -f $@; exit 1; }
 	@# L104: m68k GCC aligns 32-bit data to 2; a misaligned longword costs a
 	@# second 68020 bus cycle and unrelated edits move neighbours. Even-sized
-	@# .data/.bss objects of 4 bytes or more are declared alignas(4).
+	@# .data/.bss objects of 4 bytes or more are declared __attribute__((aligned(4))).
 	@$(OBJDUMP) -t $@ | awk '/ O \.(data|bss)/ && $$5 !~ /[13579bdf]$$/ && $$5 !~ /^0+2?$$/ && \
-		$$1 ~ /[26ae]$$/ { print "audit: misaligned " $$NF " at " $$1 " (alignas(4))" > "/dev/stderr"; bad = 1 } \
+		$$1 ~ /[26ae]$$/ { print "audit: misaligned " $$NF " at " $$1 " (aligned(4))" > "/dev/stderr"; bad = 1 } \
 		END { exit bad }' || { rm -f $@; exit 1; }
 	@# A restart's DMA-off window polls VHPOSR between the two DMACON writes
 	@# (a non-volatile poll compiled to nothing: 0.91 on a 68040).

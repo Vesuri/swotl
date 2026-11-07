@@ -22,22 +22,22 @@
 #include "replay_clocks.h"
 #endif
 
-_Alignas(4) struct DosLibrary *DOSBase = 0;
-_Alignas(4) struct Library *IconBase = 0;
+__attribute__((aligned(4))) struct DosLibrary *DOSBase = 0;
+__attribute__((aligned(4))) struct Library *IconBase = 0;
 
 #define MAX_FILES 16
 #define PATH_BYTES 128
 #define GUEST_STACK_BYTES 0x10000
 
-_Alignas(4) static BPTR files[MAX_FILES];
-_Alignas(4) static char file_paths[MAX_FILES][PATH_BYTES];
-_Alignas(4) static uint8_t file_stamped[MAX_FILES], file_modified[MAX_FILES];
-_Alignas(4) static struct DateStamp file_stamps[MAX_FILES];
+__attribute__((aligned(4))) static BPTR files[MAX_FILES];
+__attribute__((aligned(4))) static char file_paths[MAX_FILES][PATH_BYTES];
+__attribute__((aligned(4))) static uint8_t file_stamped[MAX_FILES], file_modified[MAX_FILES];
+__attribute__((aligned(4))) static struct DateStamp file_stamps[MAX_FILES];
 
 int32_t amiga_guest_call(void *stack_top);
 static void key_script_step(void);
-_Alignas(4) static uint8_t *guest_block = 0;
-_Alignas(4) static uint8_t *guest_stack = 0;
+__attribute__((aligned(4))) static uint8_t *guest_block = 0;
+__attribute__((aligned(4))) static uint8_t *guest_stack = 0;
 
 void *plat_alloc(uint32_t bytes)
 {
@@ -277,12 +277,12 @@ int32_t plat_file_info(const char *path, struct plat_file_info *info)
  * posts vector 08h for the next poll point. Replay builds post only
  * (deliveries at the recorded polls). */
 #define CIAB ((volatile struct CIA *)0xbfd000)
-_Alignas(4) static struct Library *cia_base = 0;
-_Alignas(4) static struct Interrupt cia_interrupt;
+__attribute__((aligned(4))) static struct Library *cia_base = 0;
+__attribute__((aligned(4))) static struct Interrupt cia_interrupt;
 static WORD cia_bit = -1;
 
 /* CIA ticks, and of them those run at once (fixtures: amiga/display_audit.gdb). */
-_Alignas(4) volatile ULONG amiga_ticks = 0, amiga_ticks_async = 0;
+__attribute__((aligned(4))) volatile ULONG amiga_ticks = 0, amiga_ticks_async = 0;
 
 static ULONG cia_tick(void)
 {
@@ -328,7 +328,7 @@ static ULONG cia_tick(void)
  * (docs/sound-plan.md R3). */
 extern int amiga_audio_effect_wanted(uint8_t id);
 extern void amiga_audio_effects(void);
-_Alignas(4) volatile uint32_t amiga_sfx_capture_fields;  /* the capture's fields (diagnostics) */
+__attribute__((aligned(4))) volatile uint32_t amiga_sfx_capture_fields;  /* the capture's fields (diagnostics) */
 int plat_sfx_wanted(uint8_t id)
 {
     if (!id) {
@@ -406,11 +406,11 @@ void plat_timer_rate(uint32_t divisor)
  * buffer). */
 #define SCRIPT_LMB 0x100
 #define SCRIPT_RMB 0x101
-_Alignas(4) static const char *key_script = 0;
-_Alignas(4) static ULONG key_up_frame = 0;
-_Alignas(4) static ULONG key_up_reads = 0;
-_Alignas(4) static ULONG step_reads = 0;    /* amiga_mouse_reads at the previous step */
-_Alignas(4) static int key_up = -1;         /* the held raw key or SCRIPT_LMB/RMB */
+__attribute__((aligned(4))) static const char *key_script = 0;
+__attribute__((aligned(4))) static ULONG key_up_frame = 0;
+__attribute__((aligned(4))) static ULONG key_up_reads = 0;
+__attribute__((aligned(4))) static ULONG step_reads = 0;    /* amiga_mouse_reads at the previous step */
+__attribute__((aligned(4))) static int key_up = -1;         /* the held raw key or SCRIPT_LMB/RMB */
 
 void __attribute__((noinline)) amiga_script_mark(int quit)
 {
@@ -605,9 +605,9 @@ static void load_tfh(void)
  * (a Shell's is its own) and the icon's tool types are the arguments, the
  * same keywords; KEYS= is copied, the icon is freed before the run. The
  * release image reads TFH, ANALOGJOYSTICK and OCS only. */
-_Alignas(4) static BPTR wb_old_dir = 0;
-_Alignas(4) static char *wb_keys = 0;
-_Alignas(4) static ULONG wb_keys_bytes = 0;
+__attribute__((aligned(4))) static BPTR wb_old_dir = 0;
+__attribute__((aligned(4))) static char *wb_keys = 0;
+__attribute__((aligned(4))) static ULONG wb_keys_bytes = 0;
 
 static int wb_options(int *tfh)
 {
@@ -657,7 +657,7 @@ static int wb_options(int *tfh)
  * with the template and a bad line fails with the DOS error. ReadArgs reads
  * the line from Input()'s buffer, where the Shell and the WHDLoad slave's
  * RunCommand put it. KEYS points into the RDArgs until the close. */
-_Alignas(4) static struct RDArgs *shell_args = 0;
+__attribute__((aligned(4))) static struct RDArgs *shell_args = 0;
 
 #ifdef SWOTL_RELEASE
 /* The release image (make amiga-release): the player's options only. */
@@ -690,7 +690,7 @@ static int shell_options(int *tfh)
 }
 
 uint8_t amiga_ocs_switch = 0;
-_Alignas(4) static int tfh = 0;
+__attribute__((aligned(4))) static int tfh = 0;
 
 int amiga_options(void)
 {

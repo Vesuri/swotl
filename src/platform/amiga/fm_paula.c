@@ -112,7 +112,7 @@ static const uint8_t op_off[9] = {0, 1, 2, 8, 9, 10, 16, 17, 18};
 enum { ATTACK, DECAY, SUSTAIN, RELEASE };
 
 uint8_t fm_ntsc = 0;
-_Alignas(4) static uint32_t rate_field, period_num, noise_period;
+__attribute__((aligned(4))) static uint32_t rate_field, period_num, noise_period;
 
 struct op {
     uint32_t rout;                  /* envelope attenuation, 8.8 */
@@ -126,18 +126,18 @@ struct entry {
     uint16_t page, pages;
 };
 
-_Alignas(4) static struct op ops[18];
+__attribute__((aligned(4))) static struct op ops[18];
 static uint8_t last_keyon[9];
-_Alignas(4) static int8_t voice_ch[FM_VOICES] = {-1, -1, -1, -1};
-_Alignas(4) static int8_t *pool;
+__attribute__((aligned(4))) static int8_t voice_ch[FM_VOICES] = {-1, -1, -1, -1};
+__attribute__((aligned(4))) static int8_t *pool;
 static uint16_t pool_pages;
-_Alignas(4) static uint8_t page_used[256];
+__attribute__((aligned(4))) static uint8_t page_used[256];
 static uint16_t first_free;         /* lowest free page, pool_pages if none */
 /* cache slots: keys and field stamps apart for short scans */
-_Alignas(4) static uint32_t cache_key[CACHE], cache_used[CACHE];
-_Alignas(4) static struct entry cache[CACHE];
-_Alignas(4) static uint32_t stamp;
-_Alignas(4) static const int8_t *noise[2];
+__attribute__((aligned(4))) static uint32_t cache_key[CACHE], cache_used[CACHE];
+__attribute__((aligned(4))) static struct entry cache[CACHE];
+__attribute__((aligned(4))) static uint32_t stamp;
+__attribute__((aligned(4))) static const int8_t *noise[2];
 /* per voice: the last command and what it was made from */
 struct memo {
     uint32_t key;                   /* the loop's (NOISE_KEY | fb: a noise table), 0 none */
@@ -149,13 +149,13 @@ struct memo {
     uint16_t bytes, period;
     int16_t slot;
 };
-_Alignas(4) static struct memo memo[FM_VOICES];
+__attribute__((aligned(4))) static struct memo memo[FM_VOICES];
 static uint8_t budget;
-_Alignas(4) uint32_t fm_renders;
+__attribute__((aligned(4))) uint32_t fm_renders;
 
 /* Envelope steps per field (8.8) of register rate r with key scaling ks
  * (steps[], fm_init); *hi the rate's high part (12+: attack within 2 ms). */
-_Alignas(4) static uint32_t steps[64];
+__attribute__((aligned(4))) static uint32_t steps[64];
 
 static uint32_t rate_step(uint8_t r, uint8_t ks, uint8_t *hi)
 {
@@ -270,11 +270,11 @@ static uint16_t op_att(const struct op *o, const uint8_t *opl, uint8_t off, uint
 
 /* Log-sine of waveforms 0-3 over the 10-bit phase, bit 15 the sign
  * (Nuked's logsin_wf; fm_init). */
-_Alignas(4) static uint16_t wave[4][1024];
+__attribute__((aligned(4))) static uint16_t wave[4][1024];
 /* R34: exact OPL exponential results and unattenuated carrier samples.
  * These ordinary-memory tables replace work inside every rendered sample. */
-_Alignas(4) static uint16_t linear_exp[8192];
-_Alignas(4) static int16_t carrier_wave[4][1024];
+__attribute__((aligned(4))) static uint16_t linear_exp[8192];
+__attribute__((aligned(4))) static int16_t carrier_wave[4][1024];
 
 static void build_wave(void)
 {
@@ -849,7 +849,7 @@ publish_voices:
 #define FX_TAIL_TICKS 474u          /* release tail after the last write, 2 s at most */
 #define FX_WINDOW (FM_EFFECT_RATE / 50)     /* the end's 20 ms windows */
 #define FX_WINDOWS 512u            /* 10.3 s: past the capture's 8 s and the tail */
-_Alignas(4) static uint32_t fx_wins[FX_WINDOWS];
+__attribute__((aligned(4))) static uint32_t fx_wins[FX_WINDOWS];
 
 struct fx_channel {
     uint32_t pm, pc;
@@ -861,8 +861,8 @@ struct fx_channel {
  * level + attenuation (<= 0x1000 + 0x1ff << 3, below bit 13), negated in its
  * upper half: one lookup an operator. */
 #define FX_SIGN 0x2000u
-_Alignas(4) static uint16_t fx_wave[4][1024];
-_Alignas(4) static int16_t fx_exp[2 * FX_SIGN];
+__attribute__((aligned(4))) static uint16_t fx_wave[4][1024];
+__attribute__((aligned(4))) static int16_t fx_exp[2 * FX_SIGN];
 static uint8_t fx_tables;
 
 static void fx_build(void)

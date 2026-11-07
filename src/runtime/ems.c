@@ -20,9 +20,9 @@
 #error "store page numbers are bytes"
 #endif
 static uint16_t ems_free = RT_EMS_PAGES;
-_Alignas(4) static uint16_t pages[EMS_HANDLES];   /* 0: free; handle 0 is the operating system's */
-_Alignas(4) static uint8_t page_of[EMS_HANDLES][RT_EMS_PAGES], used[RT_EMS_PAGES];
-_Alignas(4) static uint16_t mapped[EMS_PHYS];     /* store page + 1, 0: none */
+__attribute__((aligned(4))) static uint16_t pages[EMS_HANDLES];   /* 0: free; handle 0 is the operating system's */
+__attribute__((aligned(4))) static uint8_t page_of[EMS_HANDLES][RT_EMS_PAGES], used[RT_EMS_PAGES];
+__attribute__((aligned(4))) static uint16_t mapped[EMS_PHYS];     /* store page + 1, 0: none */
 
 static uint8_t *store(uint16_t slot)
 {
