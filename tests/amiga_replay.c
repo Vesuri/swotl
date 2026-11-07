@@ -8,18 +8,18 @@
 #ifdef REPLAY_JOYSTICK
 void replay_joystick_complete(void);
 #endif
-static uint32_t replay_rep_index, replay_rep_active;
+__attribute__((aligned(4))) static uint32_t replay_rep_index, replay_rep_active;
 #if REPLAY_REPS
-static uint32_t replay_rep_record, replay_rep_offset;
+__attribute__((aligned(4))) static uint32_t replay_rep_record, replay_rep_offset;
 #endif
 
-volatile uint32_t replay_services, replay_interrupts, replay_steps;
-volatile uint32_t replay_cs, replay_ip;
-static uint32_t service_hash = 2166136261u, step_hits, release_at;
-static uint32_t visits[REPLAY_POINTS], epochs[REPLAY_POINTS];
-static uint32_t pending[64], vectors[64], depth, makes;
-static int32_t mouse_x, mouse_y;
-static uint32_t mouse_buttons;
+__attribute__((aligned(4))) volatile uint32_t replay_services, replay_interrupts, replay_steps;
+__attribute__((aligned(4))) volatile uint32_t replay_cs, replay_ip;
+__attribute__((aligned(4))) static uint32_t service_hash = 2166136261u, step_hits, release_at;
+__attribute__((aligned(4))) static uint32_t visits[REPLAY_POINTS], epochs[REPLAY_POINTS];
+__attribute__((aligned(4))) static uint32_t pending[64], vectors[64], depth, makes;
+__attribute__((aligned(4))) static int32_t mouse_x, mouse_y;
+__attribute__((aligned(4))) static uint32_t mouse_buttons;
 
 static void fail(const char *what, uint32_t a, uint32_t b)
 {

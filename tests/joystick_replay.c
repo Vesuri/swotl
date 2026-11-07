@@ -4,7 +4,7 @@
 extern volatile uint32_t replay_services;
 extern uint32_t __real_rt_port_in(uint32_t port, uint32_t width);
 extern void __real_rt_port_out(uint32_t port, uint32_t value, uint32_t width);
-static uint32_t joystick_index, joystick_used;
+__attribute__((aligned(4))) static uint32_t joystick_index, joystick_used;
 
 static uint32_t joystick_step(uint32_t write, uint32_t width, uint32_t value)
 {

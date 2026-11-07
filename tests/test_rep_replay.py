@@ -154,9 +154,9 @@ if __name__=='__main__':
     check_c(source)
     check_compact(source)
     if args.sabotage:
-        guarded = '#if REPLAY_REPS\nstatic uint32_t replay_rep_record, replay_rep_offset;\n#endif'
+        guarded = '#if REPLAY_REPS\n__attribute__((aligned(4))) static uint32_t replay_rep_record, replay_rep_offset;\n#endif'
         assert guarded in source
-        check_builds(source.replace(guarded, 'static uint32_t replay_rep_record, replay_rep_offset;'), True)
+        check_builds(source.replace(guarded, '__attribute__((aligned(4))) static uint32_t replay_rep_record, replay_rep_offset;'), True)
         try:check_scheduler(True)
         except AssertionError:pass
         else:raise AssertionError('wrong endpoint plant survived')
