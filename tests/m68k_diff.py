@@ -106,6 +106,9 @@ def lower_case(insns, cs: int, tag: str, end_ip: int, **extra) -> tuple[list[str
     return lines + cold, stats
 
 
+STRAIGHT_LOWERING = lower_case   # tests may replace lower_case (x86_side)
+
+
 def lower_region_case(insns, cs: int, tag: str, end_ip: int):
     """R6: the run behind a region guard, as a guarded copy (direct [bp+d]) with
     the exact lowering as its fallback; None where no region applies."""
@@ -373,7 +376,7 @@ class Harness(X.Harness):
             side = self.replay[k][1]
             self.replayed += 1
         else:
-            side = self.x86_side(code, n, case, block)
+            side = self.x86_side(code, n, case)
         if self.record is not None:
             self.record.append((key, side))
         if side[0] == "undefined":
@@ -417,7 +420,7 @@ class Harness(X.Harness):
         if len(self.pending) >= BATCH:
             self.flush()
 
-    def x86_side(self, code: bytes, n: int, case, block=False) -> tuple:
+    def x86_side(self, code: bytes, n: int, case) -> tuple:
         """("undefined", why) | ("skipped", why) | ("ok", undefined flags, Unicorn result)."""
         regs, flags, flagsx, ip, patches = case
         cs = regs["cs"]
@@ -433,9 +436,10 @@ class Harness(X.Harness):
                 insns.append(insn)
                 if ex.kind in ("int", "fault", "trap"):
                     break
-                # a taken transfer leaves a straight-line 68k case (T_JUMP etc.);
-                # block cases lower their jumps inside the case
-                if not block and (s.regs["cs"], s.ip) != (cs, insn.next_ip):
+                # a taken transfer leaves the straight-line lowering (T_JUMP etc.);
+                # a replaced lowering (cross_flags_cases' graphs, the carry
+                # entries) keeps its jumps inside the case and runs all n
+                if lower_case is STRAIGHT_LOWERING and (s.regs["cs"], s.ip) != (cs, insn.next_ip):
                     break
         except (UndefinedFlag, DecodeError) as e:
             self.reset(patches, s.writes, set())
