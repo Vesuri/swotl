@@ -66,9 +66,6 @@ speed work: [speed-plan.md](speed-plan.md).
     not rewritten by the guest); decide whether lockstep needs more (dead
     flag bits in pushed images under the remaining `annotations/flags.csv`
     pair).
-51. `tests/test_host_replay_visits.py` (and its sabotage) fails since `7a64c73` (sound-plan R1):
-    its stub `Host` lacks `in_capture`, which `tests/irq_monitor.py` now reads. Test change:
-    needs approval.
 
 ## Amiga platform
 

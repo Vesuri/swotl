@@ -8,6 +8,7 @@ import host_run as H
 def scenario(run, same_point, changed_epoch=False):
     h = object.__new__(H.Host)
     h.services, h.music_skip, h.entry = [], False, 0
+    h.in_capture = False  # Host.__init__'s default: no effect capture (sound-plan R1)
     h.syms = dict(A=100, A_bp=110, A_np=120, A_bp_np=130,
                   B=200, B_np=220, rt_irq_back=300)
     h.stack, posted = 1000, []
