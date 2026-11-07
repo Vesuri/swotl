@@ -5,6 +5,7 @@ Compile the actual methods with hardware stubs; the existing display audit and
 DOSBox replays separately cover real copper encoding and shown pixels.
 """
 import argparse
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -31,7 +32,7 @@ PRELUDE = r'''
 #include <cstring>
 #include <random>
 struct Bitmap {};
-struct BitMap {};
+struct BitMap { uint8_t* Planes[8]; };
 struct Palette24Bit {
     uint32_t* source;
     Palette24Bit(uint32_t* rgb, uint32_t*, unsigned) : source(rgb) {}
@@ -48,6 +49,14 @@ static void Enable() {}
 static void amiga_display_queued(uint32_t) {}
 static void c2p(const void*, int, int, int, int, BitMap*) { assert(false); }
 static const unsigned SCREEN_HEIGHT = 200, SCREEN_WIDTH = 320;
+// The VGA path (ecs-plan E5: rt_ega 0); the EGA methods must not run.
+static const uint8_t rt_ega = 0;
+static void copySpan(uint8_t*, const uint8_t*, uint16_t) { assert(false); }
+// No pointer (pointer-plan P5): nothing to present, no stolen colour.
+struct Pointer {
+    static void present(uint16_t) {}
+    static int16_t stolen(uint16_t) { return -1; }
+};
 '''
 DECL = r'''
 struct Swotl {
@@ -56,6 +65,8 @@ struct Swotl {
     uint16_t beginDisplayUpdate();
     void setPalette(const uint8_t*);
     void finishDisplayUpdate(uint16_t);
+    uint32_t buildPaletteEGA(uint16_t) { assert(false); return 0; }
+    void setPaletteEGA(const uint8_t*) { assert(false); }
 };
 '''
 HARNESS = r'''
@@ -119,9 +130,14 @@ int main() {
 
 def run(source, good):
     state = body(source, 'struct DisplayState {') + ';'
-    names = ['uint32_t Swotl::buildPalette', 'uint16_t Swotl::beginDisplayUpdate',
-             'void Swotl::setPalette', 'void Swotl::finishDisplayUpdate']
-    code = PRELUDE + state + DECL + '\n'.join(body(source, n) for n in names) + HARNESS
+    names = ['uint32_t Swotl::buildPalette(', 'uint16_t Swotl::beginDisplayUpdate(',
+             'void Swotl::setPalette(', 'void Swotl::finishDisplayUpdate(']
+    # Production's own constants, Long and the c2p staging buffer (F10).
+    lines = [l for l in source.splitlines()
+             if re.match(r'#define (EGA_\w+|STAGING_BYTES) ', l) or re.match(r'typedef .* Long;', l)
+             or re.match(r'.*static uint8_t staging\[', l)]
+    assert any('STAGING_BYTES' in l for l in lines) and any('Long;' in l for l in lines), lines
+    code = PRELUDE + '\n'.join(lines) + '\n' + state + DECL + '\n'.join(body(source, n) for n in names) + HARNESS
     with tempfile.TemporaryDirectory(prefix='display-palette-', dir=ROOT / 'tmp') as name:
         p = Path(name)
         (p / 'test.cpp').write_text(code)
@@ -143,7 +159,8 @@ if __name__ == '__main__':
         assert old in source
         run(source.replace(old, 'static unsigned calls = 0; if (++calls > 2) return 0;\n    ' + old), False)
 
+        at = source.index('void Swotl::setPalette(')  # the VGA method, not setPaletteEGA
         for old in ('display->paletteValid[0] = false;',
                     'display->paletteValid[1] = false;'):
-            assert old in source
-            run(source.replace(old, '', 1), False)
+            assert old in source[at:]
+            run(source[:at] + source[at:].replace(old, '', 1), False)
