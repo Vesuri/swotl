@@ -450,7 +450,9 @@ void Swotl::verticalBlank()
 {
     // Publish first. A delayed VBI must leave the completed buffer queued,
     // never restart the copper in the visible window. Exclude higher-level
-    // IRQs across the beam check and the pointer/strobe pair only.
+    // IRQs across the beam check, the copper handoff and the pointer sprites:
+    // a CIA tick (the guest's IRQ0 handler) or the colour copy in between
+    // would push the sprite words past their line-25 deadline.
     Disable();
     int16_t next = display->queue.pending;
     bool shown = next >= 0 && beamLine() < 8;
@@ -459,24 +461,28 @@ void Swotl::verticalBlank()
         AmigaHardware::setCopperList(*display->list[next], true);
         amiga_display_line = beamLine();
         if (amiga_display_line >= 16) ++amiga_display_late;
-        Enable();
         amiga_bitmap = display->bm[next];
+        ++amiga_display_count;  // before amiga_sprite_placed (milestone.gdb.in)
+    } else if (next >= 0) {
+        ++amiga_display_deferred;
+    }
+    // The pointer sprites with the newest mouse counts, before sprite DMA
+    // reads their control words; the handoff seam then sees them.
+#ifndef SWOTL_REPLAY
+    Input::sample();
+#endif
+    int32_t dx, dy;
+    Input::pendingMotion(&dx, &dy);
+    Pointer::verticalBlank(display->queue.shown, dx, dy);
+    Enable();
+    if (shown) {
         for (unsigned k = 0; k < 1 + 256 * 3 + 1; ++k) {
             amiga_colours[k] = display->colours[next][k];
         }
-        ++amiga_display_count;
-    } else {
-        if (next >= 0) ++amiga_display_deferred;
-        Enable();
     }
     ++amiga_frames;
     ++rt_fields;
     Input::verticalBlank();
-    // The pointer sprites with the newest mouse counts, before sprite DMA
-    // reads their control words; the handoff seam then sees them.
-    int32_t dx, dy;
-    Input::pendingMotion(&dx, &dy);
-    Pointer::verticalBlank(display->queue.shown, dx, dy);
     if (shown) {
         amiga_display_shown(display->queuedSerial);
     }

@@ -281,13 +281,15 @@ __attribute__((aligned(4))) static struct Library *cia_base = 0;
 __attribute__((aligned(4))) static struct Interrupt cia_interrupt;
 static WORD cia_bit = -1;
 
-/* CIA ticks, and of them those run at once (fixtures: amiga/display_audit.gdb). */
-__attribute__((aligned(4))) volatile ULONG amiga_ticks = 0, amiga_ticks_async = 0;
+/* CIA ticks; of them those run at once and those the effect capture held
+ * (fixtures: amiga/display_audit.gdb). */
+__attribute__((aligned(4))) volatile ULONG amiga_ticks = 0, amiga_ticks_async = 0, amiga_ticks_held = 0;
 
 static ULONG cia_tick(void)
 {
     ++amiga_ticks;
     if (rt_sfx_capturing) {
+        ++amiga_ticks_held;
         return 0;               /* the effect capture holds the tick: game time pauses */
     }
 #ifndef SWOTL_SYNC

@@ -66,17 +66,16 @@ speed work: [speed-plan.md](speed-plan.md).
     not rewritten by the guest); decide whether lockstep needs more (dead
     flag bits in pushed images under the remaining `annotations/flags.csv`
     pair).
+51. `tests/test_host_replay_visits.py` (and its sabotage) fails since `7a64c73` (sound-plan R1):
+    its stub `Host` lacks `in_capture`, which `tests/irq_monitor.py` now reads. Test change:
+    needs approval.
 
 ## Amiga platform
 
 45. OCS/ECS version (user 2026-11-03): E1–E9 done ([ecs-plan.md](ecs-plan.md)); release
     1.1 built and audited (D8), publishing (tag, GitHub release, whdload.de) awaits the user.
-
-50. Display audit (`amiga/display_audit.sh`): the TICKS check fails at every build since
-    `811c783` (effect-capture ticks held, sound-plan R1; ecs-plan §E8); decide whether the
-    check excludes held ticks. Separately, a run can stop with "bad handoff serial or beam
-    deadline" (2026-11-06: `b5026d2` 1 of 1, F10 1 of 3 on 68030; 0 late handoffs logged
-    before it): not yet triaged.
+    Main has Amiga changes since that build (L104 alignment, F10, the VBI pointer order of
+    open-work 50): publishing main needs a rebuild and the release audits again.
 
 ## User report (A1200, 68060, 2026-10-29)
 

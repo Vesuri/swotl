@@ -82,6 +82,7 @@ break *amiga_display_shown
 commands
   silent
   if *(unsigned int *)($sp+4) != $queued || amiga_display_late || amiga_display_line >= 16 || amiga_sprite_late
+    printf "HANDOFF serial=%u queued=%u line=%u late=%u sprite_late=%u present=%d field=%d\n", *(unsigned int *)($sp+4), $queued, amiga_display_line, amiga_display_late, amiga_sprite_late, $n, amiga_frames
     printf "DISPLAY_AUDIT bad handoff serial or beam deadline\n"
     detach
     quit 1
@@ -112,9 +113,12 @@ commands
     printf "HANDOFF serial=%u line=%u late=%u sprite_late=%u stolen=%d\n", $queued, amiga_display_line, amiga_display_late, amiga_sprite_late, amiga_sprite_stolen
     set $k = $k + 1
     if $k == 40
-      printf "TICKS posted=%u async=%u runs=%u bios=%u pending=%u\n", amiga_ticks, amiga_ticks_async, rt_irq0_runs, rt_irq0_bios, (unsigned char)(rt_irq_tail - irq_head)
-      set $handled = rt_irq0_runs + rt_irq0_bios
-      if amiga_ticks < $handled || amiga_ticks > $handled + (unsigned char)(rt_irq_tail - irq_head) || amiga_ticks_async == 0
+      printf "TICKS posted=%u async=%u held=%u runs=%u bios=%u pending=%u running=%u\n", amiga_ticks, amiga_ticks_async, amiga_ticks_held, rt_irq0_runs, rt_irq0_bios, (unsigned char)(rt_irq_tail - irq_head), rt_irq0_running
+      # Ticks held by the effect capture (sound-plan R1) are never delivered.
+      # This VBI may preempt a tick between cia_tick's mask drop and
+      # rt_irq0_enter: posted, rt_irq0_running set, not yet counted as run.
+      set $handled = rt_irq0_runs + rt_irq0_bios + amiga_ticks_held
+      if amiga_ticks < $handled || amiga_ticks > $handled + (unsigned char)(rt_irq_tail - irq_head) + rt_irq0_running || amiga_ticks_async == 0
         printf "DISPLAY_AUDIT_TICKS posted ticks not handled, or none run at once\n"
         detach
         quit 1

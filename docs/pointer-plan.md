@@ -143,7 +143,8 @@ stated before running (AGENTS.md validation scope). Evidence: `tmp/pointer/<step
   holds the other colour in a frame with the pointer and in the next; otherwise sprite 4
   stays off (the yellow part alone for a field if a frame with the pointer is replaced
   before it is shown).
-- Vertical blank, after `Input` (newest mouse counts): `rt_pointer_visible` of the shown
+- Vertical blank, right after the copper handoff with interrupts off (a CIA tick or the
+  colour copy before it missed line 25), from a fresh mouse sample: `rt_pointer_visible` of the shown
   buffer's state, position = lead + hotspot, `HSTART = $80 + x`, `VSTART = $38 + y`
   (DIWSTRT `$3881`), SV8/EV8; then the handoff seam. `amiga_sprite_late` counts writes at
   or after line 25 (the display audit fails on any).
