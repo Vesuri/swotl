@@ -376,6 +376,10 @@ lines.
   5274 seen: the hard-drive folder completes I/O on host time). Claim a
   frame-rate gain only when the arms' ranges do not overlap; frame times
   fall into trajectory modes (§5.1).
+- **Flight period.** `amiga/perf_flight.gdb` (`tools/ab_runs.py flight`): in-game
+  level flight without input (`play_walk.sh`'s key path: US, flight school, P-47,
+  gunnery), fields of frames 10…60 × 20 ms / 50; same rules as P. 2026-11-10,
+  68020: 1.0 255.2–255.6 ms, 1.1 255.6–256.0 ms.
 - **Shares.** The same fixture then captures 100 fields
   (`monitor profile` stops at 100) into `tmp/prof/frames.bin`;
   `tools/profile_report.py tmp/prof/frames.bin amiga/out/Swotl.elf

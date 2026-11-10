@@ -28,7 +28,8 @@ its binding rules: [speed-plan.md](speed-plan.md).
 - **Counts**: `tools/host_census.py MILESTONE [--labels L…] [--strops]
   [--vram]` (host run between milestone snapshots: label executions, string-op
   elements, A0000h writers and rows per frame); `amiga/perf_frames.gdb` (frame
-  period and a capture, [speed-plan.md](speed-plan.md) §4).
+  period and a capture, [speed-plan.md](speed-plan.md) §4); `amiga/perf_flight.gdb`
+  (in-game flight period, same section).
 - **Call tree**: `tools/profile_tree.py ELF CAPTURE... [--gen] [--json]`: self and
   inclusive cycles per guest routine and runtime symbol, call edges, over consecutive
   captures (A7 scopes; hardware and guest interrupt delivery not charged to the

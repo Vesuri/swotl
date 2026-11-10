@@ -26,6 +26,8 @@ bench   amiga/bench_frames.gdb: frames 4-11 line sums, RAM hash at frame 12
         (all runs must agree, or equal --ram), profile_report of the window.
 frames  amiga/perf_frames.gdb: frames 4-11 field intervals, median ms,
         profile_report (with --count) of the 100-field window.
+flight  amiga/perf_flight.gdb: in-game flight by FLIGHT_KEYS (play_walk.sh's
+        path), fields of frames 10-60, ms per frame.
 flyby   amiga/perf_flyby.gdb: frames 0-11 fields, five 100-field captures,
         profile_tree report and JSON, profile_report of each capture.
 meter   tools/cost_meter.py on the arm's host ELF and gen.
@@ -48,7 +50,7 @@ AMIGA = ROOT / "amiga"
 SHARE = Path.home() / ".local/share/amiga"
 TOOLS = ("m68k-amiga-elf-gdb", "m68k-amiga-elf-objdump", "m68k-amiga-elf-ld")
 FILES = (SHARE / "env.sh", SHARE / "fsuae_common.sh", AMIGA / "debug.sh",
-         AMIGA / "bench_frames.gdb", AMIGA / "perf_frames.gdb", AMIGA / "perf_flyby.gdb",
+         AMIGA / "bench_frames.gdb", AMIGA / "perf_frames.gdb", AMIGA / "perf_flight.gdb", AMIGA / "perf_flyby.gdb",
          ROOT / "tools/profile_report.py", ROOT / "tools/profile_tree.py",
          ROOT / "tools/cost_meter.py", ROOT / "tools/cost_model.json")
 
@@ -191,6 +193,26 @@ def frames(a):
     return {k: dict(runs=v, **spread([r["median_ms"] for r in v])) for k, v in out.items()}
 
 
+FLIGHT_KEYS = "KEYS=300:enter,p300:enter,p200:u,p200:f,p200:1,p200:1,p200:s,3000:s,3500:shot"
+
+
+def flight(a):
+    out = {Path(arm).name: [] for arm in a.arms}
+    for n in range(1, a.runs + 1):
+        for arm in a.arms:
+            d = run_dir(a.session, arm, "flight", n)
+            log = fsuae(a.session, arm, d, AMIGA / "perf_flight.gdb", {}, FLIGHT_KEYS)
+            pts = {int(k): int(f) for k, f in re.findall(r"^FRAME (\d+) field (\d+)$", log, re.M)}
+            if len(pts) != 61:
+                sys.exit(f"{d}: flight frames missing ({len(pts)} of 61)")
+            fields = [pts[k] - pts[k - 1] for k in range(11, 61)]
+            row = dict(run=n, fields=fields, ms_per_frame=20 * (pts[60] - pts[10]) / 50,
+                       median_ms=20 * statistics.median(fields))
+            out[Path(arm).name].append(row)
+            print(Path(arm).name, row, flush=True)
+    return {k: dict(runs=v, **spread([r["ms_per_frame"] for r in v])) for k, v in out.items()}
+
+
 def flyby(a):
     out = {Path(arm).name: [] for arm in a.arms}
     for n in range(1, a.runs + 1):
@@ -234,7 +256,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="kind", required=True)
     sub.add_parser("freeze").add_argument("arm")
-    for kind, runs in (("bench", 3), ("frames", 3), ("flyby", 1), ("meter", 3)):
+    for kind, runs in (("bench", 3), ("frames", 3), ("flight", 3), ("flyby", 1), ("meter", 3)):
         p = sub.add_parser(kind)
         p.add_argument("session", type=Path)
         p.add_argument("arms", nargs="+")
@@ -254,7 +276,7 @@ def main():
         need = [Path(arm) / p for p in ("gen", "swotl.elf", "amiga/Swotl.elf", "amiga/Swotl.exe")]
         if not all(p.exists() for p in need):
             sys.exit(f"{arm}: not a frozen arm (ab_runs.py freeze)")
-    result = dict(bench=bench, frames=frames, flyby=flyby, meter=meter)[a.kind](a)
+    result = dict(bench=bench, frames=frames, flight=flight, flyby=flyby, meter=meter)[a.kind](a)
     summary = a.session / f"{a.kind}-summary.json"
     n = 2
     while summary.exists():
