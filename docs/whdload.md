@@ -3,7 +3,7 @@
 Lessons from the sibling slaves, with SWOTL's use. Source:
 `whdload/SwotlSlave.s` (`make whdload` → `build/whdload/`); test:
 `tools/test_whdload.py` (`make test-whdload`; `--option` passes WHDLoad options, `--z3` adds
-Zorro III Fast); PreLoad contents: `tools/whdload_preload.py`. Provenance: `Sl` Slicks, `Ve` Vette, `Rv` Revs, `Po`
+Zorro III Fast); PreLoad contents: `tools/whdload_preload.py`. Playing under WHDLoad (sound, real speed, persistent drawer `tmp/whdload-run/<setup>`): `tools/run_whdload.py` (`make run-whdload RUN_ARGS=...`). Provenance: `Sl` Slicks, `Ve` Vette, `Rv` Revs, `Po`
 Pokeri, `RoF` Rescue on Fractalus, `P2` Prince of Persia 2 (each project's `docs/whdload*.md` and
 `whdload/*.s`; the merged rules are in AmigaXDev `docs/playbooks/new-port-playbook.md` §13), `SDK` `~/.local/share/amiga/WHDLoad` (`Src/sources/whdload/kick.readme`,
 `Docs/en/{howto,opt,cache}.html`). Release packaging: [release.md](release.md).

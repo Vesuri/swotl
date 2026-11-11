@@ -1,7 +1,7 @@
 ## SWOTL — repository-level targets.
 ## The Amiga executable is the product; the build lives in amiga/.
 
-.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage reference-ega-explore sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-ega test-host-all test-amiga test-amiga-replay test-amiga-replay-ega test-amiga-replay-plant test-amiga-replay-ega-plant test-amiga-restore test-amiga-keyboard test-amiga-workbench amiga amiga-sync amiga-release smoke smoke-release whdload test-whdload install-data test-install-data release release-check github-release test-release-installer size clean
+.PHONY: all help inspect hash check-ref prepare-reference reference-staging reference-emulator reference-run reference coverage reference-ega-explore sound-reference sound-fm sound-tfh map trace-summary ghidra gen gen-check lint test test-decode test-x86 test-m68k test-blocks test-sabotage test-guards gates g-sabotage g-host-all g-fsuae g-amiga g-smoke g-restore host test-host test-host-ega test-host-all test-amiga test-amiga-replay test-amiga-replay-ega test-amiga-replay-plant test-amiga-replay-ega-plant test-amiga-restore test-amiga-keyboard test-amiga-workbench amiga amiga-sync amiga-release smoke smoke-release whdload test-whdload run-whdload install-data test-install-data release release-check github-release test-release-installer size clean
 
 PYTHON ?= python3
 # AmigaXDev's shared Python package (amigaxdev.dos.mz_info).
@@ -48,6 +48,7 @@ help:
 	@echo "  make smoke-release  boot the stripped executable under FS-UAE"
 	@echo "  make whdload        assemble the WHDLoad slaves into build/whdload/"
 	@echo "  make test-whdload   run the slaves under WHDLoad: smoke, boot, load, game FM, TFH and analog joystick, caches 030-060, campaign and pilot files"
+	@echo "  make run-whdload    play under WHDLoad in FS-UAE, sound and real speed (RUN_ARGS='--setup a1200-040 --z3 32768')"
 	@echo "  make install-data   build SWotLInstallData (host and Amiga) into build/install-data/"
 	@echo "  make test-install-data  helper vs the DOS ACC install: sources, refusals, cleanup"
 	@echo "  make release        package and audit dist/SWotL-\$$(cat VERSION).lha (clean tree only)"
@@ -654,6 +655,10 @@ smoke-release: amiga-release
 
 whdload:
 	$(MAKE) -C whdload all test smoke boot-test load-test memfree memfree-512k campaign tour
+
+# tools/run_whdload.py: the persistent drawer tmp/whdload-run/<setup>; RUN_ARGS as its options.
+run-whdload: whdload amiga-release
+	. amiga/env.sh && $(PYTHON) tools/run_whdload.py $(RUN_ARGS)
 
 # tools/test_whdload.py: Kickstart 3.1 A1200 and A600 + RTB, WHDLoad, ref/ and TFH_RSC; OCS/ECS
 # setups as ecs-plan E9 (SWotL512K on 512 KB Chip).
