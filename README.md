@@ -13,7 +13,7 @@ runs as the original's VGA version (256 colours), on OCS and ECS as its EGA vers
 resynthesised on Paula, the effects once at start into samples; optionally, the
 sampled effects of the Amiga **Their Finest Hour** replace the AdLib ones.
 
-Current Amiga release: **1.1 (07.11.2026)**.
+Current Amiga release: **1.2 (11.11.2026)**.
 
 ## Requirements and installation
 

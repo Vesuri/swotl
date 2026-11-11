@@ -19,7 +19,7 @@ from pathlib import Path
 import re
 from package_release import ORIGINAL_HASHES, PREFIX, ROOT, archive_names, crc16, members
 
-DATE = '07.11.2026'
+DATE = '11.11.2026'
 STAMP = (((2026 - 1980) << 9) | (10 << 5) | 24) << 16
 
 

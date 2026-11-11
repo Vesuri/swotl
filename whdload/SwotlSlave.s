@@ -56,14 +56,14 @@ slv_info dc.b "Amiga port by Vesuri",10
         IFD SMALLCHIP
         dc.b "512 KB Chip version",10
         ENDC
-        dc.b "Version 1.1 (07.11.2026)",10
+        dc.b "Version 1.2 (11.11.2026)",10
         dc.b "Help quits",0
 slv_config dc.b "C1:B:Their Finest Hour sound effects;C2:B:Analog joystick in port 2;"
         dc.b "C3:B:OCS/ECS display on AGA;",0
         IFD SMALLCHIP
-        dc.b "$VER: SWotL512K.slave 1.1 (07.11.2026)",0
+        dc.b "$VER: SWotL512K.slave 1.2 (11.11.2026)",0
         ELSE
-        dc.b "$VER: SWotL.slave 1.1 (07.11.2026)",0
+        dc.b "$VER: SWotL.slave 1.2 (11.11.2026)",0
         ENDC
 _program dc.b "SWotL",0
 ; Test only, keys of pc-reference-loop.md scripts: CAMPAIGN creates campaign

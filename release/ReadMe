@@ -97,6 +97,11 @@
 
  History:
  --------
+ version 1.2 (11.11.2026):
+ - faster start with PreLoad: the files read only at start are read in a
+   few large pieces, so WHDLoad switches to the OS and back about 10 times
+   instead of about 100 (each switch takes up to a second on some machines)
+
  version 1.1 (07.11.2026):
  - OCS and ECS Amigas with a 68020 or better: the game runs as the PC
    original's EGA version (16 colours, 640x200), with the mouse pointer as
