@@ -86,6 +86,17 @@ whdload.de archive. Sibling shape:
   `test-release-installer`. Bench (tools/ab_runs.py, 5 interleaved runs per arm) vs `0c4f520`:
   69,261 → 69,308 (+0.068 %; spans 69,253–69,264 and 69,306–69,311), RAM hash `421afae9…34ba`
   in all 10; within D8’s noise rule (flyby `present` −3.2 %, F10).
+- SWOTL 1.2 (11.11.2026, built from `bcddc95`): `SWotL-1.2.lha` 579,625 bytes, SHA-256
+  `6496f29a46ab96e688ab1d5f5b264090b93209273b5458e3b1c4efdef66c5983`; `SWotL-1.2-whdload.lha`
+  38,503 bytes, `be42aa82485609f289f686f90726e1d00bb11329df4814966e65ce2eff7919b6`; exe
+  `d8051a62454f16e690631bafde93629732eb670055624a76f30ef7e195f442ad` (1,454,572 bytes); slaves
+  `SWotL.slave` `95ea92800090d344620d957fb3496b27d72106acf208454cbfbacab864bf26a5`,
+  `SWotL512K.slave` `4931cefc01bf95c73200b7e491526f143629edf63e46c874877af53eb46eb0f5`; helper
+  `c64224cda172eca931d6f9c2d288abad3f4be817b96c12100d634c36f9f502cc`. Audits: `make release`
+  twice from clean (byte-identical), `test-whdload` (21 runs), `test-release-installer`,
+  `test-amiga-workbench`, `smoke-release`, `test-install-data`; code since 1.1 is the start-up
+  reads of `3a3ecc8` (its own gates there); no `make gates` or bench (translator unchanged).
+  One `a3000` suite run showed host exec alert `0100000F` (open-work 47); 18 repeats clean.
 
 ## Package layout (converged)
 

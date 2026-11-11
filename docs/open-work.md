@@ -70,11 +70,14 @@ speed work: [speed-plan.md](speed-plan.md).
 ## Amiga platform
 
 45. OCS/ECS version (user 2026-11-03): E1–E9 done ([ecs-plan.md](ecs-plan.md)); release
-    1.1 (07.11.2026, `8c257c4`) built and audited ([release.md](release.md)); tagged and on
-    GitHub (2026-11-08); whdload.de (`SWotL-1.1-whdload.lha`) awaits the user.
-46. PreLoad start-up OS switches (user report 2026-11-10, A1200/040, 32 MB Zorro III, about
-    0.75 s per switch): fixed after 1.1 (the slave's `_load`, `exec_root`, `loadCache`;
-    [whdload.md](whdload.md)); unreleased. Open: a release with it (user decision).
+    1.1 (07.11.2026, `8c257c4`) and 1.2 (11.11.2026, `bcddc95`) tagged and on GitHub
+    ([release.md](release.md)); whdload.de (`SWotL-1.2-whdload.lha`) awaits the user.
+47. Host alert under WHDLoad (`make test-whdload`, 1.2 build, 2026-11-11): one `a3000` run
+    (68030, ECS, first start) showed exec alert `0100000F` (memory freed twice), task
+    `00212D00` (host Initial CLI), flickering with the WHDLoad splash during OS switches; the run
+    took 50 s (others 14–30 s) and WHDLoad's dump write failed (`DOS-Error #212`); the test
+    passed (it judges the dump only). 18 repeats clean; 1.1 never checked for alerts. Open:
+    reproduce (run time and `boot/result` errors detect it), 1.1 vs 1.2, make the test fail on it.
 
 ## User report (A1200, 68060, 2026-10-29)
 
