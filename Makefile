@@ -657,8 +657,19 @@ whdload:
 	$(MAKE) -C whdload all test smoke boot-test load-test memfree memfree-512k campaign tour
 
 # tools/run_whdload.py: the persistent drawer tmp/whdload-run/<setup>; RUN_ARGS as its options.
-run-whdload: whdload amiga-release
-	. amiga/env.sh && $(PYTHON) tools/run_whdload.py $(RUN_ARGS)
+# Builds only what is out of date: G1's header check without --regen (stale build/gen
+# fails: run make gen), the release image when its ELF changed, the slave when its
+# source changed. make amiga-release and make whdload keep their full checks.
+run-whdload:
+	@$(PYTHON) -m translator.check gen
+	@. amiga/env.sh && $(MAKE) -s -C amiga && mkdir -p build/amiga-release \
+		&& ln -sf ../../amiga/Makefile build/amiga-release/Makefile && $(MAKE) -s -C build/amiga-release REPO=../.. RELEASE=1
+	@if [ ! amiga/out/Swotl-release.exe -nt build/amiga-release/out/Swotl.elf ]; then . amiga/env.sh \
+		&& elf2hunk build/amiga-release/out/Swotl.elf amiga/out/Swotl-release.exe -s \
+		&& $(PYTHON) tools/hunk_size.py --release-of build/amiga-release/out/Swotl.exe amiga/out/Swotl-release.exe; fi
+	@if [ ! build/whdload/SWotL.slave -nt whdload/SwotlSlave.s ] || [ ! build/whdload/SWotL.slave -nt whdload/Makefile ]; then \
+		$(MAKE) -C whdload all; fi
+	@. amiga/env.sh && $(PYTHON) tools/run_whdload.py $(RUN_ARGS)
 
 # tools/test_whdload.py: Kickstart 3.1 A1200 and A600 + RTB, WHDLoad, ref/ and TFH_RSC; OCS/ECS
 # setups as ecs-plan E9 (SWotL512K on 512 KB Chip).
