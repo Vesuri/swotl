@@ -3,7 +3,7 @@
 
     python3 tools/test_whdload.py --mode smoke     # Smoke.slave: harness only
     python3 tools/test_whdload.py --mode boot      # BootTest.slave: Kickstart 3.1 kickemu boots
-    python3 tools/test_whdload.py --mode load      # LoadTest.slave: LoadSeg + PROGDIR
+    python3 tools/test_whdload.py --mode load      # LoadTest.slave: load + PROGDIR; its relocated block checked
     python3 tools/test_whdload.py --mode run [--tfh] [--analog] [--slave build/whdload/MemFree.slave]
     python3 tools/test_whdload.py --mode run --installed DIR [--setup a1200-040]
     python3 tools/test_whdload.py --mode run --setup a1200-030 [--whdload-mmu]
@@ -99,6 +99,75 @@ def blocks(data, size=256):
             if len(set(data[a:a + size])) > 8]
 
 
+def hunks(exe):
+    """The executable's hunks as dos.LoadSeg loads them: (longs, data,
+    [(target hunk, offset)...]) each; data is the file's bytes, shorter than
+    longs*4 for BSS and uninitialised tails."""
+    w = lambda o: int.from_bytes(exe[o:o + 4], 'big')
+    assert w(0) == 0x3f3 and w(4) == 0, 'HUNK_HEADER without resident libraries'
+    first, last = w(12), w(16)
+    sizes = [w(20 + 4 * k) for k in range(last - first + 1)]
+    assert not any(s & 0xc0000000 for s in sizes), 'no memory flags'
+    out, o, cur = [], 20 + 4 * len(sizes), None
+    while o < len(exe):
+        t = w(o) & 0x3fffffff
+        o += 4
+        if t in (0x3e9, 0x3ea, 0x3eb):         # CODE, DATA, BSS
+            n = w(o)
+            cur = [sizes[len(out)], exe[o + 4:o + 4 + 4 * n] if t != 0x3eb else b'', []]
+            out.append(cur)
+            o += 4 if t == 0x3eb else 4 + 4 * n
+        elif t == 0x3ec:                         # RELOC32
+            while w(o):
+                n, target = w(o), w(o + 4)
+                cur[2] += [(target, w(o + 8 + 4 * k)) for k in range(n)]
+                o += 8 + 4 * n
+            o += 4
+        elif t == 0x3f0:                         # SYMBOL
+            while w(o):
+                o += 4 + 4 * w(o) + 4
+            o += 4
+        elif t == 0x3f1:                         # DEBUG
+            o += 4 + 4 * w(o)
+        elif t == 0x3f2:                         # END
+            pass
+        else:
+            raise SystemExit(f'FAIL: hunk type {t:X} at {o - 4} not checked')
+    assert len(out) == len(sizes)
+    return out
+
+
+def check_block(exe, data, base):
+    """The slave's resload_Relocate block (LoadTest.slave: test-block and its
+    address, size and resload_Relocate's size in test-blockadr) against the
+    executable relocated here: every segment linked in order inside the block,
+    its bytes the hunk's, relocated to the segments' addresses, BSS zero."""
+    adr = (data / 'test-blockadr').read_bytes() if (data / 'test-blockadr').exists() else b''
+    if len(adr) != 12:
+        raise SystemExit(f'FAIL: load: no relocated block saved: dos.LoadSeg loaded SWotL ({base})')
+    at, size, used = (int.from_bytes(adr[k:k + 4], 'big') for k in (0, 4, 8))
+    block = (data / 'test-block').read_bytes()
+    assert len(block) == size and used <= size, (size, used, len(block))
+    hs, segs, link = hunks(exe), [], at + 4
+    while link:
+        o = link - at
+        assert 4 <= o < size and len(segs) < len(hs), f'segment link {link:X} outside the block'
+        segs.append(link + 4)
+        link = int.from_bytes(block[o:o + 4], 'big') * 4
+    if len(segs) != len(hs):
+        raise SystemExit(f'FAIL: load: {len(segs)} segments, the executable has {len(hs)} hunks')
+    for k, (longs, raw, relocs) in enumerate(hs):
+        want = bytearray(raw.ljust(4 * longs, b'\0'))
+        for target, off in relocs:
+            v = int.from_bytes(want[off:off + 4], 'big') + segs[target]
+            want[off:off + 4] = (v & 0xffffffff).to_bytes(4, 'big')
+        o = segs[k] - at
+        if block[o:o + len(want)] != want:
+            bad = next(i for i in range(len(want)) if block[o + i] != want[i])
+            raise SystemExit(f'FAIL: load: hunk {k} differs at +{bad:X} ({base})')
+    print(f'relocated block: {len(hs)} hunks at {at:X}, {used:,} of {size:,} bytes, matches the executable')
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--mode', choices=tuple(SLAVES), default='run')
@@ -170,6 +239,8 @@ def main():
             options.append('CUSTOM2=1')
         if args.ocs:
             options.append('CUSTOM3=1')
+    if args.mode == 'load':
+        options.append('NOWRITECACHE')      # LoadTest.slave writes test-block (exit hang, as above)
     if args.whdload_mmu:
         options.append('MMU')
     options += args.option
@@ -232,6 +303,8 @@ def main():
             raise SystemExit(f'FAIL: {args.mode} ({base})\n{report[:2000]}{output}')
         if args.mode == 'smoke':
             assert (game / 'smoke-passed').read_bytes() == b'PASS'
+        if args.mode == 'load':
+            check_block(args.exe.read_bytes(), data, base)
         print(f'PASS: {args.mode} slave returned normally')
         return
 

@@ -72,6 +72,9 @@ speed work: [speed-plan.md](speed-plan.md).
 45. OCS/ECS version (user 2026-11-03): E1–E9 done ([ecs-plan.md](ecs-plan.md)); release
     1.1 (07.11.2026, `8c257c4`) built and audited ([release.md](release.md)); tagged and on
     GitHub (2026-11-08); whdload.de (`SWotL-1.1-whdload.lha`) awaits the user.
+46. PreLoad start-up OS switches (user report 2026-11-10, A1200/040, 32 MB Zorro III, about
+    0.75 s per switch): fixed after 1.1 (the slave's `_load`, `exec_root`, `loadCache`;
+    [whdload.md](whdload.md)); unreleased. Open: a release with it (user decision).
 
 ## User report (A1200, 68060, 2026-10-29)
 

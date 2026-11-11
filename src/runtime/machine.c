@@ -116,23 +116,37 @@ static void exec_root(uint16_t psp_seg)
         rt_stop("SWOTL.EXE is not MZ", HW(0), 0);
     }
     uint32_t size = HW(4) * 512u - (HW(2) ? 512u - HW(2) : 0) - HW(8) * 16u;
-    plat_seek(f, HW(8) * 16, 0);
     uint8_t *image = rt_span_w(lin(load, 0), size);
-    fail_read(plat_read(f, image, size), (int32_t)size);
+    /* Under WHDLoad each read of an uncached file is an OS switch
+     * (docs/whdload.md): the rest of the header (relocations included) and the
+     * image in one read when a buffer for it is free, else the image whole and
+     * the relocations in 1 KiB reads. */
+    uint32_t head = HW(8) * 16u, relocs_at = HW(0x18), skip = head - sizeof h;
+    uint8_t *rest = head >= relocs_at + HW(6) * 4u && relocs_at >= sizeof h ? plat_alloc(skip + size) : 0;
+    if (rest) {
+        fail_read(plat_read(f, rest, skip + size), (int32_t)(skip + size));
+        for (uint32_t k = 0; k < size; ++k) {
+            image[k] = rest[skip + k];
+        }
+    } else {
+        plat_seek(f, head, 0);
+        fail_read(plat_read(f, image, size), (int32_t)size);
+        plat_seek(f, relocs_at, 0);
+    }
     rt_span_order(image, size);
-    /* The relocations in 1 KiB reads: under WHDLoad each read of an uncached
-     * file is an OS switch (docs/whdload.md). */
-    enum { BLOCK = 256 };       /* relocations per read */
+    enum { BLOCK = 64 };        /* relocations per read without the buffer */
     __attribute__((aligned(4))) static uint8_t relocs[BLOCK * 4];
-    plat_seek(f, HW(0x18), 0);
     for (uint16_t k = 0; k < HW(6); ++k) {
-        if (k % BLOCK == 0) {
+        if (!rest && k % BLOCK == 0) {
             int32_t n = HW(6) - k < BLOCK ? HW(6) - k : BLOCK;
             fail_read(plat_read(f, relocs, (uint32_t)n * 4), n * 4);
         }
-        const uint8_t *r = relocs + k % BLOCK * 4;
+        const uint8_t *r = rest ? rest + relocs_at - sizeof h + k * 4u : relocs + k % BLOCK * 4;
         uint32_t a = lin(load + (r[2] | r[3] << 8), r[0] | r[1] << 8);
         wr16(a, rd16(a) + load);
+    }
+    if (rest) {
+        plat_free(rest);
     }
     plat_close(f);
     /* reference EXEC register state */

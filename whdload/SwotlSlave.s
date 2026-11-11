@@ -46,8 +46,9 @@ slv_keyexit = $5f                 ; Help: the game's key table has no Help key
 
 slv_CurrentDir dc.b "data",0
 ; Not cached by WHDLoad (ws_DontCache): files read only once, at start (the
-; executable's LoadSeg, the guest EXE, the effect cache). Cached, they would
-; take the PreLoad room of files read during play.
+; executable by _load, the guest EXE, the effect cache), each in one to three
+; large reads, as each read of an uncached file is an OS switch. Cached, they
+; would take the PreLoad room of files read during play.
 slv_DontCache dc.b "(SWotL|SWOTL.EXE|sfx.cache)",0
 slv_name dc.b "Secret Weapons of the Luftwaffe",0
 slv_copy dc.b "1991 Lucasfilm Games",0
@@ -142,14 +143,26 @@ _bootdos
         move.l d0,a6
         tst.l d0
         beq .oserror
-        lea (_program,pc),a0
-        move.l a0,d1
-        jsr (_LVOLoadSeg,a6)
+        bsr _load
         move.l d0,d7
         beq .readerror
         IFD TEST
         lea (_loadmark,pc),a0
         bsr _mark
+        ENDC
+        IFD LOADONLY
+        ; Test only: the relocated block and its address and sizes, which
+        ; tools/test_whdload.py --mode load relocates independently.
+        move.l (_blocksize,pc),d0
+        beq .noblock
+        lea (_blockname,pc),a0
+        move.l (_block,pc),a1
+        jsr (resload_SaveFile,a2)
+        moveq #12,d0
+        lea (_blockadrname,pc),a0
+        lea (_block,pc),a1
+        jsr (resload_SaveFile,a2)
+.noblock
         ENDC
         jsr (resload_FlushCache,a2)
         ; Establish PROGDIR as a Shell would. Calling a LoadSeg entry alone
@@ -181,8 +194,7 @@ _bootdos
         jsr (_LVOSetProgramDir,a6)
         move.l d0,d1
         jsr (_LVOUnLock,a6)
-        move.l d7,d1
-        jsr (_LVOUnLoadSeg,a6)
+        bsr _unload
         move.l a6,a1
         move.l 4.w,a6
         jsr (_LVOCloseLibrary,a6)
@@ -222,6 +234,114 @@ _bootdos
 _getcacr
         movec cacr,d0
         rte
+
+; d0 = the seglist of _program (BPTR), 0 if LoadSeg failed; a2 resload, a6 DOS.
+; Under PreLoad SWotL is uncached (slv_DontCache), so each read of it is an
+; OS switch: dos.LoadSeg makes 70 (relocations in 1 KiB reads). Here: the hunk
+; header and the file, each in one read, into one cleared block that
+; resload_Relocate (WHDLTAG_LOADSEG) turns into a seglist in place. A header
+; this does not take (resident libraries, Chip or extended memory flags, more
+; than MAXHUNKS hunks), a file larger than its block or no memory for the
+; block: dos.LoadSeg. _unload frees what this loaded.
+MAXHUNKS = 32
+HDRBYTES = (5+MAXHUNKS)*4
+_load
+        movem.l d2-d6/a3/a6,-(sp)
+        lea (-HDRBYTES,sp),sp
+        move.l a6,a3                ; DOS
+        lea (_program,pc),a0
+        jsr (resload_GetFileSize,a2)
+        move.l d0,d5                ; file bytes
+        cmp.l #HDRBYTES,d0
+        bls .seg
+        move.l #HDRBYTES,d0
+        moveq #0,d1
+        lea (_program,pc),a0
+        move.l sp,a1
+        jsr (resload_LoadFileOffset,a2)
+        move.l sp,a0
+        cmp.l #$3f3,(a0)+           ; HUNK_HEADER
+        bne .seg
+        tst.l (a0)+                 ; resident library names
+        bne .seg
+        addq.l #4,a0                ; table size
+        move.l (a0)+,d2             ; first hunk
+        move.l (a0)+,d4             ; last hunk
+        sub.l d2,d4                 ; hunks - 1
+        bcs .seg
+        cmp.l #MAXHUNKS-1,d4
+        bhi .seg
+        moveq #0,d6                 ; block bytes
+.size   move.l (a0)+,d0
+        btst #30,d0                 ; MEMF_CHIP, or with bit 31 extended flags
+        bne .seg
+        and.l #$3fffffff,d0
+        cmp.l #$01000000,d0         ; 64 MiB: not a size this can take
+        bcc .seg
+        lsl.l #2,d0
+        add.l #8+7+8,d0             ; segment header, alignment 8, margin
+        and.w #-8,d0
+        add.l d0,d6
+        dbf d4,.size
+        cmp.l d5,d6
+        bcc .fits
+        move.l d5,d6                ; the file is loaded before it is relocated
+.fits   move.l d6,d0
+        move.l #$10001,d1           ; MEMF_PUBLIC|MEMF_CLEAR
+        move.l 4.w,a6
+        jsr (_LVOAllocMem,a6)
+        tst.l d0
+        beq .seg
+        lea (_block,pc),a0
+        move.l d0,(a0)+
+        move.l d6,(a0)
+        lea (_program,pc),a0
+        move.l d0,a1
+        jsr (resload_LoadFile,a2)
+        clr.l -(sp)                 ; TAG_DONE
+        pea -1
+        pea WHDLTAG_LOADSEG
+        pea 8
+        pea WHDLTAG_ALIGN
+        move.l (_block,pc),a0
+        move.l sp,a1
+        jsr (resload_Relocate,a2)
+        lea (5*4,sp),sp
+        lea (_relocated,pc),a0
+        move.l d0,(a0)
+        cmp.l d6,d0
+        bhi .overrun
+        move.l (_block,pc),d0
+        addq.l #4,d0                ; the first segment's link
+        lsr.l #2,d0
+        bra .done
+.seg    move.l a3,a6
+        lea (_program,pc),a0
+        move.l a0,d1
+        jsr (_LVOLoadSeg,a6)
+.done   lea (HDRBYTES,sp),sp
+        movem.l (sp)+,d2-d6/a3/a6
+        rts
+.overrun
+        ; resload_Relocate wrote past the block: memory is not to be trusted.
+        pea (_failed,pc)
+        pea TDREASON_FAILMSG
+        jmp (resload_Abort,a2)
+
+; Unloads d7, the seglist _load returned; a6 DOS.
+_unload
+        move.l (_block,pc),d0
+        beq .unloadseg
+        move.l a6,-(sp)
+        move.l d0,a1
+        move.l (_blocksize,pc),d0
+        move.l 4.w,a6
+        jsr (_LVOFreeMem,a6)
+        move.l (sp)+,a6
+        rts
+.unloadseg
+        move.l d7,d1
+        jmp (_LVOUnLoadSeg,a6)
 ; Copies the zero-terminated string at a0 to a1, which ends past its last byte.
 _append move.b (a0)+,(a1)+
         bne _append
@@ -243,6 +363,14 @@ _ocs    dc.l 0
 _args   dc.l 0
 _argslen dc.l 0
 _oldhome dc.l 0
+_block  dc.l 0                    ; _load's block, 0 when dos.LoadSeg loaded
+_blocksize dc.l 0
+_relocated dc.l 0                 ; resload_Relocate's size
+        IFD LOADONLY
+_blockname dc.b "test-block",0
+_blockadrname dc.b "test-blockadr",0
+        EVEN
+        ENDC
         IFD TEST
 _bootearly
         move.l (_resload,pc),a2

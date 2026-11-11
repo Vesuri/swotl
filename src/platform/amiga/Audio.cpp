@@ -38,6 +38,10 @@ __attribute__((aligned(4))) static int8_t* tfhChip = 0;
 __attribute__((aligned(4))) static uint32_t tfhBytes = 0;
 __attribute__((aligned(4))) static int8_t* effectChip[RT_SFX_IDS];
 __attribute__((aligned(4))) static uint32_t effectBytes[RT_SFX_IDS];
+// loadCache's one Chip block for every effect (effectChip points into it), 0
+// when each effect has its own allocation.
+__attribute__((aligned(4))) static int8_t* effectBlock = 0;
+__attribute__((aligned(4))) static uint32_t effectBlockBytes = 0;
 static uint8_t effectVolume[RT_SFX_IDS];
 static volatile bool effects = false;
 __attribute__((aligned(4))) static int8_t* pool = 0;
@@ -125,9 +129,11 @@ static uint32_t effectsKey()
 static void freeEffects()
 {
     for (uint8_t id = 0; id < RT_SFX_IDS; ++id) {
-        if (effectChip[id]) FreeMem(effectChip[id], effectBytes[id]);
+        if (effectChip[id] && !effectBlock) FreeMem(effectChip[id], effectBytes[id]);
         effectChip[id] = 0;
     }
+    if (effectBlock) FreeMem(effectBlock, effectBlockBytes);
+    effectBlock = 0;
     amiga_audio_effect_bytes = 0;
 }
 
@@ -142,28 +148,47 @@ static void registerEffects()
 }
 
 // The cache's samples straight into Chip, in one I/O window; false (nothing
-// kept) unless every wanted id comes back whole under this key.
+// kept) unless every wanted id comes back whole under this key. Under WHDLoad
+// each read of sfx.cache is an OS switch (slv_DontCache, docs/whdload.md):
+// the header and entries in one read, then the samples in one read into one
+// Chip block of the size their own allocations take (8-byte rounding, as
+// AllocMem), each at its even offset in the file. Without that block, one
+// allocation and read per effect.
 static bool loadCache(uint32_t key)
 {
-    uint32_t head[4], wanted = 0;
-    struct CacheEntry entry[RT_SFX_IDS];
+    struct {
+        uint32_t head[4];
+        struct CacheEntry entry[RT_SFX_IDS];
+    } top;
+    uint32_t wanted = 0, total = 0, rounded = 0;
     bool ok = false;
     for (uint8_t id = 0; id < RT_SFX_IDS; ++id) wanted += rt_sfx_writes[id] && tfh_effect_wanted(id);
     amiga_io_begin();
     BPTR f = Open((CONST_STRPTR)CACHE_NAME, MODE_OLDFILE);
     if (f) {
-        ok = Read(f, head, sizeof head) == sizeof head && head[0] == CACHE_MAGIC &&
-             head[1] == FM_EFFECT_VERSION && head[2] == key && head[3] == wanted &&
-             Read(f, entry, wanted * sizeof entry[0]) == (LONG)(wanted * sizeof entry[0]);
+        LONG want = (LONG)(sizeof top.head + wanted * sizeof top.entry[0]);
+        ok = Read(f, &top, want) == want && top.head[0] == CACHE_MAGIC &&
+             top.head[1] == FM_EFFECT_VERSION && top.head[2] == key && top.head[3] == wanted;
         for (uint32_t k = 0; ok && k < wanted; ++k) {
-            const struct CacheEntry& e = entry[k];
-            ok = e.id < RT_SFX_IDS && !effectChip[e.id] && tfh_effect_wanted(e.id) && e.bytes >= 2 &&
-                 e.bytes <= TFH_EFFECT_BYTES && !(e.bytes & 1) &&
-                 (effectChip[e.id] = (int8_t*)AllocMem(e.bytes, MEMF_CHIP)) != 0;
-            if (!ok) break;
+            const struct CacheEntry& e = top.entry[k];
+            ok = e.id < RT_SFX_IDS && tfh_effect_wanted(e.id) && e.bytes >= 2 &&
+                 e.bytes <= TFH_EFFECT_BYTES && !(e.bytes & 1);
+            total += e.bytes;
+            rounded += (e.bytes + 7) & ~7u;
+        }
+        bool block = ok && wanted && (effectBlock = (int8_t*)AllocMem(rounded, MEMF_CHIP)) != 0;
+        if (block) {
+            effectBlockBytes = rounded;
+            ok = Read(f, effectBlock, total) == (LONG)total;
+        }
+        for (uint32_t k = 0, at = 0; ok && k < wanted; at += top.entry[k++].bytes) {
+            const struct CacheEntry& e = top.entry[k];
+            if (!(ok = !effectChip[e.id])) break;   // an id twice
+            effectChip[e.id] = block ? effectBlock + at : (int8_t*)AllocMem(e.bytes, MEMF_CHIP);
+            if (!(ok = effectChip[e.id] != 0)) break;
             effectBytes[e.id] = e.bytes;
             effectVolume[e.id] = e.volume;
-            ok = Read(f, effectChip[e.id], e.bytes) == (LONG)e.bytes;
+            if (!block) ok = Read(f, effectChip[e.id], e.bytes) == (LONG)e.bytes;
         }
         Close(f);
     }

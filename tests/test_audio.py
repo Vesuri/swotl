@@ -4,8 +4,9 @@ DMA-off window (two outgoing periods), Chip lifetime,
 the field's OPL snapshot (taken with interrupts disabled; a tick when they
 return must not reach it), prerendered effects (a Chip block per wanted
 captured id, even, the Fast render buffer released, the sample player run
-without TFH; the cache written in one Write, loaded instead of rendering, refused for
-another capture or a cut file). Mock MMIO and command producers; the sample/FM cores have
+without TFH; the cache written in one Write, loaded instead of rendering in two
+reads into one Chip block of the effects' rounded sizes, or a read per effect when
+that block is refused, refused for another capture or a cut file). Mock MMIO and command producers; the sample/FM cores have
 independent gates.
 """
 from pathlib import Path
@@ -62,8 +63,10 @@ Beam beam;
 static std::map<void *, uint32_t> allocations;
 static unsigned fastBlocks, ioDepth;
 static bool takenOver;          // allocations after the takeover: in I/O windows
+static uint32_t chipRefuse;     // a Chip request of this size fails
 void *AllocMem(uint32_t n, uint32_t flags) {
     assert(!takenOver || ioDepth == 1);
+    if ((flags & MEMF_CHIP) && n == chipRefuse) return 0;
     if (!(flags & MEMF_CHIP)) ++fastBlocks;
     void *p = calloc(1, n); allocations[p] = n; return p;
 }
@@ -75,7 +78,7 @@ void CopyMem(const void *s, void *d, uint32_t n) { memcpy(d, s, n); }
 static std::string disk;
 static bool exists;
 static size_t pos;
-static int opens, writes;
+static int opens, writes, fileReads;
 // sfx.rsc (the D6 fallback's TFH samples) is absent: effects stay silent.
 static int fallbacks;
 BPTR Open(CONST_STRPTR name, LONG mode) {
@@ -89,6 +92,7 @@ void Close(BPTR) { assert(ioDepth == 1); --opens; }
 LONG Seek(BPTR, LONG, LONG) { abort(); }
 void plat_log(const char *) { ++fallbacks; }
 LONG Read(BPTR, void *b, LONG n) {
+    ++fileReads;
     LONG k = (LONG)std::min((size_t)n, disk.size() - pos);
     memcpy(b, disk.data() + pos, k); pos += k; return k;
 }
@@ -205,10 +209,13 @@ int main() {
     Audio::handBack();
     Audio::end();
     assert(allocations.empty());
-    // The next start: the same samples from the cache, nothing rendered.
+    // The next start: the same samples from the cache, nothing rendered: the
+    // header and entries in one read, the samples in another into one Chip
+    // block of their rounded sizes (8 + 104), packed at even offsets.
     auto load = [&]() {
         registered.clear();
         amiga_audio_effect_cached = 0;
+        fileReads = 0;
         assert(Audio::begin());
         takenOver = true;
         Audio::loadEffects();
@@ -220,8 +227,19 @@ int main() {
     };
     load();
     assert(renders == 2 && amiga_audio_effect_cached == 1 && amiga_audio_effect_bytes == 106);
+    assert(fileReads == 2);
+    assert(registered[8].first == registered[7].first + 6);
+    assert(allocations.at((void *)registered[7].first) == 112);
     Audio::end();
     assert(allocations.empty());
+    // Without Chip for that block: an allocation and a read per effect.
+    chipRefuse = 112;
+    load();
+    assert(renders == 2 && amiga_audio_effect_cached == 1 && fileReads == 3);
+    assert(allocations.at((void *)registered[7].first) == 6 && allocations.at((void *)registered[8].first) == 100);
+    Audio::end();
+    assert(allocations.empty());
+    chipRefuse = 0;
     // Another capture (another key) renders again and rewrites the cache.
     rt_sfx_capture[10].value ^= 1;
     load();
@@ -233,6 +251,14 @@ int main() {
     assert(renders == 6 && amiga_audio_effect_cached == 2 && disk.size() == 138);
     Audio::end();
     assert(allocations.empty());
+    // The same cut, read an effect at a time: refused too.
+    chipRefuse = 112;
+    disk.resize(disk.size() - 1);
+    load();
+    assert(renders == 8 && amiga_audio_effect_cached == 2 && disk.size() == 138);
+    Audio::end();
+    assert(allocations.empty());
+    chipRefuse = 0;
 }
 '''
 
@@ -267,9 +293,12 @@ PLANTS = {'silent-attack': ('if (muted || !v.loop)', 'if (muted || !v.loop || !v
           'live-opl': ('fm_field(opl, keyon, mask, v)', 'fm_field(rt_opl, rt_opl_keyon, mask, v)'),
           'effects-only': ('tfhChip || effects ?', 'tfhChip ?'),
           'effect-pad': ('for (uint32_t k = n; k < bytes; ++k) pcm[k] = 0;', ''),
-          'effect-free': ('if (effectChip[id]) FreeMem(effectChip[id], effectBytes[id]);', ''),
-          'cache-key': ('head[2] == key &&', '(head[2] == key || true) &&'),
-          'cache-short': ('ok = Read(f, effectChip[e.id], e.bytes) == (LONG)e.bytes;', 'Read(f, effectChip[e.id], e.bytes);'),
+          'effect-free': ('if (effectChip[id] && !effectBlock) FreeMem(effectChip[id], effectBytes[id]);', ''),
+          'effect-block-free': ('if (effectBlock) FreeMem(effectBlock, effectBlockBytes);', ''),
+          'cache-key': ('top.head[2] == key &&', '(top.head[2] == key || true) &&'),
+          'cache-short': ('ok = Read(f, effectBlock, total) == (LONG)total;', 'Read(f, effectBlock, total);'),
+          'cache-short-each': ('if (!block) ok = Read(f, effectChip[e.id], e.bytes) == (LONG)e.bytes;', 'if (!block) Read(f, effectChip[e.id], e.bytes);'),
+          'cache-one-read': ('bool block = ok && wanted && (effectBlock', 'bool block = false && (effectBlock'),
           'cache-split': ('if (Write(f, image, total) == (LONG)total)', 'if (Write(f, image, 16) == 16 && Write(f, image + 16, total - 16) == (LONG)(total - 16))'),
           'cache-off': ('    if (loadCache(key)) {', '    if (false && loadCache(key)) {')}
 
